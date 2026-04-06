@@ -1,6 +1,7 @@
 #include "highlighter.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 
 namespace yac::presentation::syntax {
@@ -40,7 +41,7 @@ std::vector<std::string> SplitLines(std::string_view text) {
   return lines;
 }
 
-const LanguageDef KLanguages[] = {
+const std::array<LanguageDef, 4> KLanguages = {{
     {"cpp",
      {"auto",        "break",     "case",     "catch",     "class",
       "const",       "constexpr", "continue", "default",   "delete",
@@ -95,7 +96,7 @@ const LanguageDef KLanguages[] = {
      "//",
      "/*",
      "*/"},
-};
+}};
 
 const LanguageDef* FindLanguage(std::string_view name) {
   auto lower = ToLower(name);

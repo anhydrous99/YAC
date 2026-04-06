@@ -8,57 +8,57 @@ namespace yac::presentation::theme {
 // ---------------------------------------------------------------------------
 // Role colors
 // ---------------------------------------------------------------------------
-inline constexpr ftxui::Color kUserColor =
+inline const ftxui::Color KUserColor =
     ftxui::Color::RGB(137, 180, 250);  // blue
-inline constexpr ftxui::Color kAgentColor =
+inline const ftxui::Color KAgentColor =
     ftxui::Color::RGB(166, 227, 161);  // green
 
 // ---------------------------------------------------------------------------
 // Markdown colors
 // ---------------------------------------------------------------------------
-inline constexpr ftxui::Color kHeadingColor =
+inline const ftxui::Color KHeadingColor =
     ftxui::Color::RGB(205, 214, 244);  // bright white
-inline constexpr ftxui::Color kLinkColor =
+inline const ftxui::Color KLinkColor =
     ftxui::Color::RGB(116, 199, 236);  // cyan-blue
-inline constexpr ftxui::Color kQuoteBorderColor =
+inline const ftxui::Color KQuoteBorderColor =
     ftxui::Color::RGB(250, 179, 135);  // peach
 
 // ---------------------------------------------------------------------------
 // Code colors
 // ---------------------------------------------------------------------------
-inline constexpr ftxui::Color kCodeBg =
+inline const ftxui::Color KCodeBg =
     ftxui::Color::RGB(30, 30, 46);  // dark surface
-inline constexpr ftxui::Color kCodeFg =
+inline const ftxui::Color KCodeFg =
     ftxui::Color::RGB(205, 214, 244);  // light text
-inline constexpr ftxui::Color kInlineCodeBg =
+inline const ftxui::Color KInlineCodeBg =
     ftxui::Color::RGB(49, 50, 68);  // surface0
-inline constexpr ftxui::Color kInlineCodeFg =
+inline const ftxui::Color KInlineCodeFg =
     ftxui::Color::RGB(235, 160, 172);  // pink
 
 // ---------------------------------------------------------------------------
 // Syntax highlighting colors
 // ---------------------------------------------------------------------------
-inline constexpr ftxui::Color kKeywordColor =
+inline const ftxui::Color KKeywordColor =
     ftxui::Color::RGB(203, 166, 247);  // mauve
-inline constexpr ftxui::Color kStringColor =
+inline const ftxui::Color KStringColor =
     ftxui::Color::RGB(166, 227, 161);  // green
-inline constexpr ftxui::Color kCommentColor =
+inline const ftxui::Color KCommentColor =
     ftxui::Color::RGB(108, 112, 134);  // overlay0
-inline constexpr ftxui::Color kNumberColor =
+inline const ftxui::Color KNumberColor =
     ftxui::Color::RGB(250, 179, 135);  // peach
-inline constexpr ftxui::Color kTypeColor =
+inline const ftxui::Color KTypeColor =
     ftxui::Color::RGB(249, 226, 175);  // yellow
-inline constexpr ftxui::Color kFunctionColor =
+inline const ftxui::Color KFunctionColor =
     ftxui::Color::RGB(137, 180, 250);  // blue
 
 // ---------------------------------------------------------------------------
 // UI chrome colors
 // ---------------------------------------------------------------------------
-inline constexpr ftxui::Color kBorderColor =
+inline const ftxui::Color KBorderColor =
     ftxui::Color::RGB(88, 91, 112);  // surface2
-inline constexpr ftxui::Color kDimText =
+inline const ftxui::Color KDimText =
     ftxui::Color::RGB(108, 112, 134);  // overlay0
-inline constexpr ftxui::Color kPromptColor =
+inline const ftxui::Color KPromptColor =
     ftxui::Color::RGB(137, 180, 250);  // blue
 
 }  // namespace yac::presentation::theme

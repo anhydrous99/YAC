@@ -12,23 +12,23 @@ namespace yac::presentation::markdown {
 class MarkdownParser {
  public:
   /// Parse the given markdown text into block nodes.
-  [[nodiscard]] std::vector<BlockNode> Parse(std::string_view markdown) const;
+  [[nodiscard]] static std::vector<BlockNode> Parse(std::string_view markdown);
 
  private:
   // Block-level parsing — each handles one line type.
-  [[nodiscard]] std::vector<BlockNode> ParseBlocks(
-      const std::vector<std::string>& lines) const;
+  [[nodiscard]] static std::vector<BlockNode> ParseBlocks(
+      const std::vector<std::string>& lines);
 
-  [[nodiscard]] std::optional<Heading> TryParseHeading(
-      const std::string& line) const;
+  [[nodiscard]] static std::optional<Heading> TryParseHeading(
+      const std::string& line);
   [[nodiscard]] static std::optional<CodeBlock> TryParseCodeBlock(
       const std::vector<std::string>& lines, size_t& index);
-  [[nodiscard]] std::optional<Blockquote> TryParseBlockquote(
-      const std::string& line) const;
-  [[nodiscard]] std::optional<UnorderedList::Item> TryParseUnorderedItem(
-      const std::string& line) const;
-  [[nodiscard]] std::optional<OrderedList::Item> TryParseOrderedItem(
-      const std::string& line) const;
+  [[nodiscard]] static std::optional<Blockquote> TryParseBlockquote(
+      const std::string& line);
+  [[nodiscard]] static std::optional<UnorderedList::Item> TryParseUnorderedItem(
+      const std::string& line);
+  [[nodiscard]] static std::optional<OrderedList::Item> TryParseOrderedItem(
+      const std::string& line);
 
   // Inline parsing — breaks a text run into styled segments.
   [[nodiscard]] static std::vector<InlineNode> ParseInline(

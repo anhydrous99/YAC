@@ -63,15 +63,9 @@ ftxui::Element ChatUI::RenderMessages() const {
            ftxui::flex;
   }
 
-  ftxui::Elements entries;
-  entries.reserve(messages_.size());
-  for (const auto& msg : messages_) {
-    std::string prefix = (msg.sender == Sender::User) ? "You: " : "Agent: ";
-    entries.push_back(ftxui::text(prefix + msg.content));
-  }
-
-  return ftxui::vbox(entries) | ftxui::yframe | ftxui::flex |
-         ftxui::vscroll_indicator | ftxui::focusPositionRelative(0.F, 1.F);
+  return message_renderer_.RenderAll(messages_) | ftxui::yframe |
+         ftxui::flex | ftxui::vscroll_indicator |
+         ftxui::focusPositionRelative(0.F, 1.F);
 }
 
 }  // namespace yac::presentation

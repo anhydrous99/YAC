@@ -24,6 +24,7 @@ FetchContent_MakeAvailable(Catch2)
 add_library(yac_presentation STATIC
   src/presentation/chat_ui.cpp
   src/presentation/message.cpp
+  src/presentation/message_renderer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
   src/presentation/syntax/highlighter.cpp

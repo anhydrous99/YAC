@@ -15,8 +15,7 @@ namespace {
 
 void RenderAndCheck(const std::vector<BlockNode>& blocks, int width = 80,
                     int height = 24) {
-  SyntaxHighlighter hl;
-  MarkdownRenderer renderer(hl);
+  MarkdownRenderer renderer;
   auto elem = renderer.Render(blocks);
   REQUIRE(elem != nullptr);
   ftxui::Screen screen(width, height);
@@ -83,8 +82,7 @@ TEST_CASE("Renderer handles inline formatting") {
 TEST_CASE("Renderer paragraph snapshot") {
   MarkdownParser parser;
   auto blocks = parser.Parse("Hello");
-  SyntaxHighlighter hl;
-  MarkdownRenderer renderer(hl);
+  MarkdownRenderer renderer;
   auto elem = renderer.Render(blocks);
   ftxui::Screen screen(80, 1);
   ftxui::Render(screen, elem);

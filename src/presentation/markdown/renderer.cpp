@@ -6,11 +6,7 @@
 
 namespace yac::presentation::markdown {
 
-MarkdownRenderer::MarkdownRenderer(const syntax::SyntaxHighlighter& highlighter)
-    : highlighter_(highlighter) {}
-
-ftxui::Element MarkdownRenderer::Render(
-    const std::vector<BlockNode>& blocks) const {
+ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks) {
   ftxui::Elements elements;
   for (const auto& block : blocks) {
     elements.push_back(RenderBlock(block));
@@ -18,9 +14,9 @@ ftxui::Element MarkdownRenderer::Render(
   return ftxui::vbox(elements);
 }
 
-ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block) const {
+ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block) {
   return std::visit(
-      [this](const auto& node) -> ftxui::Element {
+      [](const auto& node) -> ftxui::Element {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, Heading>) {
           return RenderHeading(node);
@@ -42,7 +38,7 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block) const {
 }
 
 ftxui::Element MarkdownRenderer::RenderInline(
-    const std::vector<InlineNode>& nodes) const {
+    const std::vector<InlineNode>& nodes) {
   ftxui::Elements elements;
   for (const auto& node : nodes) {
     elements.push_back(RenderInlineNode(node));
@@ -75,31 +71,31 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
       node);
 }
 
-ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h) const {
+ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h) {
   auto prefix = std::string(h.level, '#') + " ";
   return ftxui::hbox({ftxui::text(prefix) | ftxui::bold |
                           ftxui::color(ftxui::Color::RGB(205, 214, 244)),
                       RenderInline(h.children)});
 }
 
-ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) const {
+ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) {
   return RenderInline(p.children);
 }
 
-ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) const {
-  auto highlighted = highlighter_.Highlight(cb.source, cb.language);
+ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) {
+  auto highlighted =
+      syntax::SyntaxHighlighter::Highlight(cb.source, cb.language);
   return ftxui::vbox({highlighted}) |
          ftxui::bgcolor(ftxui::Color::RGB(30, 30, 46));
 }
 
-ftxui::Element MarkdownRenderer::RenderBlockquote(const Blockquote& bq) const {
+ftxui::Element MarkdownRenderer::RenderBlockquote(const Blockquote& bq) {
   return ftxui::hbox(
       {ftxui::text("│ ") | ftxui::color(ftxui::Color::RGB(250, 179, 135)),
        RenderInline(bq.children)});
 }
 
-ftxui::Element MarkdownRenderer::RenderUnorderedList(
-    const UnorderedList& ul) const {
+ftxui::Element MarkdownRenderer::RenderUnorderedList(const UnorderedList& ul) {
   ftxui::Elements items;
   for (const auto& item : ul.items) {
     items.push_back(
@@ -108,8 +104,7 @@ ftxui::Element MarkdownRenderer::RenderUnorderedList(
   return ftxui::vbox(items);
 }
 
-ftxui::Element MarkdownRenderer::RenderOrderedList(
-    const OrderedList& ol) const {
+ftxui::Element MarkdownRenderer::RenderOrderedList(const OrderedList& ol) {
   ftxui::Elements items;
   for (size_t i = 0; i < ol.items.size(); ++i) {
     auto num = std::to_string(i + 1) + ". ";
