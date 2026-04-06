@@ -1,6 +1,7 @@
 #include "highlighter.hpp"
 
 #include "../theme.hpp"
+#include "presentation/util/string_util.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,6 +10,10 @@
 namespace yac::presentation::syntax {
 
 namespace {
+
+using util::SplitLines;
+
+inline const auto& k_theme = theme::Theme::Instance();
 
 struct LanguageDef {
   std::string name;
@@ -26,24 +31,7 @@ std::string ToLower(std::string_view s) {
   return result;
 }
 
-std::vector<std::string> SplitLines(std::string_view text) {
-  std::vector<std::string> lines;
-  std::string line;
-  for (char c : text) {
-    if (c == '\n') {
-      lines.push_back(std::move(line));
-      line.clear();
-    } else {
-      line += c;
-    }
-  }
-  if (!line.empty() || text.empty()) {
-    lines.push_back(std::move(line));
-  }
-  return lines;
-}
-
-const std::array<LanguageDef, 4> KLanguages = {{
+const std::array<LanguageDef, 4> kLanguageDefinitions = {{
     {"cpp",
      {"auto",        "break",     "case",     "catch",     "class",
       "const",       "constexpr", "continue", "default",   "delete",
@@ -102,7 +90,7 @@ const std::array<LanguageDef, 4> KLanguages = {{
 
 const LanguageDef* FindLanguage(std::string_view name) {
   auto lower = ToLower(name);
-  for (const auto& lang : KLanguages) {
+  for (const auto& lang : kLanguageDefinitions) {
     if (ToLower(lang.name) == lower) {
       return &lang;
     }
@@ -158,16 +146,19 @@ bool IsNumber(std::string_view token) {
 
 void EmitToken(std::string& current, ftxui::Elements& segments,
                const LanguageDef& lang) {
-  if (current.empty()) return;
+  if (current.empty()) {
+    return;
+  }
 
   if (IsKeyword(current, lang)) {
     segments.push_back(ftxui::text(current) |
-                       ftxui::color(theme::KKeywordColor) | ftxui::bold);
+                       ftxui::color(k_theme.syntax.keyword) | ftxui::bold);
   } else if (IsType(current, lang)) {
-    segments.push_back(ftxui::text(current) | ftxui::color(theme::KTypeColor));
+    segments.push_back(ftxui::text(current) |
+                       ftxui::color(k_theme.syntax.type));
   } else if (IsNumber(current)) {
     segments.push_back(ftxui::text(current) |
-                       ftxui::color(theme::KNumberColor));
+                       ftxui::color(k_theme.syntax.number));
   } else {
     segments.push_back(ftxui::text(current));
   }
@@ -178,7 +169,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
   using namespace ftxui;
 
   if (IsComment(line, lang)) {
-    return text(std::string(line)) | color(theme::KCommentColor);
+    return text(std::string(line)) | color(k_theme.syntax.comment);
   }
 
   Elements segments;
@@ -192,7 +183,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     if (in_string) {
       current += c;
       if (c == string_char && (i == 0 || line[i - 1] != '\\')) {
-        segments.push_back(text(current) | color(theme::KStringColor));
+        segments.push_back(text(current) | color(k_theme.syntax.string));
         current.clear();
         in_string = false;
       }

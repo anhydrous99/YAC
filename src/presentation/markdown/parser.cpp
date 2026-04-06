@@ -1,5 +1,7 @@
 #include "parser.hpp"
 
+#include "presentation/util/string_util.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <regex>
@@ -8,39 +10,9 @@ namespace yac::presentation::markdown {
 
 namespace {
 
-std::vector<std::string> SplitLines(std::string_view text) {
-  std::vector<std::string> lines;
-  std::string line;
-  for (char c : text) {
-    if (c == '\n') {
-      lines.push_back(std::move(line));
-      line.clear();
-    } else {
-      line += c;
-    }
-  }
-  if (!line.empty()) {
-    lines.push_back(std::move(line));
-  }
-  return lines;
-}
-
-std::string Trim(std::string_view s) {
-  auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string_view::npos) {
-    return "";
-  }
-  auto end = s.find_last_not_of(" \t\r\n");
-  return std::string(s.substr(start, end - start + 1));
-}
-
-std::string TrimLeft(std::string_view s) {
-  auto start = s.find_first_not_of(" \t");
-  if (start == std::string_view::npos) {
-    return "";
-  }
-  return std::string(s.substr(start));
-}
+using util::SplitLines;
+using util::Trim;
+using util::TrimLeft;
 
 }  // namespace
 
@@ -73,9 +45,14 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
       continue;
     }
 
-    if (auto bq = TryParseBlockquote(line)) {
-      blocks.emplace_back(std::move(*bq));
+    if (auto hr = TryParseHorizontalRule(line)) {
+      blocks.emplace_back(std::move(*hr));
       ++i;
+      continue;
+    }
+
+    if (auto bq = TryParseBlockquote(lines, i)) {
+      blocks.emplace_back(std::move(*bq));
       continue;
     }
 
@@ -113,47 +90,53 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
       continue;
     }
 
-    Paragraph para;
-    size_t para_start = i;
-    bool first_line = true;
-    while (i < lines.size() && !Trim(lines[i]).empty()) {
-      if (lines[i].starts_with("#") || lines[i].starts_with(">") ||
-          lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
-          lines[i].starts_with("+ ") ||
-          std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0) {
-        bool is_list =
-            std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0;
-        if (is_list) {
-          size_t idx = 0;
-          while (idx < lines[i].size() &&
-                 std::isdigit(static_cast<unsigned char>(lines[i][idx])) != 0) {
-            ++idx;
-          }
-          is_list = (idx < lines[i].size() && lines[i][idx] == '.');
-        }
-        if (is_list || lines[i].starts_with("#") || lines[i].starts_with(">") ||
-            lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
-            lines[i].starts_with("+ ")) {
-          break;
-        }
-      }
-      if (!first_line) {
-        para.children.emplace_back(Text{" "});
-      }
-      first_line = false;
-      auto inline_nodes = ParseInline(Trim(lines[i]));
-      for (auto& node : inline_nodes) {
-        para.children.push_back(std::move(node));
-      }
-      ++i;
-    }
-    if (i == para_start) {
-      ++i;
-    }
-    blocks.emplace_back(std::move(para));
+    i = TryParseParagraph(lines, i, blocks);
   }
 
   return blocks;
+}
+
+size_t MarkdownParser::TryParseParagraph(const std::vector<std::string>& lines,
+                                         size_t start,
+                                         std::vector<BlockNode>& blocks) {
+  Paragraph para;
+  size_t i = start;
+  bool first_line = true;
+  while (i < lines.size() && !Trim(lines[i]).empty()) {
+    if (lines[i].starts_with("#") || lines[i].starts_with(">") ||
+        lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
+        lines[i].starts_with("+ ") ||
+        std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0) {
+      bool is_list = std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0;
+      if (is_list) {
+        size_t idx = 0;
+        while (idx < lines[i].size() &&
+               std::isdigit(static_cast<unsigned char>(lines[i][idx])) != 0) {
+          ++idx;
+        }
+        is_list = (idx < lines[i].size() && lines[i][idx] == '.');
+      }
+      if (is_list || lines[i].starts_with("#") || lines[i].starts_with(">") ||
+          lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
+          lines[i].starts_with("+ ")) {
+        break;
+      }
+    }
+    if (!first_line) {
+      para.children.emplace_back(Text{" "});
+    }
+    first_line = false;
+    auto inline_nodes = ParseInline(Trim(lines[i]));
+    for (auto& node : inline_nodes) {
+      para.children.push_back(std::move(node));
+    }
+    ++i;
+  }
+  if (i == start) {
+    ++i;
+  }
+  blocks.emplace_back(std::move(para));
+  return i;
 }
 
 std::optional<Heading> MarkdownParser::TryParseHeading(
@@ -163,7 +146,7 @@ std::optional<Heading> MarkdownParser::TryParseHeading(
   while (level < static_cast<int>(trimmed.size()) && trimmed[level] == '#') {
     ++level;
   }
-  if (level == 0 || level > 6) {
+  if (level == 0 || level > kMaxHeadingLevel) {
     return std::nullopt;
   }
   if (level < static_cast<int>(trimmed.size()) &&
@@ -215,14 +198,51 @@ std::optional<CodeBlock> MarkdownParser::TryParseCodeBlock(
 }
 
 std::optional<Blockquote> MarkdownParser::TryParseBlockquote(
-    const std::string& line) {
-  auto trimmed = TrimLeft(line);
+    const std::vector<std::string>& lines, size_t& index) {
+  auto trimmed = TrimLeft(lines[index]);
   if (!trimmed.starts_with(">")) {
     return std::nullopt;
   }
 
   Blockquote bq;
-  bq.children = ParseInline(Trim(trimmed.substr(1)));
+  int nesting = 0;
+  size_t pos = 1;
+  while (pos < trimmed.size() && trimmed[pos] == '>') {
+    ++nesting;
+    ++pos;
+  }
+  if (nesting == 0) {
+    nesting = 0;
+  }
+  if (pos < trimmed.size() && trimmed[pos] == ' ') {
+    ++pos;
+  }
+
+  auto first_line = ParseInline(Trim(trimmed.substr(pos)));
+  for (auto& node : first_line) {
+    bq.lines.emplace_back();
+    bq.lines.back().push_back(std::move(node));
+  }
+  if (bq.lines.empty()) {
+    bq.lines.emplace_back();
+  }
+  bq.nesting_level = nesting;
+  ++index;
+
+  while (index < lines.size()) {
+    auto next_trimmed = TrimLeft(lines[index]);
+    if (!next_trimmed.starts_with(">")) {
+      break;
+    }
+    size_t next_pos = 1;
+    if (next_pos < next_trimmed.size() && next_trimmed[next_pos] == ' ') {
+      ++next_pos;
+    }
+    auto next_inline = ParseInline(Trim(next_trimmed.substr(next_pos)));
+    bq.lines.push_back(std::move(next_inline));
+    ++index;
+  }
+
   return bq;
 }
 
@@ -256,16 +276,37 @@ std::optional<OrderedList::Item> MarkdownParser::TryParseOrderedItem(
   return item;
 }
 
+std::optional<HorizontalRule> MarkdownParser::TryParseHorizontalRule(
+    const std::string& line) {
+  auto trimmed = Trim(line);
+  if (trimmed.size() < 3) {
+    return std::nullopt;
+  }
+
+  const char marker = trimmed[0];
+  if (marker != '-' && marker != '*' && marker != '_') {
+    return std::nullopt;
+  }
+
+  for (char c : trimmed) {
+    if (c != marker) {
+      return std::nullopt;
+    }
+  }
+
+  return HorizontalRule{};
+}
+
 std::vector<InlineNode> MarkdownParser::ParseInline(std::string_view text) {
   std::vector<InlineNode> nodes;
 
-  static const std::regex k_pattern(
+  static const std::regex kInlineFormatPattern(
       R"((`\S.*?\S?`)|(\*\*.+?\*\*)|(\*.+?\*)|(~~.+?~~)|(\[.+?\]\(.+?\)))");
 
   std::string remaining(text);
   std::smatch match;
 
-  while (std::regex_search(remaining, match, k_pattern)) {
+  while (std::regex_search(remaining, match, kInlineFormatPattern)) {
     if (match.prefix().length() > 0) {
       nodes.emplace_back(Text{match.prefix().str()});
     }

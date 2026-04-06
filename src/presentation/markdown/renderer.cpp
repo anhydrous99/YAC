@@ -2,15 +2,21 @@
 
 #include "../theme.hpp"
 #include "ftxui/dom/elements.hpp"
+#include "presentation/util/string_util.hpp"
 
 #include <string>
 
 namespace yac::presentation::markdown {
 
+inline const auto& k_theme = theme::Theme::Instance();
+
 ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks) {
   ftxui::Elements elements;
-  for (const auto& block : blocks) {
-    elements.push_back(RenderBlock(block));
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    elements.push_back(RenderBlock(blocks[i]));
+    if (i + 1 < blocks.size()) {
+      elements.push_back(ftxui::text(""));
+    }
   }
   return ftxui::vbox(elements);
 }
@@ -31,6 +37,8 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block) {
           return RenderUnorderedList(node);
         } else if constexpr (std::is_same_v<T, OrderedList>) {
           return RenderOrderedList(node);
+        } else if constexpr (std::is_same_v<T, HorizontalRule>) {
+          return RenderHorizontalRule();
         } else {
           return ftxui::text("");
         }
@@ -60,10 +68,12 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
         } else if constexpr (std::is_same_v<T, Strikethrough>) {
           return ftxui::text(n.content) | ftxui::strikethrough;
         } else if constexpr (std::is_same_v<T, InlineCode>) {
-          return ftxui::text(n.content) | ftxui::bold |
-                 ftxui::bgcolor(theme::KInlineCodeBg);
+          return ftxui::text(" " + n.content + " ") | ftxui::bold |
+                 ftxui::bgcolor(k_theme.code.inline_bg) |
+                 ftxui::color(k_theme.code.inline_fg);
         } else if constexpr (std::is_same_v<T, Link>) {
-          return ftxui::text(n.text) | ftxui::color(theme::KLinkColor);
+          return ftxui::text(n.text) | ftxui::color(k_theme.markdown.link) |
+                 ftxui::underlined;
         } else {
           return ftxui::text("");
         }
@@ -72,10 +82,20 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
 }
 
 ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h) {
-  auto prefix = std::string(h.level, '#') + " ";
-  return ftxui::hbox(
-      {ftxui::text(prefix) | ftxui::bold | ftxui::color(theme::KHeadingColor),
-       RenderInline(h.children)});
+  auto inline_elem = RenderInline(h.children);
+
+  if (h.level <= 2) {
+    return ftxui::vbox({
+        inline_elem | ftxui::bold | ftxui::color(k_theme.markdown.heading),
+        ftxui::separator() | ftxui::color(k_theme.markdown.separator),
+    });
+  }
+
+  if (h.level <= 4) {
+    return inline_elem | ftxui::bold | ftxui::color(k_theme.markdown.heading);
+  }
+
+  return inline_elem | ftxui::color(k_theme.chrome.dim_text);
 }
 
 ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) {
@@ -83,34 +103,75 @@ ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) {
 }
 
 ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) {
-  auto highlighted =
-      syntax::SyntaxHighlighter::Highlight(cb.source, cb.language);
+  auto code_lines = util::SplitLines(cb.source);
+  auto gutter_width = std::to_string(code_lines.size()).size() + 1;
 
   ftxui::Elements inner;
   if (!cb.language.empty()) {
-    inner.push_back(ftxui::text(" " + cb.language) |
-                    ftxui::color(theme::KDimText) | ftxui::dim);
+    inner.push_back(ftxui::text(" " + cb.language + " ") |
+                    ftxui::bgcolor(k_theme.code.fg) |
+                    ftxui::color(k_theme.code.bg) | ftxui::bold);
+    inner.push_back(ftxui::text("  ") | ftxui::bgcolor(k_theme.code.bg));
   }
   inner.push_back(ftxui::text(""));
-  inner.push_back(std::move(highlighted));
+
+  auto even_bg = k_theme.code.bg;
+  auto odd_bg = ftxui::Color::RGB(34, 34, 50);
+
+  for (size_t i = 0; i < code_lines.size(); ++i) {
+    auto num_str = std::to_string(i + 1);
+    auto padded_num =
+        std::string(gutter_width - num_str.size(), ' ') + num_str + " ";
+    auto line_elem =
+        syntax::SyntaxHighlighter::Highlight(code_lines[i], cb.language);
+
+    auto bg = (i % 2 == 1) ? odd_bg : even_bg;
+    inner.push_back(ftxui::hbox({
+        ftxui::text(padded_num) | ftxui::color(k_theme.chrome.dim_text) |
+            ftxui::dim | ftxui::bgcolor(bg),
+        line_elem | ftxui::bgcolor(bg),
+    }));
+  }
+
   inner.push_back(ftxui::text(""));
 
-  return ftxui::vbox(inner) | ftxui::bgcolor(theme::KCodeBg) |
-         ftxui::borderRounded | ftxui::color(theme::KCodeBlockBorder);
+  return ftxui::vbox(inner) | ftxui::bgcolor(k_theme.code.bg) |
+         ftxui::borderRounded | ftxui::color(k_theme.code.block_border);
 }
 
 ftxui::Element MarkdownRenderer::RenderBlockquote(const Blockquote& bq) {
-  return ftxui::hbox(
-             {ftxui::text("│ ") | ftxui::color(theme::KQuoteBorderColor),
-              RenderInline(bq.children)}) |
-         ftxui::bgcolor(theme::KQuoteBg);
+  const std::array<ftxui::Color, 4> border_colors = {
+      k_theme.markdown.quote_border,
+      ftxui::Color::RGB(203, 166, 247),
+      ftxui::Color::RGB(137, 180, 250),
+      ftxui::Color::RGB(166, 227, 161),
+  };
+
+  auto color_idx = static_cast<size_t>(bq.nesting_level) % border_colors.size();
+  const auto& border_color = border_colors[color_idx];
+
+  std::string indent(bq.nesting_level * 2, ' ');
+
+  ftxui::Elements line_elements;
+  for (const auto& line : bq.lines) {
+    line_elements.push_back(
+        ftxui::hbox({ftxui::text(indent + "│ ") | ftxui::color(border_color),
+                     RenderInline(line)}));
+  }
+
+  return ftxui::vbox(line_elements) | ftxui::bgcolor(k_theme.markdown.quote_bg);
 }
 
 ftxui::Element MarkdownRenderer::RenderUnorderedList(const UnorderedList& ul) {
   ftxui::Elements items;
-  for (const auto& item : ul.items) {
-    items.push_back(
-        ftxui::hbox({ftxui::text("  • "), RenderInline(item.children)}));
+  for (size_t i = 0; i < ul.items.size(); ++i) {
+    items.push_back(ftxui::hbox(
+        {ftxui::text("  "),
+         ftxui::text("• ") | ftxui::color(k_theme.role.agent) | ftxui::bold,
+         RenderInline(ul.items[i].children)}));
+    if (i + 1 < ul.items.size()) {
+      items.push_back(ftxui::text(""));
+    }
   }
   return ftxui::vbox(items);
 }
@@ -120,9 +181,18 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(const OrderedList& ol) {
   for (size_t i = 0; i < ol.items.size(); ++i) {
     auto num = std::to_string(i + 1) + ". ";
     items.push_back(ftxui::hbox(
-        {ftxui::text("  " + num), RenderInline(ol.items[i].children)}));
+        {ftxui::text("  "),
+         ftxui::text(num) | ftxui::color(k_theme.chrome.dim_text) | ftxui::bold,
+         RenderInline(ol.items[i].children)}));
+    if (i + 1 < ol.items.size()) {
+      items.push_back(ftxui::text(""));
+    }
   }
   return ftxui::vbox(items);
+}
+
+ftxui::Element MarkdownRenderer::RenderHorizontalRule() {
+  return ftxui::separator() | ftxui::color(k_theme.markdown.separator);
 }
 
 }  // namespace yac::presentation::markdown

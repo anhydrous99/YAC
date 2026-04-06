@@ -17,14 +17,13 @@ class ChatUI {
   ChatUI();
   explicit ChatUI(OnSendCallback on_send);
 
-  /// Build and return the root FTXUI component tree.
-  ftxui::Component Build();
+  [[nodiscard]] ftxui::Component Build();
 
-  /// Add a message to the display (e.g. an Agent response).
   void AddMessage(Sender sender, std::string content);
+  void SetTyping(bool typing);
 
-  /// Read-only access to the message history.
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
+  [[nodiscard]] bool IsTyping() const;
 
  private:
   void SubmitMessage();
@@ -35,6 +34,7 @@ class ChatUI {
   std::vector<Message> messages_;
   std::string input_content_;
   OnSendCallback on_send_;
+  bool is_typing_ = false;
 };
 
 }  // namespace yac::presentation

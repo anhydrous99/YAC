@@ -27,6 +27,9 @@ const UnorderedList* AsUnorderedList(const BlockNode& node) {
 const OrderedList* AsOrderedList(const BlockNode& node) {
   return std::get_if<OrderedList>(&node);
 }
+const HorizontalRule* AsHorizontalRule(const BlockNode& node) {
+  return std::get_if<HorizontalRule>(&node);
+}
 
 const Text* AsText(const InlineNode& node) {
   return std::get_if<Text>(&node);
@@ -49,10 +52,6 @@ const Link* AsLink(const InlineNode& node) {
 
 }  // namespace
 
-// ==========================================================================
-// Empty / blank input
-// ==========================================================================
-
 TEST_CASE("Empty string yields no blocks") {
   auto blocks = MarkdownParser::Parse("");
   REQUIRE(blocks.empty());
@@ -62,10 +61,6 @@ TEST_CASE("Whitespace-only string yields no blocks") {
   auto blocks = MarkdownParser::Parse("   \n  \n");
   REQUIRE(blocks.empty());
 }
-
-// ==========================================================================
-// Headings
-// ==========================================================================
 
 TEST_CASE("ATX heading level 1") {
   auto blocks = MarkdownParser::Parse("# Hello");
@@ -100,10 +95,6 @@ TEST_CASE("Hash without trailing space is not a heading") {
   REQUIRE(AsHeading(blocks[0]) == nullptr);
   REQUIRE(AsParagraph(blocks[0]) != nullptr);
 }
-
-// ==========================================================================
-// Code blocks
-// ==========================================================================
 
 TEST_CASE("Fenced code block with backticks and language") {
   auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\n```");
@@ -148,17 +139,14 @@ TEST_CASE("Unclosed code block consumes to end") {
   REQUIRE(cb->source == "line1\nline2");
 }
 
-// ==========================================================================
-// Blockquotes
-// ==========================================================================
-
 TEST_CASE("Blockquote with space after >") {
   auto blocks = MarkdownParser::Parse("> quoted text");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->children.size() == 1);
-  const auto* t = AsText(bq->children[0]);
+  REQUIRE(bq->lines.size() == 1);
+  REQUIRE(bq->lines[0].size() == 1);
+  const auto* t = AsText(bq->lines[0][0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "quoted text");
 }
@@ -168,14 +156,42 @@ TEST_CASE("Blockquote without space after >") {
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  const auto* t = AsText(bq->children[0]);
+  REQUIRE(bq->lines[0].size() == 1);
+  const auto* t = AsText(bq->lines[0][0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "tight");
 }
 
-// ==========================================================================
-// Unordered lists
-// ==========================================================================
+TEST_CASE("Multi-line blockquote merges into single block") {
+  auto blocks = MarkdownParser::Parse("> line1\n> line2\n> line3");
+  REQUIRE(blocks.size() == 1);
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->lines.size() == 3);
+}
+
+TEST_CASE("Blockquote nesting level 1 with >>") {
+  auto blocks = MarkdownParser::Parse(">> nested");
+  REQUIRE(blocks.size() == 1);
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->nesting_level == 1);
+}
+
+TEST_CASE("Blockquote nesting level 0 with single >") {
+  auto blocks = MarkdownParser::Parse("> not nested");
+  REQUIRE(blocks.size() == 1);
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->nesting_level == 0);
+}
+
+TEST_CASE("Blockquote stops at non-quote line") {
+  auto blocks = MarkdownParser::Parse("> quote\nplain text");
+  REQUIRE(blocks.size() == 2);
+  REQUIRE(AsBlockquote(blocks[0]) != nullptr);
+  REQUIRE(AsParagraph(blocks[1]) != nullptr);
+}
 
 TEST_CASE("Unordered list with dash marker") {
   auto blocks = MarkdownParser::Parse("- item1\n- item2\n- item3");
@@ -211,10 +227,6 @@ TEST_CASE("Unordered list item content") {
   REQUIRE(t->content == "hello world");
 }
 
-// ==========================================================================
-// Ordered lists
-// ==========================================================================
-
 TEST_CASE("Ordered list with numeric markers") {
   auto blocks = MarkdownParser::Parse("1. first\n2. second\n3. third");
   REQUIRE(blocks.size() == 1);
@@ -234,9 +246,49 @@ TEST_CASE("Ordered list with multi-digit numbers") {
   REQUIRE(t->content == "item");
 }
 
-// ==========================================================================
-// Paragraphs
-// ==========================================================================
+TEST_CASE("Horizontal rule with dashes") {
+  auto blocks = MarkdownParser::Parse("---");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Horizontal rule with asterisks") {
+  auto blocks = MarkdownParser::Parse("***");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Horizontal rule with underscores") {
+  auto blocks = MarkdownParser::Parse("___");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Horizontal rule with many dashes") {
+  auto blocks = MarkdownParser::Parse("----------");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Two dashes is not a horizontal rule") {
+  auto blocks = MarkdownParser::Parse("--");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) == nullptr);
+}
+
+TEST_CASE("Mixed characters is not a horizontal rule") {
+  auto blocks = MarkdownParser::Parse("-*-");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsHorizontalRule(blocks[0]) == nullptr);
+}
+
+TEST_CASE("Horizontal rule between paragraphs") {
+  auto blocks = MarkdownParser::Parse("above\n\n---\n\nbelow");
+  REQUIRE(blocks.size() == 3);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+  REQUIRE(AsHorizontalRule(blocks[1]) != nullptr);
+  REQUIRE(AsParagraph(blocks[2]) != nullptr);
+}
 
 TEST_CASE("Plain text is a paragraph") {
   auto blocks = MarkdownParser::Parse("Hello world");
@@ -273,10 +325,6 @@ TEST_CASE("Blank line splits paragraphs") {
   REQUIRE(AsParagraph(blocks[1]) != nullptr);
 }
 
-// ==========================================================================
-// Mixed blocks
-// ==========================================================================
-
 TEST_CASE("Mixed block types preserve order") {
   auto blocks =
       MarkdownParser::Parse("# Title\n\n- item\n\n```\ncode\n```\n> quote");
@@ -286,10 +334,6 @@ TEST_CASE("Mixed block types preserve order") {
   REQUIRE(AsCodeBlock(blocks[2]) != nullptr);
   REQUIRE(AsBlockquote(blocks[3]) != nullptr);
 }
-
-// ==========================================================================
-// Inline parsing
-// ==========================================================================
 
 TEST_CASE("Bold **text**") {
   auto blocks = MarkdownParser::Parse("**bold**");

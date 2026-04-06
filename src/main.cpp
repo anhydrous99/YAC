@@ -5,11 +5,11 @@
 
 int main() {
   yac::presentation::ChatUI chat_ui;
-  
+
   // Add test messages to demonstrate styling
-  chat_ui.AddMessage(yac::presentation::Sender::User, 
+  chat_ui.AddMessage(yac::presentation::Sender::User,
                      "Hello! Can you help me with some C++ code?");
-  
+
   chat_ui.AddMessage(yac::presentation::Sender::Agent,
                      "# Code Example\n\n"
                      "Here's a simple **C++ function**:\n\n"

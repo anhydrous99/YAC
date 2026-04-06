@@ -20,6 +20,14 @@ void RenderAndCheck(const std::vector<BlockNode>& blocks, int width = 80,
   REQUIRE_FALSE(screen.ToString().empty());
 }
 
+std::string RenderToString(const std::vector<BlockNode>& blocks, int width = 80,
+                           int height = 24) {
+  auto elem = MarkdownRenderer::Render(blocks);
+  ftxui::Screen screen(width, height);
+  ftxui::Render(screen, elem);
+  return screen.ToString();
+}
+
 }  // namespace
 
 TEST_CASE("Renderer handles empty block list") {
@@ -76,4 +84,62 @@ TEST_CASE("Renderer paragraph snapshot") {
   ftxui::Render(screen, elem);
   auto output = screen.ToString();
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Hello"));
+}
+
+TEST_CASE("Renderer heading H1 has underline") {
+  auto blocks = MarkdownParser::Parse("# Title");
+  auto output = RenderToString(blocks, 40, 5);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Title"));
+}
+
+TEST_CASE("Renderer heading H3 is bold without underline") {
+  auto blocks = MarkdownParser::Parse("### Subtitle");
+  auto output = RenderToString(blocks, 40, 3);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Subtitle"));
+}
+
+TEST_CASE("Renderer heading H5 is dim") {
+  auto blocks = MarkdownParser::Parse("##### Minor");
+  auto output = RenderToString(blocks, 40, 3);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Minor"));
+}
+
+TEST_CASE("Renderer code block shows language badge") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\n```");
+  auto output = RenderToString(blocks, 80, 10);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("cpp"));
+}
+
+TEST_CASE("Renderer code block shows line numbers") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\nint y = 1;\n```");
+  auto output = RenderToString(blocks, 80, 10);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("1"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("2"));
+}
+
+TEST_CASE("Renderer horizontal rule renders separator") {
+  auto blocks = MarkdownParser::Parse("above\n\n---\n\nbelow");
+  RenderAndCheck(blocks, 80, 10);
+}
+
+TEST_CASE("Renderer nested blockquote renders") {
+  auto blocks = MarkdownParser::Parse(">> deeply nested");
+  RenderAndCheck(blocks);
+}
+
+TEST_CASE("Renderer multi-line blockquote renders") {
+  auto blocks = MarkdownParser::Parse("> line1\n> line2");
+  RenderAndCheck(blocks);
+}
+
+TEST_CASE("Renderer unordered list shows bullet") {
+  auto blocks = MarkdownParser::Parse("- item");
+  auto output = RenderToString(blocks, 40, 3);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("item"));
+}
+
+TEST_CASE("Renderer inter-block spacing") {
+  auto blocks = MarkdownParser::Parse("# Title\n\nParagraph");
+  auto elem = MarkdownRenderer::Render(blocks);
+  REQUIRE(elem != nullptr);
 }

@@ -27,6 +27,7 @@ class MarkdownRenderer {
   [[nodiscard]] static ftxui::Element RenderUnorderedList(
       const UnorderedList& ul);
   [[nodiscard]] static ftxui::Element RenderOrderedList(const OrderedList& ol);
+  [[nodiscard]] static ftxui::Element RenderHorizontalRule();
 };
 
 }  // namespace yac::presentation::markdown

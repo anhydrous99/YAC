@@ -6,10 +6,6 @@
 
 namespace yac::presentation::markdown {
 
-// ---------------------------------------------------------------------------
-// Inline nodes — leaf-level rich text inside blocks.
-// ---------------------------------------------------------------------------
-
 struct Text {
   std::string content;
 };
@@ -38,26 +34,23 @@ struct Link {
 using InlineNode =
     std::variant<Text, Bold, Italic, Strikethrough, InlineCode, Link>;
 
-// ---------------------------------------------------------------------------
-// Block nodes — top-level structural elements.
-// ---------------------------------------------------------------------------
-
 struct Paragraph {
   std::vector<InlineNode> children;
 };
 
 struct Heading {
-  int level{};  // 1-6
+  int level{};
   std::vector<InlineNode> children;
 };
 
 struct CodeBlock {
-  std::string language;  // empty when no info string
+  std::string language;
   std::string source;
 };
 
 struct Blockquote {
-  std::vector<InlineNode> children;
+  std::vector<std::vector<InlineNode>> lines;
+  int nesting_level{};
 };
 
 struct UnorderedList {
@@ -74,7 +67,9 @@ struct OrderedList {
   std::vector<Item> items;
 };
 
+struct HorizontalRule {};
+
 using BlockNode = std::variant<Paragraph, Heading, CodeBlock, Blockquote,
-                               UnorderedList, OrderedList>;
+                               UnorderedList, OrderedList, HorizontalRule>;
 
 }  // namespace yac::presentation::markdown

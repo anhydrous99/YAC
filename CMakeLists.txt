@@ -28,6 +28,7 @@ add_library(yac_presentation STATIC
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
   src/presentation/syntax/highlighter.cpp
+  src/presentation/theme.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
 target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::component)

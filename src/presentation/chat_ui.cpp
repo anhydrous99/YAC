@@ -9,6 +9,8 @@
 
 namespace yac::presentation {
 
+inline const auto& k_theme = theme::Theme::Instance();
+
 ChatUI::ChatUI() : on_send_([](const std::string&) {}) {}
 
 ChatUI::ChatUI(OnSendCallback on_send) : on_send_(std::move(on_send)) {}
@@ -18,16 +20,33 @@ ftxui::Component ChatUI::Build() {
   auto input = BuildInput();
 
   return ftxui::Renderer(input, [this, message_list, input] {
+    ftxui::Elements footer_elements;
+    if (is_typing_) {
+      footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
+                                ftxui::color(k_theme.role.agent) | ftxui::bold);
+    }
+    if (!messages_.empty()) {
+      auto count_label = "  [" + std::to_string(messages_.size()) + " message" +
+                         (messages_.size() > 1 ? "s" : "") + "]";
+      footer_elements.push_back(ftxui::filler());
+      footer_elements.push_back(ftxui::text(count_label) |
+                                ftxui::color(k_theme.chrome.dim_text) |
+                                ftxui::dim);
+    }
+
+    auto input_area = ftxui::hbox({
+        ftxui::text(" > ") | ftxui::color(k_theme.chrome.prompt) | ftxui::bold,
+        input->Render() | ftxui::flex,
+    });
+
     return ftxui::vbox({
                message_list->Render() | ftxui::flex,
-               ftxui::separator() | ftxui::color(theme::KSeparatorColor),
-               ftxui::hbox({
-                   ftxui::text(" > ") | ftxui::color(theme::KPromptColor) |
-                       ftxui::bold,
-                   input->Render() | ftxui::flex,
-               }),
+               ftxui::separator() | ftxui::color(k_theme.markdown.separator),
+               ftxui::hbox(footer_elements),
+               ftxui::separator() | ftxui::color(k_theme.markdown.separator),
+               input_area | ftxui::bgcolor(k_theme.cards.user_bg),
            }) |
-           ftxui::borderRounded | ftxui::color(theme::KBorderColor);
+           ftxui::borderRounded | ftxui::color(k_theme.chrome.border);
   });
 }
 
@@ -35,8 +54,16 @@ void ChatUI::AddMessage(Sender sender, std::string content) {
   messages_.push_back(Message{sender, std::move(content)});
 }
 
+void ChatUI::SetTyping(bool typing) {
+  is_typing_ = typing;
+}
+
 const std::vector<Message>& ChatUI::GetMessages() const {
   return messages_;
+}
+
+bool ChatUI::IsTyping() const {
+  return is_typing_;
 }
 
 void ChatUI::SubmitMessage() {
@@ -62,14 +89,15 @@ ftxui::Component ChatUI::BuildMessageList() {
 }
 
 ftxui::Element ChatUI::RenderMessages() const {
-  if (messages_.empty()) {
+  if (messages_.empty() && !is_typing_) {
     return ftxui::vbox({ftxui::text("No messages yet.") | ftxui::dim |
-                        ftxui::color(theme::KDimText)}) |
+                        ftxui::color(k_theme.chrome.dim_text)}) |
            ftxui::flex;
   }
 
   return MessageRenderer::RenderAll(messages_) | ftxui::yframe | ftxui::flex |
-         ftxui::vscroll_indicator | ftxui::focusPositionRelative(0.F, 1.F);
+         ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text) |
+         ftxui::focusPositionRelative(0.F, 1.F);
 }
 
 }  // namespace yac::presentation

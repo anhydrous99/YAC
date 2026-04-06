@@ -20,8 +20,6 @@ TEST_CASE("Constructor with callback stores it") {
   });
 
   SECTION("Callback fires on submit") {
-    // We can't easily simulate Enter key presses without FTXUI event loop,
-    // but we can verify AddMessage works correctly.
     ui.AddMessage(Sender::User, "hello");
     REQUIRE(ui.GetMessages().size() == 1);
     REQUIRE(ui.GetMessages()[0].content == "hello");
@@ -58,4 +56,22 @@ TEST_CASE("GetMessages returns const reference to internal state") {
   const auto& msgs = ui.GetMessages();
   REQUIRE(&msgs == &ui.GetMessages());
   REQUIRE(msgs.size() == 1);
+}
+
+TEST_CASE("SetTyping toggles state") {
+  ChatUI ui;
+  REQUIRE_FALSE(ui.IsTyping());
+
+  ui.SetTyping(true);
+  REQUIRE(ui.IsTyping());
+
+  ui.SetTyping(false);
+  REQUIRE_FALSE(ui.IsTyping());
+}
+
+TEST_CASE("Build returns non-null component with typing enabled") {
+  ChatUI ui;
+  ui.SetTyping(true);
+  auto component = ui.Build();
+  REQUIRE(component != nullptr);
 }
