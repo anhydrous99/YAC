@@ -61,4 +61,21 @@ inline const ftxui::Color KDimText =
 inline const ftxui::Color KPromptColor =
     ftxui::Color::RGB(137, 180, 250);  // blue
 
+// ---------------------------------------------------------------------------
+// Message card colors
+// ---------------------------------------------------------------------------
+inline const ftxui::Color KUserCardBg =
+    ftxui::Color::RGB(30, 30, 46);  // base (dark surface)
+inline const ftxui::Color KAgentCardBg =
+    ftxui::Color::RGB(24, 24, 37);  // mantle (slightly darker)
+inline const ftxui::Color KUserCardBorder =
+    ftxui::Color::RGB(69, 71, 90);  // surface1
+inline const ftxui::Color KAgentCardBorder =
+    ftxui::Color::RGB(69, 71, 90);  // surface1
+inline const ftxui::Color KCodeBlockBorder =
+    ftxui::Color::RGB(69, 71, 90);                                   // surface1
+inline const ftxui::Color KQuoteBg = ftxui::Color::RGB(30, 30, 46);  // base
+inline const ftxui::Color KSeparatorColor =
+    ftxui::Color::RGB(49, 50, 68);  // surface0
+
 }  // namespace yac::presentation::theme

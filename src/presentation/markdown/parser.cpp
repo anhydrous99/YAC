@@ -114,11 +114,12 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
     }
 
     Paragraph para;
-    std::string para_text;
+    size_t para_start = i;
+    bool first_line = true;
     while (i < lines.size() && !Trim(lines[i]).empty()) {
       if (lines[i].starts_with("#") || lines[i].starts_with(">") ||
           lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
-          lines[i].starts_with("`") ||
+          lines[i].starts_with("+ ") ||
           std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0) {
         bool is_list =
             std::isdigit(static_cast<unsigned char>(lines[i][0])) != 0;
@@ -130,21 +131,25 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
           }
           is_list = (idx < lines[i].size() && lines[i][idx] == '.');
         }
-        if (!is_list && lines[i].starts_with("`")) {
-          break;
-        }
         if (is_list || lines[i].starts_with("#") || lines[i].starts_with(">") ||
-            lines[i].starts_with("- ") || lines[i].starts_with("* ")) {
+            lines[i].starts_with("- ") || lines[i].starts_with("* ") ||
+            lines[i].starts_with("+ ")) {
           break;
         }
       }
-      if (!para_text.empty()) {
-        para_text += ' ';
+      if (!first_line) {
+        para.children.emplace_back(Text{" "});
       }
-      para_text += Trim(lines[i]);
+      first_line = false;
+      auto inline_nodes = ParseInline(Trim(lines[i]));
+      for (auto& node : inline_nodes) {
+        para.children.push_back(std::move(node));
+      }
       ++i;
     }
-    para.children = ParseInline(para_text);
+    if (i == para_start) {
+      ++i;
+    }
     blocks.emplace_back(std::move(para));
   }
 
@@ -179,17 +184,22 @@ std::optional<CodeBlock> MarkdownParser::TryParseCodeBlock(
   }
 
   auto trimmed = TrimLeft(lines[index]);
-  if (!trimmed.starts_with("```")) {
+  std::string fence;
+  if (trimmed.starts_with("```")) {
+    fence = "```";
+  } else if (trimmed.starts_with("~~~")) {
+    fence = "~~~";
+  } else {
     return std::nullopt;
   }
 
   CodeBlock cb;
-  cb.language = Trim(trimmed.substr(3));
+  cb.language = Trim(trimmed.substr(fence.size()));
   ++index;
 
   std::string source;
   while (index < lines.size()) {
-    if (TrimLeft(lines[index]).starts_with("```")) {
+    if (TrimLeft(lines[index]).starts_with(fence)) {
       ++index;
       break;
     }
@@ -219,7 +229,8 @@ std::optional<Blockquote> MarkdownParser::TryParseBlockquote(
 std::optional<UnorderedList::Item> MarkdownParser::TryParseUnorderedItem(
     const std::string& line) {
   auto trimmed = TrimLeft(line);
-  if (!trimmed.starts_with("- ") && !trimmed.starts_with("* ")) {
+  if (!trimmed.starts_with("- ") && !trimmed.starts_with("* ") &&
+      !trimmed.starts_with("+ ")) {
     return std::nullopt;
   }
 

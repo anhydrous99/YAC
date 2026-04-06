@@ -3,6 +3,7 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
 #include "ftxui/dom/elements.hpp"
+#include "theme.hpp"
 
 #include <utility>
 
@@ -16,14 +17,17 @@ ftxui::Component ChatUI::Build() {
   auto message_list = BuildMessageList();
   auto input = BuildInput();
 
-  // Only the input is interactive, so it receives focus immediately.
   return ftxui::Renderer(input, [this, message_list, input] {
     return ftxui::vbox({
                message_list->Render() | ftxui::flex,
-               ftxui::separator(),
-               ftxui::hbox({ftxui::text(" > "), input->Render() | ftxui::flex}),
+               ftxui::separator() | ftxui::color(theme::KSeparatorColor),
+               ftxui::hbox({
+                   ftxui::text(" > ") | ftxui::color(theme::KPromptColor) |
+                       ftxui::bold,
+                   input->Render() | ftxui::flex,
+               }),
            }) |
-           ftxui::border;
+           ftxui::borderRounded | ftxui::color(theme::KBorderColor);
   });
 }
 
@@ -59,7 +63,8 @@ ftxui::Component ChatUI::BuildMessageList() {
 
 ftxui::Element ChatUI::RenderMessages() const {
   if (messages_.empty()) {
-    return ftxui::vbox({ftxui::text("No messages yet.") | ftxui::dim}) |
+    return ftxui::vbox({ftxui::text("No messages yet.") | ftxui::dim |
+                        ftxui::color(theme::KDimText)}) |
            ftxui::flex;
   }
 

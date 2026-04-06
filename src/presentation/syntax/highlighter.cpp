@@ -1,5 +1,7 @@
 #include "highlighter.hpp"
 
+#include "../theme.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -154,11 +156,29 @@ bool IsNumber(std::string_view token) {
   return true;
 }
 
+void EmitToken(std::string& current, ftxui::Elements& segments,
+               const LanguageDef& lang) {
+  if (current.empty()) return;
+
+  if (IsKeyword(current, lang)) {
+    segments.push_back(ftxui::text(current) |
+                       ftxui::color(theme::KKeywordColor) | ftxui::bold);
+  } else if (IsType(current, lang)) {
+    segments.push_back(ftxui::text(current) | ftxui::color(theme::KTypeColor));
+  } else if (IsNumber(current)) {
+    segments.push_back(ftxui::text(current) |
+                       ftxui::color(theme::KNumberColor));
+  } else {
+    segments.push_back(ftxui::text(current));
+  }
+  current.clear();
+}
+
 ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
   using namespace ftxui;
 
   if (IsComment(line, lang)) {
-    return text(std::string(line)) | color(Color::RGB(108, 112, 134));
+    return text(std::string(line)) | color(theme::KCommentColor);
   }
 
   Elements segments;
@@ -172,7 +192,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     if (in_string) {
       current += c;
       if (c == string_char && (i == 0 || line[i - 1] != '\\')) {
-        segments.push_back(text(current) | color(Color::RGB(166, 227, 161)));
+        segments.push_back(text(current) | color(theme::KStringColor));
         current.clear();
         in_string = false;
       }
@@ -180,19 +200,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     }
 
     if (c == '"' || c == '\'') {
-      if (!current.empty()) {
-        if (IsKeyword(current, lang)) {
-          segments.push_back(text(current) | color(Color::RGB(203, 166, 247)) |
-                             bold);
-        } else if (IsType(current, lang)) {
-          segments.push_back(text(current) | color(Color::RGB(249, 226, 175)));
-        } else if (IsNumber(current)) {
-          segments.push_back(text(current) | color(Color::RGB(250, 179, 135)));
-        } else {
-          segments.push_back(text(current));
-        }
-        current.clear();
-      }
+      EmitToken(current, segments, lang);
       in_string = true;
       string_char = c;
       current += c;
@@ -200,19 +208,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     }
 
     if (c == ' ' || c == '\t' || !IsIdentifierChar(c)) {
-      if (!current.empty()) {
-        if (IsKeyword(current, lang)) {
-          segments.push_back(text(current) | color(Color::RGB(203, 166, 247)) |
-                             bold);
-        } else if (IsType(current, lang)) {
-          segments.push_back(text(current) | color(Color::RGB(249, 226, 175)));
-        } else if (IsNumber(current)) {
-          segments.push_back(text(current) | color(Color::RGB(250, 179, 135)));
-        } else {
-          segments.push_back(text(current));
-        }
-        current.clear();
-      }
+      EmitToken(current, segments, lang);
       segments.push_back(text(std::string(1, c)));
       continue;
     }
@@ -220,18 +216,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     current += c;
   }
 
-  if (!current.empty()) {
-    if (IsKeyword(current, lang)) {
-      segments.push_back(text(current) | color(Color::RGB(203, 166, 247)) |
-                         bold);
-    } else if (IsType(current, lang)) {
-      segments.push_back(text(current) | color(Color::RGB(249, 226, 175)));
-    } else if (IsNumber(current)) {
-      segments.push_back(text(current) | color(Color::RGB(250, 179, 135)));
-    } else {
-      segments.push_back(text(current));
-    }
-  }
+  EmitToken(current, segments, lang);
 
   return hbox(segments);
 }

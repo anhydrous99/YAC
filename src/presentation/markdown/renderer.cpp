@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 
+#include "../theme.hpp"
 #include "ftxui/dom/elements.hpp"
 
 #include <string>
@@ -60,10 +61,9 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
           return ftxui::text(n.content) | ftxui::strikethrough;
         } else if constexpr (std::is_same_v<T, InlineCode>) {
           return ftxui::text(n.content) | ftxui::bold |
-                 ftxui::bgcolor(ftxui::Color::RGB(49, 50, 68));
+                 ftxui::bgcolor(theme::KInlineCodeBg);
         } else if constexpr (std::is_same_v<T, Link>) {
-          return ftxui::text(n.text) |
-                 ftxui::color(ftxui::Color::RGB(116, 199, 236));
+          return ftxui::text(n.text) | ftxui::color(theme::KLinkColor);
         } else {
           return ftxui::text("");
         }
@@ -73,9 +73,9 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
 
 ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h) {
   auto prefix = std::string(h.level, '#') + " ";
-  return ftxui::hbox({ftxui::text(prefix) | ftxui::bold |
-                          ftxui::color(ftxui::Color::RGB(205, 214, 244)),
-                      RenderInline(h.children)});
+  return ftxui::hbox(
+      {ftxui::text(prefix) | ftxui::bold | ftxui::color(theme::KHeadingColor),
+       RenderInline(h.children)});
 }
 
 ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) {
@@ -85,21 +85,32 @@ ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p) {
 ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) {
   auto highlighted =
       syntax::SyntaxHighlighter::Highlight(cb.source, cb.language);
-  return ftxui::vbox({highlighted}) |
-         ftxui::bgcolor(ftxui::Color::RGB(30, 30, 46));
+
+  ftxui::Elements inner;
+  if (!cb.language.empty()) {
+    inner.push_back(ftxui::text(" " + cb.language) |
+                    ftxui::color(theme::KDimText) | ftxui::dim);
+  }
+  inner.push_back(ftxui::text(""));
+  inner.push_back(std::move(highlighted));
+  inner.push_back(ftxui::text(""));
+
+  return ftxui::vbox(inner) | ftxui::bgcolor(theme::KCodeBg) |
+         ftxui::borderRounded | ftxui::color(theme::KCodeBlockBorder);
 }
 
 ftxui::Element MarkdownRenderer::RenderBlockquote(const Blockquote& bq) {
   return ftxui::hbox(
-      {ftxui::text("│ ") | ftxui::color(ftxui::Color::RGB(250, 179, 135)),
-       RenderInline(bq.children)});
+             {ftxui::text("│ ") | ftxui::color(theme::KQuoteBorderColor),
+              RenderInline(bq.children)}) |
+         ftxui::bgcolor(theme::KQuoteBg);
 }
 
 ftxui::Element MarkdownRenderer::RenderUnorderedList(const UnorderedList& ul) {
   ftxui::Elements items;
   for (const auto& item : ul.items) {
     items.push_back(
-        ftxui::hbox({ftxui::text("• "), RenderInline(item.children)}));
+        ftxui::hbox({ftxui::text("  • "), RenderInline(item.children)}));
   }
   return ftxui::vbox(items);
 }
@@ -108,8 +119,8 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(const OrderedList& ol) {
   ftxui::Elements items;
   for (size_t i = 0; i < ol.items.size(); ++i) {
     auto num = std::to_string(i + 1) + ". ";
-    items.push_back(
-        ftxui::hbox({ftxui::text(num), RenderInline(ol.items[i].children)}));
+    items.push_back(ftxui::hbox(
+        {ftxui::text("  " + num), RenderInline(ol.items[i].children)}));
   }
   return ftxui::vbox(items);
 }
