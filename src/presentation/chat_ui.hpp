@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ftxui/component/component.hpp"
+#include "ftxui/screen/box.hpp"
 #include "message.hpp"
 #include "message_renderer.hpp"
 
@@ -30,11 +31,17 @@ class ChatUI {
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
   [[nodiscard]] ftxui::Element RenderMessages() const;
+  void ScrollUp(int lines);
+  void ScrollDown(int lines);
+  [[nodiscard]] int PageLines() const;
 
   std::vector<Message> messages_;
   std::string input_content_;
   OnSendCallback on_send_;
   bool is_typing_ = false;
+
+  int scroll_focus_y_ = 10000;
+  ftxui::Box visible_box_{};
 };
 
 }  // namespace yac::presentation

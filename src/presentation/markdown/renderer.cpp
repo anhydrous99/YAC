@@ -113,7 +113,6 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) {
                     ftxui::color(k_theme.code.bg) | ftxui::bold);
     inner.push_back(ftxui::text("  ") | ftxui::bgcolor(k_theme.code.bg));
   }
-  inner.push_back(ftxui::text(""));
 
   auto even_bg = k_theme.code.bg;
   auto odd_bg = ftxui::Color::RGB(34, 34, 50);
@@ -132,8 +131,6 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb) {
         line_elem | ftxui::bgcolor(bg),
     }));
   }
-
-  inner.push_back(ftxui::text(""));
 
   return ftxui::vbox(inner) | ftxui::bgcolor(k_theme.code.bg) |
          ftxui::borderRounded | ftxui::color(k_theme.code.block_border);
@@ -169,9 +166,6 @@ ftxui::Element MarkdownRenderer::RenderUnorderedList(const UnorderedList& ul) {
         {ftxui::text("  "),
          ftxui::text("• ") | ftxui::color(k_theme.role.agent) | ftxui::bold,
          RenderInline(ul.items[i].children)}));
-    if (i + 1 < ul.items.size()) {
-      items.push_back(ftxui::text(""));
-    }
   }
   return ftxui::vbox(items);
 }
@@ -184,9 +178,6 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(const OrderedList& ol) {
         {ftxui::text("  "),
          ftxui::text(num) | ftxui::color(k_theme.chrome.dim_text) | ftxui::bold,
          RenderInline(ol.items[i].children)}));
-    if (i + 1 < ol.items.size()) {
-      items.push_back(ftxui::text(""));
-    }
   }
   return ftxui::vbox(items);
 }

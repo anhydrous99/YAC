@@ -2,9 +2,12 @@
 
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
+#include "ftxui/component/event.hpp"
+#include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "theme.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace yac::presentation {
@@ -19,7 +22,9 @@ ftxui::Component ChatUI::Build() {
   auto message_list = BuildMessageList();
   auto input = BuildInput();
 
-  return ftxui::Renderer(input, [this, message_list, input] {
+  auto container = ftxui::Container::Stacked({message_list, input});
+
+  return ftxui::Renderer(container, [this, message_list, input] {
     ftxui::Elements footer_elements;
     if (is_typing_) {
       footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
@@ -52,6 +57,7 @@ ftxui::Component ChatUI::Build() {
 
 void ChatUI::AddMessage(Sender sender, std::string content) {
   messages_.push_back(Message{sender, std::move(content)});
+  scroll_focus_y_ = 10000;
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -85,7 +91,35 @@ ftxui::Component ChatUI::BuildInput() {
 }
 
 ftxui::Component ChatUI::BuildMessageList() {
-  return ftxui::Renderer([this] { return RenderMessages(); });
+  auto content = ftxui::Renderer([this] {
+    return RenderMessages() | ftxui::focusPosition(0, scroll_focus_y_) |
+           ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex |
+           ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text);
+  });
+
+  return ftxui::CatchEvent(content, [this](ftxui::Event event) {
+    if (event.is_mouse()) {
+      switch (event.mouse().button) {
+        case ftxui::Mouse::WheelUp:
+          ScrollUp(3);
+          return true;
+        case ftxui::Mouse::WheelDown:
+          ScrollDown(3);
+          return true;
+        default:
+          return false;
+      }
+    }
+    if (event == ftxui::Event::PageUp) {
+      ScrollUp(PageLines());
+      return true;
+    }
+    if (event == ftxui::Event::PageDown) {
+      ScrollDown(PageLines());
+      return true;
+    }
+    return false;
+  });
 }
 
 ftxui::Element ChatUI::RenderMessages() const {
@@ -95,9 +129,20 @@ ftxui::Element ChatUI::RenderMessages() const {
            ftxui::flex;
   }
 
-  return MessageRenderer::RenderAll(messages_) | ftxui::yframe | ftxui::flex |
-         ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text) |
-         ftxui::focusPositionRelative(0.F, 1.F);
+  return MessageRenderer::RenderAll(messages_);
+}
+
+int ChatUI::PageLines() const {
+  int visible = visible_box_.y_max - visible_box_.y_min + 1;
+  return std::max(1, visible);
+}
+
+void ChatUI::ScrollUp(int lines) {
+  scroll_focus_y_ = std::max(0, scroll_focus_y_ - lines);
+}
+
+void ChatUI::ScrollDown(int lines) {
+  scroll_focus_y_ += lines;
 }
 
 }  // namespace yac::presentation

@@ -22,11 +22,8 @@ ftxui::Element MessageRenderer::Render(const Message& message) {
 ftxui::Element MessageRenderer::RenderAll(
     const std::vector<Message>& messages) {
   ftxui::Elements elements;
-  for (size_t i = 0; i < messages.size(); ++i) {
-    elements.push_back(Render(messages[i]));
-    if (i + 1 < messages.size()) {
-      elements.push_back(ftxui::text(""));
-    }
+  for (const auto& message : messages) {
+    elements.push_back(Render(message));
   }
   return ftxui::vbox(elements);
 }
