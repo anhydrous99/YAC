@@ -9,8 +9,6 @@ using namespace yac::presentation::markdown;
 
 namespace {
 
-const MarkdownParser Parser;
-
 const Heading* AsHeading(const BlockNode& node) {
   return std::get_if<Heading>(&node);
 }
@@ -56,12 +54,12 @@ const Link* AsLink(const InlineNode& node) {
 // ==========================================================================
 
 TEST_CASE("Empty string yields no blocks") {
-  auto blocks = Parser.Parse("");
+  auto blocks = MarkdownParser::Parse("");
   REQUIRE(blocks.empty());
 }
 
 TEST_CASE("Whitespace-only string yields no blocks") {
-  auto blocks = Parser.Parse("   \n  \n");
+  auto blocks = MarkdownParser::Parse("   \n  \n");
   REQUIRE(blocks.empty());
 }
 
@@ -70,7 +68,7 @@ TEST_CASE("Whitespace-only string yields no blocks") {
 // ==========================================================================
 
 TEST_CASE("ATX heading level 1") {
-  auto blocks = Parser.Parse("# Hello");
+  auto blocks = MarkdownParser::Parse("# Hello");
   REQUIRE(blocks.size() == 1);
   const auto* h = AsHeading(blocks[0]);
   REQUIRE(h != nullptr);
@@ -82,7 +80,7 @@ TEST_CASE("ATX heading level 1") {
 }
 
 TEST_CASE("ATX heading level 6") {
-  auto blocks = Parser.Parse("###### Deep");
+  auto blocks = MarkdownParser::Parse("###### Deep");
   REQUIRE(blocks.size() == 1);
   const auto* h = AsHeading(blocks[0]);
   REQUIRE(h != nullptr);
@@ -90,14 +88,14 @@ TEST_CASE("ATX heading level 6") {
 }
 
 TEST_CASE("Seven hashes is not a heading") {
-  auto blocks = Parser.Parse("####### Not a heading");
+  auto blocks = MarkdownParser::Parse("####### Not a heading");
   REQUIRE(blocks.size() == 1);
   REQUIRE(AsHeading(blocks[0]) == nullptr);
   REQUIRE(AsParagraph(blocks[0]) != nullptr);
 }
 
 TEST_CASE("Hash without trailing space is not a heading") {
-  auto blocks = Parser.Parse("#NoSpace");
+  auto blocks = MarkdownParser::Parse("#NoSpace");
   REQUIRE(blocks.size() == 1);
   REQUIRE(AsHeading(blocks[0]) == nullptr);
   REQUIRE(AsParagraph(blocks[0]) != nullptr);
@@ -108,7 +106,7 @@ TEST_CASE("Hash without trailing space is not a heading") {
 // ==========================================================================
 
 TEST_CASE("Fenced code block with backticks and language") {
-  auto blocks = Parser.Parse("```cpp\nint x = 0;\n```");
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\n```");
   REQUIRE(blocks.size() == 1);
   const auto* cb = AsCodeBlock(blocks[0]);
   REQUIRE(cb != nullptr);
@@ -117,7 +115,7 @@ TEST_CASE("Fenced code block with backticks and language") {
 }
 
 TEST_CASE("Fenced code block with tildes") {
-  auto blocks = Parser.Parse("~~~python\nprint('hi')\n~~~");
+  auto blocks = MarkdownParser::Parse("~~~python\nprint('hi')\n~~~");
   REQUIRE(blocks.size() == 1);
   const auto* cb = AsCodeBlock(blocks[0]);
   REQUIRE(cb != nullptr);
@@ -126,7 +124,7 @@ TEST_CASE("Fenced code block with tildes") {
 }
 
 TEST_CASE("Fenced code block without language") {
-  auto blocks = Parser.Parse("```\nsome code\n```");
+  auto blocks = MarkdownParser::Parse("```\nsome code\n```");
   REQUIRE(blocks.size() == 1);
   const auto* cb = AsCodeBlock(blocks[0]);
   REQUIRE(cb != nullptr);
@@ -135,7 +133,7 @@ TEST_CASE("Fenced code block without language") {
 }
 
 TEST_CASE("Fenced code block with empty body") {
-  auto blocks = Parser.Parse("```\n```");
+  auto blocks = MarkdownParser::Parse("```\n```");
   REQUIRE(blocks.size() == 1);
   const auto* cb = AsCodeBlock(blocks[0]);
   REQUIRE(cb != nullptr);
@@ -143,7 +141,7 @@ TEST_CASE("Fenced code block with empty body") {
 }
 
 TEST_CASE("Unclosed code block consumes to end") {
-  auto blocks = Parser.Parse("```\nline1\nline2");
+  auto blocks = MarkdownParser::Parse("```\nline1\nline2");
   REQUIRE(blocks.size() == 1);
   const auto* cb = AsCodeBlock(blocks[0]);
   REQUIRE(cb != nullptr);
@@ -155,7 +153,7 @@ TEST_CASE("Unclosed code block consumes to end") {
 // ==========================================================================
 
 TEST_CASE("Blockquote with space after >") {
-  auto blocks = Parser.Parse("> quoted text");
+  auto blocks = MarkdownParser::Parse("> quoted text");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
@@ -166,7 +164,7 @@ TEST_CASE("Blockquote with space after >") {
 }
 
 TEST_CASE("Blockquote without space after >") {
-  auto blocks = Parser.Parse(">tight");
+  auto blocks = MarkdownParser::Parse(">tight");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
@@ -180,7 +178,7 @@ TEST_CASE("Blockquote without space after >") {
 // ==========================================================================
 
 TEST_CASE("Unordered list with dash marker") {
-  auto blocks = Parser.Parse("- item1\n- item2\n- item3");
+  auto blocks = MarkdownParser::Parse("- item1\n- item2\n- item3");
   REQUIRE(blocks.size() == 1);
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
@@ -188,7 +186,7 @@ TEST_CASE("Unordered list with dash marker") {
 }
 
 TEST_CASE("Unordered list with star marker") {
-  auto blocks = Parser.Parse("* alpha\n* beta");
+  auto blocks = MarkdownParser::Parse("* alpha\n* beta");
   REQUIRE(blocks.size() == 1);
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
@@ -196,7 +194,7 @@ TEST_CASE("Unordered list with star marker") {
 }
 
 TEST_CASE("Unordered list with plus marker") {
-  auto blocks = Parser.Parse("+ one\n+ two");
+  auto blocks = MarkdownParser::Parse("+ one\n+ two");
   REQUIRE(blocks.size() == 1);
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
@@ -204,7 +202,7 @@ TEST_CASE("Unordered list with plus marker") {
 }
 
 TEST_CASE("Unordered list item content") {
-  auto blocks = Parser.Parse("- hello world");
+  auto blocks = MarkdownParser::Parse("- hello world");
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
@@ -218,7 +216,7 @@ TEST_CASE("Unordered list item content") {
 // ==========================================================================
 
 TEST_CASE("Ordered list with numeric markers") {
-  auto blocks = Parser.Parse("1. first\n2. second\n3. third");
+  auto blocks = MarkdownParser::Parse("1. first\n2. second\n3. third");
   REQUIRE(blocks.size() == 1);
   const auto* ol = AsOrderedList(blocks[0]);
   REQUIRE(ol != nullptr);
@@ -226,7 +224,7 @@ TEST_CASE("Ordered list with numeric markers") {
 }
 
 TEST_CASE("Ordered list with multi-digit numbers") {
-  auto blocks = Parser.Parse("10. item");
+  auto blocks = MarkdownParser::Parse("10. item");
   REQUIRE(blocks.size() == 1);
   const auto* ol = AsOrderedList(blocks[0]);
   REQUIRE(ol != nullptr);
@@ -241,7 +239,7 @@ TEST_CASE("Ordered list with multi-digit numbers") {
 // ==========================================================================
 
 TEST_CASE("Plain text is a paragraph") {
-  auto blocks = Parser.Parse("Hello world");
+  auto blocks = MarkdownParser::Parse("Hello world");
   REQUIRE(blocks.size() == 1);
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
@@ -252,7 +250,7 @@ TEST_CASE("Plain text is a paragraph") {
 }
 
 TEST_CASE("Consecutive lines join into one paragraph") {
-  auto blocks = Parser.Parse("line one\nline two");
+  auto blocks = MarkdownParser::Parse("line one\nline two");
   REQUIRE(blocks.size() == 1);
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
@@ -269,7 +267,7 @@ TEST_CASE("Consecutive lines join into one paragraph") {
 }
 
 TEST_CASE("Blank line splits paragraphs") {
-  auto blocks = Parser.Parse("para one\n\npara two");
+  auto blocks = MarkdownParser::Parse("para one\n\npara two");
   REQUIRE(blocks.size() == 2);
   REQUIRE(AsParagraph(blocks[0]) != nullptr);
   REQUIRE(AsParagraph(blocks[1]) != nullptr);
@@ -280,7 +278,8 @@ TEST_CASE("Blank line splits paragraphs") {
 // ==========================================================================
 
 TEST_CASE("Mixed block types preserve order") {
-  auto blocks = Parser.Parse("# Title\n\n- item\n\n```\ncode\n```\n> quote");
+  auto blocks =
+      MarkdownParser::Parse("# Title\n\n- item\n\n```\ncode\n```\n> quote");
   REQUIRE(blocks.size() == 4);
   REQUIRE(AsHeading(blocks[0]) != nullptr);
   REQUIRE(AsUnorderedList(blocks[1]) != nullptr);
@@ -293,7 +292,7 @@ TEST_CASE("Mixed block types preserve order") {
 // ==========================================================================
 
 TEST_CASE("Bold **text**") {
-  auto blocks = Parser.Parse("**bold**");
+  auto blocks = MarkdownParser::Parse("**bold**");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 1);
@@ -303,7 +302,7 @@ TEST_CASE("Bold **text**") {
 }
 
 TEST_CASE("Italic *text*") {
-  auto blocks = Parser.Parse("*italic*");
+  auto blocks = MarkdownParser::Parse("*italic*");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 1);
@@ -313,7 +312,7 @@ TEST_CASE("Italic *text*") {
 }
 
 TEST_CASE("Strikethrough ~~text~~") {
-  auto blocks = Parser.Parse("~~strike~~");
+  auto blocks = MarkdownParser::Parse("~~strike~~");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 1);
@@ -323,7 +322,7 @@ TEST_CASE("Strikethrough ~~text~~") {
 }
 
 TEST_CASE("Inline code `text`") {
-  auto blocks = Parser.Parse("`code`");
+  auto blocks = MarkdownParser::Parse("`code`");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 1);
@@ -333,7 +332,7 @@ TEST_CASE("Inline code `text`") {
 }
 
 TEST_CASE("Link [text](url)") {
-  auto blocks = Parser.Parse("[click](https://example.com)");
+  auto blocks = MarkdownParser::Parse("[click](https://example.com)");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 1);
@@ -344,7 +343,7 @@ TEST_CASE("Link [text](url)") {
 }
 
 TEST_CASE("Unclosed bold delimiter falls back to plain text") {
-  auto blocks = Parser.Parse("**unclosed");
+  auto blocks = MarkdownParser::Parse("**unclosed");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   const auto* t = AsText(p->children[0]);
@@ -353,7 +352,7 @@ TEST_CASE("Unclosed bold delimiter falls back to plain text") {
 }
 
 TEST_CASE("Unclosed inline code is plain text") {
-  auto blocks = Parser.Parse("`unclosed code");
+  auto blocks = MarkdownParser::Parse("`unclosed code");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   const auto* t = AsText(p->children[0]);
@@ -363,7 +362,7 @@ TEST_CASE("Unclosed inline code is plain text") {
 }
 
 TEST_CASE("Multiple inline types in one line") {
-  auto blocks = Parser.Parse("**b** and *i* and `c`");
+  auto blocks = MarkdownParser::Parse("**b** and *i* and `c`");
   const auto* p = AsParagraph(blocks[0]);
   REQUIRE(p != nullptr);
   REQUIRE(p->children.size() == 5);
@@ -375,7 +374,7 @@ TEST_CASE("Multiple inline types in one line") {
 }
 
 TEST_CASE("Inline formatting inside list items") {
-  auto blocks = Parser.Parse("- **bold item**");
+  auto blocks = MarkdownParser::Parse("- **bold item**");
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
@@ -385,7 +384,7 @@ TEST_CASE("Inline formatting inside list items") {
 }
 
 TEST_CASE("Inline formatting inside heading") {
-  auto blocks = Parser.Parse("# **Bold Title**");
+  auto blocks = MarkdownParser::Parse("# **Bold Title**");
   const auto* h = AsHeading(blocks[0]);
   REQUIRE(h != nullptr);
   REQUIRE(h->children.size() == 1);

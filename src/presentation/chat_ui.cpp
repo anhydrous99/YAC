@@ -63,9 +63,8 @@ ftxui::Element ChatUI::RenderMessages() const {
            ftxui::flex;
   }
 
-  return message_renderer_.RenderAll(messages_) | ftxui::yframe |
-         ftxui::flex | ftxui::vscroll_indicator |
-         ftxui::focusPositionRelative(0.F, 1.F);
+  return MessageRenderer::RenderAll(messages_) | ftxui::yframe | ftxui::flex |
+         ftxui::vscroll_indicator | ftxui::focusPositionRelative(0.F, 1.F);
 }
 
 }  // namespace yac::presentation

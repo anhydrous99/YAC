@@ -13,14 +13,12 @@ namespace yac::presentation {
 /// with full markdown support for agent responses.
 class MessageRenderer {
  public:
-  MessageRenderer();
+  MessageRenderer() = default;
 
-  /// Render a single message with appropriate styling.
-  [[nodiscard]] ftxui::Element Render(const Message& message) const;
+  [[nodiscard]] static ftxui::Element Render(const Message& message);
 
-  /// Render a collection of messages as a vertical layout.
-  [[nodiscard]] ftxui::Element RenderAll(
-      const std::vector<Message>& messages) const;
+  [[nodiscard]] static ftxui::Element RenderAll(
+      const std::vector<Message>& messages);
 
  private:
   [[nodiscard]] static ftxui::Element RenderUserMessage(const Message& message);

@@ -35,7 +35,6 @@ class ChatUI {
   std::vector<Message> messages_;
   std::string input_content_;
   OnSendCallback on_send_;
-  MessageRenderer message_renderer_;
 };
 
 }  // namespace yac::presentation

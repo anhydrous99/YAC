@@ -6,9 +6,7 @@
 
 namespace yac::presentation {
 
-MessageRenderer::MessageRenderer() = default;
-
-ftxui::Element MessageRenderer::Render(const Message& message) const {
+ftxui::Element MessageRenderer::Render(const Message& message) {
   switch (message.sender) {
     case Sender::User:
       return RenderUserMessage(message);
@@ -20,7 +18,7 @@ ftxui::Element MessageRenderer::Render(const Message& message) const {
 }
 
 ftxui::Element MessageRenderer::RenderAll(
-    const std::vector<Message>& messages) const {
+    const std::vector<Message>& messages) {
   ftxui::Elements elements;
   for (const auto& msg : messages) {
     elements.push_back(Render(msg));
