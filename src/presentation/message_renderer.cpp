@@ -44,7 +44,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(const Message& message) {
 }
 
 ftxui::Element MessageRenderer::RenderAgentMessage(const Message& message) {
-  auto blocks = markdown::MarkdownParser::Parse(message.content);
+  const auto& blocks = message.cached_blocks.value_or(
+      markdown::MarkdownParser::Parse(message.content));
   auto content = ftxui::vbox({
       RenderHeader(Sender::Agent, message.DisplayLabel()),
       ftxui::text(""),

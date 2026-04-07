@@ -60,13 +60,17 @@ ftxui::Element MarkdownRenderer::RenderInlineNode(const InlineNode& node) {
       [](const auto& n) -> ftxui::Element {
         using T = std::decay_t<decltype(n)>;
         if constexpr (std::is_same_v<T, Text>) {
-          return ftxui::text(n.content);
+          return ftxui::text(n.content) |
+                 ftxui::color(k_theme.chrome.body_text);
         } else if constexpr (std::is_same_v<T, Bold>) {
-          return ftxui::text(n.content) | ftxui::bold;
+          return ftxui::text(n.content) | ftxui::bold |
+                 ftxui::color(k_theme.chrome.body_text);
         } else if constexpr (std::is_same_v<T, Italic>) {
-          return ftxui::text(n.content) | ftxui::italic;
+          return ftxui::text(n.content) | ftxui::italic |
+                 ftxui::color(k_theme.chrome.body_text);
         } else if constexpr (std::is_same_v<T, Strikethrough>) {
-          return ftxui::text(n.content) | ftxui::strikethrough;
+          return ftxui::text(n.content) | ftxui::strikethrough |
+                 ftxui::color(k_theme.chrome.body_text);
         } else if constexpr (std::is_same_v<T, InlineCode>) {
           return ftxui::text(" " + n.content + " ") | ftxui::bold |
                  ftxui::bgcolor(k_theme.code.inline_bg) |

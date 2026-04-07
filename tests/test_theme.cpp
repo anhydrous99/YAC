@@ -43,6 +43,7 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
 
   REQUIRE_FALSE(ColorsEqual(t.chrome.border, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.dim_text, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.chrome.body_text, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.prompt, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.cards.user_bg, ftxui::Color()));

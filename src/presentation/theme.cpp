@@ -11,7 +11,7 @@ Theme CatppuccinMocha() {
   t.markdown.link = ftxui::Color::RGB(116, 199, 236);
   t.markdown.quote_border = ftxui::Color::RGB(250, 179, 135);
   t.markdown.quote_bg = ftxui::Color::RGB(30, 30, 46);
-  t.markdown.separator = ftxui::Color::RGB(49, 50, 68);
+  t.markdown.separator = ftxui::Color::RGB(88, 91, 112);
 
   t.code.bg = ftxui::Color::RGB(30, 30, 46);
   t.code.fg = ftxui::Color::RGB(205, 214, 244);
@@ -21,13 +21,14 @@ Theme CatppuccinMocha() {
 
   t.syntax.keyword = ftxui::Color::RGB(203, 166, 247);
   t.syntax.string = ftxui::Color::RGB(166, 227, 161);
-  t.syntax.comment = ftxui::Color::RGB(108, 112, 134);
+  t.syntax.comment = ftxui::Color::RGB(166, 173, 200);
   t.syntax.number = ftxui::Color::RGB(250, 179, 135);
   t.syntax.type = ftxui::Color::RGB(249, 226, 175);
   t.syntax.function = ftxui::Color::RGB(137, 180, 250);
 
   t.chrome.border = ftxui::Color::RGB(88, 91, 112);
-  t.chrome.dim_text = ftxui::Color::RGB(108, 112, 134);
+  t.chrome.dim_text = ftxui::Color::RGB(147, 153, 178);
+  t.chrome.body_text = ftxui::Color::RGB(186, 194, 222);
   t.chrome.prompt = ftxui::Color::RGB(137, 180, 250);
 
   t.cards.user_bg = ftxui::Color::RGB(30, 30, 46);

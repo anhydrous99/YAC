@@ -5,14 +5,50 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
+#include "markdown/parser.hpp"
 #include "theme.hpp"
 
 #include <algorithm>
+#include <numeric>
 #include <utility>
 
 namespace yac::presentation {
 
 inline const auto& k_theme = theme::Theme::Instance();
+
+namespace {
+
+bool IsAltEnter(const ftxui::Event& event) {
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b\r" || seq == "\x1b\n";
+}
+
+bool IsShiftEnter(const ftxui::Event& event) {
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b[13;2~" || seq == "\x1b[27;2;13~" || seq == "\x1b[13;2u";
+}
+
+bool IsCtrlEnter(const ftxui::Event& event) {
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b[13;5~" || seq == "\x1b[27;5;13~" || seq == "\x1b[13;5u";
+}
+
+int CountNewlines(const std::string& text) {
+  return static_cast<int>(
+      std::accumulate(text.begin(), text.end(), 0,
+                      [](int count, char ch) { return count + (ch == '\n'); }));
+}
+
+}  // namespace
 
 ChatUI::ChatUI() : on_send_([](const std::string&) {}) {}
 
@@ -44,19 +80,27 @@ ftxui::Component ChatUI::Build() {
         input->Render() | ftxui::flex,
     });
 
+    auto input_height = CalculateInputHeight();
+
     return ftxui::vbox({
                message_list->Render() | ftxui::flex,
                ftxui::separator() | ftxui::color(k_theme.markdown.separator),
                ftxui::hbox(footer_elements),
                ftxui::separator() | ftxui::color(k_theme.markdown.separator),
-               input_area | ftxui::bgcolor(k_theme.cards.user_bg),
+               input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
+                   ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN,
+                               input_height),
            }) |
            ftxui::borderRounded | ftxui::color(k_theme.chrome.border);
   });
 }
 
 void ChatUI::AddMessage(Sender sender, std::string content) {
-  messages_.push_back(Message{sender, std::move(content)});
+  Message msg{sender, std::move(content)};
+  if (sender == Sender::Agent) {
+    msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
+  }
+  messages_.push_back(std::move(msg));
   scroll_focus_y_ = 10000;
 }
 
@@ -79,15 +123,56 @@ void ChatUI::SubmitMessage() {
   AddMessage(Sender::User, input_content_);
   std::string sent = input_content_;
   input_content_.clear();
+  input_cursor_ = 0;
   on_send_(sent);
 }
 
 ftxui::Component ChatUI::BuildInput() {
   ftxui::InputOption option;
-  option.multiline = false;
+  option.multiline = true;
   option.placeholder = "Type a message...";
-  option.on_enter = [this] { SubmitMessage(); };
-  return ftxui::Input(&input_content_, option);
+  option.cursor_position = &input_cursor_;
+  option.transform = [](ftxui::InputState state) {
+    state.element |= ftxui::color(k_theme.chrome.body_text);
+    if (state.is_placeholder) {
+      state.element |= ftxui::dim | ftxui::color(k_theme.chrome.dim_text);
+    }
+    if (state.focused) {
+      state.element |= ftxui::focusCursorBarBlinking;
+    }
+    return state.element;
+  };
+
+  auto input = ftxui::Input(&input_content_, option);
+
+  return ftxui::CatchEvent(input, [this](const ftxui::Event& event) {
+    return HandleInputEvent(event);
+  });
+}
+
+int ChatUI::CalculateInputHeight() const {
+  if (input_content_.empty()) {
+    return 1;
+  }
+  int lines = CountNewlines(input_content_) + 1;
+  return std::min(lines, kMaxInputLines);
+}
+
+void ChatUI::InsertNewline() {
+  input_content_.insert(static_cast<size_t>(input_cursor_), "\n");
+  ++input_cursor_;
+}
+
+bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
+  if (event == ftxui::Event::Return) {
+    SubmitMessage();
+    return true;
+  }
+  if (IsAltEnter(event) || IsShiftEnter(event) || IsCtrlEnter(event)) {
+    InsertNewline();
+    return true;
+  }
+  return false;
 }
 
 ftxui::Component ChatUI::BuildMessageList() {

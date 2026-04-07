@@ -37,6 +37,7 @@ struct SyntaxColors {
 struct ChromeColors {
   ftxui::Color border;
   ftxui::Color dim_text;
+  ftxui::Color body_text;
   ftxui::Color prompt;
 };
 

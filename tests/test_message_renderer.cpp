@@ -81,3 +81,17 @@ TEST_CASE("Render user message with custom label") {
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("CustomName"));
 }
+
+TEST_CASE("Render agent message uses cached_blocks when available") {
+  Message msg{Sender::Agent, "# Cached"};
+  msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
+  auto output = RenderMessageToString(msg);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Cached"));
+}
+
+TEST_CASE("Render agent message falls back to parsing without cache") {
+  Message msg{Sender::Agent, "# Fallback"};
+  REQUIRE_FALSE(msg.cached_blocks.has_value());
+  auto output = RenderMessageToString(msg);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Fallback"));
+}

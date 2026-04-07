@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ftxui/component/component.hpp"
+#include "ftxui/component/event.hpp"
 #include "ftxui/screen/box.hpp"
 #include "message.hpp"
 #include "message_renderer.hpp"
@@ -15,6 +16,8 @@ class ChatUI {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
 
+  static constexpr int kMaxInputLines = 8;
+
   ChatUI();
   explicit ChatUI(OnSendCallback on_send);
 
@@ -25,9 +28,12 @@ class ChatUI {
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool IsTyping() const;
+  [[nodiscard]] int CalculateInputHeight() const;
+  [[nodiscard]] bool HandleInputEvent(const ftxui::Event& event);
 
  private:
   void SubmitMessage();
+  void InsertNewline();
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
   [[nodiscard]] ftxui::Element RenderMessages() const;
@@ -37,6 +43,7 @@ class ChatUI {
 
   std::vector<Message> messages_;
   std::string input_content_;
+  int input_cursor_ = 0;
   OnSendCallback on_send_;
   bool is_typing_ = false;
 
