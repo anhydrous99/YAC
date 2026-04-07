@@ -14,6 +14,7 @@ Theme CatppuccinMocha() {
   t.markdown.separator = ftxui::Color::RGB(88, 91, 112);
 
   t.code.bg = ftxui::Color::RGB(30, 30, 46);
+  t.code.alt_bg = ftxui::Color::RGB(34, 34, 50);
   t.code.fg = ftxui::Color::RGB(205, 214, 244);
   t.code.inline_bg = ftxui::Color::RGB(49, 50, 68);
   t.code.inline_fg = ftxui::Color::RGB(235, 160, 172);

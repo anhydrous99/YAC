@@ -43,9 +43,9 @@ bool IsCtrlEnter(const ftxui::Event& event) {
 }
 
 int CountNewlines(const std::string& text) {
-  return static_cast<int>(
-      std::accumulate(text.begin(), text.end(), 0,
-                      [](int count, char ch) { return count + (ch == '\n'); }));
+  return static_cast<int>(std::accumulate(
+      text.begin(), text.end(), 0,
+      [](int count, char ch) { return count + static_cast<int>(ch == '\n'); }));
 }
 
 }  // namespace
@@ -209,8 +209,14 @@ ftxui::Component ChatUI::BuildMessageList() {
 
 ftxui::Element ChatUI::RenderMessages() const {
   if (messages_.empty() && !is_typing_) {
-    return ftxui::vbox({ftxui::text("No messages yet.") | ftxui::dim |
-                        ftxui::color(k_theme.chrome.dim_text)}) |
+    auto hint = ftxui::vbox({
+        ftxui::text("  // No messages yet") |
+            ftxui::color(k_theme.syntax.comment),
+        ftxui::text("  // Type something below to start") |
+            ftxui::color(k_theme.syntax.comment),
+    });
+    return ftxui::center(hint | ftxui::borderRounded |
+                         ftxui::color(k_theme.chrome.border)) |
            ftxui::flex;
   }
 

@@ -300,8 +300,9 @@ std::optional<HorizontalRule> MarkdownParser::TryParseHorizontalRule(
 std::vector<InlineNode> MarkdownParser::ParseInline(std::string_view text) {
   std::vector<InlineNode> nodes;
 
-  static const std::regex kInlineFormatPattern(
-      R"((`\S.*?\S?`)|(\*\*.+?\*\*)|(\*.+?\*)|(~~.+?~~)|(\[.+?\]\(.+?\)))");
+  static const std::regex
+      kInlineFormatPattern(  // NOLINT(readability-identifier-naming)
+          R"((`\S.*?\S?`)|(\*\*.+?\*\*)|(\*.+?\*)|(~~.+?~~)|(\[.+?\]\(.+?\)))");
 
   std::string remaining(text);
   std::smatch match;

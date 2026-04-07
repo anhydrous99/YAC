@@ -19,6 +19,7 @@ struct MarkdownColors {
 
 struct CodeColors {
   ftxui::Color bg;
+  ftxui::Color alt_bg;
   ftxui::Color fg;
   ftxui::Color inline_bg;
   ftxui::Color inline_fg;

@@ -79,7 +79,9 @@ TEST_CASE("AddMessage pre-parses markdown for agent messages") {
 
   const auto& msg = ui.GetMessages()[0];
   REQUIRE(msg.cached_blocks.has_value());
-  REQUIRE_FALSE(msg.cached_blocks.value().empty());
+  const auto& blocks =
+      msg.cached_blocks.value();  // NOLINT(bugprone-unchecked-optional-access)
+  REQUIRE_FALSE(blocks.empty());
 }
 
 TEST_CASE("AddMessage does not cache blocks for user messages") {
