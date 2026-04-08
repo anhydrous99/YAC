@@ -31,7 +31,7 @@ namespace yac::presentation::util {
 
 [[nodiscard]] inline int CalculateScrollFocusFromRatio(float ratio,
                                                        int content_height) {
-  return static_cast<int>(ratio * content_height);
+  return static_cast<int>(ratio * static_cast<float>(content_height));
 }
 
 [[nodiscard]] inline float CalculateScrollRatio(int scroll_focus_y,

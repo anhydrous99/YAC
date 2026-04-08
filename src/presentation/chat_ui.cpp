@@ -274,7 +274,7 @@ ftxui::Component ChatUI::BuildMessageList() {
       if (event.mouse().button == ftxui::Mouse::Left &&
           event.mouse().motion == ftxui::Mouse::Pressed) {
         if (scrollbar_box_.Contain(event.mouse().x, event.mouse().y)) {
-          if (event.screen_) {
+          if (event.screen_ != nullptr) {
             captured_mouse_ = event.screen_->CaptureMouse();
           }
           if (captured_mouse_) {

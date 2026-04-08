@@ -51,7 +51,7 @@ add_custom_target(format
 )
 
 add_custom_target(lint
-  COMMAND clang-tidy -p ${CMAKE_BINARY_DIR} ${ALL_SOURCES}
+  COMMAND clang-tidy -p ${CMAKE_BINARY_DIR} -header-filter='^(src|tests)/' ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Running clang-tidy checks"
 )
