@@ -263,7 +263,7 @@ ftxui::Component ChatUI::BuildMessageList() {
                 event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
             float ratio =
                 static_cast<float>(mouse_y) / static_cast<float>(track_usable);
-            ratio = std::max(0.0f, std::min(1.0f, ratio));
+            ratio = std::max(0.0F, std::min(1.0F, ratio));
             scroll_focus_y_ =
                 util::CalculateScrollFocusFromRatio(ratio, content_height);
           }
@@ -292,7 +292,7 @@ ftxui::Component ChatUI::BuildMessageList() {
                     event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
                 float ratio = static_cast<float>(mouse_y) /
                               static_cast<float>(track_usable);
-                ratio = std::max(0.0f, std::min(1.0f, ratio));
+                ratio = std::max(0.0F, std::min(1.0F, ratio));
                 scroll_focus_y_ =
                     util::CalculateScrollFocusFromRatio(ratio, content_height);
               }

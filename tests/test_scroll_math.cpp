@@ -59,38 +59,38 @@ TEST_CASE("CalculateThumbPosition zero content returns 0") {
 }
 
 TEST_CASE("CalculateScrollFocusFromRatio zero ratio gives 0") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.0f, 1000) == 0);
+  REQUIRE(CalculateScrollFocusFromRatio(0.0F, 1000) == 0);
 }
 
 TEST_CASE("CalculateScrollFocusFromRatio full ratio gives content height") {
-  REQUIRE(CalculateScrollFocusFromRatio(1.0f, 1000) == 1000);
+  REQUIRE(CalculateScrollFocusFromRatio(1.0F, 1000) == 1000);
 }
 
 TEST_CASE("CalculateScrollFocusFromRatio half ratio gives half content") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.5f, 1000) == 500);
+  REQUIRE(CalculateScrollFocusFromRatio(0.5F, 1000) == 500);
 }
 
 TEST_CASE("CalculateScrollFocusFromRatio zero content gives 0") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.0f, 0) == 0);
+  REQUIRE(CalculateScrollFocusFromRatio(0.0F, 0) == 0);
 }
 
 TEST_CASE("CalculateScrollRatio zero focus gives 0") {
-  REQUIRE(CalculateScrollRatio(0, 1000) == 0.0f);
+  REQUIRE(CalculateScrollRatio(0, 1000) == 0.0F);
 }
 
 TEST_CASE("CalculateScrollRatio sentinel focus gives 1") {
-  REQUIRE(CalculateScrollRatio(10000, 1000) == 1.0f);
+  REQUIRE(CalculateScrollRatio(10000, 1000) == 1.0F);
 }
 
 TEST_CASE("CalculateScrollRatio half focus gives approx 0.5") {
   float result = CalculateScrollRatio(500, 1000);
-  REQUIRE(result == Catch::Approx(0.5f));
+  REQUIRE(result == Catch::Approx(0.5F));
 }
 
 TEST_CASE("CalculateScrollRatio zero content gives 0") {
-  REQUIRE(CalculateScrollRatio(0, 0) == 0.0f);
+  REQUIRE(CalculateScrollRatio(0, 0) == 0.0F);
 }
 
 TEST_CASE("CalculateScrollRatio sentinel with zero content gives 1") {
-  REQUIRE(CalculateScrollRatio(10000, 0) == 1.0f);
+  REQUIRE(CalculateScrollRatio(10000, 0) == 1.0F);
 }

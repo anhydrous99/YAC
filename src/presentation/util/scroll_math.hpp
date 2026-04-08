@@ -37,10 +37,10 @@ namespace yac::presentation::util {
 [[nodiscard]] inline float CalculateScrollRatio(int scroll_focus_y,
                                                 int content_height) {
   if (scroll_focus_y >= 10000) {
-    return 1.0f;
+    return 1.0F;
   }
   if (content_height <= 0) {
-    return 0.0f;
+    return 0.0F;
   }
   return static_cast<float>(scroll_focus_y) /
          static_cast<float>(content_height);
