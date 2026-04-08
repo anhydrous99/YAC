@@ -7,6 +7,7 @@
 #include "ftxui/dom/elements.hpp"
 #include "markdown/parser.hpp"
 #include "theme.hpp"
+#include "util/scroll_math.hpp"
 
 #include <algorithm>
 #include <numeric>
@@ -203,30 +204,38 @@ bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
 
 ftxui::Component ChatUI::BuildMessageList() {
   auto content = ftxui::Renderer([this] {
-    auto messages = RenderMessages() |
+    auto messages = RenderMessages() | ftxui::reflect(content_box_) |
                     ftxui::focusPosition(0, scroll_focus_y_) | ftxui::frame |
                     ftxui::reflect(visible_box_) | ftxui::flex |
                     ftxui::color(k_theme.chrome.dim_text);
 
-    int scroll_pct = 0;
-    if (visible_box_.y_max > 0) {
-      if (scroll_focus_y_ >= 10000) {
-        scroll_pct = 100;
-      } else {
-        scroll_pct = std::min(
-            100, scroll_focus_y_ * 100 / std::max(1, visible_box_.y_max));
-      }
-    }
+    int content_height = content_box_.y_max - content_box_.y_min + 1;
+    int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
 
-    auto indicator = ftxui::text(std::to_string(scroll_pct) + "%") |
-                     ftxui::color(k_theme.chrome.dim_text);
+    auto scrollbar = ftxui::emptyElement();
+    if (util::ShouldShowScrollbar(content_height, viewport_height)) {
+      int track_height = viewport_height;
+      int thumb_size = util::CalculateThumbSize(content_height, viewport_height,
+                                                track_height);
+      int thumb_pos = util::CalculateThumbPosition(
+          scroll_focus_y_, content_height, track_height, thumb_size);
+      ftxui::Elements track_rows;
+      for (int i = 0; i < track_height; ++i) {
+        if (i >= thumb_pos && i < thumb_pos + thumb_size) {
+          track_rows.push_back(ftxui::text("█") |
+                               ftxui::color(k_theme.chrome.border));
+        } else {
+          track_rows.push_back(ftxui::text("│") |
+                               ftxui::color(k_theme.chrome.dim_text));
+        }
+      }
+      scrollbar =
+          ftxui::vbox(std::move(track_rows)) | ftxui::reflect(scrollbar_box_);
+    }
 
     return ftxui::hbox({
         messages | ftxui::flex,
-        ftxui::vbox({
-            ftxui::filler(),
-            indicator,
-        }),
+        scrollbar,
     });
   });
 
