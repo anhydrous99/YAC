@@ -49,8 +49,8 @@ class ChatUI {
   bool is_typing_ = false;
 
   int scroll_focus_y_ = 10000;
+  int content_height_ = 0;
   ftxui::Box visible_box_{};
-  ftxui::Box content_box_{};
   ftxui::Box scrollbar_box_{};
   bool scrollbar_dragging_ = false;
   ftxui::CapturedMouse captured_mouse_;

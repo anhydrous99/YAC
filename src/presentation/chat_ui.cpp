@@ -207,21 +207,25 @@ bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
 
 ftxui::Component ChatUI::BuildMessageList() {
   auto content = ftxui::Renderer([this] {
-    auto messages = RenderMessages() | ftxui::reflect(content_box_) |
-                    ftxui::focusPosition(0, scroll_focus_y_) | ftxui::frame |
-                    ftxui::reflect(visible_box_) | ftxui::flex |
-                    ftxui::color(k_theme.chrome.dim_text);
+    auto msg_element = RenderMessages() | ftxui::color(k_theme.chrome.dim_text);
 
-    int content_height = content_box_.y_max - content_box_.y_min + 1;
+    // ComputeRequirement gives the natural (unclipped) content height,
+    // unlike reflect() before frame which only captures the viewport size.
+    msg_element->ComputeRequirement();
+    content_height_ = msg_element->requirement().min_y;
+
+    auto messages = msg_element | ftxui::focusPosition(0, scroll_focus_y_) |
+                    ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex;
+
     int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
 
     auto scrollbar = ftxui::emptyElement();
-    if (util::ShouldShowScrollbar(content_height, viewport_height)) {
+    if (util::ShouldShowScrollbar(content_height_, viewport_height)) {
       int track_height = viewport_height;
-      int thumb_size = util::CalculateThumbSize(content_height, viewport_height,
-                                                track_height);
+      int thumb_size = util::CalculateThumbSize(content_height_,
+                                                viewport_height, track_height);
       int thumb_pos = util::CalculateThumbPosition(
-          scroll_focus_y_, content_height, track_height, thumb_size);
+          scroll_focus_y_, content_height_, track_height, thumb_size);
       ftxui::Elements track_rows;
       for (int i = 0; i < track_height; ++i) {
         if (i >= thumb_pos && i < thumb_pos + thumb_size) {
@@ -250,7 +254,7 @@ ftxui::Component ChatUI::BuildMessageList() {
           scrollbar_dragging_ = false;
           return true;
         }
-        int content_height = content_box_.y_max - content_box_.y_min + 1;
+        int content_height = content_height_;
         int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
         if (content_height > 0 && viewport_height > 0 &&
             scrollbar_box_.y_max >= scrollbar_box_.y_min) {
@@ -279,7 +283,7 @@ ftxui::Component ChatUI::BuildMessageList() {
           }
           if (captured_mouse_) {
             scrollbar_dragging_ = true;
-            int content_height = content_box_.y_max - content_box_.y_min + 1;
+            int content_height = content_height_;
             int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
             if (content_height > 0 && viewport_height > 0 &&
                 scrollbar_box_.y_max >= scrollbar_box_.y_min) {
