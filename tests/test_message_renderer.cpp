@@ -1,6 +1,9 @@
 #include "presentation/message.hpp"
 #include "presentation/message_renderer.hpp"
 
+#include <regex>
+#include <string>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <ftxui/screen/screen.hpp>
@@ -15,6 +18,11 @@ std::string RenderMessageToString(const Message& msg, int width = 80,
   ftxui::Screen screen(width, height);
   ftxui::Render(screen, elem);
   return screen.ToString();
+}
+
+std::string StripAnsi(const std::string& s) {
+  static const std::regex ansi("\x1b\\[[^A-Za-z]*[A-Za-z]");
+  return std::regex_replace(s, ansi, "");
 }
 
 }  // namespace
@@ -94,4 +102,36 @@ TEST_CASE("Render agent message falls back to parsing without cache") {
   REQUIRE_FALSE(msg.cached_blocks.has_value());
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Fallback"));
+}
+
+TEST_CASE("RenderHeader shows bracket-initial role indicator for user") {
+  Message msg{Sender::User, "test"};
+  auto output = StripAnsi(RenderMessageToString(msg));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[Y]"));
+}
+
+TEST_CASE("RenderHeader shows bracket-initial role indicator for agent") {
+  Message msg{Sender::Agent, "test"};
+  auto output = StripAnsi(RenderMessageToString(msg));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[A]"));
+}
+
+TEST_CASE("RenderHeader shows relative timestamp") {
+  Message msg{Sender::User, "test"};
+  auto output = RenderMessageToString(msg);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("just now"));
+}
+
+TEST_CASE("RenderHeader shows middle dot separator before timestamp") {
+  Message msg{Sender::User, "test"};
+  auto output = RenderMessageToString(msg);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("·"));
+}
+
+TEST_CASE("RenderHeader hides timestamp for zero time_point") {
+  Message msg{Sender::User, "test"};
+  msg.created_at = std::chrono::system_clock::time_point{};
+  auto output = StripAnsi(RenderMessageToString(msg, 120, 10));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[Y]"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("ago"));
 }

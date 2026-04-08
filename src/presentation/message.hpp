@@ -2,6 +2,7 @@
 
 #include "markdown/ast.hpp"
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <vector>
@@ -16,6 +17,8 @@ struct Message {
   std::string role_label;
   std::string timestamp;
   std::optional<std::vector<markdown::BlockNode>> cached_blocks;
+  std::chrono::system_clock::time_point created_at =
+      std::chrono::system_clock::now();
 
   [[nodiscard]] std::string DisplayLabel() const;
 };

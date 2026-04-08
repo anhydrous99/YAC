@@ -1,6 +1,7 @@
 #include "message_renderer.hpp"
 
 #include "theme.hpp"
+#include "util/time_util.hpp"
 
 #include <ftxui/dom/elements.hpp>
 
@@ -30,9 +31,13 @@ ftxui::Element MessageRenderer::RenderAll(
 
 ftxui::Element MessageRenderer::RenderUserMessage(const Message& message) {
   auto content = ftxui::vbox({
-      RenderHeader(Sender::User, message.DisplayLabel()),
+      RenderHeader(Sender::User, message.DisplayLabel(), message.created_at),
       ftxui::text(""),
-      ftxui::paragraph(message.content) | ftxui::color(k_theme.role.user),
+      ftxui::hbox({
+          ftxui::text("  "),
+          ftxui::paragraph(message.content) | ftxui::color(k_theme.role.user) |
+              ftxui::flex,
+      }),
   });
 
   auto styled_card = content | ftxui::bgcolor(k_theme.cards.user_bg) |
@@ -47,7 +52,7 @@ ftxui::Element MessageRenderer::RenderAgentMessage(const Message& message) {
   const auto& blocks = message.cached_blocks.value_or(
       markdown::MarkdownParser::Parse(message.content));
   auto content = ftxui::vbox({
-      RenderHeader(Sender::Agent, message.DisplayLabel()),
+      RenderHeader(Sender::Agent, message.DisplayLabel(), message.created_at),
       ftxui::text(""),
       markdown::MarkdownRenderer::Render(blocks),
   });
@@ -56,16 +61,30 @@ ftxui::Element MessageRenderer::RenderAgentMessage(const Message& message) {
          ftxui::borderRounded | ftxui::color(k_theme.cards.agent_border);
 }
 
-ftxui::Element MessageRenderer::RenderHeader(Sender sender,
-                                             const std::string& label) {
+ftxui::Element MessageRenderer::RenderHeader(
+    Sender sender, const std::string& label,
+    std::chrono::system_clock::time_point created_at) {
   const auto& color =
       (sender == Sender::User) ? k_theme.role.user : k_theme.role.agent;
 
-  return ftxui::hbox({
-      ftxui::text("●") | ftxui::bold | ftxui::color(color),
-      ftxui::text(" "),
-      ftxui::text(label) | ftxui::bold | ftxui::color(color),
-  });
+  char initial = label.empty() ? '?' : label[0];
+  ftxui::Elements parts;
+  parts.push_back(ftxui::text("[") | ftxui::color(color));
+  parts.push_back(ftxui::text(std::string(1, initial)) | ftxui::bold |
+                  ftxui::color(color));
+  parts.push_back(ftxui::text("]") | ftxui::color(color));
+  parts.push_back(ftxui::text(" "));
+  parts.push_back(ftxui::text(label) | ftxui::bold | ftxui::color(color));
+
+  if (created_at != std::chrono::system_clock::time_point{}) {
+    auto rel_time = util::FormatRelativeTime(created_at);
+    parts.push_back(ftxui::text(" \xC2\xB7 ") |
+                    ftxui::color(k_theme.chrome.dim_text));
+    parts.push_back(ftxui::text(rel_time) |
+                    ftxui::color(k_theme.chrome.dim_text));
+  }
+
+  return ftxui::hbox(parts);
 }
 
 }  // namespace yac::presentation

@@ -42,6 +42,22 @@ bool IsCtrlEnter(const ftxui::Event& event) {
   return seq == "\x1b[13;5~" || seq == "\x1b[27;5;13~" || seq == "\x1b[13;5u";
 }
 
+bool IsHome(const ftxui::Event& event) {
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b[H" || seq == "\x1b[1~" || seq == "\x1bOH";
+}
+
+bool IsEnd(const ftxui::Event& event) {
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b[F" || seq == "\x1b[4~" || seq == "\x1bOF";
+}
+
 int CountNewlines(const std::string& text) {
   return static_cast<int>(std::accumulate(
       text.begin(), text.end(), 0,
@@ -82,10 +98,27 @@ ftxui::Component ChatUI::Build() {
 
     auto input_height = CalculateInputHeight();
 
+    auto footer_area =
+        ftxui::hbox(footer_elements) | ftxui::reflect(footer_box_);
+
+    ftxui::Elements footer_rows;
+    footer_rows.push_back(footer_area);
+
+    int term_width = footer_box_.x_max - footer_box_.x_min + 1;
+    if (term_width >= 60 || term_width == 0) {
+      auto hints =
+          ftxui::text(
+              " Enter=Send │ ⇧+Enter=Newline │ PgUp/PgDn=Scroll │ Home/End") |
+          ftxui::color(k_theme.chrome.dim_text) | ftxui::dim;
+      footer_rows.push_back(hints);
+    }
+
+    auto footer_with_hints = ftxui::vbox(footer_rows);
+
     return ftxui::vbox({
                message_list->Render() | ftxui::flex,
                ftxui::separator() | ftxui::color(k_theme.markdown.separator),
-               ftxui::hbox(footer_elements),
+               footer_with_hints,
                ftxui::separator() | ftxui::color(k_theme.markdown.separator),
                input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
                    ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN,
@@ -177,9 +210,31 @@ bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
 
 ftxui::Component ChatUI::BuildMessageList() {
   auto content = ftxui::Renderer([this] {
-    return RenderMessages() | ftxui::focusPosition(0, scroll_focus_y_) |
-           ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex |
-           ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text);
+    auto messages =
+        RenderMessages() | ftxui::focusPosition(0, scroll_focus_y_) |
+        ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex |
+        ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text);
+
+    int scroll_pct = 0;
+    if (visible_box_.y_max > 0) {
+      if (scroll_focus_y_ >= 10000) {
+        scroll_pct = 100;
+      } else {
+        scroll_pct = std::min(
+            100, scroll_focus_y_ * 100 / std::max(1, visible_box_.y_max));
+      }
+    }
+
+    auto indicator = ftxui::text(std::to_string(scroll_pct) + "%") |
+                     ftxui::color(k_theme.chrome.dim_text);
+
+    return ftxui::hbox({
+        messages | ftxui::flex,
+        ftxui::vbox({
+            ftxui::filler(),
+            indicator,
+        }),
+    });
   });
 
   return ftxui::CatchEvent(content, [this](ftxui::Event event) {
@@ -201,6 +256,14 @@ ftxui::Component ChatUI::BuildMessageList() {
     }
     if (event == ftxui::Event::PageDown) {
       ScrollDown(PageLines());
+      return true;
+    }
+    if (IsHome(event)) {
+      scroll_focus_y_ = 0;
+      return true;
+    }
+    if (IsEnd(event)) {
+      scroll_focus_y_ = 10000;
       return true;
     }
     return false;
@@ -233,7 +296,7 @@ void ChatUI::ScrollUp(int lines) {
 }
 
 void ChatUI::ScrollDown(int lines) {
-  scroll_focus_y_ += lines;
+  scroll_focus_y_ = std::min(scroll_focus_y_ + lines, 10000);
 }
 
 }  // namespace yac::presentation

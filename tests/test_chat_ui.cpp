@@ -222,3 +222,68 @@ TEST_CASE("HandleInputEvent Enter submits and clears content") {
   REQUIRE(captured == "\n");
   REQUIRE(ui.CalculateInputHeight() == 1);
 }
+
+namespace {
+
+ftxui::Event MakeHomeXterm() {
+  return ftxui::Event::Special("\x1b[H");
+}
+
+ftxui::Event MakeHomeRxvt() {
+  return ftxui::Event::Special("\x1b[1~");
+}
+
+ftxui::Event MakeHomeXtermAlt() {
+  return ftxui::Event::Special("\x1bOH");
+}
+
+ftxui::Event MakeEndXterm() {
+  return ftxui::Event::Special("\x1b[F");
+}
+
+ftxui::Event MakeEndRxvt() {
+  return ftxui::Event::Special("\x1b[4~");
+}
+
+ftxui::Event MakeEndXtermAlt() {
+  return ftxui::Event::Special("\x1bOF");
+}
+
+}  // namespace
+
+TEST_CASE("Component handles Home key events") {
+  ChatUI ui;
+  ui.AddMessage(Sender::User, "first");
+  ui.AddMessage(Sender::User, "second");
+  ui.AddMessage(Sender::User, "third");
+  auto component = ui.Build();
+  REQUIRE(component != nullptr);
+  REQUIRE(component->OnEvent(MakeHomeXterm()));
+}
+
+TEST_CASE("Component handles End key events") {
+  ChatUI ui;
+  ui.AddMessage(Sender::User, "first");
+  ui.AddMessage(Sender::User, "second");
+  auto component = ui.Build();
+  REQUIRE(component != nullptr);
+  REQUIRE(component->OnEvent(MakeEndXterm()));
+}
+
+TEST_CASE("Component handles Home key variants") {
+  ChatUI ui;
+  ui.AddMessage(Sender::User, "test");
+  auto component = ui.Build();
+  REQUIRE(component->OnEvent(MakeHomeXterm()));
+  REQUIRE(component->OnEvent(MakeHomeRxvt()));
+  REQUIRE(component->OnEvent(MakeHomeXtermAlt()));
+}
+
+TEST_CASE("Component handles End key variants") {
+  ChatUI ui;
+  ui.AddMessage(Sender::User, "test");
+  auto component = ui.Build();
+  REQUIRE(component->OnEvent(MakeEndXterm()));
+  REQUIRE(component->OnEvent(MakeEndRxvt()));
+  REQUIRE(component->OnEvent(MakeEndXtermAlt()));
+}

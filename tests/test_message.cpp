@@ -40,3 +40,13 @@ TEST_CASE("cached_blocks can be set and read") {
   REQUIRE(msg.cached_blocks.has_value());
   REQUIRE_FALSE(msg.cached_blocks->empty());
 }
+
+TEST_CASE("Aggregate init Message has non-zero created_at") {
+  Message msg{Sender::User, "hello"};
+  REQUIRE(msg.created_at != std::chrono::system_clock::time_point{});
+}
+
+TEST_CASE("Default-constructed Message has non-zero created_at") {
+  Message msg;
+  REQUIRE(msg.created_at != std::chrono::system_clock::time_point{});
+}
