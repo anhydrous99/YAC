@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ftxui/component/captured_mouse.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "ftxui/screen/box.hpp"
@@ -51,6 +52,8 @@ class ChatUI {
   ftxui::Box visible_box_{};
   ftxui::Box content_box_{};
   ftxui::Box scrollbar_box_{};
+  bool scrollbar_dragging_ = false;
+  ftxui::CapturedMouse captured_mouse_;
 };
 
 }  // namespace yac::presentation

@@ -1,5 +1,6 @@
 #include "chat_ui.hpp"
 
+#include "ftxui/component/app.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
 #include "ftxui/component/event.hpp"
@@ -128,7 +129,9 @@ void ChatUI::AddMessage(Sender sender, std::string content) {
     msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
   }
   messages_.push_back(std::move(msg));
-  scroll_focus_y_ = 10000;
+  if (!scrollbar_dragging_) {
+    scroll_focus_y_ = 10000;
+  }
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -241,6 +244,64 @@ ftxui::Component ChatUI::BuildMessageList() {
 
   return ftxui::CatchEvent(content, [this](ftxui::Event event) {
     if (event.is_mouse()) {
+      if (captured_mouse_) {
+        if (event.mouse().motion == ftxui::Mouse::Released) {
+          captured_mouse_ = nullptr;
+          scrollbar_dragging_ = false;
+          return true;
+        }
+        int content_height = content_box_.y_max - content_box_.y_min + 1;
+        int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
+        if (content_height > 0 && viewport_height > 0 &&
+            scrollbar_box_.y_max >= scrollbar_box_.y_min) {
+          int track_height = viewport_height;
+          int thumb_size = util::CalculateThumbSize(
+              content_height, viewport_height, track_height);
+          int track_usable = track_height - thumb_size;
+          if (track_usable > 0) {
+            int mouse_y =
+                event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
+            float ratio =
+                static_cast<float>(mouse_y) / static_cast<float>(track_usable);
+            ratio = std::max(0.0f, std::min(1.0f, ratio));
+            scroll_focus_y_ =
+                util::CalculateScrollFocusFromRatio(ratio, content_height);
+          }
+        }
+        return true;
+      }
+
+      if (event.mouse().button == ftxui::Mouse::Left &&
+          event.mouse().motion == ftxui::Mouse::Pressed) {
+        if (scrollbar_box_.Contain(event.mouse().x, event.mouse().y)) {
+          if (event.screen_) {
+            captured_mouse_ = event.screen_->CaptureMouse();
+          }
+          if (captured_mouse_) {
+            scrollbar_dragging_ = true;
+            int content_height = content_box_.y_max - content_box_.y_min + 1;
+            int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
+            if (content_height > 0 && viewport_height > 0 &&
+                scrollbar_box_.y_max >= scrollbar_box_.y_min) {
+              int track_height = viewport_height;
+              int thumb_size = util::CalculateThumbSize(
+                  content_height, viewport_height, track_height);
+              int track_usable = track_height - thumb_size;
+              if (track_usable > 0) {
+                int mouse_y =
+                    event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
+                float ratio = static_cast<float>(mouse_y) /
+                              static_cast<float>(track_usable);
+                ratio = std::max(0.0f, std::min(1.0f, ratio));
+                scroll_focus_y_ =
+                    util::CalculateScrollFocusFromRatio(ratio, content_height);
+              }
+            }
+            return true;
+          }
+        }
+      }
+
       switch (event.mouse().button) {
         case ftxui::Mouse::WheelUp:
           ScrollUp(3);
@@ -249,9 +310,10 @@ ftxui::Component ChatUI::BuildMessageList() {
           ScrollDown(3);
           return true;
         default:
-          return false;
+          break;
       }
     }
+
     if (event == ftxui::Event::PageUp) {
       ScrollUp(PageLines());
       return true;
