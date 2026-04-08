@@ -49,7 +49,6 @@ class ChatUI {
 
   int scroll_focus_y_ = 10000;
   ftxui::Box visible_box_{};
-  ftxui::Box footer_box_{};
 };
 
 }  // namespace yac::presentation

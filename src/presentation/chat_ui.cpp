@@ -98,20 +98,13 @@ ftxui::Component ChatUI::Build() {
 
     auto input_height = CalculateInputHeight();
 
-    auto footer_area =
-        ftxui::hbox(footer_elements) | ftxui::reflect(footer_box_);
-
     ftxui::Elements footer_rows;
-    footer_rows.push_back(footer_area);
+    footer_rows.push_back(ftxui::hbox(footer_elements));
 
-    int term_width = footer_box_.x_max - footer_box_.x_min + 1;
-    if (term_width >= 60 || term_width == 0) {
-      auto hints =
-          ftxui::text(
-              " Enter=Send │ ⇧+Enter=Newline │ PgUp/PgDn=Scroll │ Home/End") |
-          ftxui::color(k_theme.chrome.dim_text) | ftxui::dim;
-      footer_rows.push_back(hints);
-    }
+    footer_rows.push_back(
+        ftxui::text(
+            " Enter=Send │ ⇧+Enter=Newline │ PgUp/PgDn=Scroll │ Home/End") |
+        ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
 
     auto footer_with_hints = ftxui::vbox(footer_rows);
 
@@ -210,10 +203,10 @@ bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
 
 ftxui::Component ChatUI::BuildMessageList() {
   auto content = ftxui::Renderer([this] {
-    auto messages =
-        RenderMessages() | ftxui::focusPosition(0, scroll_focus_y_) |
-        ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex |
-        ftxui::vscroll_indicator | ftxui::color(k_theme.chrome.dim_text);
+    auto messages = RenderMessages() |
+                    ftxui::focusPosition(0, scroll_focus_y_) | ftxui::frame |
+                    ftxui::reflect(visible_box_) | ftxui::flex |
+                    ftxui::color(k_theme.chrome.dim_text);
 
     int scroll_pct = 0;
     if (visible_box_.y_max > 0) {
