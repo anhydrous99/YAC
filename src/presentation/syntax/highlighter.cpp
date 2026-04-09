@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <unordered_set>
 
 namespace yac::presentation::syntax {
 
@@ -17,8 +18,8 @@ inline const auto& k_theme = theme::Theme::Instance();
 
 struct LanguageDef {
   std::string name;
-  std::vector<std::string> keywords;
-  std::vector<std::string> types;
+  std::unordered_set<std::string> keywords;
+  std::unordered_set<std::string> types;
   std::string single_line_comment;
   std::string multi_line_comment_open;
   std::string multi_line_comment_close;
@@ -55,9 +56,9 @@ const std::array<LanguageDef, 4> kLanguageDefinitions = {{
       "continue", "def",      "del",    "elif",  "else",   "except", "finally",
       "for",      "from",     "global", "if",    "import", "in",     "is",
       "lambda",   "nonlocal", "not",    "or",    "pass",   "raise",  "return",
-      "try",      "while",    "with",   "yield", "True",   "False",  "None"},
+      "try",      "while",    "with",   "yield", "true",   "false",  "none"},
      {"int", "str", "float", "bool", "list", "dict", "tuple", "set", "bytes",
-      "object", "type", "None"},
+      "object", "type", "none"},
      "#",
      "",
      ""},
@@ -70,19 +71,19 @@ const std::array<LanguageDef, 4> kLanguageDefinitions = {{
       "switch",    "this",     "throw",    "true",    "try",        "typeof",
       "undefined", "var",      "void",     "while",   "with",       "yield"},
      {"number", "string", "boolean", "object", "array", "function", "undefined",
-      "null", "symbol", "bigint", "Map", "Set", "Promise"},
+      "null", "symbol", "bigint", "map", "set", "promise"},
      "//",
      "/*",
      "*/"},
     {"rust",
-     {"as",     "async",  "await", "break",  "const",  "continue", "crate",
-      "dyn",    "else",   "enum",  "extern", "false",  "fn",       "for",
-      "if",     "impl",   "in",    "let",    "loop",   "match",    "mod",
-      "move",   "mut",    "pub",   "ref",    "return", "self",     "Self",
-      "static", "struct", "super", "trait",  "true",   "type",     "unsafe",
-      "use",    "where",  "while"},
+     {"as",     "async", "await", "break",  "const",  "continue", "crate",
+      "dyn",    "else",  "enum",  "extern", "false",  "fn",       "for",
+      "if",     "impl",  "in",    "let",    "loop",   "match",    "mod",
+      "move",   "mut",   "pub",   "ref",    "return", "self",     "static",
+      "struct", "super", "trait", "true",   "type",   "unsafe",   "use",
+      "where",  "while"},
      {"i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
-      "bool", "char", "str", "String", "Vec", "Option", "Result", "Box"},
+      "bool", "char", "str", "string", "vec", "option", "result", "box"},
      "//",
      "/*",
      "*/"},
@@ -91,7 +92,7 @@ const std::array<LanguageDef, 4> kLanguageDefinitions = {{
 const LanguageDef* FindLanguage(std::string_view name) {
   auto lower = ToLower(name);
   for (const auto& lang : kLanguageDefinitions) {
-    if (ToLower(lang.name) == lower) {
+    if (lang.name == lower) {
       return &lang;
     }
   }
@@ -100,14 +101,12 @@ const LanguageDef* FindLanguage(std::string_view name) {
 
 bool IsKeyword(std::string_view word, const LanguageDef& lang) {
   auto lower = ToLower(word);
-  return std::find(lang.keywords.begin(), lang.keywords.end(), lower) !=
-         lang.keywords.end();
+  return lang.keywords.contains(lower);
 }
 
 bool IsType(std::string_view word, const LanguageDef& lang) {
   auto lower = ToLower(word);
-  return std::find(lang.types.begin(), lang.types.end(), lower) !=
-         lang.types.end();
+  return lang.keywords.contains(lower);
 }
 
 bool IsComment(std::string_view line, const LanguageDef& lang) {

@@ -1,3 +1,4 @@
+#include "presentation/markdown/parser.hpp"
 #include "presentation/message.hpp"
 #include "presentation/message_renderer.hpp"
 
@@ -14,7 +15,7 @@ namespace {
 
 std::string RenderMessageToString(const Message& msg, int width = 80,
                                   int height = 24) {
-  auto elem = MessageRenderer::Render(msg);
+  auto elem = MessageRenderer::Render(msg, 80);
   ftxui::Screen screen(width, height);
   ftxui::Render(screen, elem);
   return screen.ToString();
@@ -62,7 +63,7 @@ TEST_CASE("RenderAll with multiple messages") {
       {Sender::User, "first"},
       {Sender::Agent, "second"},
   };
-  auto elem = MessageRenderer::RenderAll(messages);
+  auto elem = MessageRenderer::RenderAll(messages, 80);
   ftxui::Screen screen(80, 20);
   ftxui::Render(screen, elem);
   auto output = screen.ToString();
@@ -74,13 +75,13 @@ TEST_CASE("RenderAll with single message") {
   std::vector<Message> messages = {
       {Sender::User, "only"},
   };
-  auto elem = MessageRenderer::RenderAll(messages);
+  auto elem = MessageRenderer::RenderAll(messages, 80);
   REQUIRE(elem != nullptr);
 }
 
 TEST_CASE("RenderAll with empty list") {
   std::vector<Message> messages;
-  auto elem = MessageRenderer::RenderAll(messages);
+  auto elem = MessageRenderer::RenderAll(messages, 80);
   REQUIRE(elem != nullptr);
 }
 
@@ -134,4 +135,48 @@ TEST_CASE("RenderHeader hides timestamp for zero time_point") {
   auto output = StripAnsi(RenderMessageToString(msg, 120, 10));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[Y]"));
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("ago"));
+}
+
+TEST_CASE("Render populates cached_element after first call") {
+  Message msg{Sender::User, "cache test"};
+  REQUIRE_FALSE(msg.cached_element.has_value());
+  REQUIRE(msg.cached_terminal_width == -1);
+  auto elem = MessageRenderer::Render(msg, 80);
+  REQUIRE(msg.cached_element.has_value());
+  REQUIRE(msg.cached_terminal_width == 80);
+}
+
+TEST_CASE("Render returns cached element on second call at same width") {
+  Message msg{Sender::User, "cache hit test"};
+  auto elem1 = MessageRenderer::Render(msg, 80);
+  auto elem2 = MessageRenderer::Render(msg, 80);
+  REQUIRE(elem1 != nullptr);
+  REQUIRE(elem2 != nullptr);
+  REQUIRE(msg.cached_terminal_width == 80);
+  ftxui::Screen screen1(80, 10);
+  ftxui::Screen screen2(80, 10);
+  ftxui::Render(screen1, elem1);
+  ftxui::Render(screen2, elem2);
+  REQUIRE(screen1.ToString() == screen2.ToString());
+}
+
+TEST_CASE("Render invalidates cache when width changes") {
+  Message msg{Sender::User, "resize test"};
+  auto elem1 = MessageRenderer::Render(msg, 80);
+  REQUIRE(msg.cached_terminal_width == 80);
+  auto elem2 = MessageRenderer::Render(msg, 40);
+  REQUIRE(msg.cached_terminal_width == 40);
+  REQUIRE(msg.cached_element.has_value());
+}
+
+TEST_CASE("Visual output identical with and without cache") {
+  Message msg{Sender::Agent, "# Heading\n\nSome **bold** text"};
+  msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
+  auto elem1 = MessageRenderer::Render(msg, 80);
+  ftxui::Screen screen1(80, 20);
+  ftxui::Render(screen1, elem1);
+  auto elem2 = MessageRenderer::Render(msg, 80);
+  ftxui::Screen screen2(80, 20);
+  ftxui::Render(screen2, elem2);
+  REQUIRE(screen1.ToString() == screen2.ToString());
 }

@@ -54,6 +54,7 @@ class ChatUI {
   ftxui::Box scrollbar_box_{};
   bool scrollbar_dragging_ = false;
   ftxui::CapturedMouse captured_mouse_;
+  mutable int last_terminal_width_ = -1;
 };
 
 }  // namespace yac::presentation

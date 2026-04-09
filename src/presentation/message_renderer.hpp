@@ -17,10 +17,11 @@ class MessageRenderer {
  public:
   MessageRenderer() = default;
 
-  [[nodiscard]] static ftxui::Element Render(const Message& message);
+  [[nodiscard]] static ftxui::Element Render(const Message& message,
+                                             int current_width);
 
   [[nodiscard]] static ftxui::Element RenderAll(
-      const std::vector<Message>& messages);
+      const std::vector<Message>& messages, int current_width);
 
  private:
   [[nodiscard]] static ftxui::Element RenderUserMessage(const Message& message);
@@ -28,7 +29,8 @@ class MessageRenderer {
       const Message& message);
   [[nodiscard]] static ftxui::Element RenderHeader(
       Sender sender, const std::string& label,
-      std::chrono::system_clock::time_point created_at = {});
+      std::chrono::system_clock::time_point created_at,
+      util::RelativeTimeCache& cache);
 };
 
 }  // namespace yac::presentation

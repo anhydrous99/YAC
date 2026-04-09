@@ -6,6 +6,7 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
+#include "ftxui/screen/terminal.hpp"
 #include "markdown/parser.hpp"
 #include "theme.hpp"
 #include "util/scroll_math.hpp"
@@ -351,7 +352,16 @@ ftxui::Element ChatUI::RenderMessages() const {
            ftxui::flex;
   }
 
-  return MessageRenderer::RenderAll(messages_);
+  int current_width = ftxui::Terminal::Size().dimx;
+  if (current_width != last_terminal_width_) {
+    for (const auto& msg : messages_) {
+      msg.cached_element = std::nullopt;
+      msg.cached_terminal_width = -1;
+    }
+    last_terminal_width_ = current_width;
+  }
+
+  return MessageRenderer::RenderAll(messages_, current_width);
 }
 
 int ChatUI::PageLines() const {
