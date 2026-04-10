@@ -6,7 +6,16 @@ std::string Message::DisplayLabel() const {
   if (!role_label.empty()) {
     return role_label;
   }
-  return (sender == Sender::User) ? "You" : "Assistant";
+  switch (sender) {
+    case Sender::User:
+      return "You";
+    case Sender::Agent:
+      return "Assistant";
+    case Sender::Tool:
+      return "Tool";
+  }
+
+  return "Unknown";
 }
 
 }  // namespace yac::presentation

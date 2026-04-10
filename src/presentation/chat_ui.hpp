@@ -1,5 +1,6 @@
 #pragma once
 
+#include "command_palette.hpp"
 #include "ftxui/component/captured_mouse.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
@@ -8,6 +9,7 @@
 #include "message_renderer.hpp"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,7 +27,10 @@ class ChatUI {
   [[nodiscard]] ftxui::Component Build();
 
   void AddMessage(Sender sender, std::string content);
+  void AddToolCallMessage(::yac::presentation::tool_call::ToolCallBlock block);
+  void SetCommands(std::vector<Command> commands);
   void SetTyping(bool typing);
+  void SetToolExpanded(size_t index, bool expanded);
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool IsTyping() const;
@@ -38,15 +43,20 @@ class ChatUI {
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
   [[nodiscard]] ftxui::Element RenderMessages() const;
+  void SyncMessageComponents();
   void ScrollUp(int lines);
   void ScrollDown(int lines);
   [[nodiscard]] int PageLines() const;
 
   std::vector<Message> messages_;
+  std::vector<ftxui::Component> message_components_;
+  std::vector<std::unique_ptr<bool>> tool_expanded_states_;
   std::string input_content_;
   int input_cursor_ = 0;
   OnSendCallback on_send_;
   bool is_typing_ = false;
+  bool show_command_palette_ = false;
+  std::vector<Command> commands_;
 
   int scroll_focus_y_ = 10000;
   int content_height_ = 0;

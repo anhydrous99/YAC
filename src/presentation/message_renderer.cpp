@@ -11,7 +11,7 @@ inline const auto& k_theme = theme::Theme::Instance();
 
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        int current_width) {
-  if (message.cached_element.has_value() &&
+  if (message.sender != Sender::Tool && message.cached_element.has_value() &&
       message.cached_terminal_width == current_width) {
     return *message.cached_element;
   }
@@ -24,9 +24,16 @@ ftxui::Element MessageRenderer::Render(const Message& message,
     case Sender::Agent:
       elem = RenderAgentMessage(message);
       break;
+    case Sender::Tool:
+      elem = RenderToolCallMessage(message);
+      break;
     default:
       elem = ftxui::text("Unknown sender");
       break;
+  }
+
+  if (message.sender == Sender::Tool) {
+    return elem;
   }
 
   message.cached_element = std::move(elem);
@@ -77,12 +84,21 @@ ftxui::Element MessageRenderer::RenderAgentMessage(const Message& message) {
          ftxui::borderRounded | ftxui::color(k_theme.cards.agent_border);
 }
 
+ftxui::Element MessageRenderer::RenderToolCallMessage(const Message& message) {
+  if (!message.tool_call.has_value()) {
+    return ftxui::text("Tool call unavailable");
+  }
+
+  return tool_call::ToolCallRenderer::Render(*message.tool_call);
+}
+
 ftxui::Element MessageRenderer::RenderHeader(
     Sender sender, const std::string& label,
     std::chrono::system_clock::time_point created_at,
     util::RelativeTimeCache& cache) {
-  const auto& color =
-      (sender == Sender::User) ? k_theme.role.user : k_theme.role.agent;
+  const auto& color = (sender == Sender::User)    ? k_theme.role.user
+                      : (sender == Sender::Agent) ? k_theme.role.agent
+                                                  : k_theme.tool.icon_fg;
 
   char initial = label.empty() ? '?' : label[0];
   ftxui::Elements parts;

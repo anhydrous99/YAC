@@ -23,12 +23,16 @@ FetchContent_MakeAvailable(Catch2)
 
 add_library(yac_presentation STATIC
   src/presentation/chat_ui.cpp
+  src/presentation/command_palette.cpp
+  src/presentation/collapsible.cpp
+  src/presentation/dialog.cpp
   src/presentation/message.cpp
   src/presentation/message_renderer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
   src/presentation/syntax/highlighter.cpp
   src/presentation/theme.cpp
+  src/presentation/tool_call/renderer.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
 target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::component)

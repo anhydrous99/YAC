@@ -3,6 +3,7 @@
 #include "markdown/parser.hpp"
 #include "markdown/renderer.hpp"
 #include "message.hpp"
+#include "tool_call/renderer.hpp"
 
 #include <chrono>
 
@@ -26,6 +27,8 @@ class MessageRenderer {
  private:
   [[nodiscard]] static ftxui::Element RenderUserMessage(const Message& message);
   [[nodiscard]] static ftxui::Element RenderAgentMessage(
+      const Message& message);
+  [[nodiscard]] static ftxui::Element RenderToolCallMessage(
       const Message& message);
   [[nodiscard]] static ftxui::Element RenderHeader(
       Sender sender, const std::string& label,

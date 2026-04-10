@@ -37,6 +37,26 @@ Theme CatppuccinMocha() {
   t.cards.user_border = ftxui::Color::RGB(69, 71, 90);
   t.cards.agent_border = ftxui::Color::RGB(69, 71, 90);
 
+  t.tool.border = ftxui::Color::RGB(88, 91, 112);
+  t.tool.header_bg = ftxui::Color::RGB(49, 50, 68);
+  t.tool.bash_accent = ftxui::Color::RGB(250, 179, 135);
+  t.tool.edit_add = ftxui::Color::RGB(166, 227, 161);
+  t.tool.edit_remove = ftxui::Color::RGB(243, 139, 168);
+  t.tool.edit_context = ftxui::Color::RGB(205, 214, 244);
+  t.tool.read_accent = ftxui::Color::RGB(137, 180, 250);
+  t.tool.grep_accent = ftxui::Color::RGB(203, 166, 247);
+  t.tool.glob_accent = ftxui::Color::RGB(148, 226, 213);
+  t.tool.web_accent = ftxui::Color::RGB(137, 180, 250);
+  t.tool.icon_fg = ftxui::Color::RGB(205, 214, 244);
+
+  t.dialog.overlay_bg = ftxui::Color::RGB(17, 17, 27);
+  t.dialog.border = ftxui::Color::RGB(88, 91, 112);
+  t.dialog.selected_bg = ftxui::Color::RGB(49, 50, 68);
+  t.dialog.selected_fg = ftxui::Color::RGB(205, 214, 244);
+  t.dialog.input_bg = ftxui::Color::RGB(30, 30, 46);
+  t.dialog.input_fg = ftxui::Color::RGB(205, 214, 244);
+  t.dialog.dim_text = ftxui::Color::RGB(147, 153, 178);
+
   return t;
 }
 

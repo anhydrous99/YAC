@@ -49,6 +49,30 @@ struct CardColors {
   ftxui::Color agent_border;
 };
 
+struct ToolColors {
+  ftxui::Color border;
+  ftxui::Color header_bg;
+  ftxui::Color bash_accent;
+  ftxui::Color edit_add;
+  ftxui::Color edit_remove;
+  ftxui::Color edit_context;
+  ftxui::Color read_accent;
+  ftxui::Color grep_accent;
+  ftxui::Color glob_accent;
+  ftxui::Color web_accent;
+  ftxui::Color icon_fg;
+};
+
+struct DialogColors {
+  ftxui::Color overlay_bg;
+  ftxui::Color border;
+  ftxui::Color selected_bg;
+  ftxui::Color selected_fg;
+  ftxui::Color input_bg;
+  ftxui::Color input_fg;
+  ftxui::Color dim_text;
+};
+
 struct Theme {
   RoleColors role;
   MarkdownColors markdown;
@@ -56,6 +80,8 @@ struct Theme {
   SyntaxColors syntax;
   ChromeColors chrome;
   CardColors cards;
+  ToolColors tool;
+  DialogColors dialog;
 
   [[nodiscard]] static const Theme& Instance();
 };
