@@ -47,6 +47,9 @@ class ChatUI {
   void ScrollUp(int lines);
   void ScrollDown(int lines);
   [[nodiscard]] int PageLines() const;
+  [[nodiscard]] int ViewportHeight() const;
+  [[nodiscard]] int MaxScrollOffset() const;
+  void ClampScrollOffset();
 
   std::vector<Message> messages_;
   std::vector<ftxui::Component> message_components_;
@@ -58,11 +61,12 @@ class ChatUI {
   bool show_command_palette_ = false;
   std::vector<Command> commands_;
 
-  int scroll_focus_y_ = 10000;
+  int scroll_offset_y_ = 0;
   int content_height_ = 0;
   ftxui::Box visible_box_{};
   ftxui::Box scrollbar_box_{};
   bool scrollbar_dragging_ = false;
+  bool follow_tail_ = true;
   ftxui::CapturedMouse captured_mouse_;
   mutable int last_terminal_width_ = -1;
 };

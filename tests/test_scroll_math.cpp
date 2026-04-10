@@ -43,54 +43,74 @@ TEST_CASE("CalculateThumbSize zero content returns minimum 1") {
 }
 
 TEST_CASE("CalculateThumbPosition at top returns 0") {
-  REQUIRE(CalculateThumbPosition(0, 1000, 20, 2) == 0);
+  REQUIRE(CalculateThumbPosition(0, 1000, 100, 20, 2) == 0);
 }
 
-TEST_CASE("CalculateThumbPosition at sentinel bottom") {
-  REQUIRE(CalculateThumbPosition(10000, 1000, 20, 2) == 18);
+TEST_CASE("CalculateThumbPosition at bottom") {
+  REQUIRE(CalculateThumbPosition(900, 1000, 100, 20, 2) == 18);
 }
 
-TEST_CASE("CalculateThumbPosition at middle-ish") {
-  REQUIRE(CalculateThumbPosition(500, 1000, 20, 2) == 9);
+TEST_CASE("CalculateThumbPosition at middle") {
+  REQUIRE(CalculateThumbPosition(450, 1000, 100, 20, 2) == 9);
 }
 
 TEST_CASE("CalculateThumbPosition zero content returns 0") {
-  REQUIRE(CalculateThumbPosition(500, 0, 20, 2) == 0);
+  REQUIRE(CalculateThumbPosition(500, 0, 100, 20, 2) == 0);
 }
 
-TEST_CASE("CalculateScrollFocusFromRatio zero ratio gives 0") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.0F, 1000) == 0);
+TEST_CASE("CalculateMaxScrollOffset returns content minus viewport") {
+  REQUIRE(CalculateMaxScrollOffset(1000, 100) == 900);
 }
 
-TEST_CASE("CalculateScrollFocusFromRatio full ratio gives content height") {
-  REQUIRE(CalculateScrollFocusFromRatio(1.0F, 1000) == 1000);
+TEST_CASE("CalculateMaxScrollOffset returns 0 when content fits viewport") {
+  REQUIRE(CalculateMaxScrollOffset(100, 100) == 0);
 }
 
-TEST_CASE("CalculateScrollFocusFromRatio half ratio gives half content") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.5F, 1000) == 500);
+TEST_CASE("ClampScrollOffset clamps below top") {
+  REQUIRE(ClampScrollOffset(-10, 1000, 100) == 0);
 }
 
-TEST_CASE("CalculateScrollFocusFromRatio zero content gives 0") {
-  REQUIRE(CalculateScrollFocusFromRatio(0.0F, 0) == 0);
+TEST_CASE("ClampScrollOffset clamps above bottom") {
+  REQUIRE(ClampScrollOffset(10000, 1000, 100) == 900);
 }
 
-TEST_CASE("CalculateScrollRatio zero focus gives 0") {
-  REQUIRE(CalculateScrollRatio(0, 1000) == 0.0F);
+TEST_CASE("CalculateFrameFocusY compensates for frame centering") {
+  REQUIRE(CalculateFrameFocusY(30, 11) == 35);
 }
 
-TEST_CASE("CalculateScrollRatio sentinel focus gives 1") {
-  REQUIRE(CalculateScrollRatio(10000, 1000) == 1.0F);
+TEST_CASE("CalculateScrollOffsetFromRatio zero ratio gives 0") {
+  REQUIRE(CalculateScrollOffsetFromRatio(0.0F, 1000, 100) == 0);
 }
 
-TEST_CASE("CalculateScrollRatio half focus gives approx 0.5") {
-  float result = CalculateScrollRatio(500, 1000);
+TEST_CASE("CalculateScrollOffsetFromRatio full ratio gives max offset") {
+  REQUIRE(CalculateScrollOffsetFromRatio(1.0F, 1000, 100) == 900);
+}
+
+TEST_CASE("CalculateScrollOffsetFromRatio half ratio gives half max offset") {
+  REQUIRE(CalculateScrollOffsetFromRatio(0.5F, 1000, 100) == 450);
+}
+
+TEST_CASE("CalculateScrollOffsetFromRatio zero content gives 0") {
+  REQUIRE(CalculateScrollOffsetFromRatio(0.0F, 0, 100) == 0);
+}
+
+TEST_CASE("CalculateScrollRatio zero offset gives 0") {
+  REQUIRE(CalculateScrollRatio(0, 1000, 100) == 0.0F);
+}
+
+TEST_CASE("CalculateScrollRatio bottom offset gives 1") {
+  REQUIRE(CalculateScrollRatio(900, 1000, 100) == 1.0F);
+}
+
+TEST_CASE("CalculateScrollRatio half offset gives approx 0.5") {
+  float result = CalculateScrollRatio(450, 1000, 100);
   REQUIRE(result == Catch::Approx(0.5F));
 }
 
 TEST_CASE("CalculateScrollRatio zero content gives 0") {
-  REQUIRE(CalculateScrollRatio(0, 0) == 0.0F);
+  REQUIRE(CalculateScrollRatio(0, 0, 100) == 0.0F);
 }
 
-TEST_CASE("CalculateScrollRatio sentinel with zero content gives 1") {
-  REQUIRE(CalculateScrollRatio(10000, 0) == 1.0F);
+TEST_CASE("CalculateScrollRatio fitting content gives 0") {
+  REQUIRE(CalculateScrollRatio(10000, 100, 100) == 0.0F);
 }

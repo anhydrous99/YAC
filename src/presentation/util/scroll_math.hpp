@@ -18,32 +18,60 @@ namespace yac::presentation::util {
   return std::max(1, track_height * viewport_height / content_height);
 }
 
-[[nodiscard]] inline int CalculateThumbPosition(int scroll_focus_y,
+[[nodiscard]] inline int CalculateMaxScrollOffset(int content_height,
+                                                  int viewport_height) {
+  return std::max(0, content_height - viewport_height);
+}
+
+[[nodiscard]] inline int ClampScrollOffset(int scroll_offset_y,
+                                           int content_height,
+                                           int viewport_height) {
+  return std::max(
+      0, std::min(scroll_offset_y,
+                  CalculateMaxScrollOffset(content_height, viewport_height)));
+}
+
+[[nodiscard]] inline int CalculateFrameFocusY(int scroll_offset_y,
+                                              int viewport_height) {
+  int frame_height = std::max(0, viewport_height - 1);
+  return scroll_offset_y + frame_height / 2;
+}
+
+[[nodiscard]] inline int CalculateThumbPosition(int scroll_offset_y,
                                                 int content_height,
+                                                int viewport_height,
                                                 int track_height,
                                                 int thumb_size) {
-  if (content_height <= 0) {
+  int max_scroll_offset =
+      CalculateMaxScrollOffset(content_height, viewport_height);
+  if (max_scroll_offset <= 0) {
     return 0;
   }
-  int pos = (track_height - thumb_size) * scroll_focus_y / content_height;
+  int clamped =
+      ClampScrollOffset(scroll_offset_y, content_height, viewport_height);
+  int pos = (track_height - thumb_size) * clamped / max_scroll_offset;
   return std::max(0, std::min(pos, track_height - thumb_size));
 }
 
-[[nodiscard]] inline int CalculateScrollFocusFromRatio(float ratio,
-                                                       int content_height) {
-  return static_cast<int>(ratio * static_cast<float>(content_height));
+[[nodiscard]] inline int CalculateScrollOffsetFromRatio(float ratio,
+                                                        int content_height,
+                                                        int viewport_height) {
+  int max_scroll_offset =
+      CalculateMaxScrollOffset(content_height, viewport_height);
+  return static_cast<int>(ratio * static_cast<float>(max_scroll_offset));
 }
 
-[[nodiscard]] inline float CalculateScrollRatio(int scroll_focus_y,
-                                                int content_height) {
-  if (scroll_focus_y >= 10000) {
-    return 1.0F;
-  }
-  if (content_height <= 0) {
+[[nodiscard]] inline float CalculateScrollRatio(int scroll_offset_y,
+                                                int content_height,
+                                                int viewport_height) {
+  int max_scroll_offset =
+      CalculateMaxScrollOffset(content_height, viewport_height);
+  if (max_scroll_offset <= 0) {
     return 0.0F;
   }
-  return static_cast<float>(scroll_focus_y) /
-         static_cast<float>(content_height);
+  int clamped =
+      ClampScrollOffset(scroll_offset_y, content_height, viewport_height);
+  return static_cast<float>(clamped) / static_cast<float>(max_scroll_offset);
 }
 
 }  // namespace yac::presentation::util

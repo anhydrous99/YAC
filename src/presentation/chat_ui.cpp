@@ -179,7 +179,7 @@ void ChatUI::AddMessage(Sender sender, std::string content) {
   }
   messages_.push_back(std::move(msg));
   if (!scrollbar_dragging_) {
-    scroll_focus_y_ = 10000;
+    follow_tail_ = true;
   }
 }
 
@@ -191,7 +191,7 @@ void ChatUI::AddToolCallMessage(
   messages_.push_back(std::move(msg));
   tool_expanded_states_.push_back(std::make_unique<bool>(true));
   if (!scrollbar_dragging_) {
-    scroll_focus_y_ = 10000;
+    follow_tail_ = true;
   }
 }
 
@@ -294,11 +294,16 @@ ftxui::Component ChatUI::BuildMessageList() {
     // unlike reflect() before frame which only captures the viewport size.
     msg_element->ComputeRequirement();
     content_height_ = msg_element->requirement().min_y;
+    int viewport_height = ViewportHeight();
+    if (follow_tail_) {
+      scroll_offset_y_ = MaxScrollOffset();
+    } else {
+      ClampScrollOffset();
+    }
 
-    auto messages = msg_element | ftxui::focusPosition(0, scroll_focus_y_) |
+    int focus_y = util::CalculateFrameFocusY(scroll_offset_y_, viewport_height);
+    auto messages = msg_element | ftxui::focusPosition(0, focus_y) |
                     ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex;
-
-    int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
 
     auto scrollbar = ftxui::emptyElement();
     if (util::ShouldShowScrollbar(content_height_, viewport_height)) {
@@ -306,7 +311,8 @@ ftxui::Component ChatUI::BuildMessageList() {
       int thumb_size = util::CalculateThumbSize(content_height_,
                                                 viewport_height, track_height);
       int thumb_pos = util::CalculateThumbPosition(
-          scroll_focus_y_, content_height_, track_height, thumb_size);
+          scroll_offset_y_, content_height_, viewport_height, track_height,
+          thumb_size);
       ftxui::Elements track_rows;
       for (int i = 0; i < track_height; ++i) {
         if (i >= thumb_pos && i < thumb_pos + thumb_size) {
@@ -336,7 +342,7 @@ ftxui::Component ChatUI::BuildMessageList() {
           return true;
         }
         int content_height = content_height_;
-        int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
+        int viewport_height = ViewportHeight();
         if (content_height > 0 && viewport_height > 0 &&
             scrollbar_box_.y_max >= scrollbar_box_.y_min) {
           int track_height = viewport_height;
@@ -349,8 +355,9 @@ ftxui::Component ChatUI::BuildMessageList() {
             float ratio =
                 static_cast<float>(mouse_y) / static_cast<float>(track_usable);
             ratio = std::max(0.0F, std::min(1.0F, ratio));
-            scroll_focus_y_ =
-                util::CalculateScrollFocusFromRatio(ratio, content_height);
+            scroll_offset_y_ = util::CalculateScrollOffsetFromRatio(
+                ratio, content_height, viewport_height);
+            follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
           }
         }
         return true;
@@ -365,7 +372,7 @@ ftxui::Component ChatUI::BuildMessageList() {
           if (captured_mouse_) {
             scrollbar_dragging_ = true;
             int content_height = content_height_;
-            int viewport_height = visible_box_.y_max - visible_box_.y_min + 1;
+            int viewport_height = ViewportHeight();
             if (content_height > 0 && viewport_height > 0 &&
                 scrollbar_box_.y_max >= scrollbar_box_.y_min) {
               int track_height = viewport_height;
@@ -378,8 +385,9 @@ ftxui::Component ChatUI::BuildMessageList() {
                 float ratio = static_cast<float>(mouse_y) /
                               static_cast<float>(track_usable);
                 ratio = std::max(0.0F, std::min(1.0F, ratio));
-                scroll_focus_y_ =
-                    util::CalculateScrollFocusFromRatio(ratio, content_height);
+                scroll_offset_y_ = util::CalculateScrollOffsetFromRatio(
+                    ratio, content_height, viewport_height);
+                follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
               }
             }
             return true;
@@ -408,11 +416,13 @@ ftxui::Component ChatUI::BuildMessageList() {
       return true;
     }
     if (IsHome(event)) {
-      scroll_focus_y_ = 0;
+      scroll_offset_y_ = 0;
+      follow_tail_ = false;
       return true;
     }
     if (IsEnd(event)) {
-      scroll_focus_y_ = 10000;
+      scroll_offset_y_ = MaxScrollOffset();
+      follow_tail_ = true;
       return true;
     }
     return false;
@@ -494,16 +504,34 @@ void ChatUI::SyncMessageComponents() {
 }
 
 int ChatUI::PageLines() const {
+  return ViewportHeight();
+}
+
+void ChatUI::ScrollUp(int lines) {
+  scroll_offset_y_ = std::max(0, scroll_offset_y_ - lines);
+  follow_tail_ = false;
+}
+
+void ChatUI::ScrollDown(int lines) {
+  scroll_offset_y_ = std::min(scroll_offset_y_ + lines, MaxScrollOffset());
+  follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
+}
+
+int ChatUI::ViewportHeight() const {
   int visible = visible_box_.y_max - visible_box_.y_min + 1;
   return std::max(1, visible);
 }
 
-void ChatUI::ScrollUp(int lines) {
-  scroll_focus_y_ = std::max(0, scroll_focus_y_ - lines);
+int ChatUI::MaxScrollOffset() const {
+  return util::CalculateMaxScrollOffset(content_height_, ViewportHeight());
 }
 
-void ChatUI::ScrollDown(int lines) {
-  scroll_focus_y_ = std::min(scroll_focus_y_ + lines, 10000);
+void ChatUI::ClampScrollOffset() {
+  scroll_offset_y_ = util::ClampScrollOffset(scroll_offset_y_, content_height_,
+                                             ViewportHeight());
+  if (scroll_offset_y_ < MaxScrollOffset()) {
+    follow_tail_ = false;
+  }
 }
 
 }  // namespace yac::presentation
