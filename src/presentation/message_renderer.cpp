@@ -16,21 +16,11 @@ ftxui::Element MessageRenderer::Render(const Message& message,
     return *message.cached_element;
   }
 
-  ftxui::Element elem;
-  switch (message.sender) {
-    case Sender::User:
-      elem = RenderUserMessage(message);
-      break;
-    case Sender::Agent:
-      elem = RenderAgentMessage(message);
-      break;
-    case Sender::Tool:
-      elem = RenderToolCallMessage(message);
-      break;
-    default:
-      elem = ftxui::text("Unknown sender");
-      break;
-  }
+  const ftxui::Element elem = SenderSwitch(
+      message.sender, [&] { return RenderUserMessage(message); },
+      [&] { return RenderAgentMessage(message); },
+      [&] { return RenderToolCallMessage(message); },
+      [] { return ftxui::text("Unknown Sender"); });
 
   if (message.sender == Sender::Tool) {
     return elem;
@@ -96,9 +86,10 @@ ftxui::Element MessageRenderer::RenderHeader(
     Sender sender, const std::string& label,
     std::chrono::system_clock::time_point created_at,
     util::RelativeTimeCache& cache) {
-  const auto& color = (sender == Sender::User)    ? k_theme.role.user
-                      : (sender == Sender::Agent) ? k_theme.role.agent
-                                                  : k_theme.tool.icon_fg;
+  const auto& color = SenderSwitch(
+      sender, [&]() -> const auto& { return k_theme.role.user; },
+      [&]() -> const auto& { return k_theme.role.agent; },
+      [&]() -> const auto& { return k_theme.tool.icon_fg; });
 
   char initial = label.empty() ? '?' : label[0];
   ftxui::Elements parts;

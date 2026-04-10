@@ -105,6 +105,12 @@ TEST_CASE("Render agent message falls back to parsing without cache") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Fallback"));
 }
 
+TEST_CASE("Render unknown sender message uses fallback text") {
+  Message msg{static_cast<Sender>(99), "test"};
+  auto output = RenderMessageToString(msg);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Unknown Sender"));
+}
+
 TEST_CASE("RenderHeader shows bracket-initial role indicator for user") {
   Message msg{Sender::User, "test"};
   auto output = StripAnsi(RenderMessageToString(msg));

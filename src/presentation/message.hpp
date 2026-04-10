@@ -7,6 +7,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <ftxui/dom/elements.hpp>
@@ -30,5 +31,36 @@ struct Message {
 
   [[nodiscard]] std::string DisplayLabel() const;
 };
+
+template <typename UserFn, typename AgentFn, typename ToolFn,
+          typename DefaultFn>
+decltype(auto) SenderSwitch(Sender sender, UserFn&& when_user,
+                            AgentFn&& when_agent, ToolFn&& when_tool,
+                            DefaultFn&& default_value) {
+  switch (sender) {
+    case Sender::User:
+      return std::forward<UserFn>(when_user)();
+    case Sender::Agent:
+      return std::forward<AgentFn>(when_agent)();
+    case Sender::Tool:
+      return std::forward<ToolFn>(when_tool)();
+    default:
+      return std::forward<DefaultFn>(default_value)();
+  }
+}
+
+template <typename UserFn, typename AgentFn, typename ToolFn>
+decltype(auto) SenderSwitch(Sender sender, UserFn&& when_user,
+                            AgentFn&& when_agent, ToolFn&& when_tool) {
+  switch (sender) {
+    case Sender::User:
+      return std::forward<UserFn>(when_user)();
+    case Sender::Agent:
+      return std::forward<AgentFn>(when_agent)();
+    case Sender::Tool:
+    default:
+      return std::forward<ToolFn>(when_tool)();
+  }
+}
 
 }  // namespace yac::presentation
