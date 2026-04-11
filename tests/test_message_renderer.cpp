@@ -93,14 +93,15 @@ TEST_CASE("Render user message with custom label") {
 
 TEST_CASE("Render agent message uses cached_blocks when available") {
   Message msg{Sender::Agent, "# Cached"};
-  msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
+  msg.render_cache.markdown_blocks =
+      markdown::MarkdownParser::Parse(msg.Text());
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Cached"));
 }
 
 TEST_CASE("Render agent message falls back to parsing without cache") {
   Message msg{Sender::Agent, "# Fallback"};
-  REQUIRE_FALSE(msg.cached_blocks.has_value());
+  REQUIRE_FALSE(msg.render_cache.markdown_blocks.has_value());
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Fallback"));
 }
@@ -145,11 +146,11 @@ TEST_CASE("RenderHeader hides timestamp for zero time_point") {
 
 TEST_CASE("Render populates cached_element after first call") {
   Message msg{Sender::User, "cache test"};
-  REQUIRE_FALSE(msg.cached_element.has_value());
-  REQUIRE(msg.cached_terminal_width == -1);
+  REQUIRE_FALSE(msg.render_cache.element.has_value());
+  REQUIRE(msg.render_cache.terminal_width == -1);
   auto elem = MessageRenderer::Render(msg, 80);
-  REQUIRE(msg.cached_element.has_value());
-  REQUIRE(msg.cached_terminal_width == 80);
+  REQUIRE(msg.render_cache.element.has_value());
+  REQUIRE(msg.render_cache.terminal_width == 80);
 }
 
 TEST_CASE("Render returns cached element on second call at same width") {
@@ -158,7 +159,7 @@ TEST_CASE("Render returns cached element on second call at same width") {
   auto elem2 = MessageRenderer::Render(msg, 80);
   REQUIRE(elem1 != nullptr);
   REQUIRE(elem2 != nullptr);
-  REQUIRE(msg.cached_terminal_width == 80);
+  REQUIRE(msg.render_cache.terminal_width == 80);
   ftxui::Screen screen1(80, 10);
   ftxui::Screen screen2(80, 10);
   ftxui::Render(screen1, elem1);
@@ -169,15 +170,16 @@ TEST_CASE("Render returns cached element on second call at same width") {
 TEST_CASE("Render invalidates cache when width changes") {
   Message msg{Sender::User, "resize test"};
   auto elem1 = MessageRenderer::Render(msg, 80);
-  REQUIRE(msg.cached_terminal_width == 80);
+  REQUIRE(msg.render_cache.terminal_width == 80);
   auto elem2 = MessageRenderer::Render(msg, 40);
-  REQUIRE(msg.cached_terminal_width == 40);
-  REQUIRE(msg.cached_element.has_value());
+  REQUIRE(msg.render_cache.terminal_width == 40);
+  REQUIRE(msg.render_cache.element.has_value());
 }
 
 TEST_CASE("Visual output identical with and without cache") {
   Message msg{Sender::Agent, "# Heading\n\nSome **bold** text"};
-  msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
+  msg.render_cache.markdown_blocks =
+      markdown::MarkdownParser::Parse(msg.Text());
   auto elem1 = MessageRenderer::Render(msg, 80);
   ftxui::Screen screen1(80, 20);
   ftxui::Render(screen1, elem1);

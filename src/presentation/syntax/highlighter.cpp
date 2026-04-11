@@ -7,14 +7,13 @@
 #include <array>
 #include <cctype>
 #include <unordered_set>
+#include <vector>
 
 namespace yac::presentation::syntax {
 
 namespace {
 
 using util::SplitLines;
-
-inline const auto& k_theme = theme::Theme::Instance();
 
 struct LanguageDef {
   std::string name;
@@ -106,7 +105,7 @@ bool IsKeyword(std::string_view word, const LanguageDef& lang) {
 
 bool IsType(std::string_view word, const LanguageDef& lang) {
   auto lower = ToLower(word);
-  return lang.keywords.contains(lower);
+  return lang.types.contains(lower);
 }
 
 bool IsComment(std::string_view line, const LanguageDef& lang) {
@@ -143,35 +142,36 @@ bool IsNumber(std::string_view token) {
   return true;
 }
 
-void EmitToken(std::string& current, ftxui::Elements& segments,
+TokenKind ClassifyToken(std::string_view token, const LanguageDef& lang) {
+  if (IsKeyword(token, lang)) {
+    return TokenKind::Keyword;
+  }
+  if (IsType(token, lang)) {
+    return TokenKind::Type;
+  }
+  if (IsNumber(token)) {
+    return TokenKind::Number;
+  }
+  return TokenKind::Plain;
+}
+
+void EmitToken(std::string& current, std::vector<TokenSpan>& spans,
                const LanguageDef& lang) {
   if (current.empty()) {
     return;
   }
 
-  if (IsKeyword(current, lang)) {
-    segments.push_back(ftxui::text(current) |
-                       ftxui::color(k_theme.syntax.keyword) | ftxui::bold);
-  } else if (IsType(current, lang)) {
-    segments.push_back(ftxui::text(current) |
-                       ftxui::color(k_theme.syntax.type));
-  } else if (IsNumber(current)) {
-    segments.push_back(ftxui::text(current) |
-                       ftxui::color(k_theme.syntax.number));
-  } else {
-    segments.push_back(ftxui::text(current));
-  }
+  spans.push_back(TokenSpan{ClassifyToken(current, lang), current});
   current.clear();
 }
 
-ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
-  using namespace ftxui;
-
+std::vector<TokenSpan> TokenizeLineWithDef(std::string_view line,
+                                           const LanguageDef& lang) {
   if (IsComment(line, lang)) {
-    return text(std::string(line)) | color(k_theme.syntax.comment);
+    return {{TokenKind::Comment, std::string(line)}};
   }
 
-  Elements segments;
+  std::vector<TokenSpan> spans;
   std::string current;
   bool in_string = false;
   char string_char = 0;
@@ -182,7 +182,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     if (in_string) {
       current += c;
       if (c == string_char && (i == 0 || line[i - 1] != '\\')) {
-        segments.push_back(text(current) | color(k_theme.syntax.string));
+        spans.push_back(TokenSpan{TokenKind::String, current});
         current.clear();
         in_string = false;
       }
@@ -190,7 +190,7 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     }
 
     if (c == '"' || c == '\'') {
-      EmitToken(current, segments, lang);
+      EmitToken(current, spans, lang);
       in_string = true;
       string_char = c;
       current += c;
@@ -198,33 +198,78 @@ ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang) {
     }
 
     if (c == ' ' || c == '\t' || !IsIdentifierChar(c)) {
-      EmitToken(current, segments, lang);
-      segments.push_back(text(std::string(1, c)));
+      EmitToken(current, spans, lang);
+      spans.push_back(TokenSpan{TokenKind::Plain, std::string(1, c)});
       continue;
     }
 
     current += c;
   }
 
-  EmitToken(current, segments, lang);
-
-  return hbox(segments);
+  EmitToken(current, spans, lang);
+  return spans;
 }
 
-ftxui::Element HighlightWithDef(std::string_view code,
-                                const LanguageDef& lang) {
+ftxui::Element RenderToken(const TokenSpan& span,
+                           const RenderContext& context) {
+  const auto& theme = context.Colors();
+  auto element = ftxui::text(span.text);
+  switch (span.kind) {
+    case TokenKind::Keyword:
+      return element | ftxui::color(theme.syntax.keyword) | ftxui::bold;
+    case TokenKind::Type:
+      return element | ftxui::color(theme.syntax.type);
+    case TokenKind::Number:
+      return element | ftxui::color(theme.syntax.number);
+    case TokenKind::String:
+      return element | ftxui::color(theme.syntax.string);
+    case TokenKind::Comment:
+      return element | ftxui::color(theme.syntax.comment);
+    case TokenKind::Plain:
+      return element;
+  }
+  return element;
+}
+
+ftxui::Element HighlightLine(std::string_view line, const LanguageDef& lang,
+                             const RenderContext& context) {
+  ftxui::Elements segments;
+  for (const auto& span : TokenizeLineWithDef(line, lang)) {
+    segments.push_back(RenderToken(span, context));
+  }
+
+  return ftxui::hbox(segments);
+}
+
+ftxui::Element HighlightWithDef(std::string_view code, const LanguageDef& lang,
+                                const RenderContext& context) {
   auto lines = SplitLines(code);
   ftxui::Elements line_elements;
   for (const auto& line : lines) {
-    line_elements.push_back(HighlightLine(line, lang));
+    line_elements.push_back(HighlightLine(line, lang, context));
   }
   return ftxui::vbox(line_elements);
 }
 
 }  // namespace
 
+std::vector<TokenSpan> SyntaxHighlighter::TokenizeLine(
+    std::string_view line, std::string_view language) {
+  const auto* lang = FindLanguage(language);
+  if (lang == nullptr) {
+    return {{TokenKind::Plain, std::string(line)}};
+  }
+  return TokenizeLineWithDef(line, *lang);
+}
+
 ftxui::Element SyntaxHighlighter::Highlight(std::string_view code,
                                             std::string_view language) {
+  return Highlight(code, language, RenderContext{});
+}
+
+ftxui::Element SyntaxHighlighter::Highlight(std::string_view code,
+                                            std::string_view language,
+                                            const RenderContext& context) {
   const auto* lang = FindLanguage(language);
   if (lang == nullptr) {
     auto lines = SplitLines(code);
@@ -234,7 +279,7 @@ ftxui::Element SyntaxHighlighter::Highlight(std::string_view code,
     }
     return ftxui::vbox(line_elements);
   }
-  return HighlightWithDef(code, *lang);
+  return HighlightWithDef(code, *lang, context);
 }
 
 }  // namespace yac::presentation::syntax

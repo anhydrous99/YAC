@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../render_context.hpp"
 #include "types.hpp"
 
 #include <ftxui/dom/elements.hpp>
@@ -11,16 +12,24 @@ class ToolCallRenderer {
   ToolCallRenderer() = default;
 
   [[nodiscard]] static ftxui::Element Render(const ToolCallBlock& block);
+  [[nodiscard]] static ftxui::Element Render(const ToolCallBlock& block,
+                                             const RenderContext& context);
 
  private:
-  [[nodiscard]] static ftxui::Element RenderBash(const BashCall& call);
-  [[nodiscard]] static ftxui::Element RenderFileEdit(const FileEditCall& call);
-  [[nodiscard]] static ftxui::Element RenderFileRead(const FileReadCall& call);
-  [[nodiscard]] static ftxui::Element RenderGrep(const GrepCall& call);
-  [[nodiscard]] static ftxui::Element RenderGlob(const GlobCall& call);
-  [[nodiscard]] static ftxui::Element RenderWebFetch(const WebFetchCall& call);
+  [[nodiscard]] static ftxui::Element RenderBash(const BashCall& call,
+                                                 const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderFileEdit(
+      const FileEditCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderFileRead(
+      const FileReadCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderGrep(const GrepCall& call,
+                                                 const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderGlob(const GlobCall& call,
+                                                 const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderWebFetch(
+      const WebFetchCall& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderWebSearch(
-      const WebSearchCall& call);
+      const WebSearchCall& call, const RenderContext& context);
 };
 
 }  // namespace yac::presentation::tool_call

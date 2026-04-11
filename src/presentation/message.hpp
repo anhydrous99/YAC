@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <ftxui/dom/elements.hpp>
@@ -16,19 +17,44 @@ namespace yac::presentation {
 
 enum class Sender { User, Agent, Tool };
 
+struct TextContent {
+  std::string text;
+};
+
+struct ToolContent {
+  tool_call::ToolCallBlock block;
+};
+
+using MessageContent = std::variant<TextContent, ToolContent>;
+
+struct MessageRenderCache {
+  std::optional<std::vector<markdown::BlockNode>> markdown_blocks;
+  util::RelativeTimeCache relative_time;
+  std::optional<ftxui::Element> element;
+  int terminal_width = -1;
+
+  void ResetElement();
+};
+
 struct Message {
   Sender sender = Sender::User;
-  std::string content;
+  MessageContent body = TextContent{};
   std::string role_label;
   std::string timestamp;
-  std::optional<std::vector<markdown::BlockNode>> cached_blocks;
-  std::optional<tool_call::ToolCallBlock> tool_call;
-  mutable util::RelativeTimeCache cached_relative_time;
-  mutable std::optional<ftxui::Element> cached_element;
-  mutable int cached_terminal_width = -1;
+  mutable MessageRenderCache render_cache;
   std::chrono::system_clock::time_point created_at =
       std::chrono::system_clock::now();
 
+  Message() = default;
+  Message(Sender sender, std::string content, std::string role_label = "",
+          std::string timestamp = "");
+
+  [[nodiscard]] static Message Tool(tool_call::ToolCallBlock block);
+
+  [[nodiscard]] const std::string& Text() const;
+  [[nodiscard]] std::string& Text();
+  [[nodiscard]] const tool_call::ToolCallBlock* ToolCall() const;
+  [[nodiscard]] tool_call::ToolCallBlock* ToolCall();
   [[nodiscard]] std::string DisplayLabel() const;
 };
 

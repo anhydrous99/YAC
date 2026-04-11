@@ -5,6 +5,20 @@
 
 using namespace yac::presentation::syntax;
 
+namespace {
+
+TokenKind KindForText(const std::vector<TokenSpan>& spans,
+                      std::string_view text) {
+  for (const auto& span : spans) {
+    if (span.text == text) {
+      return span.kind;
+    }
+  }
+  return TokenKind::Plain;
+}
+
+}  // namespace
+
 TEST_CASE("Highlight returns a non-null element") {
   auto elem = SyntaxHighlighter::Highlight("int x = 0;", "cpp");
   REQUIRE(elem != nullptr);
@@ -131,4 +145,28 @@ TEST_CASE("Highlight with case-insensitive language name") {
   ftxui::Screen screen2(80, 2);
   ftxui::Render(screen2, elem2);
   REQUIRE(screen1.ToString() == screen2.ToString());
+}
+
+TEST_CASE("TokenizeLine classifies keywords, types, and numbers") {
+  auto spans = SyntaxHighlighter::TokenizeLine("let s: String = 42;", "rust");
+
+  REQUIRE(KindForText(spans, "let") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "String") == TokenKind::Type);
+  REQUIRE(KindForText(spans, "42") == TokenKind::Number);
+}
+
+TEST_CASE("TokenizeLine classifies JavaScript built-in types") {
+  auto spans =
+      SyntaxHighlighter::TokenizeLine("const m = new Map();", "javascript");
+
+  REQUIRE(KindForText(spans, "const") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "Map") == TokenKind::Type);
+}
+
+TEST_CASE("TokenizeLine falls back to plain tokens for unknown languages") {
+  auto spans = SyntaxHighlighter::TokenizeLine("some code here", "unknown");
+
+  REQUIRE(spans.size() == 1);
+  REQUIRE(spans[0].kind == TokenKind::Plain);
+  REQUIRE(spans[0].text == "some code here");
 }

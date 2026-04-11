@@ -1,6 +1,8 @@
 #pragma once
 
+#include "chat_session.hpp"
 #include "command_palette.hpp"
+#include "composer_state.hpp"
 #include "ftxui/component/captured_mouse.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
@@ -9,7 +11,6 @@
 #include "message_renderer.hpp"
 
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -51,11 +52,9 @@ class ChatUI {
   [[nodiscard]] int MaxScrollOffset() const;
   void ClampScrollOffset();
 
-  std::vector<Message> messages_;
+  ChatSession session_;
   std::vector<ftxui::Component> message_components_;
-  std::vector<std::unique_ptr<bool>> tool_expanded_states_;
-  std::string input_content_;
-  int input_cursor_ = 0;
+  ComposerState composer_;
   OnSendCallback on_send_;
   bool is_typing_ = false;
   bool show_command_palette_ = false;

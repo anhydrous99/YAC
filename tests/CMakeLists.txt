@@ -8,6 +8,8 @@ endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
 yac_add_test(yac_test_tool_call_types  test_tool_call_types.cpp)
+yac_add_test(yac_test_chat_session     test_chat_session.cpp)
+yac_add_test(yac_test_composer_state   test_composer_state.cpp)
 yac_add_test(yac_test_parser           test_parser.cpp)
 yac_add_test(yac_test_highlighter      test_highlighter.cpp)
 yac_add_test(yac_test_renderer         test_renderer.cpp)

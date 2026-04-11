@@ -10,12 +10,10 @@
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
-#include "markdown/parser.hpp"
 #include "theme.hpp"
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
-#include <numeric>
 #include <utility>
 
 namespace yac::presentation {
@@ -96,12 +94,6 @@ bool IsEnd(const ftxui::Event& event) {
   return seq == "\x1b[F" || seq == "\x1b[4~" || seq == "\x1bOF";
 }
 
-int CountNewlines(const std::string& text) {
-  return static_cast<int>(std::accumulate(
-      text.begin(), text.end(), 0,
-      [](int count, char ch) { return count + static_cast<int>(ch == '\n'); }));
-}
-
 }  // namespace
 
 ChatUI::ChatUI() : on_send_([](const std::string&) {}) {}
@@ -120,9 +112,10 @@ ftxui::Component ChatUI::Build() {
       footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
                                 ftxui::color(k_theme.role.agent) | ftxui::bold);
     }
-    if (!messages_.empty()) {
-      auto count_label = "  [" + std::to_string(messages_.size()) + " message" +
-                         (messages_.size() > 1 ? "s" : "") + "]";
+    if (!session_.Empty()) {
+      auto count_label = "  [" + std::to_string(session_.MessageCount()) +
+                         " message" + (session_.MessageCount() > 1 ? "s" : "") +
+                         "]";
       footer_elements.push_back(ftxui::filler());
       footer_elements.push_back(ftxui::text(count_label) |
                                 ftxui::color(k_theme.chrome.dim_text) |
@@ -173,11 +166,7 @@ ftxui::Component ChatUI::Build() {
 }
 
 void ChatUI::AddMessage(Sender sender, std::string content) {
-  Message msg{sender, std::move(content)};
-  if (sender == Sender::Agent) {
-    msg.cached_blocks = markdown::MarkdownParser::Parse(msg.content);
-  }
-  messages_.push_back(std::move(msg));
+  session_.AddMessage(sender, std::move(content));
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -185,11 +174,7 @@ void ChatUI::AddMessage(Sender sender, std::string content) {
 
 void ChatUI::AddToolCallMessage(
     ::yac::presentation::tool_call::ToolCallBlock block) {
-  Message msg;
-  msg.sender = Sender::Tool;
-  msg.tool_call = std::move(block);
-  messages_.push_back(std::move(msg));
-  tool_expanded_states_.push_back(std::make_unique<bool>(true));
+  session_.AddToolCallMessage(std::move(block));
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -204,15 +189,11 @@ void ChatUI::SetTyping(bool typing) {
 }
 
 void ChatUI::SetToolExpanded(size_t index, bool expanded) {
-  if (index >= tool_expanded_states_.size()) {
-    return;
-  }
-
-  *tool_expanded_states_[index] = expanded;
+  session_.SetToolExpanded(index, expanded);
 }
 
 const std::vector<Message>& ChatUI::GetMessages() const {
-  return messages_;
+  return session_.Messages();
 }
 
 bool ChatUI::IsTyping() const {
@@ -220,13 +201,11 @@ bool ChatUI::IsTyping() const {
 }
 
 void ChatUI::SubmitMessage() {
-  if (input_content_.empty()) {
+  if (composer_.Empty()) {
     return;
   }
-  AddMessage(Sender::User, input_content_);
-  std::string sent = input_content_;
-  input_content_.clear();
-  input_cursor_ = 0;
+  std::string sent = composer_.Submit();
+  AddMessage(Sender::User, sent);
   on_send_(sent);
 }
 
@@ -234,7 +213,7 @@ ftxui::Component ChatUI::BuildInput() {
   ftxui::InputOption option;
   option.multiline = true;
   option.placeholder = "Type a message...";
-  option.cursor_position = &input_cursor_;
+  option.cursor_position = composer_.CursorPosition();
   option.transform = [](ftxui::InputState state) {
     state.element |= ftxui::color(k_theme.chrome.body_text);
     if (state.is_placeholder) {
@@ -246,7 +225,7 @@ ftxui::Component ChatUI::BuildInput() {
     return state.element;
   };
 
-  auto input = ftxui::Input(&input_content_, option);
+  auto input = ftxui::Input(&composer_.Content(), option);
 
   return ftxui::CatchEvent(input, [this](const ftxui::Event& event) {
     return HandleInputEvent(event);
@@ -254,16 +233,11 @@ ftxui::Component ChatUI::BuildInput() {
 }
 
 int ChatUI::CalculateInputHeight() const {
-  if (input_content_.empty()) {
-    return 1;
-  }
-  int lines = CountNewlines(input_content_) + 1;
-  return std::min(lines, kMaxInputLines);
+  return composer_.CalculateHeight(kMaxInputLines);
 }
 
 void ChatUI::InsertNewline() {
-  input_content_.insert(static_cast<size_t>(input_cursor_), "\n");
-  ++input_cursor_;
+  composer_.InsertNewline();
 }
 
 bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
@@ -430,7 +404,7 @@ ftxui::Component ChatUI::BuildMessageList() {
 }
 
 ftxui::Element ChatUI::RenderMessages() const {
-  if (messages_.empty() && !is_typing_) {
+  if (session_.Empty() && !is_typing_) {
     auto hint = ftxui::vbox({
         ftxui::text("  // No messages yet") |
             ftxui::color(k_theme.syntax.comment),
@@ -444,61 +418,57 @@ ftxui::Element ChatUI::RenderMessages() const {
 
   int current_width = ftxui::Terminal::Size().dimx;
   if (current_width != last_terminal_width_) {
-    for (const auto& msg : messages_) {
+    for (const auto& msg : session_.Messages()) {
       if (msg.sender != Sender::Tool) {
-        msg.cached_element = std::nullopt;
-        msg.cached_terminal_width = -1;
+        msg.render_cache.ResetElement();
       }
     }
     last_terminal_width_ = current_width;
   }
 
-  return MessageRenderer::RenderAll(messages_, current_width);
+  return MessageRenderer::RenderAll(
+      session_.Messages(), RenderContext{.terminal_width = current_width});
 }
 
 void ChatUI::SyncMessageComponents() {
   int current_width = ftxui::Terminal::Size().dimx;
   if (current_width != last_terminal_width_) {
-    for (const auto& msg : messages_) {
+    for (const auto& msg : session_.Messages()) {
       if (msg.sender != Sender::Tool) {
-        msg.cached_element = std::nullopt;
-        msg.cached_terminal_width = -1;
+        msg.render_cache.ResetElement();
       }
     }
     last_terminal_width_ = current_width;
   }
 
-  size_t tool_index = 0;
-  for (const auto& message : messages_) {
-    if (message.sender == Sender::Tool) {
-      ++tool_index;
-    }
-  }
-
-  while (tool_expanded_states_.size() < tool_index) {
-    tool_expanded_states_.push_back(std::make_unique<bool>(false));
-  }
-
-  while (message_components_.size() < messages_.size()) {
+  const auto& messages = session_.Messages();
+  while (message_components_.size() < messages.size()) {
     const auto index = message_components_.size();
-    if (messages_[index].sender == Sender::Tool) {
+    if (messages[index].sender == Sender::Tool) {
       size_t current_tool_index = 0;
       for (size_t i = 0; i <= index; ++i) {
-        if (messages_[i].sender == Sender::Tool) {
+        if (messages[i].sender == Sender::Tool) {
           current_tool_index = current_tool_index + 1;
         }
       }
       auto content = ftxui::Renderer([this, index] {
-        return tool_call::ToolCallRenderer::Render(*messages_[index].tool_call);
+        const auto* tool_call = session_.Messages()[index].ToolCall();
+        if (tool_call == nullptr) {
+          return ftxui::text("Tool call unavailable");
+        }
+        return tool_call::ToolCallRenderer::Render(
+            *tool_call, RenderContext{.terminal_width = last_terminal_width_});
       });
       message_components_.push_back(
-          Collapsible(messages_[index].DisplayLabel(), std::move(content),
-                      tool_expanded_states_[current_tool_index - 1].get()));
+          Collapsible(messages[index].DisplayLabel(), std::move(content),
+                      session_.ToolExpandedState(current_tool_index - 1)));
       continue;
     }
 
     message_components_.push_back(ftxui::Renderer([this, index] {
-      return MessageRenderer::Render(messages_[index], last_terminal_width_);
+      return MessageRenderer::Render(
+          session_.Messages()[index],
+          RenderContext{.terminal_width = last_terminal_width_});
     }));
   }
 }

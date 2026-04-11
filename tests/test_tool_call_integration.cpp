@@ -46,9 +46,7 @@ size_t CountOccurrences(const std::string& haystack,
 }  // namespace
 
 TEST_CASE("MessageRenderer renders tool call message with bash label") {
-  Message message;
-  message.sender = Sender::Tool;
-  message.tool_call = BashCall{"ls", "main.cpp", 0, false};
+  auto message = Message::Tool(BashCall{"ls", "main.cpp", 0, false});
 
   auto output = RenderElement(MessageRenderer::Render(message, 80));
 
@@ -58,9 +56,7 @@ TEST_CASE("MessageRenderer renders tool call message with bash label") {
 TEST_CASE(
     "MessageRenderer RenderAll includes tool messages alongside other "
     "messages") {
-  Message tool_message;
-  tool_message.sender = Sender::Tool;
-  tool_message.tool_call = BashCall{"pwd", "/tmp/project", 0, false};
+  auto tool_message = Message::Tool(BashCall{"pwd", "/tmp/project", 0, false});
 
   std::vector<Message> messages = {
       {Sender::User, "hello from user"},

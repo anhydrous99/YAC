@@ -52,7 +52,7 @@ TEST_CASE("Constructor with callback stores it") {
   SECTION("Callback fires on submit") {
     ui.AddMessage(Sender::User, "hello");
     REQUIRE(ui.GetMessages().size() == 1);
-    REQUIRE(ui.GetMessages()[0].content == "hello");
+    REQUIRE(ui.GetMessages()[0].Text() == "hello");
     REQUIRE(ui.GetMessages()[0].sender == Sender::User);
   }
 }
@@ -66,11 +66,11 @@ TEST_CASE("AddMessage appends to message list") {
   const auto& msgs = ui.GetMessages();
   REQUIRE(msgs.size() == 3);
   REQUIRE(msgs[0].sender == Sender::User);
-  REQUIRE(msgs[0].content == "first");
+  REQUIRE(msgs[0].Text() == "first");
   REQUIRE(msgs[1].sender == Sender::Agent);
-  REQUIRE(msgs[1].content == "second");
+  REQUIRE(msgs[1].Text() == "second");
   REQUIRE(msgs[2].sender == Sender::User);
-  REQUIRE(msgs[2].content == "third");
+  REQUIRE(msgs[2].Text() == "third");
 }
 
 TEST_CASE("AddMessage pre-parses markdown for agent messages") {
@@ -78,9 +78,9 @@ TEST_CASE("AddMessage pre-parses markdown for agent messages") {
   ui.AddMessage(Sender::Agent, "# Hello\n\nSome **bold** text");
 
   const auto& msg = ui.GetMessages()[0];
-  REQUIRE(msg.cached_blocks.has_value());
-  const auto& blocks =
-      msg.cached_blocks.value();  // NOLINT(bugprone-unchecked-optional-access)
+  REQUIRE(msg.render_cache.markdown_blocks.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  const auto& blocks = msg.render_cache.markdown_blocks.value();
   REQUIRE_FALSE(blocks.empty());
 }
 
@@ -89,7 +89,7 @@ TEST_CASE("AddMessage does not cache blocks for user messages") {
   ui.AddMessage(Sender::User, "plain text");
 
   const auto& msg = ui.GetMessages()[0];
-  REQUIRE_FALSE(msg.cached_blocks.has_value());
+  REQUIRE_FALSE(msg.render_cache.markdown_blocks.has_value());
 }
 
 TEST_CASE("Build returns a non-null component") {

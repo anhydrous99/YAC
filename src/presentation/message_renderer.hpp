@@ -3,6 +3,7 @@
 #include "markdown/parser.hpp"
 #include "markdown/renderer.hpp"
 #include "message.hpp"
+#include "render_context.hpp"
 #include "tool_call/renderer.hpp"
 
 #include <chrono>
@@ -20,20 +21,25 @@ class MessageRenderer {
 
   [[nodiscard]] static ftxui::Element Render(const Message& message,
                                              int current_width);
+  [[nodiscard]] static ftxui::Element Render(const Message& message,
+                                             const RenderContext& context);
 
   [[nodiscard]] static ftxui::Element RenderAll(
       const std::vector<Message>& messages, int current_width);
+  [[nodiscard]] static ftxui::Element RenderAll(
+      const std::vector<Message>& messages, const RenderContext& context);
 
  private:
-  [[nodiscard]] static ftxui::Element RenderUserMessage(const Message& message);
+  [[nodiscard]] static ftxui::Element RenderUserMessage(
+      const Message& message, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderAgentMessage(
-      const Message& message);
+      const Message& message, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderToolCallMessage(
-      const Message& message);
+      const Message& message, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderHeader(
       Sender sender, const std::string& label,
       std::chrono::system_clock::time_point created_at,
-      util::RelativeTimeCache& cache);
+      util::RelativeTimeCache& cache, const RenderContext& context);
 };
 
 }  // namespace yac::presentation

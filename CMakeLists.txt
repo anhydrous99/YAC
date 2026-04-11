@@ -22,7 +22,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Catch2)
 
 add_library(yac_presentation STATIC
+  src/presentation/chat_session.cpp
   src/presentation/chat_ui.cpp
+  src/presentation/composer_state.cpp
   src/presentation/command_palette.cpp
   src/presentation/collapsible.cpp
   src/presentation/dialog.cpp
@@ -55,7 +57,8 @@ add_custom_target(format
 )
 
 add_custom_target(lint
-  COMMAND clang-tidy -p ${CMAKE_BINARY_DIR} -header-filter='^(src|tests)/' ${ALL_SOURCES}
+  COMMAND clang-tidy -p ${CMAKE_BINARY_DIR} "-header-filter=^(src|tests)/" ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Running clang-tidy checks"
+  VERBATIM
 )
