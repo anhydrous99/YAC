@@ -50,7 +50,13 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
   if (!idx.has_value()) {
     return;
   }
-  messages_[*idx].status = status;
+
+  auto& message = messages_[*idx];
+  if (message.status == status) {
+    return;
+  }
+  message.status = status;
+  message.render_cache.ResetElement();
 }
 
 void ChatSession::SetToolExpanded(size_t index, bool expanded) {

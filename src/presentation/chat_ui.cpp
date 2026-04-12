@@ -3,6 +3,7 @@
 #include "collapsible.hpp"
 #include "command_palette.hpp"
 #include "dialog.hpp"
+#include "ftxui/component/animation.hpp"
 #include "ftxui/component/app.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
@@ -14,6 +15,8 @@
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <functional>
 #include <utility>
 
 namespace yac::presentation {
@@ -52,6 +55,47 @@ class DynamicMessageStack : public ftxui::ComponentBase {
   }
 
   std::function<ftxui::Components()> get_children_;
+};
+
+class ThinkingAnimationDriver : public ftxui::ComponentBase {
+ public:
+  ThinkingAnimationDriver(ftxui::Component child,
+                          std::function<bool()> is_running,
+                          std::function<void()> advance_frame)
+      : is_running_(std::move(is_running)),
+        advance_frame_(std::move(advance_frame)) {
+    Add(std::move(child));
+  }
+
+  ftxui::Element OnRender() override {
+    if (is_running_()) {
+      ftxui::animation::RequestAnimationFrame();
+    }
+    return children_.front()->Render();
+  }
+
+  void OnAnimation(ftxui::animation::Params& params) override {
+    ComponentBase::OnAnimation(params);
+
+    if (!is_running_()) {
+      elapsed_ = ftxui::animation::Duration::zero();
+      return;
+    }
+
+    elapsed_ += params.duration();
+    const ftxui::animation::Duration frame_duration =
+        std::chrono::milliseconds(260);
+    while (elapsed_ >= frame_duration) {
+      advance_frame_();
+      elapsed_ -= frame_duration;
+    }
+    ftxui::animation::RequestAnimationFrame();
+  }
+
+ private:
+  std::function<bool()> is_running_;
+  std::function<void()> advance_frame_;
+  ftxui::animation::Duration elapsed_{};
 };
 
 bool IsAltEnter(const ftxui::Event& event) {
@@ -116,7 +160,8 @@ ftxui::Component ChatUI::Build() {
 
   auto main_ui = ftxui::Renderer(container, [this, message_list, input] {
     ftxui::Elements footer_elements;
-    if (is_typing_) {
+    const bool has_active_agent = HasActiveAgentMessage();
+    if (is_typing_ && !has_active_agent) {
       footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
                                 ftxui::color(k_theme.role.agent) | ftxui::bold);
     }
@@ -168,8 +213,11 @@ ftxui::Component ChatUI::Build() {
   auto palette = CommandPalette(commands_, on_select, &show_command_palette_);
   auto dialog = DialogPanel("Command Palette", palette, &show_command_palette_);
   auto modal = ftxui::Modal(main_ui, dialog, &show_command_palette_);
+  auto animated_modal = ftxui::Make<ThinkingAnimationDriver>(
+      modal, [this] { return HasActiveAgentMessage(); },
+      [this] { AdvanceThinkingFrame(); });
 
-  return ftxui::CatchEvent(modal, [this](const ftxui::Event& event) {
+  return ftxui::CatchEvent(animated_modal, [this](const ftxui::Event& event) {
     if (event.input() == "\x10") {
       show_command_palette_ = true;
       return true;
@@ -181,6 +229,9 @@ ftxui::Component ChatUI::Build() {
 MessageId ChatUI::AddMessage(Sender sender, std::string content,
                              MessageStatus status) {
   auto id = session_.AddMessage(sender, std::move(content), status);
+  if (sender == Sender::Agent && status == MessageStatus::Active) {
+    thinking_frame_ = 0;
+  }
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -189,6 +240,7 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
 
 MessageId ChatUI::StartAgentMessage() {
   auto id = session_.AddMessage(Sender::Agent, "", MessageStatus::Active);
+  thinking_frame_ = 0;
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -205,6 +257,9 @@ void ChatUI::AppendToAgentMessage(MessageId id, std::string delta) {
 }
 
 void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
+  if (status == MessageStatus::Active) {
+    thinking_frame_ = 0;
+  }
   session_.SetMessageStatus(id, status);
 }
 
@@ -473,7 +528,8 @@ ftxui::Element ChatUI::RenderMessages() const {
   }
 
   return MessageRenderer::RenderAll(
-      session_.Messages(), RenderContext{.terminal_width = current_width});
+      session_.Messages(), RenderContext{.terminal_width = current_width,
+                                         .thinking_frame = thinking_frame_});
 }
 
 void ChatUI::SyncMessageComponents() {
@@ -503,7 +559,8 @@ void ChatUI::SyncMessageComponents() {
           return ftxui::text("Tool call unavailable");
         }
         return tool_call::ToolCallRenderer::Render(
-            *tool_call, RenderContext{.terminal_width = last_terminal_width_});
+            *tool_call, RenderContext{.terminal_width = last_terminal_width_,
+                                      .thinking_frame = thinking_frame_});
       });
       message_components_.push_back(
           Collapsible(messages[index].DisplayLabel(), std::move(content),
@@ -514,7 +571,8 @@ void ChatUI::SyncMessageComponents() {
     message_components_.push_back(ftxui::Renderer([this, index] {
       return MessageRenderer::Render(
           session_.Messages()[index],
-          RenderContext{.terminal_width = last_terminal_width_});
+          RenderContext{.terminal_width = last_terminal_width_,
+                        .thinking_frame = thinking_frame_});
     }));
   }
 }
@@ -540,6 +598,18 @@ int ChatUI::ViewportHeight() const {
 
 int ChatUI::MaxScrollOffset() const {
   return util::CalculateMaxScrollOffset(content_height_, ViewportHeight());
+}
+
+bool ChatUI::HasActiveAgentMessage() const {
+  return std::any_of(session_.Messages().begin(), session_.Messages().end(),
+                     [](const Message& message) {
+                       return message.sender == Sender::Agent &&
+                              message.status == MessageStatus::Active;
+                     });
+}
+
+void ChatUI::AdvanceThinkingFrame() {
+  thinking_frame_ = (thinking_frame_ + 1) % 4;
 }
 
 void ChatUI::ClampScrollOffset() {

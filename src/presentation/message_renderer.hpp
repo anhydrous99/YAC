@@ -40,7 +40,7 @@ class MessageRenderer {
       Sender sender, const std::string& label,
       std::chrono::system_clock::time_point created_at,
       util::RelativeTimeCache& cache, const RenderContext& context,
-      bool is_error = false);
+      MessageStatus status = MessageStatus::Complete);
 };
 
 }  // namespace yac::presentation

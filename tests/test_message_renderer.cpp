@@ -14,8 +14,10 @@ using namespace yac::presentation;
 namespace {
 
 std::string RenderMessageToString(const Message& msg, int width = 80,
-                                  int height = 24) {
-  auto elem = MessageRenderer::Render(msg, 80);
+                                  int height = 24, int thinking_frame = 0) {
+  auto elem = MessageRenderer::Render(
+      msg,
+      RenderContext{.terminal_width = width, .thinking_frame = thinking_frame});
   ftxui::Screen screen(width, height);
   ftxui::Render(screen, elem);
   return screen.ToString();
@@ -50,6 +52,58 @@ TEST_CASE("Render agent message contains label") {
   Message msg{Sender::Agent, "test"};
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Assistant"));
+}
+
+TEST_CASE("Render active agent message shows thinking indicator") {
+  Message msg{Sender::Agent, ""};
+  msg.status = MessageStatus::Active;
+
+  auto output = StripAnsi(RenderMessageToString(msg));
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("thinking"));
+}
+
+TEST_CASE("Render active agent message animates thinking pulse") {
+  Message msg{Sender::Agent, ""};
+  msg.status = MessageStatus::Active;
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  auto first_frame = StripAnsi(RenderMessageToString(msg, 80, 24, 0));
+  auto third_frame = StripAnsi(RenderMessageToString(msg, 80, 24, 2));
+
+  REQUIRE_THAT(first_frame,
+               Catch::Matchers::ContainsSubstring("thinking \xC2\xB7"));
+  REQUIRE_THAT(third_frame,
+               Catch::Matchers::ContainsSubstring("thinking \xE2\x97\x8F"));
+  REQUIRE(first_frame != third_frame);
+}
+
+TEST_CASE("Render complete agent message hides thinking indicator") {
+  Message msg{Sender::Agent, "done"};
+  msg.status = MessageStatus::Complete;
+
+  auto output = StripAnsi(RenderMessageToString(msg));
+
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("thinking"));
+}
+
+TEST_CASE("Render active agent message with text shows stream cursor") {
+  Message msg{Sender::Agent, "partial"};
+  msg.status = MessageStatus::Active;
+
+  auto output = StripAnsi(RenderMessageToString(msg));
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
+}
+
+TEST_CASE("Render error agent message hides active indicator") {
+  Message msg{Sender::Agent, "failed"};
+  msg.status = MessageStatus::Error;
+
+  auto output = StripAnsi(RenderMessageToString(msg));
+
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("thinking"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
 }
 
 TEST_CASE("Render agent message with markdown") {

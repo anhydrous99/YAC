@@ -60,6 +60,8 @@ class ChatUI {
   [[nodiscard]] int PageLines() const;
   [[nodiscard]] int ViewportHeight() const;
   [[nodiscard]] int MaxScrollOffset() const;
+  [[nodiscard]] bool HasActiveAgentMessage() const;
+  void AdvanceThinkingFrame();
   void ClampScrollOffset();
 
   ChatSession session_;
@@ -80,6 +82,7 @@ class ChatUI {
   bool follow_tail_ = true;
   ftxui::CapturedMouse captured_mouse_;
   mutable int last_terminal_width_ = -1;
+  int thinking_frame_ = 0;
 };
 
 }  // namespace yac::presentation

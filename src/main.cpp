@@ -56,6 +56,7 @@ class EventBridge {
         if (it != agent_ids_.end()) {
           chat_ui_.AppendToAgentMessage(it->second, "Error: " + event.text);
           chat_ui_.SetMessageStatus(it->second, MessageStatus::Error);
+          agent_ids_.erase(it);
         } else {
           chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text,
                               MessageStatus::Error);
@@ -64,19 +65,26 @@ class EventBridge {
       }
 
       case ChatEventType::AssistantMessageDone:
+        chat_ui_.SetTyping(false);
+        (void)SetMappedAgentStatus(event.message_id, MessageStatus::Complete);
         break;
 
       case ChatEventType::Finished:
         chat_ui_.SetTyping(false);
+        (void)SetMappedAgentStatus(event.message_id, MessageStatus::Complete);
         break;
 
       case ChatEventType::Cancelled:
         chat_ui_.SetTyping(false);
-        chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
+        if (!SetMappedAgentStatus(event.message_id, MessageStatus::Cancelled)) {
+          chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
+        }
         break;
 
       case ChatEventType::MessageStatusChanged:
-        chat_ui_.SetMessageStatus(event.message_id, event.status);
+        if (!SetMappedAgentStatus(event.message_id, event.status)) {
+          chat_ui_.SetMessageStatus(event.message_id, event.status);
+        }
         break;
 
       case ChatEventType::ConversationCleared:
@@ -95,6 +103,26 @@ class EventBridge {
   }
 
  private:
+  bool SetMappedAgentStatus(yac::chat::ChatMessageId service_message_id,
+                            yac::presentation::MessageStatus status) {
+    auto it = agent_ids_.find(service_message_id);
+    if (it == agent_ids_.end()) {
+      return false;
+    }
+
+    chat_ui_.SetMessageStatus(it->second, status);
+    if (IsTerminalStatus(status)) {
+      agent_ids_.erase(it);
+    }
+    return true;
+  }
+
+  static bool IsTerminalStatus(yac::presentation::MessageStatus status) {
+    using yac::presentation::MessageStatus;
+    return status == MessageStatus::Complete ||
+           status == MessageStatus::Cancelled || status == MessageStatus::Error;
+  }
+
   yac::presentation::ChatUI& chat_ui_;
   yac::chat::ChatService& chat_service_;
   std::unordered_map<yac::chat::ChatMessageId, yac::presentation::MessageId>

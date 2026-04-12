@@ -7,6 +7,23 @@
 
 namespace yac::presentation {
 
+namespace {
+
+const char* ThinkingPulseGlyph(int frame) {
+  switch (frame % 4) {
+    case 0:
+      return "\xC2\xB7";
+    case 1:
+    case 3:
+      return "\xE2\x80\xA2";
+    case 2:
+    default:
+      return "\xE2\x97\x8F";
+  }
+}
+
+}  // namespace
+
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        int current_width) {
   return Render(message, RenderContext{.terminal_width = current_width});
@@ -15,7 +32,10 @@ ftxui::Element MessageRenderer::Render(const Message& message,
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        const RenderContext& context) {
   int current_width = context.terminal_width;
-  if (message.sender != Sender::Tool && message.render_cache.element &&
+  const bool is_animated = message.sender == Sender::Agent &&
+                           message.status == MessageStatus::Active;
+  if (!is_animated && message.sender != Sender::Tool &&
+      message.render_cache.element &&
       message.render_cache.terminal_width == current_width) {
     return *message.render_cache.element;
   }
@@ -26,7 +46,7 @@ ftxui::Element MessageRenderer::Render(const Message& message,
       [&] { return RenderToolCallMessage(message, context); },
       [] { return ftxui::text("Unknown Sender"); });
 
-  if (message.sender == Sender::Tool) {
+  if (is_animated || message.sender == Sender::Tool) {
     return elem;
   }
 
@@ -54,7 +74,7 @@ ftxui::Element MessageRenderer::RenderUserMessage(
   const auto& theme = context.Colors();
   auto content = ftxui::vbox({
       RenderHeader(Sender::User, message.DisplayLabel(), message.created_at,
-                   message.render_cache.relative_time, context),
+                   message.render_cache.relative_time, context, message.status),
       ftxui::text(""),
       ftxui::hbox({ftxui::text("  "), ftxui::paragraph(message.Text()) |
                                           ftxui::color(theme.role.user) |
@@ -73,19 +93,30 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
     const Message& message, const RenderContext& context) {
   const auto& theme = context.Colors();
   const bool is_error = message.status == MessageStatus::Error;
+  const bool is_active = message.status == MessageStatus::Active;
   const auto& blocks = message.render_cache.markdown_blocks.value_or(
       markdown::MarkdownParser::Parse(message.Text()));
-  auto content = ftxui::vbox({
-      RenderHeader(Sender::Agent, message.DisplayLabel(), message.created_at,
-                   message.render_cache.relative_time, context, is_error),
-      ftxui::text(""),
-      markdown::MarkdownRenderer::Render(blocks, context),
-  });
+
+  ftxui::Elements rows;
+  rows.push_back(RenderHeader(
+      Sender::Agent, message.DisplayLabel(), message.created_at,
+      message.render_cache.relative_time, context, message.status));
+  rows.push_back(ftxui::text(""));
+  rows.push_back(markdown::MarkdownRenderer::Render(blocks, context));
+  if (is_active && !message.Text().empty()) {
+    rows.push_back(ftxui::hbox({
+        ftxui::text("  "),
+        ftxui::text("\xE2\x96\x8C") | ftxui::color(theme.role.agent) |
+            ftxui::dim,
+    }));
+  }
+
+  auto content = ftxui::vbox(std::move(rows));
 
   const auto& border_color =
       is_error ? theme.cards.error_border : theme.cards.agent_border;
-  return content | ftxui::bgcolor(theme.cards.agent_bg) |
-         ftxui::borderRounded | ftxui::color(border_color);
+  return content | ftxui::bgcolor(theme.cards.agent_bg) | ftxui::borderRounded |
+         ftxui::color(border_color) | ftxui::flex;
 }
 
 ftxui::Element MessageRenderer::RenderToolCallMessage(
@@ -102,11 +133,14 @@ ftxui::Element MessageRenderer::RenderHeader(
     Sender sender, const std::string& label,
     std::chrono::system_clock::time_point created_at,
     util::RelativeTimeCache& cache, const RenderContext& context,
-    bool is_error) {
+    MessageStatus status) {
   const auto& theme = context.Colors();
+  const bool is_error =
+      sender == Sender::Agent && status == MessageStatus::Error;
+  const bool is_active =
+      sender == Sender::Agent && status == MessageStatus::Active;
   const auto& color = SenderSwitch(
-      sender,
-      [&]() -> const auto& { return theme.role.user; },
+      sender, [&]() -> const auto& { return theme.role.user; },
       [&]() -> const auto& {
         return is_error ? theme.role.error : theme.role.agent;
       },
@@ -120,6 +154,13 @@ ftxui::Element MessageRenderer::RenderHeader(
   parts.push_back(ftxui::text("]") | ftxui::color(color));
   parts.push_back(ftxui::text(" "));
   parts.push_back(ftxui::text(label) | ftxui::bold | ftxui::color(color));
+
+  if (is_active) {
+    parts.push_back(ftxui::text(" \xC2\xB7 thinking ") |
+                    ftxui::color(theme.chrome.dim_text));
+    parts.push_back(ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
+                    ftxui::color(theme.role.agent) | ftxui::bold);
+  }
 
   if (created_at != std::chrono::system_clock::time_point{}) {
     auto rel_time = util::FormatRelativeTime(created_at, cache);

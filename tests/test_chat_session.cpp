@@ -1,4 +1,5 @@
 #include "presentation/chat_session.hpp"
+#include "presentation/message_renderer.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -67,4 +68,29 @@ TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
 
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].Text() == "existing");
+}
+
+TEST_CASE("ChatSession status changes invalidate rendered element cache") {
+  ChatSession session;
+
+  auto id = session.AddMessage(Sender::Agent, "hello");
+  (void)MessageRenderer::Render(session.Messages()[0], 80);
+
+  REQUIRE(session.Messages()[0].render_cache.element.has_value());
+
+  session.SetMessageStatus(id, MessageStatus::Active);
+
+  REQUIRE_FALSE(session.Messages()[0].render_cache.element.has_value());
+}
+
+TEST_CASE("ChatSession status changes preserve parsed markdown cache") {
+  ChatSession session;
+
+  auto id = session.AddMessage(Sender::Agent, "# hello", MessageStatus::Active);
+
+  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
+
+  session.SetMessageStatus(id, MessageStatus::Complete);
+
+  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
 }
