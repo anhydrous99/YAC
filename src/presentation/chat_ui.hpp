@@ -27,8 +27,10 @@ class ChatUI {
 
   [[nodiscard]] ftxui::Component Build();
 
+  void SetOnSend(OnSendCallback on_send);
   void AddMessage(Sender sender, std::string content);
   void AddToolCallMessage(::yac::presentation::tool_call::ToolCallBlock block);
+  void AppendToLastAgentMessage(std::string delta);
   void SetCommands(std::vector<Command> commands);
   void SetTyping(bool typing);
   void SetToolExpanded(size_t index, bool expanded);

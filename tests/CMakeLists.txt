@@ -2,7 +2,11 @@ include(Catch)
 
 function(yac_add_test name source)
   add_executable(${name} ${source})
-  target_link_libraries(${name} PRIVATE yac_presentation Catch2::Catch2WithMain)
+  target_link_libraries(${name} PRIVATE
+    yac_presentation
+    yac_service
+    Catch2::Catch2WithMain
+  )
   catch_discover_tests(${name})
 endfunction()
 
@@ -25,3 +29,5 @@ yac_add_test(yac_test_message_renderer test_message_renderer.cpp)
 yac_add_test(yac_test_tool_call_integration test_tool_call_integration.cpp)
 yac_add_test(yac_test_time_util        test_time_util.cpp)
 yac_add_test(yac_test_scroll_math      test_scroll_math.cpp)
+yac_add_test(yac_test_chat_service     test_chat_service.cpp)
+yac_add_test(yac_test_openai_chat_provider test_openai_chat_provider.cpp)

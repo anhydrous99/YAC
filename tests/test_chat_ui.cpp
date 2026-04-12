@@ -73,6 +73,18 @@ TEST_CASE("AddMessage appends to message list") {
   REQUIRE(msgs[2].Text() == "third");
 }
 
+TEST_CASE("AppendToLastAgentMessage appends streamed content") {
+  ChatUI ui;
+
+  ui.AppendToLastAgentMessage("partial");
+  ui.AppendToLastAgentMessage(" response");
+
+  const auto& msgs = ui.GetMessages();
+  REQUIRE(msgs.size() == 1);
+  REQUIRE(msgs[0].sender == Sender::Agent);
+  REQUIRE(msgs[0].Text() == "partial response");
+}
+
 TEST_CASE("AddMessage pre-parses markdown for agent messages") {
   ChatUI ui;
   ui.AddMessage(Sender::Agent, "# Hello\n\nSome **bold** text");

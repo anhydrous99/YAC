@@ -45,3 +45,26 @@ TEST_CASE("ChatSession updates tool expansion state") {
 
   REQUIRE_FALSE(*session.ToolExpandedState(0));
 }
+
+TEST_CASE("ChatSession appends streaming deltas to last agent message") {
+  ChatSession session;
+
+  session.AppendToLastAgentMessage("hello");
+  session.AppendToLastAgentMessage(" world");
+
+  REQUIRE(session.MessageCount() == 1);
+  REQUIRE(session.Messages()[0].sender == Sender::Agent);
+  REQUIRE(session.Messages()[0].Text() == "hello world");
+  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
+}
+
+TEST_CASE("ChatSession creates new agent message when last message is user") {
+  ChatSession session;
+  session.AddMessage(Sender::User, "prompt");
+
+  session.AppendToLastAgentMessage("response");
+
+  REQUIRE(session.MessageCount() == 2);
+  REQUIRE(session.Messages()[1].sender == Sender::Agent);
+  REQUIRE(session.Messages()[1].Text() == "response");
+}

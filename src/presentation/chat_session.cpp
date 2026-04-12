@@ -20,6 +20,22 @@ void ChatSession::AddToolCallMessage(tool_call::ToolCallBlock block) {
   tool_expanded_states_.push_back(std::make_unique<bool>(true));
 }
 
+void ChatSession::AppendToLastAgentMessage(std::string delta) {
+  if (delta.empty()) {
+    return;
+  }
+
+  if (messages_.empty() || messages_.back().sender != Sender::Agent) {
+    AddMessage(Sender::Agent, "");
+  }
+
+  auto& message = messages_.back();
+  message.Text() += delta;
+  message.render_cache.markdown_blocks =
+      markdown::MarkdownParser::Parse(message.Text());
+  message.render_cache.ResetElement();
+}
+
 void ChatSession::SetToolExpanded(size_t index, bool expanded) {
   if (index >= tool_expanded_states_.size()) {
     return;

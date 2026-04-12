@@ -12,6 +12,7 @@ class ChatSession {
  public:
   void AddMessage(Sender sender, std::string content);
   void AddToolCallMessage(tool_call::ToolCallBlock block);
+  void AppendToLastAgentMessage(std::string delta);
   void SetToolExpanded(size_t index, bool expanded);
 
   [[nodiscard]] const std::vector<Message>& Messages() const;

@@ -100,6 +100,10 @@ ChatUI::ChatUI() : on_send_([](const std::string&) {}) {}
 
 ChatUI::ChatUI(OnSendCallback on_send) : on_send_(std::move(on_send)) {}
 
+void ChatUI::SetOnSend(OnSendCallback on_send) {
+  on_send_ = std::move(on_send);
+}
+
 ftxui::Component ChatUI::Build() {
   auto message_list = BuildMessageList();
   auto input = BuildInput();
@@ -178,6 +182,14 @@ void ChatUI::AddToolCallMessage(
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
+}
+
+void ChatUI::AppendToLastAgentMessage(std::string delta) {
+  session_.AppendToLastAgentMessage(std::move(delta));
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
