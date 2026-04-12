@@ -55,8 +55,10 @@ class EventBridge {
         auto it = agent_ids_.find(event.message_id);
         if (it != agent_ids_.end()) {
           chat_ui_.AppendToAgentMessage(it->second, "Error: " + event.text);
+          chat_ui_.SetMessageStatus(it->second, MessageStatus::Error);
         } else {
-          chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text);
+          chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text,
+                              MessageStatus::Error);
         }
         break;
       }

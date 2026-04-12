@@ -72,17 +72,20 @@ ftxui::Element MessageRenderer::RenderUserMessage(
 ftxui::Element MessageRenderer::RenderAgentMessage(
     const Message& message, const RenderContext& context) {
   const auto& theme = context.Colors();
+  const bool is_error = message.status == MessageStatus::Error;
   const auto& blocks = message.render_cache.markdown_blocks.value_or(
       markdown::MarkdownParser::Parse(message.Text()));
   auto content = ftxui::vbox({
       RenderHeader(Sender::Agent, message.DisplayLabel(), message.created_at,
-                   message.render_cache.relative_time, context),
+                   message.render_cache.relative_time, context, is_error),
       ftxui::text(""),
       markdown::MarkdownRenderer::Render(blocks, context),
   });
 
-  return content | ftxui::bgcolor(theme.cards.agent_bg) | ftxui::borderRounded |
-         ftxui::color(theme.cards.agent_border);
+  const auto& border_color =
+      is_error ? theme.cards.error_border : theme.cards.agent_border;
+  return content | ftxui::bgcolor(theme.cards.agent_bg) |
+         ftxui::borderRounded | ftxui::color(border_color);
 }
 
 ftxui::Element MessageRenderer::RenderToolCallMessage(
@@ -98,11 +101,15 @@ ftxui::Element MessageRenderer::RenderToolCallMessage(
 ftxui::Element MessageRenderer::RenderHeader(
     Sender sender, const std::string& label,
     std::chrono::system_clock::time_point created_at,
-    util::RelativeTimeCache& cache, const RenderContext& context) {
+    util::RelativeTimeCache& cache, const RenderContext& context,
+    bool is_error) {
   const auto& theme = context.Colors();
   const auto& color = SenderSwitch(
-      sender, [&]() -> const auto& { return theme.role.user; },
-      [&]() -> const auto& { return theme.role.agent; },
+      sender,
+      [&]() -> const auto& { return theme.role.user; },
+      [&]() -> const auto& {
+        return is_error ? theme.role.error : theme.role.agent;
+      },
       [&]() -> const auto& { return theme.tool.icon_fg; });
 
   char initial = label.empty() ? '?' : label[0];

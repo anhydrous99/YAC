@@ -7,6 +7,7 @@ namespace yac::presentation::theme {
 struct RoleColors {
   ftxui::Color user;
   ftxui::Color agent;
+  ftxui::Color error;
 };
 
 struct MarkdownColors {
@@ -47,6 +48,7 @@ struct CardColors {
   ftxui::Color agent_bg;
   ftxui::Color user_border;
   ftxui::Color agent_border;
+  ftxui::Color error_border;
 };
 
 struct ToolColors {

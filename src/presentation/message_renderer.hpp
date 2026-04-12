@@ -39,7 +39,8 @@ class MessageRenderer {
   [[nodiscard]] static ftxui::Element RenderHeader(
       Sender sender, const std::string& label,
       std::chrono::system_clock::time_point created_at,
-      util::RelativeTimeCache& cache, const RenderContext& context);
+      util::RelativeTimeCache& cache, const RenderContext& context,
+      bool is_error = false);
 };
 
 }  // namespace yac::presentation

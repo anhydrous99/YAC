@@ -21,6 +21,7 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
 
   REQUIRE_FALSE(ColorsEqual(t.role.user, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.role.agent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.role.error, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.markdown.heading, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.markdown.link, ftxui::Color()));
@@ -50,6 +51,7 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_bg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.cards.user_border, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_border, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.cards.error_border, ftxui::Color()));
 }
 
 TEST_CASE("Theme Instance returns consistent reference") {
@@ -64,9 +66,12 @@ TEST_CASE("Theme Instance matches CatppuccinMocha values") {
 
   REQUIRE(ColorsEqual(instance.role.user, mocha.role.user));
   REQUIRE(ColorsEqual(instance.role.agent, mocha.role.agent));
+  REQUIRE(ColorsEqual(instance.role.error, mocha.role.error));
 }
 
 TEST_CASE("CatppuccinMocha role colors are distinct") {
   auto t = CatppuccinMocha();
   REQUIRE_FALSE(ColorsEqual(t.role.user, t.role.agent));
+  REQUIRE_FALSE(ColorsEqual(t.role.user, t.role.error));
+  REQUIRE_FALSE(ColorsEqual(t.role.agent, t.role.error));
 }

@@ -6,6 +6,7 @@ Theme CatppuccinMocha() {
   Theme t;
   t.role.user = ftxui::Color::RGB(137, 180, 250);
   t.role.agent = ftxui::Color::RGB(166, 227, 161);
+  t.role.error = ftxui::Color::RGB(243, 139, 168);
 
   t.markdown.heading = ftxui::Color::RGB(205, 214, 244);
   t.markdown.link = ftxui::Color::RGB(116, 199, 236);
@@ -36,6 +37,7 @@ Theme CatppuccinMocha() {
   t.cards.agent_bg = ftxui::Color::RGB(24, 24, 37);
   t.cards.user_border = ftxui::Color::RGB(69, 71, 90);
   t.cards.agent_border = ftxui::Color::RGB(69, 71, 90);
+  t.cards.error_border = ftxui::Color::RGB(243, 139, 168);
 
   t.tool.border = ftxui::Color::RGB(88, 91, 112);
   t.tool.header_bg = ftxui::Color::RGB(49, 50, 68);
