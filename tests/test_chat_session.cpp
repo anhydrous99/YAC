@@ -46,11 +46,12 @@ TEST_CASE("ChatSession updates tool expansion state") {
   REQUIRE_FALSE(*session.ToolExpandedState(0));
 }
 
-TEST_CASE("ChatSession appends streaming deltas to last agent message") {
+TEST_CASE("ChatSession appends streaming deltas to agent message by ID") {
   ChatSession session;
 
-  session.AppendToLastAgentMessage("hello");
-  session.AppendToLastAgentMessage(" world");
+  auto id = session.AddMessage(Sender::Agent, "");
+  session.AppendToAgentMessage(id, "hello");
+  session.AppendToAgentMessage(id, " world");
 
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].sender == Sender::Agent);
@@ -58,13 +59,12 @@ TEST_CASE("ChatSession appends streaming deltas to last agent message") {
   REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
 }
 
-TEST_CASE("ChatSession creates new agent message when last message is user") {
+TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
   ChatSession session;
-  session.AddMessage(Sender::User, "prompt");
+  session.AddMessage(Sender::Agent, "existing");
 
-  session.AppendToLastAgentMessage("response");
+  session.AppendToAgentMessage(999, "ignored");
 
-  REQUIRE(session.MessageCount() == 2);
-  REQUIRE(session.Messages()[1].sender == Sender::Agent);
-  REQUIRE(session.Messages()[1].Text() == "response");
+  REQUIRE(session.MessageCount() == 1);
+  REQUIRE(session.Messages()[0].Text() == "existing");
 }

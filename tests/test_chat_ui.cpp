@@ -73,11 +73,12 @@ TEST_CASE("AddMessage appends to message list") {
   REQUIRE(msgs[2].Text() == "third");
 }
 
-TEST_CASE("AppendToLastAgentMessage appends streamed content") {
+TEST_CASE("StartAgentMessage and AppendToAgentMessage stream content by ID") {
   ChatUI ui;
 
-  ui.AppendToLastAgentMessage("partial");
-  ui.AppendToLastAgentMessage(" response");
+  auto id = ui.StartAgentMessage();
+  ui.AppendToAgentMessage(id, "partial");
+  ui.AppendToAgentMessage(id, " response");
 
   const auto& msgs = ui.GetMessages();
   REQUIRE(msgs.size() == 1);
