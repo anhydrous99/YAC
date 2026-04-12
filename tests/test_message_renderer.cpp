@@ -2,8 +2,11 @@
 #include "presentation/message.hpp"
 #include "presentation/message_renderer.hpp"
 
+#include <algorithm>
 #include <regex>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -26,6 +29,46 @@ std::string RenderMessageToString(const Message& msg, int width = 80,
 std::string StripAnsi(const std::string& s) {
   static const std::regex ansi("\x1b\\[[^A-Za-z]*[A-Za-z]");
   return std::regex_replace(s, ansi, "");
+}
+
+std::vector<std::string> Lines(const std::string& s) {
+  std::vector<std::string> lines;
+  size_t start = 0;
+  while (start <= s.size()) {
+    auto pos = s.find('\n', start);
+    if (pos == std::string::npos) {
+      pos = s.size();
+    }
+    auto line = s.substr(start, pos - start);
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    lines.push_back(std::move(line));
+    if (pos == s.size()) {
+      break;
+    }
+    start = pos + 1;
+  }
+  return lines;
+}
+
+std::pair<size_t, size_t> TopBorderColumns(const std::string& rendered) {
+  auto lines = Lines(StripAnsi(rendered));
+  auto border_line = std::find_if(
+      lines.begin(), lines.end(),
+      [](const auto& line) { return line.find("╭") != std::string::npos; });
+
+  REQUIRE(border_line != lines.end());
+  auto left_border = border_line->find("╭");
+  auto right_border = border_line->find("╮");
+  REQUIRE(left_border != std::string::npos);
+  REQUIRE(right_border != std::string::npos);
+  return {left_border, right_border};
+}
+
+size_t TopBorderWidth(const std::string& rendered) {
+  auto [left_border, right_border] = TopBorderColumns(rendered);
+  return right_border - left_border + 1;
 }
 
 }  // namespace
@@ -52,6 +95,57 @@ TEST_CASE("Render agent message contains label") {
   Message msg{Sender::Agent, "test"};
   auto output = RenderMessageToString(msg);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Assistant"));
+}
+
+TEST_CASE("Render agent message card hugs short content") {
+  Message msg{Sender::Agent, "short"};
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  auto [left_border, right_border] =
+      TopBorderColumns(RenderMessageToString(msg, 60, 8));
+  REQUIRE(left_border == 0);
+  REQUIRE(right_border < 59);
+}
+
+TEST_CASE("Render message card max width follows terminal width") {
+  std::string long_text;
+  for (int i = 0; i < 80; ++i) {
+    long_text += "word ";
+  }
+
+  Message msg{Sender::Agent, long_text};
+  SECTION("agent message") {
+    msg.sender = Sender::Agent;
+  }
+  SECTION("user message") {
+    msg.sender = Sender::User;
+  }
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  auto narrow_width = TopBorderWidth(RenderMessageToString(msg, 60, 10));
+  auto wide_width = TopBorderWidth(RenderMessageToString(msg, 120, 10));
+
+  REQUIRE(wide_width > narrow_width);
+  REQUIRE(wide_width > 80);
+}
+
+TEST_CASE("Render agent message wraps in a narrow terminal") {
+  Message msg{Sender::Agent,
+              "one two three four five six seven eight nine ten"};
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  auto output = StripAnsi(RenderMessageToString(msg, 32, 12));
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("nine ten"));
+}
+
+TEST_CASE("Render user message wraps in a narrow terminal") {
+  Message msg{Sender::User, "one two three four five six seven eight nine ten"};
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  auto output = StripAnsi(RenderMessageToString(msg, 32, 12));
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("nine ten"));
 }
 
 TEST_CASE("Render active agent message shows thinking indicator") {

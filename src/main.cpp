@@ -151,8 +151,10 @@ int main() {
   EventBridge bridge(chat_ui, chat_service);
 
   chat_service.SetEventCallback([&bridge, &screen](yac::chat::ChatEvent event) {
-    screen.Post(
-        [&bridge, event = std::move(event)] { bridge.HandleEvent(event); });
+    screen.Post([&bridge, &screen, event = std::move(event)] {
+      bridge.HandleEvent(event);
+      screen.PostEvent(ftxui::Event::Custom);
+    });
   });
 
   chat_ui.SetOnSend([&chat_service](const std::string& message) {

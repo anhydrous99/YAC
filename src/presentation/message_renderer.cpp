@@ -3,6 +3,9 @@
 #include "theme.hpp"
 #include "util/time_util.hpp"
 
+#include <algorithm>
+#include <utility>
+
 #include <ftxui/dom/elements.hpp>
 
 namespace yac::presentation {
@@ -20,6 +23,11 @@ const char* ThinkingPulseGlyph(int frame) {
     default:
       return "\xE2\x97\x8F";
   }
+}
+
+int MessageCardMaxWidth(const RenderContext& context) {
+  constexpr int kHorizontalChromeWidth = 4;
+  return std::max(1, context.terminal_width - kHorizontalChromeWidth);
 }
 
 }  // namespace
@@ -84,9 +92,10 @@ ftxui::Element MessageRenderer::RenderUserMessage(
   auto styled_card = content | ftxui::bgcolor(theme.cards.user_bg) |
                      ftxui::borderRounded |
                      ftxui::color(theme.cards.user_border) |
-                     ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, 80);
+                     ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
+                                 MessageCardMaxWidth(context));
 
-  return ftxui::hbox({ftxui::filler(), styled_card});
+  return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
 }
 
 ftxui::Element MessageRenderer::RenderAgentMessage(
@@ -115,8 +124,12 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
 
   const auto& border_color =
       is_error ? theme.cards.error_border : theme.cards.agent_border;
-  return content | ftxui::bgcolor(theme.cards.agent_bg) | ftxui::borderRounded |
-         ftxui::color(border_color) | ftxui::flex;
+  auto styled_card = content | ftxui::bgcolor(theme.cards.agent_bg) |
+                     ftxui::borderRounded | ftxui::color(border_color) |
+                     ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
+                                 MessageCardMaxWidth(context));
+
+  return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
 }
 
 ftxui::Element MessageRenderer::RenderToolCallMessage(

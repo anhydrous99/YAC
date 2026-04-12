@@ -376,9 +376,16 @@ ftxui::Component ChatUI::BuildMessageList() {
       ClampScrollOffset();
     }
 
-    int focus_y = util::CalculateFrameFocusY(scroll_offset_y_, viewport_height);
-    auto messages = msg_element | ftxui::focusPosition(0, focus_y) |
-                    ftxui::frame | ftxui::reflect(visible_box_) | ftxui::flex;
+    ftxui::Element focused_messages;
+    if (follow_tail_) {
+      focused_messages = msg_element | ftxui::focusPositionRelative(0.0F, 1.0F);
+    } else {
+      int focus_y =
+          util::CalculateFrameFocusY(scroll_offset_y_, viewport_height);
+      focused_messages = msg_element | ftxui::focusPosition(0, focus_y);
+    }
+    auto messages = focused_messages | ftxui::frame |
+                    ftxui::reflect(visible_box_) | ftxui::flex;
 
     auto scrollbar = ftxui::emptyElement();
     if (util::ShouldShowScrollbar(content_height_, viewport_height)) {

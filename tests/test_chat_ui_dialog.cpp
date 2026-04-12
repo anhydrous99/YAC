@@ -40,6 +40,52 @@ TEST_CASE("ChatUI renders command shortcut hint in footer") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Ctrl+P=Commands"));
 }
 
+TEST_CASE("ChatUI renders active assistant while streaming") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  std::string long_prompt;
+  for (int i = 0; i < 600; ++i) {
+    long_prompt += "story ";
+  }
+  ui.AddMessage(Sender::User, long_prompt);
+
+  auto id = ui.StartAgentMessage();
+
+  auto started_output = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(started_output, Catch::Matchers::ContainsSubstring("Assistant"));
+  REQUIRE_THAT(started_output, Catch::Matchers::ContainsSubstring("thinking"));
+
+  ui.AppendToAgentMessage(id, long_prompt);
+
+  auto streaming_output = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(streaming_output, Catch::Matchers::ContainsSubstring("story"));
+  REQUIRE_THAT(streaming_output,
+               Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
+}
+
+TEST_CASE("ChatUI wraps long word-spaced messages") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  std::string long_text;
+  for (int i = 0; i < 250; ++i) {
+    long_text += "word ";
+  }
+  long_text += "TAIL_MARKER";
+
+  SECTION("user message") {
+    ui.AddMessage(Sender::User, long_text);
+  }
+
+  SECTION("assistant message") {
+    ui.AddMessage(Sender::Agent, long_text);
+  }
+
+  auto output = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("TAIL_MARKER"));
+}
+
 TEST_CASE("ChatUI opens and closes command palette dialog") {
   ChatUI ui;
   ui.SetCommands(SampleCommands());
