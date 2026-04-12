@@ -9,6 +9,7 @@
 #include "ftxui/screen/box.hpp"
 #include "message.hpp"
 #include "message_renderer.hpp"
+#include "slash_command_registry.hpp"
 
 #include <functional>
 #include <string>
@@ -37,6 +38,7 @@ class ChatUI {
   void SetMessageStatus(MessageId id, MessageStatus status);
   void AddToolCallMessage(::yac::presentation::tool_call::ToolCallBlock block);
   void SetCommands(std::vector<Command> commands);
+  void SetSlashCommands(SlashCommandRegistry registry);
   void SetTyping(bool typing);
   void SetToolExpanded(size_t index, bool expanded);
   void ClearMessages();
@@ -68,6 +70,7 @@ class ChatUI {
   bool is_typing_ = false;
   bool show_command_palette_ = false;
   std::vector<Command> commands_;
+  SlashCommandRegistry slash_commands_;
 
   int scroll_offset_y_ = 0;
   int content_height_ = 0;

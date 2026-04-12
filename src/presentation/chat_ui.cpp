@@ -220,6 +220,10 @@ void ChatUI::SetCommands(std::vector<Command> commands) {
   commands_ = std::move(commands);
 }
 
+void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
+  slash_commands_ = std::move(registry);
+}
+
 void ChatUI::SetTyping(bool typing) {
   is_typing_ = typing;
 }
@@ -246,6 +250,9 @@ void ChatUI::SubmitMessage() {
     return;
   }
   std::string sent = composer_.Submit();
+  if (slash_commands_.TryDispatch(sent)) {
+    return;
+  }
   AddMessage(Sender::User, sent);
   on_send_(sent);
 }

@@ -2,6 +2,7 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "presentation/chat_ui.hpp"
+#include "presentation/slash_command_registry.hpp"
 #include "provider/openai_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
@@ -53,8 +54,7 @@ class EventBridge {
         chat_ui_.SetTyping(false);
         auto it = agent_ids_.find(event.message_id);
         if (it != agent_ids_.end()) {
-          chat_ui_.AppendToAgentMessage(it->second,
-                                        "Error: " + event.text);
+          chat_ui_.AppendToAgentMessage(it->second, "Error: " + event.text);
         } else {
           chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text);
         }
@@ -144,6 +144,12 @@ int main() {
       {"Export Chat", "Save the current transcript"},
       {"Help", "Show keyboard shortcuts and tips"},
   });
+
+  auto exit_loop = screen.ExitLoopClosure();
+  yac::presentation::SlashCommandRegistry slash_registry;
+  slash_registry.Register({"quit", "Exit the application", exit_loop});
+  slash_registry.Register({"exit", "Exit the application", exit_loop});
+  chat_ui.SetSlashCommands(std::move(slash_registry));
 
   auto component = chat_ui.Build();
   screen.Loop(component);

@@ -49,6 +49,7 @@ add_library(yac_presentation STATIC
   src/presentation/message_renderer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
+  src/presentation/slash_command_registry.cpp
   src/presentation/syntax/highlighter.cpp
   src/presentation/theme.cpp
   src/presentation/tool_call/renderer.cpp
@@ -59,6 +60,7 @@ target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::co
 add_library(yac_service STATIC
   src/chat/chat_service.cpp
   src/chat/config.cpp
+  src/chat/env_file.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
 )
