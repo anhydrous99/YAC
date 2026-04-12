@@ -1,0 +1,104 @@
+#include "app/chat_event_bridge.hpp"
+
+#include <utility>
+
+namespace yac::app {
+
+namespace {
+
+yac::presentation::Sender SenderForRole(yac::chat::ChatRole role) {
+  using yac::chat::ChatRole;
+  using yac::presentation::Sender;
+
+  switch (role) {
+    case ChatRole::User:
+      return Sender::User;
+    case ChatRole::Assistant:
+    case ChatRole::System:
+      return Sender::Agent;
+    case ChatRole::Tool:
+      return Sender::Tool;
+  }
+  return Sender::Agent;
+}
+
+}  // namespace
+
+ChatEventBridge::ChatEventBridge(presentation::ChatUI& chat_ui)
+    : chat_ui_(&chat_ui) {}
+
+void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
+  using yac::chat::ChatEventType;
+  using yac::chat::ChatMessageStatus;
+  using yac::presentation::MessageStatus;
+  using yac::presentation::Sender;
+
+  switch (event.type) {
+    case ChatEventType::UserMessageQueued:
+      chat_ui_->AddMessageWithId(event.message_id, Sender::User,
+                                 std::move(event.text), event.status);
+      break;
+
+    case ChatEventType::UserMessageActive:
+      chat_ui_->SetMessageStatus(event.message_id, event.status);
+      break;
+
+    case ChatEventType::Started:
+      if (!chat_ui_->HasMessage(event.message_id)) {
+        chat_ui_->StartAgentMessage(event.message_id);
+      }
+      chat_ui_->SetMessageStatus(event.message_id, event.status);
+      chat_ui_->SetTyping(true);
+      break;
+
+    case ChatEventType::TextDelta:
+      chat_ui_->AppendToAgentMessage(event.message_id, std::move(event.text));
+      break;
+
+    case ChatEventType::Error:
+      chat_ui_->SetTyping(false);
+      if (!chat_ui_->HasMessage(event.message_id)) {
+        chat_ui_->AddMessageWithId(event.message_id, SenderForRole(event.role),
+                                   "Error: " + event.text,
+                                   ChatMessageStatus::Error);
+      } else {
+        chat_ui_->AppendToAgentMessage(event.message_id,
+                                       "Error: " + event.text);
+        chat_ui_->SetMessageStatus(event.message_id, ChatMessageStatus::Error);
+      }
+      break;
+
+    case ChatEventType::AssistantMessageDone:
+      chat_ui_->SetTyping(false);
+      chat_ui_->SetMessageStatus(event.message_id, MessageStatus::Complete);
+      break;
+
+    case ChatEventType::Finished:
+      chat_ui_->SetTyping(false);
+      break;
+
+    case ChatEventType::Cancelled:
+      chat_ui_->SetTyping(false);
+      chat_ui_->SetMessageStatus(event.message_id, MessageStatus::Cancelled);
+      break;
+
+    case ChatEventType::MessageStatusChanged:
+      if (event.status == MessageStatus::Cancelled) {
+        chat_ui_->SetTyping(false);
+      }
+      chat_ui_->SetMessageStatus(event.message_id, event.status);
+      break;
+
+    case ChatEventType::ConversationCleared:
+      chat_ui_->ClearMessages();
+      chat_ui_->SetTyping(false);
+      break;
+
+    case ChatEventType::QueueDepthChanged:
+    case ChatEventType::ToolCallStarted:
+    case ChatEventType::ToolCallDone:
+      break;
+  }
+}
+
+}  // namespace yac::app

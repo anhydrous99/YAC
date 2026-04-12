@@ -1,10 +1,10 @@
-#include "presentation/tool_call/types.hpp"
+#include "tool_call/types.hpp"
 
 #include <variant>
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace yac::presentation::tool_call;
+using namespace yac::tool_call;
 
 TEST_CASE("Tool call structs preserve field values") {
   BashCall bash{"echo hi", "ok", 0, false};

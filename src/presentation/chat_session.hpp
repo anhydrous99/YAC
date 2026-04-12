@@ -14,7 +14,9 @@ class ChatSession {
  public:
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
-  void AddToolCallMessage(tool_call::ToolCallBlock block);
+  MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
+                             MessageStatus status = MessageStatus::Complete);
+  MessageId AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
   void AppendToAgentMessage(MessageId id, std::string delta);
   void SetMessageStatus(MessageId id, MessageStatus status);
   void SetToolExpanded(size_t index, bool expanded);
@@ -22,6 +24,7 @@ class ChatSession {
 
   [[nodiscard]] std::optional<size_t> FindMessageIndex(MessageId id) const;
   [[nodiscard]] const std::vector<Message>& Messages() const;
+  [[nodiscard]] bool HasMessage(MessageId id) const;
   [[nodiscard]] bool Empty() const;
   [[nodiscard]] size_t MessageCount() const;
   [[nodiscard]] bool* ToolExpandedState(size_t index);

@@ -1,5 +1,6 @@
 #include "slash_command_registry.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace yac::presentation {
@@ -18,11 +19,11 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
     return false;
   }
 
-  for (const auto& cmd : commands_) {
-    if (cmd.name == name) {
-      cmd.handler();
-      return true;
-    }
+  auto command = std::ranges::find_if(
+      commands_, [&](const auto& cmd) { return cmd.name == name; });
+  if (command != commands_.end()) {
+    command->handler();
+    return true;
   }
 
   return false;

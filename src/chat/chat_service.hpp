@@ -8,6 +8,7 @@
 #include <deque>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -44,7 +45,8 @@ class ChatService {
   };
 
   void WorkerLoop(std::stop_token stop_token);
-  void ProcessPrompt(const PendingPrompt& prompt, uint64_t generation);
+  void ProcessPrompt(const PendingPrompt& prompt, uint64_t generation,
+                     std::stop_token stop_token);
   void EmitEvent(ChatEvent event) const;
   void EmitQueueDepth();
   [[nodiscard]] ChatMessageId NextMessageId();
@@ -63,6 +65,7 @@ class ChatService {
 
   std::jthread worker_;
   std::condition_variable_any wake_;
+  std::optional<std::stop_source> active_stop_source_;
   bool active_ = false;
 };
 

@@ -149,3 +149,11 @@ TEST_CASE("CommandPalette renders each entry name and description") {
   REQUIRE_THAT(output,
                Catch::Matchers::ContainsSubstring("Show repository status"));
 }
+
+TEST_CASE("Command stores stable id separately from display name") {
+  Command command{"new_chat", "New Chat", "Start a fresh conversation"};
+
+  REQUIRE(command.id == "new_chat");
+  REQUIRE(command.name == "New Chat");
+  REQUIRE(command.description == "Start a fresh conversation");
+}

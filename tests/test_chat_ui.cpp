@@ -86,23 +86,25 @@ TEST_CASE("StartAgentMessage and AppendToAgentMessage stream content by ID") {
   REQUIRE(msgs[0].Text() == "partial response");
 }
 
-TEST_CASE("AddMessage pre-parses markdown for agent messages") {
+TEST_CASE("AddMessageWithId stores service-owned message ID") {
   ChatUI ui;
-  ui.AddMessage(Sender::Agent, "# Hello\n\nSome **bold** text");
+  auto id = ui.AddMessageWithId(42, Sender::Agent, "# Hello");
 
   const auto& msg = ui.GetMessages()[0];
-  REQUIRE(msg.render_cache.markdown_blocks.has_value());
-  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  const auto& blocks = msg.render_cache.markdown_blocks.value();
-  REQUIRE_FALSE(blocks.empty());
+  REQUIRE(id == 42);
+  REQUIRE(msg.id == 42);
+  REQUIRE(ui.HasMessage(42));
 }
 
-TEST_CASE("AddMessage does not cache blocks for user messages") {
+TEST_CASE("StartAgentMessage supports explicit service-owned message ID") {
   ChatUI ui;
-  ui.AddMessage(Sender::User, "plain text");
+  auto id = ui.StartAgentMessage(84);
 
   const auto& msg = ui.GetMessages()[0];
-  REQUIRE_FALSE(msg.render_cache.markdown_blocks.has_value());
+  REQUIRE(id == 84);
+  REQUIRE(msg.id == 84);
+  REQUIRE(msg.sender == Sender::Agent);
+  REQUIRE(msg.status == MessageStatus::Active);
 }
 
 TEST_CASE("Build returns a non-null component") {

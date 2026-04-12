@@ -46,6 +46,7 @@ add_library(yac_presentation STATIC
   src/presentation/collapsible.cpp
   src/presentation/dialog.cpp
   src/presentation/message.cpp
+  src/presentation/message_render_cache.cpp
   src/presentation/message_renderer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
@@ -67,8 +68,14 @@ add_library(yac_service STATIC
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)
 
+add_library(yac_app STATIC
+  src/app/chat_event_bridge.cpp
+)
+target_include_directories(yac_app PUBLIC src)
+target_link_libraries(yac_app PUBLIC yac_presentation)
+
 add_executable(yac src/main.cpp)
-target_link_libraries(yac PRIVATE yac_presentation yac_service)
+target_link_libraries(yac PRIVATE yac_app yac_presentation yac_service)
 
 enable_testing()
 add_subdirectory(tests)
@@ -78,6 +85,19 @@ file(GLOB_RECURSE ALL_SOURCES
   tests/*.cpp tests/*.hpp
 )
 
+set(CLANG_TIDY_EXTRA_ARGS)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  foreach(IMPLICIT_INCLUDE_DIR IN LISTS CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+    if(IMPLICIT_INCLUDE_DIR MATCHES "/c\\+\\+/")
+      list(APPEND CLANG_TIDY_EXTRA_ARGS
+        "--extra-arg=-isystem${IMPLICIT_INCLUDE_DIR}")
+    endif()
+  endforeach()
+  if(CLANG_TIDY_EXTRA_ARGS)
+    list(PREPEND CLANG_TIDY_EXTRA_ARGS "--extra-arg=-nostdinc++")
+  endif()
+endif()
+
 add_custom_target(format
   COMMAND clang-format -i ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -85,7 +105,7 @@ add_custom_target(format
 )
 
 add_custom_target(lint
-  COMMAND clang-tidy -p ${CMAKE_BINARY_DIR} "-header-filter=^(src|tests)/" ${ALL_SOURCES}
+  COMMAND clang-tidy ${CLANG_TIDY_EXTRA_ARGS} -p ${CMAKE_BINARY_DIR} "-header-filter=^(src|tests)/" ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Running clang-tidy checks"
   VERBATIM

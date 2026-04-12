@@ -1,9 +1,10 @@
 #include "presentation/chat_session.hpp"
-#include "presentation/message_renderer.hpp"
+#include "tool_call/types.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::presentation;
+using namespace yac::tool_call;
 
 TEST_CASE("ChatSession stores text messages") {
   ChatSession session;
@@ -16,21 +17,10 @@ TEST_CASE("ChatSession stores text messages") {
   REQUIRE(session.Messages()[1].Text() == "# response");
 }
 
-TEST_CASE("ChatSession pre-parses agent markdown") {
-  ChatSession session;
-
-  session.AddMessage(Sender::Agent, "# response");
-
-  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
-  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-  REQUIRE_FALSE(session.Messages()[0].render_cache.markdown_blocks->empty());
-}
-
 TEST_CASE("ChatSession stores tool messages with expansion state") {
   ChatSession session;
 
-  session.AddToolCallMessage(
-      tool_call::BashCall{"pwd", "/tmp/project", 0, false});
+  session.AddToolCallMessage(BashCall{"pwd", "/tmp/project", 0, false});
 
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].sender == Sender::Tool);
@@ -40,7 +30,7 @@ TEST_CASE("ChatSession stores tool messages with expansion state") {
 
 TEST_CASE("ChatSession updates tool expansion state") {
   ChatSession session;
-  session.AddToolCallMessage(tool_call::BashCall{"pwd", "/tmp", 0, false});
+  session.AddToolCallMessage(BashCall{"pwd", "/tmp", 0, false});
 
   session.SetToolExpanded(0, false);
 
@@ -57,7 +47,6 @@ TEST_CASE("ChatSession appends streaming deltas to agent message by ID") {
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].sender == Sender::Agent);
   REQUIRE(session.Messages()[0].Text() == "hello world");
-  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
 }
 
 TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
@@ -70,27 +59,12 @@ TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
   REQUIRE(session.Messages()[0].Text() == "existing");
 }
 
-TEST_CASE("ChatSession status changes invalidate rendered element cache") {
+TEST_CASE("ChatSession inserts explicit message IDs") {
   ChatSession session;
 
-  auto id = session.AddMessage(Sender::Agent, "hello");
-  (void)MessageRenderer::Render(session.Messages()[0], 80);
+  auto id = session.AddMessageWithId(42, Sender::Agent, "hello");
 
-  REQUIRE(session.Messages()[0].render_cache.element.has_value());
-
-  session.SetMessageStatus(id, MessageStatus::Active);
-
-  REQUIRE_FALSE(session.Messages()[0].render_cache.element.has_value());
-}
-
-TEST_CASE("ChatSession status changes preserve parsed markdown cache") {
-  ChatSession session;
-
-  auto id = session.AddMessage(Sender::Agent, "# hello", MessageStatus::Active);
-
-  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
-
-  session.SetMessageStatus(id, MessageStatus::Complete);
-
-  REQUIRE(session.Messages()[0].render_cache.markdown_blocks.has_value());
+  REQUIRE(id == 42);
+  REQUIRE(session.HasMessage(42));
+  REQUIRE(session.Messages()[0].id == 42);
 }

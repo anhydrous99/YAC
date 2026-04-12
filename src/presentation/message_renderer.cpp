@@ -39,18 +39,25 @@ ftxui::Element MessageRenderer::Render(const Message& message,
 
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        const RenderContext& context) {
+  MessageRenderCache cache;
+  return Render(message, cache, context);
+}
+
+ftxui::Element MessageRenderer::Render(const Message& message,
+                                       MessageRenderCache& cache,
+                                       const RenderContext& context) {
   int current_width = context.terminal_width;
   const bool is_animated = message.sender == Sender::Agent &&
                            message.status == MessageStatus::Active;
-  if (!is_animated && message.sender != Sender::Tool &&
-      message.render_cache.element &&
-      message.render_cache.terminal_width == current_width) {
-    return *message.render_cache.element;
+  if (!is_animated && message.sender != Sender::Tool && cache.element &&
+      cache.terminal_width == current_width) {
+    return *cache.element;
   }
 
-  const ftxui::Element elem = SenderSwitch(
-      message.sender, [&] { return RenderUserMessage(message, context); },
-      [&] { return RenderAgentMessage(message, context); },
+  ftxui::Element elem = SenderSwitch(
+      message.sender,
+      [&] { return RenderUserMessage(message, cache, context); },
+      [&] { return RenderAgentMessage(message, cache, context); },
       [&] { return RenderToolCallMessage(message, context); },
       [] { return ftxui::text("Unknown Sender"); });
 
@@ -58,9 +65,9 @@ ftxui::Element MessageRenderer::Render(const Message& message,
     return elem;
   }
 
-  message.render_cache.element = std::move(elem);
-  message.render_cache.terminal_width = current_width;
-  return *message.render_cache.element;
+  cache.element = std::move(elem);
+  cache.terminal_width = current_width;
+  return *cache.element;
 }
 
 ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
@@ -70,46 +77,61 @@ ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
 
 ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
                                           const RenderContext& context) {
+  MessageRenderCacheStore cache_store;
+  return RenderAll(messages, cache_store, context);
+}
+
+ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
+                                          MessageRenderCacheStore& cache_store,
+                                          const RenderContext& context) {
   ftxui::Elements elements;
   for (const auto& message : messages) {
-    elements.push_back(Render(message, context));
+    if (message.id == 0) {
+      MessageRenderCache cache;
+      elements.push_back(Render(message, cache, context));
+      continue;
+    }
+    elements.push_back(Render(message, cache_store.For(message.id), context));
   }
   return ftxui::vbox(elements);
 }
 
 ftxui::Element MessageRenderer::RenderUserMessage(
-    const Message& message, const RenderContext& context) {
+    const Message& message, MessageRenderCache& cache,
+    const RenderContext& context) {
   const auto& theme = context.Colors();
   auto content = ftxui::vbox({
       RenderHeader(Sender::User, message.DisplayLabel(), message.created_at,
-                   message.render_cache.relative_time, context, message.status),
+                   cache.relative_time, context, message.status),
       ftxui::text(""),
       ftxui::hbox({ftxui::text("  "), ftxui::paragraph(message.Text()) |
                                           ftxui::color(theme.role.user) |
                                           ftxui::flex}),
   });
 
-  auto styled_card = content | ftxui::bgcolor(theme.cards.user_bg) |
-                     ftxui::borderRounded |
-                     ftxui::color(theme.cards.user_border) |
-                     ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
-                                 MessageCardMaxWidth(context));
+  auto styled_card =
+      content | ftxui::bgcolor(theme.cards.user_bg) | ftxui::borderRounded |
+      ftxui::color(theme.cards.user_border) |
+      ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, MessageCardMaxWidth(context));
 
   return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
 }
 
 ftxui::Element MessageRenderer::RenderAgentMessage(
-    const Message& message, const RenderContext& context) {
+    const Message& message, MessageRenderCache& cache,
+    const RenderContext& context) {
   const auto& theme = context.Colors();
   const bool is_error = message.status == MessageStatus::Error;
   const bool is_active = message.status == MessageStatus::Active;
-  const auto& blocks = message.render_cache.markdown_blocks.value_or(
-      markdown::MarkdownParser::Parse(message.Text()));
+  if (!cache.markdown_blocks.has_value()) {
+    cache.markdown_blocks = markdown::MarkdownParser::Parse(message.Text());
+  }
+  const auto& blocks = *cache.markdown_blocks;
 
   ftxui::Elements rows;
-  rows.push_back(RenderHeader(
-      Sender::Agent, message.DisplayLabel(), message.created_at,
-      message.render_cache.relative_time, context, message.status));
+  rows.push_back(RenderHeader(Sender::Agent, message.DisplayLabel(),
+                              message.created_at, cache.relative_time, context,
+                              message.status));
   rows.push_back(ftxui::text(""));
   rows.push_back(markdown::MarkdownRenderer::Render(blocks, context));
   if (is_active && !message.Text().empty()) {
@@ -124,10 +146,10 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
 
   const auto& border_color =
       is_error ? theme.cards.error_border : theme.cards.agent_border;
-  auto styled_card = content | ftxui::bgcolor(theme.cards.agent_bg) |
-                     ftxui::borderRounded | ftxui::color(border_color) |
-                     ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
-                                 MessageCardMaxWidth(context));
+  auto styled_card =
+      content | ftxui::bgcolor(theme.cards.agent_bg) | ftxui::borderRounded |
+      ftxui::color(border_color) |
+      ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, MessageCardMaxWidth(context));
 
   return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
 }

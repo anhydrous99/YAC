@@ -57,6 +57,7 @@ enum class ChatEventType {
 struct ChatEvent {
   ChatEventType type = ChatEventType::Started;
   ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
   std::string text;
   std::string provider_id;
   std::string model;

@@ -79,8 +79,7 @@ ftxui::Element MarkdownRenderer::RenderInline(
   ftxui::Elements elements;
   for (const auto& node : nodes) {
     auto node_elements = RenderInlineWords(node, context);
-    elements.insert(elements.end(), node_elements.begin(),
-                    node_elements.end());
+    elements.insert(elements.end(), node_elements.begin(), node_elements.end());
   }
   return ftxui::hflow(elements);
 }
@@ -92,8 +91,8 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
       [&theme](const auto& n) -> ftxui::Elements {
         using T = std::decay_t<decltype(n)>;
         if constexpr (std::is_same_v<T, Text>) {
-          return SplitIntoWords(
-              n.content, ftxui::color(theme.chrome.body_text));
+          return SplitIntoWords(n.content,
+                                ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, Bold>) {
           return SplitIntoWords(
               n.content, ftxui::bold | ftxui::color(theme.chrome.body_text));
@@ -101,9 +100,9 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
           return SplitIntoWords(
               n.content, ftxui::italic | ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, Strikethrough>) {
-          return SplitIntoWords(n.content,
-                                ftxui::strikethrough |
-                                    ftxui::color(theme.chrome.body_text));
+          return SplitIntoWords(
+              n.content,
+              ftxui::strikethrough | ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, InlineCode>) {
           return {ftxui::text(" " + n.content + " ") | ftxui::bold |
                   ftxui::bgcolor(theme.code.inline_bg) |

@@ -1,7 +1,5 @@
 #include "chat_session.hpp"
 
-#include "markdown/parser.hpp"
-
 #include <utility>
 
 namespace yac::presentation {
@@ -9,23 +7,30 @@ namespace yac::presentation {
 MessageId ChatSession::AddMessage(Sender sender, std::string content,
                                   MessageStatus status) {
   auto id = next_id_++;
+  return AddMessageWithId(id, sender, std::move(content), status);
+}
+
+MessageId ChatSession::AddMessageWithId(MessageId id, Sender sender,
+                                        std::string content,
+                                        MessageStatus status) {
+  if (id >= next_id_) {
+    next_id_ = id + 1;
+  }
   Message message{sender, std::move(content)};
   message.id = id;
   message.status = status;
-  if (sender == Sender::Agent) {
-    message.render_cache.markdown_blocks =
-        markdown::MarkdownParser::Parse(message.Text());
-  }
   messages_.push_back(std::move(message));
   return id;
 }
 
-void ChatSession::AddToolCallMessage(tool_call::ToolCallBlock block) {
+MessageId ChatSession::AddToolCallMessage(
+    ::yac::tool_call::ToolCallBlock block) {
   auto id = next_id_++;
   auto message = Message::Tool(std::move(block));
   message.id = id;
   messages_.push_back(std::move(message));
   tool_expanded_states_.push_back(std::make_unique<bool>(true));
+  return id;
 }
 
 void ChatSession::AppendToAgentMessage(MessageId id, std::string delta) {
@@ -40,9 +45,6 @@ void ChatSession::AppendToAgentMessage(MessageId id, std::string delta) {
 
   auto& message = messages_[*idx];
   message.Text() += delta;
-  message.render_cache.markdown_blocks =
-      markdown::MarkdownParser::Parse(message.Text());
-  message.render_cache.ResetElement();
 }
 
 void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
@@ -56,7 +58,6 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
     return;
   }
   message.status = status;
-  message.render_cache.ResetElement();
 }
 
 void ChatSession::SetToolExpanded(size_t index, bool expanded) {
@@ -83,6 +84,10 @@ std::optional<size_t> ChatSession::FindMessageIndex(MessageId id) const {
 
 const std::vector<Message>& ChatSession::Messages() const {
   return messages_;
+}
+
+bool ChatSession::HasMessage(MessageId id) const {
+  return FindMessageIndex(id).has_value();
 }
 
 bool ChatSession::Empty() const {

@@ -10,6 +10,12 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
 }
 
 ChatService::~ChatService() {
+  {
+    std::lock_guard lock(mutex_);
+    if (active_stop_source_.has_value()) {
+      active_stop_source_->request_stop();
+    }
+  }
   worker_.request_stop();
   wake_.notify_one();
 }
@@ -21,6 +27,7 @@ void ChatService::SetEventCallback(ChatEventCallback callback) {
 
 ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   auto id = NextMessageId();
+  auto queued_content = content;
   {
     std::lock_guard lock(mutex_);
     pending_.push_back({id, std::move(content)});
@@ -29,6 +36,8 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
 
   EmitEvent(ChatEvent{.type = ChatEventType::UserMessageQueued,
                       .message_id = id,
+                      .role = ChatRole::User,
+                      .text = std::move(queued_content),
                       .status = ChatMessageStatus::Queued});
   EmitQueueDepth();
   return id;
@@ -40,7 +49,9 @@ void ChatService::CancelActiveResponse() {
     return;
   }
   generation_.fetch_add(1);
-  active_ = false;
+  if (active_stop_source_.has_value()) {
+    active_stop_source_->request_stop();
+  }
 }
 
 void ChatService::ResetConversation() {
@@ -49,9 +60,13 @@ void ChatService::ResetConversation() {
 
   {
     std::lock_guard lock(mutex_);
+    if (active_stop_source_.has_value()) {
+      active_stop_source_->request_stop();
+    }
     history_.clear();
     pending_.clear();
     active_ = false;
+    active_stop_source_.reset();
   }
   wake_.notify_one();
 
@@ -76,6 +91,7 @@ int ChatService::QueueDepth() const {
 void ChatService::WorkerLoop(std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
     PendingPrompt prompt;
+    std::stop_source request_stop_source;
     {
       std::unique_lock lock(mutex_);
       wake_.wait(lock, stop_token, [&] {
@@ -90,32 +106,44 @@ void ChatService::WorkerLoop(std::stop_token stop_token) {
       prompt = std::move(pending_.front());
       pending_.pop_front();
       active_ = true;
+      request_stop_source = std::stop_source{};
+      active_stop_source_ = request_stop_source;
     }
 
     EmitEvent(ChatEvent{.type = ChatEventType::UserMessageActive,
                         .message_id = prompt.id,
+                        .role = ChatRole::User,
                         .status = ChatMessageStatus::Active});
     EmitQueueDepth();
 
-    ProcessPrompt(prompt, generation_.load());
+    ProcessPrompt(prompt, generation_.load(), request_stop_source.get_token());
 
     {
       std::lock_guard lock(mutex_);
       active_ = false;
+      active_stop_source_.reset();
     }
   }
 }
 
 void ChatService::ProcessPrompt(const PendingPrompt& prompt,
-                                uint64_t generation) {
+                                uint64_t generation,
+                                std::stop_token stop_token) {
+  const auto assistant_id = NextMessageId();
   auto provider = registry_.Resolve(config_.provider_id);
   if (provider == nullptr) {
+    EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
+                        .message_id = prompt.id,
+                        .role = ChatRole::User,
+                        .status = ChatMessageStatus::Complete});
     EmitEvent(ChatEvent{
         .type = ChatEventType::Error,
-        .message_id = prompt.id,
-        .text = "No provider registered for '" + config_.provider_id + "'."});
+        .message_id = assistant_id,
+        .role = ChatRole::Assistant,
+        .text = "No provider registered for '" + config_.provider_id + "'.",
+        .status = ChatMessageStatus::Error});
     EmitEvent(
-        ChatEvent{.type = ChatEventType::Finished, .message_id = prompt.id});
+        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
     return;
   }
 
@@ -126,57 +154,77 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
                                    .role = ChatRole::User,
                                    .status = ChatMessageStatus::Active,
                                    .content = prompt.content});
+    request.messages = history_;
     if (config_.system_prompt.has_value()) {
       request.messages.insert(request.messages.begin(),
                               ChatMessage{.role = ChatRole::System,
                                           .status = ChatMessageStatus::Complete,
                                           .content = *config_.system_prompt});
     }
-    request.messages = history_;
   }
 
-  EmitEvent(ChatEvent{.type = ChatEventType::Started,
+  EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
                       .message_id = prompt.id,
+                      .role = ChatRole::User,
+                      .status = ChatMessageStatus::Complete});
+  EmitEvent(ChatEvent{.type = ChatEventType::Started,
+                      .message_id = assistant_id,
+                      .role = ChatRole::Assistant,
                       .provider_id = config_.provider_id,
-                      .model = config_.model});
+                      .model = config_.model,
+                      .status = ChatMessageStatus::Active});
 
   std::string assistant_text;
-  auto sink = [this, &assistant_text, prompt_id = prompt.id,
-               generation](ChatEvent event) mutable {
+  bool assistant_error = false;
+  auto sink = [this, &assistant_text, assistant_id, generation,
+               &assistant_error](ChatEvent event) mutable {
     if (generation_.load() != generation) {
       return;
     }
-    event.message_id = prompt_id;
+    event.message_id = assistant_id;
+    event.role = ChatRole::Assistant;
     if (event.type == ChatEventType::TextDelta) {
       assistant_text += event.text;
+    } else if (event.type == ChatEventType::Error) {
+      assistant_error = true;
+      event.status = ChatMessageStatus::Error;
     }
     EmitEvent(std::move(event));
   };
 
-  provider->CompleteStream(request, std::move(sink), {});
+  provider->CompleteStream(request, std::move(sink), stop_token);
 
   if (generation_.load() != generation) {
     EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
-                        .message_id = prompt.id,
+                        .message_id = assistant_id,
+                        .role = ChatRole::Assistant,
                         .status = ChatMessageStatus::Cancelled});
     EmitEvent(
-        ChatEvent{.type = ChatEventType::Finished, .message_id = prompt.id});
+        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
+    return;
+  }
+
+  if (assistant_error) {
+    EmitEvent(
+        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
     return;
   }
 
   if (!assistant_text.empty()) {
     {
       std::lock_guard lock(mutex_);
-      history_.push_back(ChatMessage{.id = NextMessageId(),
+      history_.push_back(ChatMessage{.id = assistant_id,
                                      .role = ChatRole::Assistant,
                                      .status = ChatMessageStatus::Complete,
                                      .content = assistant_text});
     }
-    EmitEvent(ChatEvent{.type = ChatEventType::AssistantMessageDone,
-                        .message_id = prompt.id});
   }
+  EmitEvent(ChatEvent{.type = ChatEventType::AssistantMessageDone,
+                      .message_id = assistant_id,
+                      .role = ChatRole::Assistant,
+                      .status = ChatMessageStatus::Complete});
   EmitEvent(
-      ChatEvent{.type = ChatEventType::Finished, .message_id = prompt.id});
+      ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
 }
 
 void ChatService::EmitEvent(ChatEvent event) const {

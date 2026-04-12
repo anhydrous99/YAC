@@ -3,12 +3,14 @@
 #include "provider/language_model_provider.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -24,6 +26,10 @@ class FakeProvider : public LanguageModelProvider {
 
   void CompleteStream(const ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override {
+    {
+      std::lock_guard lock(mutex_);
+      requests_.push_back(request);
+    }
     REQUIRE(request.model == "fake-model");
     REQUIRE(request.stream);
     REQUIRE(!request.messages.empty());
@@ -35,14 +41,26 @@ class FakeProvider : public LanguageModelProvider {
     sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "hi"});
     sink(ChatEvent{.type = ChatEventType::TextDelta, .text = " there"});
   }
+
+  [[nodiscard]] ChatRequest LastRequest() const {
+    std::lock_guard lock(mutex_);
+    REQUIRE_FALSE(requests_.empty());
+    return requests_.back();
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::vector<ChatRequest> requests_;
 };
 
 class BlockingFakeProvider : public LanguageModelProvider {
  public:
   [[nodiscard]] std::string Id() const override { return "blocking-fake"; }
 
-  void CompleteStream(const ChatRequest&, ChatEventSink sink,
-                      std::stop_token) override {
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    (void)request;
+    (void)stop_token;
     std::unique_lock lock(mutex_);
     started_ = true;
     cv_.notify_one();
@@ -66,6 +84,56 @@ class BlockingFakeProvider : public LanguageModelProvider {
   std::condition_variable cv_;
   bool started_ = false;
   bool release_ = false;
+};
+
+class CancellableFakeProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "cancellable-fake"; }
+
+  void CompleteStream([[maybe_unused]] const ChatRequest& request,
+                      [[maybe_unused]] ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    {
+      std::lock_guard lock(mutex_);
+      started_ = true;
+      cv_.notify_one();
+    }
+
+    while (!stop_token.stop_requested()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    std::lock_guard lock(mutex_);
+    stop_observed_ = true;
+    cv_.notify_one();
+  }
+
+  void WaitUntilStarted() {
+    std::unique_lock lock(mutex_);
+    cv_.wait(lock, [&] { return started_; });
+  }
+
+  void WaitUntilStopObserved() {
+    std::unique_lock lock(mutex_);
+    cv_.wait(lock, [&] { return stop_observed_; });
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  bool started_ = false;
+  bool stop_observed_ = false;
+};
+
+class ErrorFakeProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "error-fake"; }
+
+  void CompleteStream([[maybe_unused]] const ChatRequest& request,
+                      ChatEventSink sink,
+                      [[maybe_unused]] std::stop_token stop_token) override {
+    sink(ChatEvent{.type = ChatEventType::Error, .text = "stream failed"});
+  }
 };
 
 std::vector<ChatEvent> CollectEvents(ChatService& service,
@@ -112,6 +180,14 @@ bool HasEvent(const std::vector<ChatEvent>& events, ChatEventType type) {
                      [type](const auto& e) { return e.type == type; });
 }
 
+const ChatEvent& FindEvent(const std::vector<ChatEvent>& events,
+                           ChatEventType type) {
+  auto it = std::find_if(events.begin(), events.end(),
+                         [type](const auto& e) { return e.type == type; });
+  REQUIRE(it != events.end());
+  return *it;
+}
+
 }  // namespace
 
 TEST_CASE("ChatService streams provider events and records history") {
@@ -123,12 +199,20 @@ TEST_CASE("ChatService streams provider events and records history") {
   REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
   REQUIRE(HasEvent(events, ChatEventType::Finished));
 
+  const auto& queued = FindEvent(events, ChatEventType::UserMessageQueued);
+  const auto& started = FindEvent(events, ChatEventType::Started);
+  REQUIRE(queued.role == ChatRole::User);
+  REQUIRE(queued.text == "hello");
+  REQUIRE(started.role == ChatRole::Assistant);
+  REQUIRE(started.message_id != queued.message_id);
+
   const auto history = service.History();
   REQUIRE(history.size() == 2);
   REQUIRE(history[0].role == ChatRole::User);
   REQUIRE(history[0].content == "hello");
   REQUIRE(history[1].role == ChatRole::Assistant);
   REQUIRE(history[1].content == "hi there");
+  REQUIRE(history[1].id == started.message_id);
 }
 
 TEST_CASE("ChatService emits error for missing provider") {
@@ -159,6 +243,73 @@ TEST_CASE("ChatService emits error for missing provider") {
 
   REQUIRE(HasEvent(events, ChatEventType::Error));
   REQUIRE(HasEvent(events, ChatEventType::Finished));
+  const auto& error = FindEvent(events, ChatEventType::Error);
+  const auto& queued = FindEvent(events, ChatEventType::UserMessageQueued);
+  REQUIRE(error.role == ChatRole::Assistant);
+  REQUIRE(error.message_id != queued.message_id);
+}
+
+TEST_CASE("ChatService preserves provider stream error status") {
+  auto service = MakeService(std::make_shared<ErrorFakeProvider>());
+  const auto events = CollectEvents(service, "hello");
+
+  REQUIRE(HasEvent(events, ChatEventType::Error));
+  REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
+
+  const auto& error = FindEvent(events, ChatEventType::Error);
+  REQUIRE(error.role == ChatRole::Assistant);
+  REQUIRE(error.status == ChatMessageStatus::Error);
+
+  const auto history = service.History();
+  REQUIRE(history.size() == 1);
+  REQUIRE(history[0].role == ChatRole::User);
+}
+
+TEST_CASE("ChatService includes system prompt before history in requests") {
+  auto provider = std::make_shared<FakeProvider>();
+  ChatConfig config;
+  config.provider_id = "fake";
+  config.model = "fake-model";
+  config.system_prompt = "Use terse answers.";
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "hello");
+
+  const auto request = provider->LastRequest();
+  REQUIRE(request.messages.size() == 2);
+  REQUIRE(request.messages[0].role == ChatRole::System);
+  REQUIRE(request.messages[0].content == "Use terse answers.");
+  REQUIRE(request.messages[1].role == ChatRole::User);
+  REQUIRE(request.messages[1].content == "hello");
+}
+
+TEST_CASE("ChatService cancellation requests provider stop token") {
+  auto provider = std::make_shared<CancellableFakeProvider>();
+  auto service = MakeService(provider);
+
+  std::vector<ChatEvent> events;
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool cancelled = false;
+
+  service.SetEventCallback([&](ChatEvent event) {
+    std::lock_guard lock(mtx);
+    events.push_back(std::move(event));
+    if (events.back().type == ChatEventType::MessageStatusChanged &&
+        events.back().status == ChatMessageStatus::Cancelled) {
+      cancelled = true;
+      cv.notify_one();
+    }
+  });
+
+  service.SubmitUserMessage("hello");
+  provider->WaitUntilStarted();
+  service.CancelActiveResponse();
+  provider->WaitUntilStopObserved();
+
+  std::unique_lock lock(mtx);
+  cv.wait(lock, [&] { return cancelled; });
+  REQUIRE(HasEvent(events, ChatEventType::MessageStatusChanged));
 }
 
 TEST_CASE("ChatService queues prompts while active") {
@@ -279,7 +430,7 @@ TEST_CASE("LoadChatConfigFromEnv loads from .env file") {
   REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_FILE");
   REQUIRE(config.api_key == "env-api-key");
   REQUIRE(config.system_prompt.has_value());
-  REQUIRE(*config.system_prompt == "Env system prompt");
+  REQUIRE(config.system_prompt == std::string{"Env system prompt"});
 
   std::filesystem::current_path(original_dir);
   std::filesystem::remove_all(temp_dir);

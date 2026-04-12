@@ -33,10 +33,13 @@ class ChatUI {
   void SetOnCommand(OnCommandCallback on_command);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
+  MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
+                             MessageStatus status = MessageStatus::Complete);
   MessageId StartAgentMessage();
+  MessageId StartAgentMessage(MessageId id);
   void AppendToAgentMessage(MessageId id, std::string delta);
   void SetMessageStatus(MessageId id, MessageStatus status);
-  void AddToolCallMessage(::yac::presentation::tool_call::ToolCallBlock block);
+  void AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
   void SetCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
   void SetTyping(bool typing);
@@ -44,6 +47,7 @@ class ChatUI {
   void ClearMessages();
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
+  [[nodiscard]] bool HasMessage(MessageId id) const;
   [[nodiscard]] bool IsTyping() const;
   [[nodiscard]] int CalculateInputHeight() const;
   [[nodiscard]] bool HandleInputEvent(const ftxui::Event& event);
@@ -65,6 +69,7 @@ class ChatUI {
   void ClampScrollOffset();
 
   ChatSession session_;
+  mutable MessageRenderCacheStore render_cache_;
   std::vector<ftxui::Component> message_components_;
   ComposerState composer_;
   OnSendCallback on_send_;

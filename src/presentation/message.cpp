@@ -4,11 +4,6 @@
 
 namespace yac::presentation {
 
-void MessageRenderCache::ResetElement() {
-  element = std::nullopt;
-  terminal_width = -1;
-}
-
 Message::Message(Sender sender, std::string content, std::string role_label,
                  std::string timestamp)
     : sender(sender),
@@ -16,7 +11,7 @@ Message::Message(Sender sender, std::string content, std::string role_label,
       role_label(std::move(role_label)),
       timestamp(std::move(timestamp)) {}
 
-Message Message::Tool(tool_call::ToolCallBlock block) {
+Message Message::Tool(::yac::tool_call::ToolCallBlock block) {
   Message message;
   message.sender = Sender::Tool;
   message.body = ToolContent{std::move(block)};
@@ -38,12 +33,12 @@ std::string& Message::Text() {
   return text->text;
 }
 
-const tool_call::ToolCallBlock* Message::ToolCall() const {
+const ::yac::tool_call::ToolCallBlock* Message::ToolCall() const {
   const auto* tool = std::get_if<ToolContent>(&body);
   return tool == nullptr ? nullptr : &tool->block;
 }
 
-tool_call::ToolCallBlock* Message::ToolCall() {
+::yac::tool_call::ToolCallBlock* Message::ToolCall() {
   auto* tool = std::get_if<ToolContent>(&body);
   return tool == nullptr ? nullptr : &tool->block;
 }

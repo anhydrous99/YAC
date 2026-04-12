@@ -207,7 +207,7 @@ ftxui::Component ChatUI::Build() {
   auto on_select = [this](int index) {
     if (index >= 0 && static_cast<size_t>(index) < commands_.size() &&
         on_command_) {
-      on_command_(commands_[index].name);
+      on_command_(commands_[index].id);
     }
   };
   auto palette = CommandPalette(commands_, on_select, &show_command_palette_);
@@ -229,6 +229,7 @@ ftxui::Component ChatUI::Build() {
 MessageId ChatUI::AddMessage(Sender sender, std::string content,
                              MessageStatus status) {
   auto id = session_.AddMessage(sender, std::move(content), status);
+  render_cache_.ResetContent(id);
   if (sender == Sender::Agent && status == MessageStatus::Active) {
     thinking_frame_ = 0;
   }
@@ -238,9 +239,25 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
   return id;
 }
 
+MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
+                                   std::string content, MessageStatus status) {
+  auto added_id =
+      session_.AddMessageWithId(id, sender, std::move(content), status);
+  render_cache_.ResetContent(added_id);
+  if (sender == Sender::Agent && status == MessageStatus::Active) {
+    thinking_frame_ = 0;
+  }
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
+  return added_id;
+}
+
 MessageId ChatUI::StartAgentMessage() {
   auto id = session_.AddMessage(Sender::Agent, "", MessageStatus::Active);
   thinking_frame_ = 0;
+  render_cache_.ResetContent(id);
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -248,8 +265,13 @@ MessageId ChatUI::StartAgentMessage() {
   return id;
 }
 
+MessageId ChatUI::StartAgentMessage(MessageId id) {
+  return AddMessageWithId(id, Sender::Agent, "", MessageStatus::Active);
+}
+
 void ChatUI::AppendToAgentMessage(MessageId id, std::string delta) {
   session_.AppendToAgentMessage(id, std::move(delta));
+  render_cache_.ResetContent(id);
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
@@ -261,14 +283,16 @@ void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
     thinking_frame_ = 0;
   }
   session_.SetMessageStatus(id, status);
+  render_cache_.ResetElement(id);
 }
 
-void ChatUI::AddToolCallMessage(
-    ::yac::presentation::tool_call::ToolCallBlock block) {
-  session_.AddToolCallMessage(std::move(block));
+void ChatUI::AddToolCallMessage(::yac::tool_call::ToolCallBlock block) {
+  auto id = session_.AddToolCallMessage(std::move(block));
+  render_cache_.ResetContent(id);
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
+  SyncMessageComponents();
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
@@ -289,11 +313,16 @@ void ChatUI::SetToolExpanded(size_t index, bool expanded) {
 
 void ChatUI::ClearMessages() {
   session_.ClearMessages();
+  render_cache_.Clear();
   message_components_.clear();
 }
 
 const std::vector<Message>& ChatUI::GetMessages() const {
   return session_.Messages();
+}
+
+bool ChatUI::HasMessage(MessageId id) const {
+  return session_.HasMessage(id);
 }
 
 bool ChatUI::IsTyping() const {
@@ -308,7 +337,6 @@ void ChatUI::SubmitMessage() {
   if (slash_commands_.TryDispatch(sent)) {
     return;
   }
-  AddMessage(Sender::User, sent);
   on_send_(sent);
 }
 
@@ -528,15 +556,16 @@ ftxui::Element ChatUI::RenderMessages() const {
   if (current_width != last_terminal_width_) {
     for (const auto& msg : session_.Messages()) {
       if (msg.sender != Sender::Tool) {
-        msg.render_cache.ResetElement();
+        render_cache_.ResetElement(msg.id);
       }
     }
     last_terminal_width_ = current_width;
   }
 
   return MessageRenderer::RenderAll(
-      session_.Messages(), RenderContext{.terminal_width = current_width,
-                                         .thinking_frame = thinking_frame_});
+      session_.Messages(), render_cache_,
+      RenderContext{.terminal_width = current_width,
+                    .thinking_frame = thinking_frame_});
 }
 
 void ChatUI::SyncMessageComponents() {
@@ -544,7 +573,7 @@ void ChatUI::SyncMessageComponents() {
   if (current_width != last_terminal_width_) {
     for (const auto& msg : session_.Messages()) {
       if (msg.sender != Sender::Tool) {
-        msg.render_cache.ResetElement();
+        render_cache_.ResetElement(msg.id);
       }
     }
     last_terminal_width_ = current_width;
@@ -576,8 +605,9 @@ void ChatUI::SyncMessageComponents() {
     }
 
     message_components_.push_back(ftxui::Renderer([this, index] {
+      const auto& message = session_.Messages()[index];
       return MessageRenderer::Render(
-          session_.Messages()[index],
+          message, render_cache_.For(message.id),
           RenderContext{.terminal_width = last_terminal_width_,
                         .thinking_frame = thinking_frame_});
     }));

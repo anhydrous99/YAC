@@ -1,4 +1,4 @@
-
+#include "app/chat_event_bridge.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "presentation/chat_ui.hpp"
@@ -8,128 +8,9 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 #include <ftxui/component/app.hpp>
-
-namespace {
-
-class EventBridge {
- public:
-  EventBridge(yac::presentation::ChatUI& chat_ui,
-              yac::chat::ChatService& chat_service)
-      : chat_ui_(chat_ui), chat_service_(chat_service) {}
-
-  void HandleEvent(yac::chat::ChatEvent event) {
-    using yac::chat::ChatEventType;
-    using yac::chat::ChatMessageStatus;
-    using yac::presentation::MessageStatus;
-    using yac::presentation::Sender;
-
-    switch (event.type) {
-      case ChatEventType::UserMessageQueued:
-        break;
-
-      case ChatEventType::UserMessageActive:
-        chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Active);
-        break;
-
-      case ChatEventType::Started: {
-        auto agent_id = chat_ui_.StartAgentMessage();
-        agent_ids_[event.message_id] = agent_id;
-        chat_ui_.SetTyping(true);
-        break;
-      }
-
-      case ChatEventType::TextDelta: {
-        auto it = agent_ids_.find(event.message_id);
-        if (it != agent_ids_.end()) {
-          chat_ui_.AppendToAgentMessage(it->second, event.text);
-        }
-        break;
-      }
-
-      case ChatEventType::Error: {
-        chat_ui_.SetTyping(false);
-        auto it = agent_ids_.find(event.message_id);
-        if (it != agent_ids_.end()) {
-          chat_ui_.AppendToAgentMessage(it->second, "Error: " + event.text);
-          chat_ui_.SetMessageStatus(it->second, MessageStatus::Error);
-          agent_ids_.erase(it);
-        } else {
-          chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text,
-                              MessageStatus::Error);
-        }
-        break;
-      }
-
-      case ChatEventType::AssistantMessageDone:
-        chat_ui_.SetTyping(false);
-        (void)SetMappedAgentStatus(event.message_id, MessageStatus::Complete);
-        break;
-
-      case ChatEventType::Finished:
-        chat_ui_.SetTyping(false);
-        (void)SetMappedAgentStatus(event.message_id, MessageStatus::Complete);
-        break;
-
-      case ChatEventType::Cancelled:
-        chat_ui_.SetTyping(false);
-        if (!SetMappedAgentStatus(event.message_id, MessageStatus::Cancelled)) {
-          chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
-        }
-        break;
-
-      case ChatEventType::MessageStatusChanged:
-        if (!SetMappedAgentStatus(event.message_id, event.status)) {
-          chat_ui_.SetMessageStatus(event.message_id, event.status);
-        }
-        break;
-
-      case ChatEventType::ConversationCleared:
-        chat_ui_.ClearMessages();
-        chat_ui_.SetTyping(false);
-        agent_ids_.clear();
-        break;
-
-      case ChatEventType::QueueDepthChanged:
-        break;
-
-      case ChatEventType::ToolCallStarted:
-      case ChatEventType::ToolCallDone:
-        break;
-    }
-  }
-
- private:
-  bool SetMappedAgentStatus(yac::chat::ChatMessageId service_message_id,
-                            yac::presentation::MessageStatus status) {
-    auto it = agent_ids_.find(service_message_id);
-    if (it == agent_ids_.end()) {
-      return false;
-    }
-
-    chat_ui_.SetMessageStatus(it->second, status);
-    if (IsTerminalStatus(status)) {
-      agent_ids_.erase(it);
-    }
-    return true;
-  }
-
-  static bool IsTerminalStatus(yac::presentation::MessageStatus status) {
-    using yac::presentation::MessageStatus;
-    return status == MessageStatus::Complete ||
-           status == MessageStatus::Cancelled || status == MessageStatus::Error;
-  }
-
-  yac::presentation::ChatUI& chat_ui_;
-  yac::chat::ChatService& chat_service_;
-  std::unordered_map<yac::chat::ChatMessageId, yac::presentation::MessageId>
-      agent_ids_;
-};
-
-}  // namespace
 
 int main() {
   auto config = yac::chat::LoadChatConfigFromEnv();
@@ -148,7 +29,7 @@ int main() {
   yac::presentation::ChatUI chat_ui;
   auto screen = ftxui::App::Fullscreen();
 
-  EventBridge bridge(chat_ui, chat_service);
+  yac::app::ChatEventBridge bridge(chat_ui);
 
   chat_service.SetEventCallback([&bridge, &screen](yac::chat::ChatEvent event) {
     screen.Post([&bridge, &screen, event = std::move(event)] {
@@ -162,20 +43,18 @@ int main() {
   });
 
   chat_ui.SetOnCommand([&chat_service](const std::string& command) {
-    if (command == "New Chat" || command == "Clear Messages") {
+    if (command == "new_chat" || command == "clear_messages") {
       chat_service.ResetConversation();
-    } else if (command == "Cancel Response") {
+    } else if (command == "cancel_response") {
       chat_service.CancelActiveResponse();
     }
   });
 
   chat_ui.SetCommands({
-      {"New Chat", "Start a fresh conversation"},
-      {"Clear Messages", "Remove all messages from the view"},
-      {"Cancel Response", "Stop the current assistant response"},
-      {"Toggle Theme", "Switch between light and dark themes"},
-      {"Export Chat", "Save the current transcript"},
-      {"Help", "Show keyboard shortcuts and tips"},
+      {"new_chat", "New Chat", "Start a fresh conversation"},
+      {"clear_messages", "Clear Messages", "Remove all messages from the view"},
+      {"cancel_response", "Cancel Response",
+       "Stop the current assistant response"},
   });
 
   auto exit_loop = screen.ExitLoopClosure();

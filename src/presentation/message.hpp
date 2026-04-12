@@ -1,18 +1,12 @@
 #pragma once
 
 #include "chat/types.hpp"
-#include "markdown/ast.hpp"
 #include "tool_call/types.hpp"
-#include "util/time_util.hpp"
 
 #include <chrono>
-#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
-
-#include <ftxui/dom/elements.hpp>
 
 namespace yac::presentation {
 
@@ -26,19 +20,10 @@ struct TextContent {
 };
 
 struct ToolContent {
-  tool_call::ToolCallBlock block;
+  ::yac::tool_call::ToolCallBlock block;
 };
 
 using MessageContent = std::variant<TextContent, ToolContent>;
-
-struct MessageRenderCache {
-  std::optional<std::vector<markdown::BlockNode>> markdown_blocks;
-  util::RelativeTimeCache relative_time;
-  std::optional<ftxui::Element> element;
-  int terminal_width = -1;
-
-  void ResetElement();
-};
 
 struct Message {
   MessageId id = 0;
@@ -47,7 +32,6 @@ struct Message {
   MessageStatus status = MessageStatus::Complete;
   std::string role_label;
   std::string timestamp;
-  mutable MessageRenderCache render_cache;
   std::chrono::system_clock::time_point created_at =
       std::chrono::system_clock::now();
 
@@ -55,12 +39,12 @@ struct Message {
   Message(Sender sender, std::string content, std::string role_label = "",
           std::string timestamp = "");
 
-  [[nodiscard]] static Message Tool(tool_call::ToolCallBlock block);
+  [[nodiscard]] static Message Tool(::yac::tool_call::ToolCallBlock block);
 
   [[nodiscard]] const std::string& Text() const;
   [[nodiscard]] std::string& Text();
-  [[nodiscard]] const tool_call::ToolCallBlock* ToolCall() const;
-  [[nodiscard]] tool_call::ToolCallBlock* ToolCall();
+  [[nodiscard]] const ::yac::tool_call::ToolCallBlock* ToolCall() const;
+  [[nodiscard]] ::yac::tool_call::ToolCallBlock* ToolCall();
   [[nodiscard]] std::string DisplayLabel() const;
 };
 

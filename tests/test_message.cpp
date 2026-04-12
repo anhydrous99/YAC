@@ -1,4 +1,3 @@
-#include "presentation/markdown/parser.hpp"
 #include "presentation/message.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -25,21 +24,6 @@ TEST_CASE("Default-constructed Message is User with empty content") {
   REQUIRE(msg.sender == Sender::User);
   REQUIRE(msg.Text().empty());
   REQUIRE(msg.DisplayLabel() == "You");
-}
-
-TEST_CASE("Default-constructed Message has no cached markdown blocks") {
-  Message msg;
-  REQUIRE_FALSE(msg.render_cache.markdown_blocks.has_value());
-}
-
-TEST_CASE("cached markdown blocks can be set and read") {
-  Message msg{Sender::Agent, "# hello"};
-  REQUIRE_FALSE(msg.render_cache.markdown_blocks.has_value());
-
-  msg.render_cache.markdown_blocks =
-      markdown::MarkdownParser::Parse(msg.Text());
-  REQUIRE(msg.render_cache.markdown_blocks.has_value());
-  REQUIRE_FALSE(msg.render_cache.markdown_blocks->empty());
 }
 
 TEST_CASE("Aggregate init Message has non-zero created_at") {

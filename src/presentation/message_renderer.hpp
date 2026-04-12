@@ -3,10 +3,12 @@
 #include "markdown/parser.hpp"
 #include "markdown/renderer.hpp"
 #include "message.hpp"
+#include "message_render_cache.hpp"
 #include "render_context.hpp"
 #include "tool_call/renderer.hpp"
 
 #include <chrono>
+#include <vector>
 
 #include <ftxui/dom/elements.hpp>
 
@@ -23,17 +25,25 @@ class MessageRenderer {
                                              int current_width);
   [[nodiscard]] static ftxui::Element Render(const Message& message,
                                              const RenderContext& context);
+  [[nodiscard]] static ftxui::Element Render(const Message& message,
+                                             MessageRenderCache& cache,
+                                             const RenderContext& context);
 
   [[nodiscard]] static ftxui::Element RenderAll(
       const std::vector<Message>& messages, int current_width);
   [[nodiscard]] static ftxui::Element RenderAll(
       const std::vector<Message>& messages, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderAll(
+      const std::vector<Message>& messages,
+      MessageRenderCacheStore& cache_store, const RenderContext& context);
 
  private:
   [[nodiscard]] static ftxui::Element RenderUserMessage(
-      const Message& message, const RenderContext& context);
+      const Message& message, MessageRenderCache& cache,
+      const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderAgentMessage(
-      const Message& message, const RenderContext& context);
+      const Message& message, MessageRenderCache& cache,
+      const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderToolCallMessage(
       const Message& message, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderHeader(

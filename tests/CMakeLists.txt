@@ -3,6 +3,7 @@ include(Catch)
 function(yac_add_test name source)
   add_executable(${name} ${source})
   target_link_libraries(${name} PRIVATE
+    yac_app
     yac_presentation
     yac_service
     Catch2::Catch2WithMain
@@ -30,6 +31,7 @@ yac_add_test(yac_test_tool_call_integration test_tool_call_integration.cpp)
 yac_add_test(yac_test_time_util        test_time_util.cpp)
 yac_add_test(yac_test_scroll_math      test_scroll_math.cpp)
 yac_add_test(yac_test_chat_service     test_chat_service.cpp)
+yac_add_test(yac_test_chat_event_bridge test_chat_event_bridge.cpp)
 yac_add_test(yac_test_openai_chat_provider test_openai_chat_provider.cpp)
 yac_add_test(yac_test_slash_command_registry test_slash_command_registry.cpp)
 yac_add_test(yac_test_env_file         test_env_file.cpp)

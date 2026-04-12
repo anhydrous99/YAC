@@ -1,11 +1,12 @@
 #include "presentation/tool_call/renderer.hpp"
-#include "presentation/tool_call/types.hpp"
+#include "tool_call/types.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <ftxui/screen/screen.hpp>
 
 using namespace yac::presentation::tool_call;
+using namespace yac::tool_call;
 
 namespace {
 

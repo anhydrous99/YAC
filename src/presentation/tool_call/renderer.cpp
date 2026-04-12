@@ -11,6 +11,8 @@
 
 namespace yac::presentation::tool_call {
 
+namespace tool_data = ::yac::tool_call;
+
 namespace {
 
 ftxui::Element RenderCodeText(const std::string& text,
@@ -73,28 +75,28 @@ ftxui::Element RenderLines(const std::vector<std::string>& lines,
 
 }  // namespace
 
-ftxui::Element ToolCallRenderer::Render(const ToolCallBlock& block) {
+ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block) {
   return Render(block, RenderContext{});
 }
 
-ftxui::Element ToolCallRenderer::Render(const ToolCallBlock& block,
+ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
                                         const RenderContext& context) {
   return std::visit(
       [&context](const auto& call) -> ftxui::Element {
         using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, BashCall>) {
+        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
           return RenderBash(call, context);
-        } else if constexpr (std::is_same_v<T, FileEditCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
           return RenderFileEdit(call, context);
-        } else if constexpr (std::is_same_v<T, FileReadCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
           return RenderFileRead(call, context);
-        } else if constexpr (std::is_same_v<T, GrepCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
           return RenderGrep(call, context);
-        } else if constexpr (std::is_same_v<T, GlobCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
           return RenderGlob(call, context);
-        } else if constexpr (std::is_same_v<T, WebFetchCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
           return RenderWebFetch(call, context);
-        } else if constexpr (std::is_same_v<T, WebSearchCall>) {
+        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
           return RenderWebSearch(call, context);
         } else {
           return ftxui::text("");
@@ -103,7 +105,7 @@ ftxui::Element ToolCallRenderer::Render(const ToolCallBlock& block,
       block);
 }
 
-ftxui::Element ToolCallRenderer::RenderBash(const BashCall& call,
+ftxui::Element ToolCallRenderer::RenderBash(const tool_data::BashCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
@@ -126,8 +128,8 @@ ftxui::Element ToolCallRenderer::RenderBash(const BashCall& call,
                          std::move(content), theme, border);
 }
 
-ftxui::Element ToolCallRenderer::RenderFileEdit(const FileEditCall& call,
-                                                const RenderContext& context) {
+ftxui::Element ToolCallRenderer::RenderFileEdit(
+    const tool_data::FileEditCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
   content.push_back(RenderLabelValue("File: ", call.filepath, theme));
@@ -139,10 +141,10 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(const FileEditCall& call,
     for (const auto& line : call.diff) {
       std::string prefix = "  ";
       ftxui::Color color = theme.tool.edit_context;
-      if (line.type == DiffLine::Add) {
+      if (line.type == tool_data::DiffLine::Add) {
         prefix = "+ ";
         color = theme.tool.edit_add;
-      } else if (line.type == DiffLine::Remove) {
+      } else if (line.type == tool_data::DiffLine::Remove) {
         prefix = "- ";
         color = theme.tool.edit_remove;
       }
@@ -154,8 +156,8 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(const FileEditCall& call,
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderFileRead(const FileReadCall& call,
-                                                const RenderContext& context) {
+ftxui::Element ToolCallRenderer::RenderFileRead(
+    const tool_data::FileReadCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
   content.push_back(RenderLabelValue("File: ", call.filepath, theme));
@@ -170,7 +172,7 @@ ftxui::Element ToolCallRenderer::RenderFileRead(const FileReadCall& call,
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderGrep(const GrepCall& call,
+ftxui::Element ToolCallRenderer::RenderGrep(const tool_data::GrepCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
@@ -190,7 +192,7 @@ ftxui::Element ToolCallRenderer::RenderGrep(const GrepCall& call,
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderGlob(const GlobCall& call,
+ftxui::Element ToolCallRenderer::RenderGlob(const tool_data::GlobCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
@@ -210,8 +212,8 @@ ftxui::Element ToolCallRenderer::RenderGlob(const GlobCall& call,
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderWebFetch(const WebFetchCall& call,
-                                                const RenderContext& context) {
+ftxui::Element ToolCallRenderer::RenderWebFetch(
+    const tool_data::WebFetchCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
   content.push_back(RenderLabelValue("URL: ", call.url, theme));
@@ -226,8 +228,8 @@ ftxui::Element ToolCallRenderer::RenderWebFetch(const WebFetchCall& call,
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderWebSearch(const WebSearchCall& call,
-                                                 const RenderContext& context) {
+ftxui::Element ToolCallRenderer::RenderWebSearch(
+    const tool_data::WebSearchCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
   content.push_back(RenderLabelValue("Query: ", call.query, theme));

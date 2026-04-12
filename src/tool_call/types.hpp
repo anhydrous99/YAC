@@ -4,7 +4,7 @@
 #include <variant>
 #include <vector>
 
-namespace yac::presentation::tool_call {
+namespace yac::tool_call {
 
 struct DiffLine {
   enum Type { Add, Remove, Context };
@@ -69,4 +69,4 @@ using ToolCallBlock =
     std::variant<BashCall, FileEditCall, FileReadCall, GrepCall, GlobCall,
                  WebFetchCall, WebSearchCall>;
 
-}  // namespace yac::presentation::tool_call
+}  // namespace yac::tool_call

@@ -1,7 +1,7 @@
 #include "presentation/chat_ui.hpp"
 #include "presentation/message.hpp"
 #include "presentation/message_renderer.hpp"
-#include "presentation/tool_call/types.hpp"
+#include "tool_call/types.hpp"
 
 #include <string>
 
@@ -10,7 +10,7 @@
 #include <ftxui/screen/screen.hpp>
 
 using namespace yac::presentation;
-using namespace yac::presentation::tool_call;
+using namespace yac::tool_call;
 
 namespace {
 
