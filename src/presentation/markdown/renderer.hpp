@@ -22,7 +22,7 @@ class MarkdownRenderer {
                                                   const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderInline(
       const std::vector<InlineNode>& nodes, const RenderContext& context);
-  [[nodiscard]] static ftxui::Element RenderInlineNode(
+  [[nodiscard]] static ftxui::Elements RenderInlineWords(
       const InlineNode& node, const RenderContext& context);
 
   [[nodiscard]] static ftxui::Element RenderHeading(

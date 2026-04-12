@@ -49,41 +49,70 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
       block);
 }
 
+namespace {
+
+ftxui::Elements SplitIntoWords(const std::string& content,
+                               const ftxui::Decorator& style) {
+  ftxui::Elements elements;
+  size_t start = 0;
+  while (start < content.size()) {
+    auto pos = content.find(' ', start);
+    if (pos == std::string::npos) {
+      pos = content.size();
+    }
+    auto word = content.substr(start, pos - start);
+    if (!word.empty()) {
+      elements.push_back(ftxui::text(word) | style);
+    }
+    if (pos < content.size()) {
+      elements.push_back(ftxui::text(" "));
+    }
+    start = pos + 1;
+  }
+  return elements;
+}
+
+}  // namespace
+
 ftxui::Element MarkdownRenderer::RenderInline(
     const std::vector<InlineNode>& nodes, const RenderContext& context) {
   ftxui::Elements elements;
   for (const auto& node : nodes) {
-    elements.push_back(RenderInlineNode(node, context));
+    auto node_elements = RenderInlineWords(node, context);
+    elements.insert(elements.end(), node_elements.begin(),
+                    node_elements.end());
   }
-  return ftxui::hbox(elements);
+  return ftxui::hflow(elements);
 }
 
-ftxui::Element MarkdownRenderer::RenderInlineNode(
+ftxui::Elements MarkdownRenderer::RenderInlineWords(
     const InlineNode& node, const RenderContext& context) {
   const auto& theme = context.Colors();
   return std::visit(
-      [&theme](const auto& n) -> ftxui::Element {
+      [&theme](const auto& n) -> ftxui::Elements {
         using T = std::decay_t<decltype(n)>;
         if constexpr (std::is_same_v<T, Text>) {
-          return ftxui::text(n.content) | ftxui::color(theme.chrome.body_text);
+          return SplitIntoWords(
+              n.content, ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, Bold>) {
-          return ftxui::text(n.content) | ftxui::bold |
-                 ftxui::color(theme.chrome.body_text);
+          return SplitIntoWords(
+              n.content, ftxui::bold | ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, Italic>) {
-          return ftxui::text(n.content) | ftxui::italic |
-                 ftxui::color(theme.chrome.body_text);
+          return SplitIntoWords(
+              n.content, ftxui::italic | ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, Strikethrough>) {
-          return ftxui::text(n.content) | ftxui::strikethrough |
-                 ftxui::color(theme.chrome.body_text);
+          return SplitIntoWords(n.content,
+                                ftxui::strikethrough |
+                                    ftxui::color(theme.chrome.body_text));
         } else if constexpr (std::is_same_v<T, InlineCode>) {
-          return ftxui::text(" " + n.content + " ") | ftxui::bold |
-                 ftxui::bgcolor(theme.code.inline_bg) |
-                 ftxui::color(theme.code.inline_fg);
+          return {ftxui::text(" " + n.content + " ") | ftxui::bold |
+                  ftxui::bgcolor(theme.code.inline_bg) |
+                  ftxui::color(theme.code.inline_fg)};
         } else if constexpr (std::is_same_v<T, Link>) {
-          return ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
-                 ftxui::underlined;
+          return {ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
+                  ftxui::underlined};
         } else {
-          return ftxui::text("");
+          return {ftxui::text("")};
         }
       },
       node);

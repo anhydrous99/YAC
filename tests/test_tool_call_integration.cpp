@@ -68,7 +68,8 @@ TEST_CASE(
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("hello from user"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("bash"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("agent response"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("agent"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("response"));
 }
 
 TEST_CASE("ChatUI tool messages render expanded chevron by default") {
