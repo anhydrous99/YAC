@@ -71,7 +71,6 @@ std::vector<ChatEvent> CollectEvents(ChatService& service,
   std::condition_variable condition;
   std::vector<ChatEvent> events;
   bool finished = false;
-
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mutex);
     events.push_back(std::move(event));
@@ -93,9 +92,14 @@ ChatService MakeService(
     ChatConfig config = {}) {
   ProviderRegistry registry;
   if (provider) {
+    if (config.provider_id == "openai") {
+      config.provider_id = provider->Id();
+    }
     registry.Register(std::move(provider));
   } else {
     registry.Register(std::make_shared<FakeProvider>());
+    config.provider_id = "fake";
+    config.model = "fake-model";
   }
   return ChatService(std::move(registry), config);
 }

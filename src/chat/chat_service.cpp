@@ -165,11 +165,13 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
   }
 
   if (!assistant_text.empty()) {
-    std::lock_guard lock(mutex_);
-    history_.push_back(ChatMessage{.id = NextMessageId(),
-                                   .role = ChatRole::Assistant,
-                                   .status = ChatMessageStatus::Complete,
-                                   .content = assistant_text});
+    {
+      std::lock_guard lock(mutex_);
+      history_.push_back(ChatMessage{.id = NextMessageId(),
+                                     .role = ChatRole::Assistant,
+                                     .status = ChatMessageStatus::Complete,
+                                     .content = assistant_text});
+    }
     EmitEvent(ChatEvent{.type = ChatEventType::AssistantMessageDone,
                         .message_id = prompt.id});
   }
