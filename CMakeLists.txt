@@ -58,6 +58,7 @@ target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::co
 
 add_library(yac_service STATIC
   src/chat/chat_service.cpp
+  src/chat/config.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
 )
