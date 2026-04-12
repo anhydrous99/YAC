@@ -122,10 +122,10 @@ void OpenAiChatProvider::CompleteStream(const chat::ChatRequest& request,
                                         std::stop_token stop_token) {
   try {
     if (request.stream) {
-      CompleteStreaming(request, std::move(sink), stop_token);
+      CompleteStreaming(request, sink, stop_token);
       return;
     }
-    CompleteBuffered(request, std::move(sink));
+    CompleteBuffered(request, sink);
   } catch (const std::exception& error) {
     sink(chat::ChatEvent{.type = chat::ChatEventType::Error,
                          .text = error.what(),

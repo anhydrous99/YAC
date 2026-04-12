@@ -28,7 +28,6 @@ class EventBridge {
 
     switch (event.type) {
       case ChatEventType::UserMessageQueued:
-        chat_ui_.AddMessage(Sender::User, event.text, MessageStatus::Queued);
         break;
 
       case ChatEventType::UserMessageActive:
@@ -50,10 +49,17 @@ class EventBridge {
         break;
       }
 
-      case ChatEventType::Error:
+      case ChatEventType::Error: {
         chat_ui_.SetTyping(false);
-        chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text);
+        auto it = agent_ids_.find(event.message_id);
+        if (it != agent_ids_.end()) {
+          chat_ui_.AppendToAgentMessage(it->second,
+                                        "Error: " + event.text);
+        } else {
+          chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text);
+        }
         break;
+      }
 
       case ChatEventType::AssistantMessageDone:
         break;
