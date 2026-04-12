@@ -1,67 +1,139 @@
 
 #include "chat/chat_service.hpp"
+#include "chat/config.hpp"
 #include "presentation/chat_ui.hpp"
 #include "provider/openai_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include <ftxui/component/app.hpp>
 
 namespace {
 
-void ApplyChatEvent(yac::presentation::ChatUI& chat_ui,
-                    const yac::chat::ChatEvent& event) {
-  using yac::chat::ChatEventType;
-  using yac::presentation::Sender;
+class EventBridge {
+ public:
+  EventBridge(yac::presentation::ChatUI& chat_ui,
+              yac::chat::ChatService& chat_service)
+      : chat_ui_(chat_ui), chat_service_(chat_service) {}
 
-  switch (event.type) {
-    case ChatEventType::Started:
-      chat_ui.SetTyping(true);
-      break;
-    case ChatEventType::TextDelta:
-      chat_ui.AppendToLastAgentMessage(event.text);
-      break;
-    case ChatEventType::Error:
-      chat_ui.SetTyping(false);
-      chat_ui.AddMessage(Sender::Agent, "Error: " + event.text);
-      break;
-    case ChatEventType::Finished:
-    case ChatEventType::AssistantMessageDone:
-    case ChatEventType::Cancelled:
-      chat_ui.SetTyping(false);
-      break;
-    case ChatEventType::ToolCallStarted:
-    case ChatEventType::ToolCallDone:
-      break;
+  void HandleEvent(yac::chat::ChatEvent event) {
+    using yac::chat::ChatEventType;
+    using yac::chat::ChatMessageStatus;
+    using yac::presentation::MessageStatus;
+    using yac::presentation::Sender;
+
+    switch (event.type) {
+      case ChatEventType::UserMessageQueued:
+        chat_ui_.AddMessage(Sender::User, event.text, MessageStatus::Queued);
+        break;
+
+      case ChatEventType::UserMessageActive:
+        chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Active);
+        break;
+
+      case ChatEventType::Started: {
+        auto agent_id = chat_ui_.StartAgentMessage();
+        agent_ids_[event.message_id] = agent_id;
+        chat_ui_.SetTyping(true);
+        break;
+      }
+
+      case ChatEventType::TextDelta: {
+        auto it = agent_ids_.find(event.message_id);
+        if (it != agent_ids_.end()) {
+          chat_ui_.AppendToAgentMessage(it->second, event.text);
+        }
+        break;
+      }
+
+      case ChatEventType::Error:
+        chat_ui_.SetTyping(false);
+        chat_ui_.AddMessage(Sender::Agent, "Error: " + event.text);
+        break;
+
+      case ChatEventType::AssistantMessageDone:
+        break;
+
+      case ChatEventType::Finished:
+        chat_ui_.SetTyping(false);
+        break;
+
+      case ChatEventType::Cancelled:
+        chat_ui_.SetTyping(false);
+        chat_ui_.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
+        break;
+
+      case ChatEventType::MessageStatusChanged:
+        chat_ui_.SetMessageStatus(event.message_id, event.status);
+        break;
+
+      case ChatEventType::ConversationCleared:
+        chat_ui_.ClearMessages();
+        chat_ui_.SetTyping(false);
+        agent_ids_.clear();
+        break;
+
+      case ChatEventType::QueueDepthChanged:
+        break;
+
+      case ChatEventType::ToolCallStarted:
+      case ChatEventType::ToolCallDone:
+        break;
+    }
   }
-}
+
+ private:
+  yac::presentation::ChatUI& chat_ui_;
+  yac::chat::ChatService& chat_service_;
+  std::unordered_map<yac::chat::ChatMessageId, yac::presentation::MessageId>
+      agent_ids_;
+};
 
 }  // namespace
 
 int main() {
+  auto config = yac::chat::LoadChatConfigFromEnv();
+
   yac::provider::ProviderRegistry registry;
-  registry.Register(std::make_shared<yac::provider::OpenAiChatProvider>());
-  yac::chat::ChatService chat_service(std::move(registry));
+  registry.Register(std::make_shared<yac::provider::OpenAiChatProvider>(
+      yac::chat::ProviderConfig{
+          .id = config.provider_id,
+          .model = config.model,
+          .api_key_env = config.api_key_env,
+          .base_url = config.base_url,
+      }));
+  yac::chat::ChatService chat_service(std::move(registry), config);
 
   yac::presentation::ChatUI chat_ui;
   auto screen = ftxui::App::Fullscreen();
 
-  chat_ui.SetOnSend(
-      [&chat_service, &chat_ui, &screen](const std::string& message) {
-        chat_service.SubmitUserMessage(
-            message, [&chat_ui, &screen](yac::chat::ChatEvent event) {
-              screen.Post([&chat_ui, event = std::move(event)] {
-                ApplyChatEvent(chat_ui, event);
-              });
-            });
-      });
+  EventBridge bridge(chat_ui, chat_service);
+
+  chat_service.SetEventCallback([&bridge, &screen](yac::chat::ChatEvent event) {
+    screen.Post(
+        [&bridge, event = std::move(event)] { bridge.HandleEvent(event); });
+  });
+
+  chat_ui.SetOnSend([&chat_service](const std::string& message) {
+    chat_service.SubmitUserMessage(message);
+  });
+
+  chat_ui.SetOnCommand([&chat_service](const std::string& command) {
+    if (command == "New Chat" || command == "Clear Messages") {
+      chat_service.ResetConversation();
+    } else if (command == "Cancel Response") {
+      chat_service.CancelActiveResponse();
+    }
+  });
 
   chat_ui.SetCommands({
       {"New Chat", "Start a fresh conversation"},
       {"Clear Messages", "Remove all messages from the view"},
+      {"Cancel Response", "Stop the current assistant response"},
       {"Toggle Theme", "Switch between light and dark themes"},
       {"Export Chat", "Save the current transcript"},
       {"Help", "Show keyboard shortcuts and tips"},
