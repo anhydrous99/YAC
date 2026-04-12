@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -244,4 +247,95 @@ TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE_FALSE(config.system_prompt.has_value());
+}
+
+TEST_CASE("LoadChatConfigFromEnv loads from .env file") {
+  const auto original_dir = std::filesystem::current_path();
+
+  const auto temp_dir =
+      std::filesystem::temp_directory_path() / "test_env_config";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::current_path(temp_dir);
+
+  const std::string env_content =
+      "YAC_PROVIDER=env-provider\n"
+      "YAC_MODEL=env-model\n"
+      "YAC_BASE_URL=https://env.example.com/v1/\n"
+      "YAC_TEMPERATURE=1.5\n"
+      "YAC_API_KEY_ENV=YAC_TEST_API_KEY_FROM_FILE\n"
+      "YAC_TEST_API_KEY_FROM_FILE=env-api-key\n"
+      "YAC_SYSTEM_PROMPT=\"Env system prompt\"\n";
+
+  std::ofstream env_file(temp_dir / ".env");
+  env_file << env_content;
+  env_file.close();
+
+  auto config = LoadChatConfigFromEnv();
+
+  REQUIRE(config.provider_id == "env-provider");
+  REQUIRE(config.model == "env-model");
+  REQUIRE(config.base_url == "https://env.example.com/v1/");
+  REQUIRE(config.temperature == 1.5);
+  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_FILE");
+  REQUIRE(config.api_key == "env-api-key");
+  REQUIRE(config.system_prompt.has_value());
+  REQUIRE(*config.system_prompt == "Env system prompt");
+
+  std::filesystem::current_path(original_dir);
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("LoadChatConfigFromEnv: environment variables override .env") {
+  const auto original_dir = std::filesystem::current_path();
+
+  const auto temp_dir =
+      std::filesystem::temp_directory_path() / "test_env_override";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::current_path(temp_dir);
+
+  const std::string env_content =
+      "YAC_PROVIDER=env-provider\n"
+      "YAC_MODEL=env-model\n"
+      "YAC_TEMPERATURE=1.5\n"
+      "YAC_API_KEY_ENV=YAC_TEST_API_KEY_OVERRIDE\n"
+      "YAC_TEST_API_KEY_OVERRIDE=env-api-key\n";
+
+  std::ofstream env_file(temp_dir / ".env");
+  env_file << env_content;
+  env_file.close();
+
+#ifdef _WIN32
+  _putenv_s("YAC_PROVIDER", "system-provider");
+  _putenv_s("YAC_MODEL", "system-model");
+  _putenv_s("YAC_TEMPERATURE", "0.8");
+  _putenv_s("YAC_TEST_API_KEY_OVERRIDE", "system-api-key");
+#else
+  setenv("YAC_PROVIDER", "system-provider", 1);
+  setenv("YAC_MODEL", "system-model", 1);
+  setenv("YAC_TEMPERATURE", "0.8", 1);
+  setenv("YAC_TEST_API_KEY_OVERRIDE", "system-api-key", 1);
+#endif
+
+  auto config = LoadChatConfigFromEnv();
+
+  REQUIRE(config.provider_id == "system-provider");
+  REQUIRE(config.model == "system-model");
+  REQUIRE(config.temperature == 0.8);
+  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_OVERRIDE");
+  REQUIRE(config.api_key == "system-api-key");
+
+#ifdef _WIN32
+  _putenv_s("YAC_PROVIDER", "");
+  _putenv_s("YAC_MODEL", "");
+  _putenv_s("YAC_TEMPERATURE", "");
+  _putenv_s("YAC_TEST_API_KEY_OVERRIDE", "");
+#else
+  unsetenv("YAC_PROVIDER");
+  unsetenv("YAC_MODEL");
+  unsetenv("YAC_TEMPERATURE");
+  unsetenv("YAC_TEST_API_KEY_OVERRIDE");
+#endif
+
+  std::filesystem::current_path(original_dir);
+  std::filesystem::remove_all(temp_dir);
 }

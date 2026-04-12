@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -80,6 +81,7 @@ struct ChatConfig {
   std::string model = "gpt-4o-mini";
   std::string base_url = "https://api.openai.com/v1/";
   double temperature = 0.7;
+  std::string api_key;
   std::string api_key_env = "OPENAI_API_KEY";
   std::optional<std::string> system_prompt;
 };

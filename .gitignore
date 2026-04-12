@@ -4,3 +4,4 @@ cmake-*/
 compile_commands.json
 .sisyphus/
 .idea/
+.env

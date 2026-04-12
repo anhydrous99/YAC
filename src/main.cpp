@@ -109,6 +109,7 @@ int main() {
       yac::chat::ProviderConfig{
           .id = config.provider_id,
           .model = config.model,
+          .api_key = config.api_key,
           .api_key_env = config.api_key_env,
           .base_url = config.base_url,
       }));
