@@ -3,8 +3,12 @@
 #include "chat/types.hpp"
 #include "provider/provider_registry.hpp"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <functional>
 #include <mutex>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,8 +20,7 @@ using ChatEventCallback = std::function<void(ChatEvent)>;
 class ChatService {
  public:
   explicit ChatService(provider::ProviderRegistry registry,
-                       std::string provider_id = "openai",
-                       std::string model = "gpt-4o-mini");
+                       ChatConfig config = {});
   ~ChatService();
 
   ChatService(const ChatService&) = delete;
@@ -25,20 +28,42 @@ class ChatService {
   ChatService(ChatService&&) = delete;
   ChatService& operator=(ChatService&&) = delete;
 
-  void SubmitUserMessage(std::string content, ChatEventCallback callback);
-  void CancelAll();
+  void SetEventCallback(ChatEventCallback callback);
+  ChatMessageId SubmitUserMessage(std::string content);
+  void CancelActiveResponse();
+  void ResetConversation();
 
   [[nodiscard]] std::vector<ChatMessage> History() const;
+  [[nodiscard]] bool IsBusy() const;
+  [[nodiscard]] int QueueDepth() const;
 
  private:
-  void RecordAssistantMessage(const std::string& content);
+  struct PendingPrompt {
+    ChatMessageId id;
+    std::string content;
+  };
+
+  void WorkerLoop(std::stop_token stop_token);
+  void ProcessPrompt(const PendingPrompt& prompt, uint64_t generation);
+  void EmitEvent(ChatEvent event) const;
+  void EmitQueueDepth();
+  [[nodiscard]] ChatMessageId NextMessageId();
+  [[nodiscard]] ChatRequest BuildRequest() const;
 
   provider::ProviderRegistry registry_;
-  std::string provider_id_;
-  std::string model_;
+  ChatConfig config_;
+
   mutable std::mutex mutex_;
   std::vector<ChatMessage> history_;
-  std::vector<std::jthread> requests_;
+  std::deque<PendingPrompt> pending_;
+  ChatEventCallback callback_;
+
+  std::atomic<uint64_t> generation_{0};
+  std::atomic<ChatMessageId> next_id_{1};
+
+  std::jthread worker_;
+  std::condition_variable_any wake_;
+  bool active_ = false;
 };
 
 }  // namespace yac::chat
