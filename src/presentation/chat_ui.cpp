@@ -104,6 +104,10 @@ void ChatUI::SetOnSend(OnSendCallback on_send) {
   on_send_ = std::move(on_send);
 }
 
+void ChatUI::SetOnCommand(OnCommandCallback on_command) {
+  on_command_ = std::move(on_command);
+}
+
 ftxui::Component ChatUI::Build() {
   auto message_list = BuildMessageList();
   auto input = BuildInput();
@@ -155,7 +159,12 @@ ftxui::Component ChatUI::Build() {
            ftxui::borderRounded | ftxui::color(k_theme.chrome.border);
   });
 
-  auto on_select = [](int) {};
+  auto on_select = [this](int index) {
+    if (index >= 0 && static_cast<size_t>(index) < commands_.size() &&
+        on_command_) {
+      on_command_(commands_[index].name);
+    }
+  };
   auto palette = CommandPalette(commands_, on_select, &show_command_palette_);
   auto dialog = DialogPanel("Command Palette", palette, &show_command_palette_);
   auto modal = ftxui::Modal(main_ui, dialog, &show_command_palette_);
@@ -169,11 +178,34 @@ ftxui::Component ChatUI::Build() {
   });
 }
 
-void ChatUI::AddMessage(Sender sender, std::string content) {
-  session_.AddMessage(sender, std::move(content));
+MessageId ChatUI::AddMessage(Sender sender, std::string content,
+                             MessageStatus status) {
+  auto id = session_.AddMessage(sender, std::move(content), status);
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
+  return id;
+}
+
+MessageId ChatUI::StartAgentMessage() {
+  auto id = session_.AddMessage(Sender::Agent, "", MessageStatus::Active);
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
+  return id;
+}
+
+void ChatUI::AppendToAgentMessage(MessageId id, std::string delta) {
+  session_.AppendToAgentMessage(id, std::move(delta));
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
+}
+
+void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
+  session_.SetMessageStatus(id, status);
 }
 
 void ChatUI::AddToolCallMessage(
@@ -182,14 +214,6 @@ void ChatUI::AddToolCallMessage(
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
-}
-
-void ChatUI::AppendToLastAgentMessage(std::string delta) {
-  session_.AppendToLastAgentMessage(std::move(delta));
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
-  SyncMessageComponents();
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
@@ -202,6 +226,11 @@ void ChatUI::SetTyping(bool typing) {
 
 void ChatUI::SetToolExpanded(size_t index, bool expanded) {
   session_.SetToolExpanded(index, expanded);
+}
+
+void ChatUI::ClearMessages() {
+  session_.ClearMessages();
+  message_components_.clear();
 }
 
 const std::vector<Message>& ChatUI::GetMessages() const {
@@ -276,8 +305,6 @@ ftxui::Component ChatUI::BuildMessageList() {
     auto msg_element =
         message_stack->Render() | ftxui::color(k_theme.chrome.dim_text);
 
-    // ComputeRequirement gives the natural (unclipped) content height,
-    // unlike reflect() before frame which only captures the viewport size.
     msg_element->ComputeRequirement();
     content_height_ = msg_element->requirement().min_y;
     int viewport_height = ViewportHeight();

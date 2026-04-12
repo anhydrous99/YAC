@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chat/types.hpp"
 #include "markdown/ast.hpp"
 #include "tool_call/types.hpp"
 #include "util/time_util.hpp"
@@ -16,6 +17,9 @@
 namespace yac::presentation {
 
 enum class Sender { User, Agent, Tool };
+
+using MessageId = chat::ChatMessageId;
+using MessageStatus = chat::ChatMessageStatus;
 
 struct TextContent {
   std::string text;
@@ -37,8 +41,10 @@ struct MessageRenderCache {
 };
 
 struct Message {
+  MessageId id = 0;
   Sender sender = Sender::User;
   MessageContent body = TextContent{};
+  MessageStatus status = MessageStatus::Complete;
   std::string role_label;
   std::string timestamp;
   mutable MessageRenderCache render_cache;

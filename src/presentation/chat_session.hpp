@@ -2,7 +2,9 @@
 
 #include "message.hpp"
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -10,17 +12,22 @@ namespace yac::presentation {
 
 class ChatSession {
  public:
-  void AddMessage(Sender sender, std::string content);
+  MessageId AddMessage(Sender sender, std::string content,
+                       MessageStatus status = MessageStatus::Complete);
   void AddToolCallMessage(tool_call::ToolCallBlock block);
-  void AppendToLastAgentMessage(std::string delta);
+  void AppendToAgentMessage(MessageId id, std::string delta);
+  void SetMessageStatus(MessageId id, MessageStatus status);
   void SetToolExpanded(size_t index, bool expanded);
+  void ClearMessages();
 
+  [[nodiscard]] std::optional<size_t> FindMessageIndex(MessageId id) const;
   [[nodiscard]] const std::vector<Message>& Messages() const;
   [[nodiscard]] bool Empty() const;
   [[nodiscard]] size_t MessageCount() const;
   [[nodiscard]] bool* ToolExpandedState(size_t index);
 
  private:
+  MessageId next_id_ = 1;
   std::vector<Message> messages_;
   std::vector<std::unique_ptr<bool>> tool_expanded_states_;
 };

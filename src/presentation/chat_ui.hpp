@@ -19,6 +19,7 @@ namespace yac::presentation {
 class ChatUI {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
+  using OnCommandCallback = std::function<void(const std::string&)>;
 
   static constexpr int kMaxInputLines = 8;
 
@@ -28,12 +29,17 @@ class ChatUI {
   [[nodiscard]] ftxui::Component Build();
 
   void SetOnSend(OnSendCallback on_send);
-  void AddMessage(Sender sender, std::string content);
+  void SetOnCommand(OnCommandCallback on_command);
+  MessageId AddMessage(Sender sender, std::string content,
+                       MessageStatus status = MessageStatus::Complete);
+  MessageId StartAgentMessage();
+  void AppendToAgentMessage(MessageId id, std::string delta);
+  void SetMessageStatus(MessageId id, MessageStatus status);
   void AddToolCallMessage(::yac::presentation::tool_call::ToolCallBlock block);
-  void AppendToLastAgentMessage(std::string delta);
   void SetCommands(std::vector<Command> commands);
   void SetTyping(bool typing);
   void SetToolExpanded(size_t index, bool expanded);
+  void ClearMessages();
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool IsTyping() const;
@@ -58,6 +64,7 @@ class ChatUI {
   std::vector<ftxui::Component> message_components_;
   ComposerState composer_;
   OnSendCallback on_send_;
+  OnCommandCallback on_command_;
   bool is_typing_ = false;
   bool show_command_palette_ = false;
   std::vector<Command> commands_;
