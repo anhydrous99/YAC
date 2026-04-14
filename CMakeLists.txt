@@ -50,6 +50,7 @@ add_library(yac_presentation STATIC
   src/presentation/message_renderer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
+  src/presentation/slash_command_menu.cpp
   src/presentation/slash_command_registry.cpp
   src/presentation/syntax/highlighter.cpp
   src/presentation/theme.cpp

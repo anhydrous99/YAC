@@ -9,6 +9,7 @@
 #include "ftxui/screen/box.hpp"
 #include "message.hpp"
 #include "message_renderer.hpp"
+#include "slash_command_menu.hpp"
 #include "slash_command_registry.hpp"
 
 #include <functional>
@@ -67,6 +68,9 @@ class ChatUI {
   [[nodiscard]] bool HasActiveAgentMessage() const;
   void AdvanceThinkingFrame();
   void ClampScrollOffset();
+  void UpdateSlashMenuState();
+  [[nodiscard]] bool HandleSlashMenuEvent(const ftxui::Event& event);
+  void DispatchSlashMenuSelection();
 
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;

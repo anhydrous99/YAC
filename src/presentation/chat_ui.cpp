@@ -11,6 +11,7 @@
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
+#include "slash_command_menu.hpp"
 #include "theme.hpp"
 #include "util/scroll_math.hpp"
 
@@ -98,6 +99,30 @@ class ThinkingAnimationDriver : public ftxui::ComponentBase {
   ftxui::animation::Duration elapsed_{};
 };
 
+class SlashMenuInputWrapper : public ftxui::ComponentBase {
+ public:
+  SlashMenuInputWrapper(ftxui::Component input,
+                        std::function<bool(const ftxui::Event&)> pre_handler,
+                        std::function<void()> post_handler)
+      : pre_handler_(std::move(pre_handler)),
+        post_handler_(std::move(post_handler)) {
+    Add(std::move(input));
+  }
+
+  bool OnEvent(ftxui::Event event) override {
+    if (pre_handler_(event)) {
+      return true;
+    }
+    bool handled = children_.front()->OnEvent(event);
+    post_handler_();
+    return handled;
+  }
+
+ private:
+  std::function<bool(const ftxui::Event&)> pre_handler_;
+  std::function<void()> post_handler_;
+};
+
 bool IsAltEnter(const ftxui::Event& event) {
   if (event.is_mouse() || event.input().empty()) {
     return false;
@@ -182,6 +207,16 @@ ftxui::Component ChatUI::Build() {
 
     auto input_height = CalculateInputHeight();
 
+    ftxui::Element slash_menu;
+    if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
+      auto filtered =
+          composer_.FilteredSlashIndices(slash_commands_.Commands());
+      int term_width = ftxui::Terminal::Size().dimx;
+      slash_menu = RenderSlashCommandMenu(slash_commands_.Commands(), filtered,
+                                          composer_.SlashMenuSelectedIndex(),
+                                          term_width - 4);
+    }
+
     ftxui::Elements footer_rows;
     footer_rows.push_back(ftxui::hbox(footer_elements));
 
@@ -192,16 +227,22 @@ ftxui::Component ChatUI::Build() {
 
     auto footer_with_hints = ftxui::vbox(footer_rows);
 
-    return ftxui::vbox({
-               message_list->Render() | ftxui::flex,
-               ftxui::separator() | ftxui::color(k_theme.markdown.separator),
-               footer_with_hints,
-               ftxui::separator() | ftxui::color(k_theme.markdown.separator),
-               input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
-                   ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN,
-                               input_height),
-           }) |
-           ftxui::borderRounded | ftxui::color(k_theme.chrome.border);
+    ftxui::Elements main_parts;
+    main_parts.push_back(message_list->Render() | ftxui::flex);
+    main_parts.push_back(ftxui::separator() |
+                         ftxui::color(k_theme.markdown.separator));
+    main_parts.push_back(footer_with_hints);
+    main_parts.push_back(ftxui::separator() |
+                         ftxui::color(k_theme.markdown.separator));
+    if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
+      main_parts.push_back(slash_menu);
+    }
+    main_parts.push_back(
+        input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
+        ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, input_height));
+
+    return ftxui::vbox(std::move(main_parts)) | ftxui::borderRounded |
+           ftxui::color(k_theme.chrome.border);
   });
 
   auto on_select = [this](int index) {
@@ -358,9 +399,10 @@ ftxui::Component ChatUI::BuildInput() {
 
   auto input = ftxui::Input(&composer_.Content(), option);
 
-  return ftxui::CatchEvent(input, [this](const ftxui::Event& event) {
-    return HandleInputEvent(event);
-  });
+  return ftxui::Make<SlashMenuInputWrapper>(
+      input,
+      [this](const ftxui::Event& event) { return HandleInputEvent(event); },
+      [this] { UpdateSlashMenuState(); });
 }
 
 int ChatUI::CalculateInputHeight() const {
@@ -372,6 +414,38 @@ void ChatUI::InsertNewline() {
 }
 
 bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
+  if (composer_.IsSlashMenuActive()) {
+    if (event == ftxui::Event::Escape) {
+      composer_.DismissSlashMenu();
+      return true;
+    }
+    if (event == ftxui::Event::Return) {
+      DispatchSlashMenuSelection();
+      return true;
+    }
+    if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Tab) {
+      auto filtered =
+          composer_.FilteredSlashIndices(slash_commands_.Commands());
+      if (!filtered.empty()) {
+        int current = composer_.SlashMenuSelectedIndex();
+        int next = (current - 1 + static_cast<int>(filtered.size())) %
+                   static_cast<int>(filtered.size());
+        composer_.SetSlashMenuSelectedIndex(next);
+      }
+      return true;
+    }
+    if (event == ftxui::Event::ArrowDown) {
+      auto filtered =
+          composer_.FilteredSlashIndices(slash_commands_.Commands());
+      if (!filtered.empty()) {
+        int current = composer_.SlashMenuSelectedIndex();
+        int next = (current + 1) % static_cast<int>(filtered.size());
+        composer_.SetSlashMenuSelectedIndex(next);
+      }
+      return true;
+    }
+  }
+
   if (event == ftxui::Event::Return) {
     SubmitMessage();
     return true;
@@ -655,6 +729,64 @@ void ChatUI::ClampScrollOffset() {
   if (scroll_offset_y_ < MaxScrollOffset()) {
     follow_tail_ = false;
   }
+}
+
+void ChatUI::UpdateSlashMenuState() {
+  const auto& content = composer_.Content();
+  if (content.empty() || content.front() != '/') {
+    composer_.DismissSlashMenu();
+    return;
+  }
+  if (!composer_.IsSlashMenuActive()) {
+    composer_.ActivateSlashMenu();
+  }
+}
+
+bool ChatUI::HandleSlashMenuEvent(const ftxui::Event& event) {
+  if (!composer_.IsSlashMenuActive()) {
+    return false;
+  }
+
+  if (event == ftxui::Event::Escape) {
+    composer_.DismissSlashMenu();
+    return true;
+  }
+
+  if (event == ftxui::Event::Return) {
+    DispatchSlashMenuSelection();
+    return true;
+  }
+
+  auto filtered = composer_.FilteredSlashIndices(slash_commands_.Commands());
+  if (filtered.empty()) {
+    return false;
+  }
+  int count = static_cast<int>(filtered.size());
+
+  if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Tab) {
+    int current = composer_.SlashMenuSelectedIndex();
+    composer_.SetSlashMenuSelectedIndex((current - 1 + count) % count);
+    return true;
+  }
+  if (event == ftxui::Event::ArrowDown) {
+    int current = composer_.SlashMenuSelectedIndex();
+    composer_.SetSlashMenuSelectedIndex((current + 1) % count);
+    return true;
+  }
+
+  return false;
+}
+
+void ChatUI::DispatchSlashMenuSelection() {
+  auto filtered = composer_.FilteredSlashIndices(slash_commands_.Commands());
+  int selected = composer_.SlashMenuSelectedIndex();
+  if (selected < 0 || selected >= static_cast<int>(filtered.size())) {
+    composer_.DismissSlashMenu();
+    return;
+  }
+  const auto& command = slash_commands_.Commands()[filtered[selected]];
+  (void)composer_.Submit();
+  command.handler();
 }
 
 }  // namespace yac::presentation
