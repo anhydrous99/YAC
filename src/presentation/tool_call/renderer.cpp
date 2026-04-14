@@ -37,24 +37,26 @@ ftxui::Element RenderWrappedLine(const std::string& text, ftxui::Color color) {
 ftxui::Element RenderContainer(const std::string& icon,
                                const std::string& label, ftxui::Color accent,
                                ftxui::Elements content,
-                               const theme::Theme& theme,
-                               ftxui::Color border_color = ftxui::Color{}) {
-  if (border_color == ftxui::Color()) {
-    border_color = accent;
-  }
-
+                               const theme::Theme& theme) {
   auto header = ftxui::hbox({
                     ftxui::text(" " + icon + " ") | ftxui::bold |
                         ftxui::color(theme.tool.icon_fg),
                     ftxui::text(label) | ftxui::bold | ftxui::color(accent),
+                    ftxui::filler(),
                 }) |
                 ftxui::bgcolor(theme.tool.header_bg);
 
   auto body =
       ftxui::vbox(std::move(content)) | ftxui::color(theme.chrome.body_text);
 
-  return ftxui::vbox({header, body}) | ftxui::borderRounded |
-         ftxui::color(border_color);
+  return ftxui::vbox({
+             header,
+             ftxui::hbox({ftxui::text("  "), body | ftxui::flex,
+                          ftxui::text("  ")}) |
+                 ftxui::bgcolor(theme.cards.agent_bg),
+             ftxui::text("") | ftxui::bgcolor(theme.cards.agent_bg),
+         }) |
+         ftxui::bgcolor(theme.cards.agent_bg);
 }
 
 ftxui::Element RenderLines(const std::vector<std::string>& lines,
@@ -123,9 +125,8 @@ ftxui::Element ToolCallRenderer::RenderBash(const tool_data::BashCall& call,
     content.push_back(RenderLines(util::SplitLines(call.output), theme));
   }
 
-  auto border = call.is_error ? theme.tool.edit_remove : theme.tool.bash_accent;
-  return RenderContainer("#", "bash", theme.tool.bash_accent,
-                         std::move(content), theme, border);
+  auto accent = call.is_error ? theme.tool.edit_remove : theme.tool.bash_accent;
+  return RenderContainer("#", "bash", accent, std::move(content), theme);
 }
 
 ftxui::Element ToolCallRenderer::RenderFileEdit(

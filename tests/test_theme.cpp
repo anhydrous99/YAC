@@ -25,15 +25,12 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
 
   REQUIRE_FALSE(ColorsEqual(t.markdown.heading, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.markdown.link, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.markdown.quote_border, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.markdown.quote_bg, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.markdown.separator, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.code.bg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.code.fg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.code.inline_bg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.code.inline_fg, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.code.block_border, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.syntax.keyword, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.syntax.string, ftxui::Color()));
@@ -42,16 +39,12 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
   REQUIRE_FALSE(ColorsEqual(t.syntax.type, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.syntax.function, ftxui::Color()));
 
-  REQUIRE_FALSE(ColorsEqual(t.chrome.border, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.dim_text, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.body_text, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.prompt, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.cards.user_bg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_bg, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.cards.user_border, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.cards.agent_border, ftxui::Color()));
-  REQUIRE_FALSE(ColorsEqual(t.cards.error_border, ftxui::Color()));
 }
 
 TEST_CASE("Theme Instance returns consistent reference") {

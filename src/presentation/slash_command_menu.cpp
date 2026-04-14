@@ -36,7 +36,7 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
   if (filtered_indices.empty()) {
     return ftxui::text("  No matching commands") |
            ftxui::color(k_theme.dialog.dim_text) | ftxui::dim |
-           ftxui::borderRounded |
+           ftxui::bgcolor(k_theme.dialog.input_bg) |
            ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, max_width);
   }
 
@@ -50,7 +50,7 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
 
   auto content = ftxui::vbox(std::move(rows));
   int width = std::min(max_width, kMenuMaxWidth);
-  return content | ftxui::borderRounded | ftxui::color(k_theme.dialog.border) |
+  return content | ftxui::bgcolor(k_theme.dialog.input_bg) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, width);
 }
 

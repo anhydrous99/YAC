@@ -23,7 +23,6 @@ void RequireColorEq(const ftxui::Color& actual, const ftxui::Color& expected) {
 TEST_CASE("CatppuccinMocha populates tool and dialog color groups") {
   auto t = CatppuccinMocha();
 
-  RequireColorEq(t.tool.border, ftxui::Color::RGB(88, 91, 112));
   RequireColorEq(t.tool.header_bg, ftxui::Color::RGB(49, 50, 68));
   RequireColorEq(t.tool.bash_accent, ftxui::Color::RGB(250, 179, 135));
   RequireColorEq(t.tool.edit_add, ftxui::Color::RGB(166, 227, 161));
@@ -36,7 +35,6 @@ TEST_CASE("CatppuccinMocha populates tool and dialog color groups") {
   RequireColorEq(t.tool.icon_fg, ftxui::Color::RGB(205, 214, 244));
 
   RequireColorEq(t.dialog.overlay_bg, ftxui::Color::RGB(17, 17, 27));
-  RequireColorEq(t.dialog.border, ftxui::Color::RGB(88, 91, 112));
   RequireColorEq(t.dialog.selected_bg, ftxui::Color::RGB(49, 50, 68));
   RequireColorEq(t.dialog.selected_fg, ftxui::Color::RGB(205, 214, 244));
   RequireColorEq(t.dialog.input_bg, ftxui::Color::RGB(30, 30, 46));

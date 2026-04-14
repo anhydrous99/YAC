@@ -45,8 +45,7 @@ ftxui::Component CommandPalette(std::vector<Command> commands,
       children.push_back(input_->Render() |
                          ftxui::bgcolor(k_theme.dialog.input_bg) |
                          ftxui::color(k_theme.dialog.input_fg));
-      children.push_back(ftxui::separator() |
-                         ftxui::color(k_theme.dialog.border));
+      children.push_back(ftxui::text(""));
 
       if (filtered_indices_.empty()) {
         children.push_back(ftxui::text("No commands found") |

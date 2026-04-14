@@ -28,6 +28,15 @@ std::string RenderToString(const std::vector<BlockNode>& blocks, int width = 80,
   return screen.ToString();
 }
 
+void RequireNoLineGlyphs(const std::string& output) {
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╭"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╮"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╰"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╯"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("─"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("│"));
+}
+
 }  // namespace
 
 TEST_CASE("Renderer handles empty block list") {
@@ -86,10 +95,11 @@ TEST_CASE("Renderer paragraph snapshot") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Hello"));
 }
 
-TEST_CASE("Renderer heading H1 has underline") {
+TEST_CASE("Renderer heading H1 is borderless") {
   auto blocks = MarkdownParser::Parse("# Title");
   auto output = RenderToString(blocks, 40, 5);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Title"));
+  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer heading H3 is bold without underline") {
@@ -115,21 +125,31 @@ TEST_CASE("Renderer code block shows line numbers") {
   auto output = RenderToString(blocks, 80, 10);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("1"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("2"));
+  RequireNoLineGlyphs(output);
 }
 
-TEST_CASE("Renderer horizontal rule renders separator") {
+TEST_CASE("Renderer horizontal rule preserves spacing without a line") {
   auto blocks = MarkdownParser::Parse("above\n\n---\n\nbelow");
-  RenderAndCheck(blocks, 80, 10);
+  auto output = RenderToString(blocks, 80, 10);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("above"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("below"));
+  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer nested blockquote renders") {
   auto blocks = MarkdownParser::Parse(">> deeply nested");
-  RenderAndCheck(blocks);
+  auto output = RenderToString(blocks);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("deeply"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("nested"));
+  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer multi-line blockquote renders") {
   auto blocks = MarkdownParser::Parse("> line1\n> line2");
-  RenderAndCheck(blocks);
+  auto output = RenderToString(blocks);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("line1"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("line2"));
+  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer unordered list shows bullet") {

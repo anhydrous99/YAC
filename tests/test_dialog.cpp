@@ -53,15 +53,18 @@ TEST_CASE("DialogPanel returns non-null component") {
   REQUIRE(comp != nullptr);
 }
 
-TEST_CASE("DialogPanel renders title, separator, and rounded border") {
+TEST_CASE("DialogPanel renders title without decorative border glyphs") {
   bool show = true;
   auto comp = DialogPanel("My Title", StaticText("content"), &show);
   auto output = RenderComponent(comp, 80, 24);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("My Title"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("╭"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("╮"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("─"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╭"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╮"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╰"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╯"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("─"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("│"));
 }
 
 TEST_CASE("DialogPanel renders inner content when shown") {

@@ -221,19 +221,16 @@ ftxui::Component ChatUI::Build() {
     footer_rows.push_back(ftxui::hbox(footer_elements));
 
     footer_rows.push_back(
-        ftxui::text(" Enter=Send │ Ctrl+P=Commands │ ⇧+Enter=Newline │ "
-                    "PgUp/PgDn=Scroll │ Home/End") |
+        ftxui::text(" Enter=Send · Ctrl+P=Commands · ⇧+Enter=Newline · "
+                    "PgUp/PgDn=Scroll · Home/End") |
         ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
 
     auto footer_with_hints = ftxui::vbox(footer_rows);
 
     ftxui::Elements main_parts;
     main_parts.push_back(message_list->Render() | ftxui::flex);
-    main_parts.push_back(ftxui::separator() |
-                         ftxui::color(k_theme.markdown.separator));
-    main_parts.push_back(footer_with_hints);
-    main_parts.push_back(ftxui::separator() |
-                         ftxui::color(k_theme.markdown.separator));
+    main_parts.push_back(footer_with_hints |
+                         ftxui::bgcolor(k_theme.cards.agent_bg));
     if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
       main_parts.push_back(slash_menu);
     }
@@ -241,8 +238,7 @@ ftxui::Component ChatUI::Build() {
         input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
         ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, input_height));
 
-    return ftxui::vbox(std::move(main_parts)) | ftxui::borderRounded |
-           ftxui::color(k_theme.chrome.border);
+    return ftxui::vbox(std::move(main_parts));
   });
 
   auto on_select = [this](int index) {
@@ -500,11 +496,11 @@ ftxui::Component ChatUI::BuildMessageList() {
       ftxui::Elements track_rows;
       for (int i = 0; i < track_height; ++i) {
         if (i >= thumb_pos && i < thumb_pos + thumb_size) {
-          track_rows.push_back(ftxui::text("█") |
-                               ftxui::color(k_theme.chrome.border));
+          track_rows.push_back(ftxui::text(" ") |
+                               ftxui::bgcolor(k_theme.chrome.dim_text));
         } else {
-          track_rows.push_back(ftxui::text("│") |
-                               ftxui::color(k_theme.chrome.dim_text));
+          track_rows.push_back(ftxui::text(" ") |
+                               ftxui::bgcolor(k_theme.cards.agent_bg));
         }
       }
       scrollbar =
@@ -616,13 +612,14 @@ ftxui::Component ChatUI::BuildMessageList() {
 ftxui::Element ChatUI::RenderMessages() const {
   if (session_.Empty() && !is_typing_) {
     auto hint = ftxui::vbox({
+        ftxui::text(""),
         ftxui::text("  // No messages yet") |
             ftxui::color(k_theme.syntax.comment),
         ftxui::text("  // Type something below to start") |
             ftxui::color(k_theme.syntax.comment),
+        ftxui::text(""),
     });
-    return ftxui::center(hint | ftxui::borderRounded |
-                         ftxui::color(k_theme.chrome.border)) |
+    return ftxui::center(hint | ftxui::bgcolor(k_theme.cards.agent_bg)) |
            ftxui::flex;
   }
 

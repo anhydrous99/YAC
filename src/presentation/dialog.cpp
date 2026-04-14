@@ -31,13 +31,15 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
       }
 
       auto panel = ftxui::vbox({
-          ftxui::text(title_) | ftxui::bold,
-          ftxui::separator() | ftxui::color(k_theme.dialog.border),
-          inner_content_->Render(),
+          ftxui::text("  " + title_) | ftxui::bold |
+              ftxui::color(k_theme.dialog.input_fg),
+          ftxui::text(""),
+          ftxui::hbox({ftxui::text("  "), inner_content_->Render() |
+                                                ftxui::flex,
+                       ftxui::text("  ")}),
       });
 
-      return panel | ftxui::borderRounded |
-             ftxui::color(k_theme.dialog.border) |
+      return panel | ftxui::bgcolor(k_theme.dialog.input_bg) |
              ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, kDialogMaxWidth) |
              ftxui::center;
     }

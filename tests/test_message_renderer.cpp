@@ -63,23 +63,38 @@ std::vector<std::string> Lines(const std::string& s) {
   return lines;
 }
 
-std::pair<size_t, size_t> TopBorderColumns(const std::string& rendered) {
+std::pair<size_t, size_t> ContentColumns(const std::string& rendered) {
   auto lines = Lines(StripAnsi(rendered));
-  auto border_line = std::find_if(
-      lines.begin(), lines.end(),
-      [](const auto& line) { return line.find("╭") != std::string::npos; });
+  auto left_edge = std::string::npos;
+  size_t right_edge = 0;
 
-  REQUIRE(border_line != lines.end());
-  auto left_border = border_line->find("╭");
-  auto right_border = border_line->find("╮");
-  REQUIRE(left_border != std::string::npos);
-  REQUIRE(right_border != std::string::npos);
-  return {left_border, right_border};
+  for (const auto& line : lines) {
+    auto left = line.find_first_not_of(' ');
+    if (left == std::string::npos) {
+      continue;
+    }
+    auto right = line.find_last_not_of(' ');
+    left_edge = std::min(left_edge, left);
+    right_edge = std::max(right_edge, right);
+  }
+
+  REQUIRE(left_edge != std::string::npos);
+  return {left_edge, right_edge};
 }
 
-size_t TopBorderWidth(const std::string& rendered) {
-  auto [left_border, right_border] = TopBorderColumns(rendered);
-  return right_border - left_border + 1;
+size_t ContentWidth(const std::string& rendered) {
+  auto [left_edge, right_edge] = ContentColumns(rendered);
+  return right_edge - left_edge + 1;
+}
+
+void RequireNoBoxGlyphs(const std::string& rendered) {
+  auto output = StripAnsi(rendered);
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╭"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╮"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╰"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╯"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("─"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("│"));
 }
 
 }  // namespace
@@ -108,17 +123,17 @@ TEST_CASE("Render agent message contains label") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Assistant"));
 }
 
-TEST_CASE("Render agent message card hugs short content") {
+TEST_CASE("Render agent message surface hugs short content") {
   Message msg{Sender::Agent, "short"};
   msg.created_at = std::chrono::system_clock::time_point{};
 
-  auto [left_border, right_border] =
-      TopBorderColumns(RenderMessageToString(msg, 60, 8));
-  REQUIRE(left_border == 0);
-  REQUIRE(right_border < 59);
+  auto [left_edge, right_edge] = ContentColumns(RenderMessageToString(msg, 60,
+                                                                      8));
+  REQUIRE(left_edge == 2);
+  REQUIRE(right_edge < 59);
 }
 
-TEST_CASE("Render message card max width follows terminal width") {
+TEST_CASE("Render message surface max width follows terminal width") {
   std::string long_text;
   for (int i = 0; i < 80; ++i) {
     long_text += "word ";
@@ -133,11 +148,18 @@ TEST_CASE("Render message card max width follows terminal width") {
   }
   msg.created_at = std::chrono::system_clock::time_point{};
 
-  auto narrow_width = TopBorderWidth(RenderMessageToString(msg, 60, 10));
-  auto wide_width = TopBorderWidth(RenderMessageToString(msg, 120, 10));
+  auto narrow_width = ContentWidth(RenderMessageToString(msg, 60, 10));
+  auto wide_width = ContentWidth(RenderMessageToString(msg, 120, 10));
 
   REQUIRE(wide_width > narrow_width);
   REQUIRE(wide_width > 80);
+}
+
+TEST_CASE("Render messages avoid decorative box glyphs") {
+  Message msg{Sender::Agent, "borderless"};
+  msg.created_at = std::chrono::system_clock::time_point{};
+
+  RequireNoBoxGlyphs(RenderMessageToString(msg, 80, 8));
 }
 
 TEST_CASE("Render agent message wraps in a narrow terminal") {

@@ -123,10 +123,7 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   auto inline_elem = RenderInline(h.children, context);
 
   if (h.level <= 2) {
-    return ftxui::vbox({
-        inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
-        ftxui::separator() | ftxui::color(theme.markdown.separator),
-    });
+    return inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading);
   }
 
   if (h.level <= 4) {
@@ -175,30 +172,23 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb,
     }));
   }
 
-  return ftxui::vbox(inner) | ftxui::bgcolor(theme.code.bg) |
-         ftxui::borderRounded | ftxui::color(theme.code.block_border);
+  return ftxui::vbox({
+             ftxui::text(""),
+             ftxui::vbox(inner),
+             ftxui::text(""),
+         }) |
+         ftxui::bgcolor(theme.code.bg);
 }
 
 ftxui::Element MarkdownRenderer::RenderBlockquote(
     const Blockquote& bq, const RenderContext& context) {
   const auto& theme = context.Colors();
-  const std::array<ftxui::Color, 4> border_colors = {
-      theme.markdown.quote_border,
-      ftxui::Color::RGB(203, 166, 247),
-      ftxui::Color::RGB(137, 180, 250),
-      ftxui::Color::RGB(166, 227, 161),
-  };
-
-  auto color_idx = static_cast<size_t>(bq.nesting_level) % border_colors.size();
-  const auto& border_color = border_colors.at(color_idx);
-
   std::string indent(static_cast<size_t>(bq.nesting_level) * 2, ' ');
 
   ftxui::Elements line_elements;
   for (const auto& line : bq.lines) {
     line_elements.push_back(
-        ftxui::hbox({ftxui::text(indent + "│ ") | ftxui::color(border_color),
-                     RenderInline(line, context)}));
+        ftxui::hbox({ftxui::text(indent + "  "), RenderInline(line, context)}));
   }
 
   return ftxui::vbox(line_elements) | ftxui::bgcolor(theme.markdown.quote_bg);
@@ -232,8 +222,8 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(
 }
 
 ftxui::Element MarkdownRenderer::RenderHorizontalRule(
-    const RenderContext& context) {
-  return ftxui::separator() | ftxui::color(context.Colors().markdown.separator);
+    const RenderContext&) {
+  return ftxui::text("");
 }
 
 }  // namespace yac::presentation::markdown

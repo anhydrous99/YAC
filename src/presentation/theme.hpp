@@ -13,9 +13,7 @@ struct RoleColors {
 struct MarkdownColors {
   ftxui::Color heading;
   ftxui::Color link;
-  ftxui::Color quote_border;
   ftxui::Color quote_bg;
-  ftxui::Color separator;
 };
 
 struct CodeColors {
@@ -24,7 +22,6 @@ struct CodeColors {
   ftxui::Color fg;
   ftxui::Color inline_bg;
   ftxui::Color inline_fg;
-  ftxui::Color block_border;
 };
 
 struct SyntaxColors {
@@ -37,7 +34,6 @@ struct SyntaxColors {
 };
 
 struct ChromeColors {
-  ftxui::Color border;
   ftxui::Color dim_text;
   ftxui::Color body_text;
   ftxui::Color prompt;
@@ -46,13 +42,9 @@ struct ChromeColors {
 struct CardColors {
   ftxui::Color user_bg;
   ftxui::Color agent_bg;
-  ftxui::Color user_border;
-  ftxui::Color agent_border;
-  ftxui::Color error_border;
 };
 
 struct ToolColors {
-  ftxui::Color border;
   ftxui::Color header_bg;
   ftxui::Color bash_accent;
   ftxui::Color edit_add;
@@ -67,7 +59,6 @@ struct ToolColors {
 
 struct DialogColors {
   ftxui::Color overlay_bg;
-  ftxui::Color border;
   ftxui::Color selected_bg;
   ftxui::Color selected_fg;
   ftxui::Color input_bg;

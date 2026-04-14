@@ -26,8 +26,21 @@ const char* ThinkingPulseGlyph(int frame) {
 }
 
 int MessageCardMaxWidth(const RenderContext& context) {
-  constexpr int kHorizontalChromeWidth = 4;
-  return std::max(1, context.terminal_width - kHorizontalChromeWidth);
+  constexpr int kHorizontalBreathingRoom = 2;
+  return std::max(1, context.terminal_width - kHorizontalBreathingRoom);
+}
+
+ftxui::Element CardSurface(ftxui::Element content, ftxui::Color background,
+                           const RenderContext& context) {
+  return ftxui::vbox({
+             ftxui::text(""),
+             ftxui::hbox({ftxui::text("  "), std::move(content) | ftxui::flex,
+                          ftxui::text("  ")}),
+             ftxui::text(""),
+         }) |
+         ftxui::bgcolor(background) |
+         ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
+                     MessageCardMaxWidth(context));
 }
 
 }  // namespace
@@ -109,10 +122,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(
                                           ftxui::flex}),
   });
 
-  auto styled_card =
-      content | ftxui::bgcolor(theme.cards.user_bg) | ftxui::borderRounded |
-      ftxui::color(theme.cards.user_border) |
-      ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, MessageCardMaxWidth(context));
+  auto styled_card = CardSurface(std::move(content), theme.cards.user_bg,
+                                 context);
 
   return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
 }
@@ -121,7 +132,6 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
     const Message& message, MessageRenderCache& cache,
     const RenderContext& context) {
   const auto& theme = context.Colors();
-  const bool is_error = message.status == MessageStatus::Error;
   const bool is_active = message.status == MessageStatus::Active;
   if (!cache.markdown_blocks.has_value()) {
     cache.markdown_blocks = markdown::MarkdownParser::Parse(message.Text());
@@ -144,12 +154,8 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
 
   auto content = ftxui::vbox(std::move(rows));
 
-  const auto& border_color =
-      is_error ? theme.cards.error_border : theme.cards.agent_border;
-  auto styled_card =
-      content | ftxui::bgcolor(theme.cards.agent_bg) | ftxui::borderRounded |
-      ftxui::color(border_color) |
-      ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, MessageCardMaxWidth(context));
+  auto styled_card = CardSurface(std::move(content), theme.cards.agent_bg,
+                                 context);
 
   return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
 }
