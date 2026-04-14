@@ -1,5 +1,6 @@
 #include "presentation/chat_ui.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,13 @@ std::vector<Command> SampleCommands() {
   return {
       {"Open File", "Browse project files"},
       {"Focus Composer", "Jump to input editor"},
+  };
+}
+
+std::vector<Command> SampleModelCommands() {
+  return {
+      {"switch_model:glm-5.1", "glm-5.1", "Use glm-5.1 for future responses"},
+      {"switch_model:glm-4.7", "glm-4.7", "Use glm-4.7 for future responses"},
   };
 }
 
@@ -111,4 +119,30 @@ TEST_CASE("ChatUI opens and closes command palette dialog") {
   REQUIRE_THAT(closed_output,
                !Catch::Matchers::ContainsSubstring("Command Palette"));
   REQUIRE_THAT(closed_output, !Catch::Matchers::ContainsSubstring("Open File"));
+}
+
+TEST_CASE("ChatUI opens model picker from command palette") {
+  ChatUI ui;
+  std::optional<std::string> selected_command;
+  ui.SetCommands({{"switch_model", "Switch Model",
+                   "Choose the model for future responses"}});
+  ui.SetModelCommands(SampleModelCommands());
+  ui.SetOnCommand(
+      [&](const std::string& command) { selected_command = command; });
+  auto component = ui.Build();
+
+  REQUIRE(component->OnEvent(MakeCtrlP()));
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  auto model_picker_output = RenderComponent(component);
+  REQUIRE_THAT(model_picker_output,
+               Catch::Matchers::ContainsSubstring("Switch Model"));
+  REQUIRE_THAT(model_picker_output,
+               Catch::Matchers::ContainsSubstring("glm-5.1"));
+  REQUIRE_THAT(model_picker_output,
+               Catch::Matchers::ContainsSubstring("glm-4.7"));
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(selected_command ==
+          std::optional<std::string>{"switch_model:glm-5.1"});
 }

@@ -36,6 +36,14 @@ double ParseTemperature(const std::string& value) {
   return temp;
 }
 
+void ApplyProviderDefaults(ChatConfig& config) {
+  if (config.provider_id == "zai") {
+    config.model = "glm-5.1";
+    config.base_url = "https://api.z.ai/api/coding/paas/v4";
+    config.api_key_env = "ZAI_API_KEY";
+  }
+}
+
 }  // namespace
 
 ChatConfig LoadChatConfigFromEnv() {
@@ -45,6 +53,7 @@ ChatConfig LoadChatConfigFromEnv() {
   if (auto val = GetEnv(env_file, "YAC_PROVIDER")) {
     config.provider_id = std::move(*val);
   }
+  ApplyProviderDefaults(config);
   if (auto val = GetEnv(env_file, "YAC_MODEL")) {
     config.model = std::move(*val);
   }

@@ -63,3 +63,15 @@ TEST_CASE("ChatEventBridge creates assistant error message when missing") {
   REQUIRE(ui.GetMessages()[0].Text() == "Error: provider failed");
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Error);
 }
+
+TEST_CASE("ChatEventBridge updates provider and model display") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(ChatEvent{.type = ChatEventType::ModelChanged,
+                               .provider_id = "zai",
+                               .model = "glm-5.1"});
+
+  REQUIRE(ui.ProviderId() == "zai");
+  REQUIRE(ui.Model() == "glm-5.1");
+}

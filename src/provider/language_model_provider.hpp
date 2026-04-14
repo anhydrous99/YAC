@@ -2,9 +2,11 @@
 
 #include "chat/types.hpp"
 
+#include <chrono>
 #include <functional>
 #include <stop_token>
 #include <string>
+#include <vector>
 
 namespace yac::provider {
 
@@ -21,6 +23,11 @@ class LanguageModelProvider {
   LanguageModelProvider& operator=(LanguageModelProvider&&) = delete;
 
   [[nodiscard]] virtual std::string Id() const = 0;
+  [[nodiscard]] virtual std::vector<chat::ModelInfo> ListModels(
+      std::chrono::milliseconds timeout) {
+    (void)timeout;
+    return {};
+  }
   virtual void CompleteStream(const chat::ChatRequest& request,
                               ChatEventSink sink,
                               std::stop_token stop_token) = 0;

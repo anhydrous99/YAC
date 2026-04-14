@@ -42,7 +42,9 @@ class ChatUI {
   void SetMessageStatus(MessageId id, MessageStatus status);
   void AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
   void SetCommands(std::vector<Command> commands);
+  void SetModelCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
+  void SetProviderModel(std::string provider_id, std::string model);
   void SetTyping(bool typing);
   void SetToolExpanded(size_t index, bool expanded);
   void ClearMessages();
@@ -50,6 +52,8 @@ class ChatUI {
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool HasMessage(MessageId id) const;
   [[nodiscard]] bool IsTyping() const;
+  [[nodiscard]] std::string ProviderId() const;
+  [[nodiscard]] std::string Model() const;
   [[nodiscard]] int CalculateInputHeight() const;
   [[nodiscard]] bool HandleInputEvent(const ftxui::Event& event);
 
@@ -80,8 +84,12 @@ class ChatUI {
   OnCommandCallback on_command_;
   bool is_typing_ = false;
   bool show_command_palette_ = false;
+  bool show_model_palette_ = false;
   std::vector<Command> commands_;
+  std::vector<Command> model_commands_;
   SlashCommandRegistry slash_commands_;
+  std::string provider_id_;
+  std::string model_;
 
   int scroll_offset_y_ = 0;
   int content_height_ = 0;

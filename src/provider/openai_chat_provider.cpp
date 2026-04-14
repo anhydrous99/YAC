@@ -2,9 +2,11 @@
 
 #include <cstdlib>
 #include <curl/curl.h>
+#include <memory>
 #include <openai.hpp>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 namespace yac::provider {
@@ -117,6 +119,59 @@ std::string OpenAiChatProvider::Id() const {
   return config_.id;
 }
 
+std::vector<chat::ModelInfo> OpenAiChatProvider::ListModels(
+    std::chrono::milliseconds timeout) {
+  const auto api_key = ResolveApiKey();
+  if (api_key.empty()) {
+    throw std::runtime_error(config_.api_key_env + " is not set.");
+  }
+
+  CURL* curl = curl_easy_init();
+  if (curl == nullptr) {
+    throw std::runtime_error("curl_easy_init failed.");
+  }
+
+  const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
+  std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
+
+  std::string response;
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Accept: application/json");
+  const auto auth_header = "Authorization: Bearer " + api_key;
+  headers = curl_slist_append(headers, auth_header.c_str());
+
+  const auto cleanup_headers = [](curl_slist* list) {
+    curl_slist_free_all(list);
+  };
+  std::unique_ptr<curl_slist, decltype(cleanup_headers)> header_handle(
+      headers, cleanup_headers);
+
+  const auto url = ModelsUrl();
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteString);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS,
+                   static_cast<long>(timeout.count()));
+
+  const auto result = curl_easy_perform(curl);
+  if (result != CURLE_OK) {
+    throw std::runtime_error(curl_easy_strerror(result));
+  }
+
+  long status = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+  if (status >= 400) {
+    std::ostringstream message;
+    message << config_.id << " model discovery failed with HTTP " << status
+            << ".";
+    throw std::runtime_error(message.str());
+  }
+
+  return ParseModelsData(response);
+}
+
 void OpenAiChatProvider::CompleteStream(const chat::ChatRequest& request,
                                         ChatEventSink sink,
                                         std::stop_token stop_token) {
@@ -146,6 +201,42 @@ std::string OpenAiChatProvider::RoleToOpenAi(chat::ChatRole role) {
       return "tool";
   }
   return "user";
+}
+
+std::vector<chat::ModelInfo> OpenAiChatProvider::ParseModelsData(
+    const std::string& data) {
+  try {
+    const auto json = Json::parse(data);
+    const Json* models = nullptr;
+    if (json.is_array()) {
+      models = &json;
+    } else if (json.contains("data") && json["data"].is_array()) {
+      models = &json["data"];
+    }
+
+    if (models == nullptr) {
+      return {};
+    }
+
+    std::vector<chat::ModelInfo> result;
+    std::unordered_set<std::string> seen;
+    for (const auto& model : *models) {
+      std::string id;
+      if (model.is_string()) {
+        id = model.get<std::string>();
+      } else if (model.contains("id") && model["id"].is_string()) {
+        id = model["id"].get<std::string>();
+      }
+
+      if (!id.empty() && seen.insert(id).second) {
+        result.push_back(chat::ModelInfo{.id = id, .display_name = id});
+      }
+    }
+
+    return result;
+  } catch (const std::exception&) {
+    return {};
+  }
 }
 
 chat::ChatEvent OpenAiChatProvider::ParseStreamData(const std::string& data) {
@@ -257,6 +348,10 @@ std::string OpenAiChatProvider::ResolveApiKey() const {
 
 std::string OpenAiChatProvider::CompletionUrl() const {
   return TrimTrailingSlash(config_.base_url) + "/chat/completions";
+}
+
+std::string OpenAiChatProvider::ModelsUrl() const {
+  return TrimTrailingSlash(config_.base_url) + "/models";
 }
 
 }  // namespace yac::provider

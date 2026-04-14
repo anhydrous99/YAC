@@ -94,6 +94,11 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       chat_ui_->SetTyping(false);
       break;
 
+    case ChatEventType::ModelChanged:
+      chat_ui_->SetProviderModel(std::move(event.provider_id),
+                                 std::move(event.model));
+      break;
+
     case ChatEventType::QueueDepthChanged:
     case ChatEventType::ToolCallStarted:
     case ChatEventType::ToolCallDone:

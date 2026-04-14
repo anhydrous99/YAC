@@ -157,3 +157,20 @@ TEST_CASE("Command stores stable id separately from display name") {
   REQUIRE(command.name == "New Chat");
   REQUIRE(command.description == "Start a fresh conversation");
 }
+
+TEST_CASE("CommandPalette can select a model command by display text") {
+  bool show = true;
+  std::optional<int> selected_index;
+  std::vector<Command> commands{
+      {"switch_model:glm-5.1", "glm-5.1", "Use glm-5.1 for future responses"},
+  };
+  auto component = CommandPalette(
+      commands, [&](int index) { selected_index = index; }, &show);
+
+  TypeText(component, "glm");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  REQUIRE(selected_index == 0);
+  REQUIRE(commands[0].id == "switch_model:glm-5.1");
+  REQUIRE_FALSE(show);
+}

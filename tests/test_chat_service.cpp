@@ -11,6 +11,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -22,6 +23,9 @@ namespace {
 
 class FakeProvider : public LanguageModelProvider {
  public:
+  explicit FakeProvider(std::string expected_model = "fake-model")
+      : expected_model_(std::move(expected_model)) {}
+
   [[nodiscard]] std::string Id() const override { return "fake"; }
 
   void CompleteStream(const ChatRequest& request, ChatEventSink sink,
@@ -30,7 +34,7 @@ class FakeProvider : public LanguageModelProvider {
       std::lock_guard lock(mutex_);
       requests_.push_back(request);
     }
-    REQUIRE(request.model == "fake-model");
+    REQUIRE(request.model == expected_model_);
     REQUIRE(request.stream);
     REQUIRE(!request.messages.empty());
     REQUIRE(request.messages.back().role == ChatRole::User);
@@ -49,6 +53,7 @@ class FakeProvider : public LanguageModelProvider {
   }
 
  private:
+  std::string expected_model_;
   mutable std::mutex mutex_;
   std::vector<ChatRequest> requests_;
 };
@@ -59,12 +64,14 @@ class BlockingFakeProvider : public LanguageModelProvider {
 
   void CompleteStream(const ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override {
-    (void)request;
     (void)stop_token;
-    std::unique_lock lock(mutex_);
-    started_ = true;
-    cv_.notify_one();
-    cv_.wait(lock, [&] { return release_; });
+    {
+      std::unique_lock lock(mutex_);
+      request_model_ = request.model;
+      started_ = true;
+      cv_.notify_one();
+      cv_.wait(lock, [&] { return release_; });
+    }
     sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "done"});
   }
 
@@ -79,9 +86,15 @@ class BlockingFakeProvider : public LanguageModelProvider {
     cv_.notify_one();
   }
 
+  [[nodiscard]] std::string LastRequestModel() const {
+    std::lock_guard lock(mutex_);
+    return request_model_;
+  }
+
  private:
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
   std::condition_variable cv_;
+  std::string request_model_;
   bool started_ = false;
   bool release_ = false;
 };
@@ -283,6 +296,75 @@ TEST_CASE("ChatService includes system prompt before history in requests") {
   REQUIRE(request.messages[1].content == "hello");
 }
 
+TEST_CASE("ChatService SetModel updates future requests and emits event") {
+  auto provider = std::make_shared<FakeProvider>("glm-5.1");
+  ChatConfig config;
+  config.provider_id = "fake";
+  config.model = "fake-model";
+  auto service = MakeService(provider, config);
+
+  std::vector<ChatEvent> events;
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool finished = false;
+
+  service.SetEventCallback([&](ChatEvent event) {
+    std::lock_guard lock(mtx);
+    events.push_back(std::move(event));
+    if (events.back().type == ChatEventType::Finished) {
+      finished = true;
+      cv.notify_one();
+    }
+  });
+
+  service.SetModel("glm-5.1");
+  service.SubmitUserMessage("hello");
+
+  std::unique_lock lock(mtx);
+  cv.wait(lock, [&] { return finished; });
+
+  const auto request = provider->LastRequest();
+  REQUIRE(request.model == "glm-5.1");
+  const auto& event = FindEvent(events, ChatEventType::ModelChanged);
+  REQUIRE(event.provider_id == "fake");
+  REQUIRE(event.model == "glm-5.1");
+}
+
+TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
+  auto provider = std::make_shared<BlockingFakeProvider>();
+  ChatConfig config;
+  config.provider_id = "blocking-fake";
+  config.model = "first-model";
+  auto service = MakeService(provider, config);
+
+  std::vector<ChatEvent> events;
+  std::mutex mtx;
+  std::condition_variable cv;
+  bool finished = false;
+
+  service.SetEventCallback([&](ChatEvent event) {
+    std::lock_guard lock(mtx);
+    events.push_back(std::move(event));
+    if (events.back().type == ChatEventType::Finished) {
+      finished = true;
+      cv.notify_one();
+    }
+  });
+
+  service.SubmitUserMessage("hello");
+  provider->WaitUntilStarted();
+  service.SetModel("second-model");
+
+  REQUIRE(provider->LastRequestModel() == "first-model");
+
+  provider->Release();
+  std::unique_lock lock(mtx);
+  cv.wait(lock, [&] { return finished; });
+
+  const auto& event = FindEvent(events, ChatEventType::ModelChanged);
+  REQUIRE(event.model == "second-model");
+}
+
 TEST_CASE("ChatService cancellation requests provider stop token") {
   auto provider = std::make_shared<CancellableFakeProvider>();
   auto service = MakeService(provider);
@@ -398,6 +480,65 @@ TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE_FALSE(config.system_prompt.has_value());
+}
+
+TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {
+  const auto original_dir = std::filesystem::current_path();
+
+  const auto temp_dir =
+      std::filesystem::temp_directory_path() / "test_env_config_zai_defaults";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::current_path(temp_dir);
+
+  const std::string env_content =
+      "YAC_PROVIDER=zai\n"
+      "ZAI_API_KEY=zai-api-key\n";
+
+  std::ofstream env_file(temp_dir / ".env");
+  env_file << env_content;
+  env_file.close();
+
+  auto config = LoadChatConfigFromEnv();
+
+  REQUIRE(config.provider_id == "zai");
+  REQUIRE(config.model == "glm-5.1");
+  REQUIRE(config.base_url == "https://api.z.ai/api/coding/paas/v4");
+  REQUIRE(config.api_key_env == "ZAI_API_KEY");
+  REQUIRE(config.api_key == "zai-api-key");
+
+  std::filesystem::current_path(original_dir);
+  std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("LoadChatConfigFromEnv explicit values override Z.ai defaults") {
+  const auto original_dir = std::filesystem::current_path();
+
+  const auto temp_dir =
+      std::filesystem::temp_directory_path() / "test_env_config_zai_overrides";
+  std::filesystem::create_directories(temp_dir);
+  std::filesystem::current_path(temp_dir);
+
+  const std::string env_content =
+      "YAC_PROVIDER=zai\n"
+      "YAC_MODEL=glm-4.7\n"
+      "YAC_BASE_URL=https://zai.example.com/v1\n"
+      "YAC_API_KEY_ENV=YAC_CUSTOM_ZAI_KEY\n"
+      "YAC_CUSTOM_ZAI_KEY=custom-zai-key\n";
+
+  std::ofstream env_file(temp_dir / ".env");
+  env_file << env_content;
+  env_file.close();
+
+  auto config = LoadChatConfigFromEnv();
+
+  REQUIRE(config.provider_id == "zai");
+  REQUIRE(config.model == "glm-4.7");
+  REQUIRE(config.base_url == "https://zai.example.com/v1");
+  REQUIRE(config.api_key_env == "YAC_CUSTOM_ZAI_KEY");
+  REQUIRE(config.api_key == "custom-zai-key");
+
+  std::filesystem::current_path(original_dir);
+  std::filesystem::remove_all(temp_dir);
 }
 
 TEST_CASE("LoadChatConfigFromEnv loads from .env file") {

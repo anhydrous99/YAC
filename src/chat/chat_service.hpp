@@ -31,6 +31,7 @@ class ChatService {
 
   void SetEventCallback(ChatEventCallback callback);
   ChatMessageId SubmitUserMessage(std::string content);
+  void SetModel(std::string model);
   void CancelActiveResponse();
   void ResetConversation();
 
@@ -50,7 +51,8 @@ class ChatService {
   void EmitEvent(ChatEvent event) const;
   void EmitQueueDepth();
   [[nodiscard]] ChatMessageId NextMessageId();
-  [[nodiscard]] ChatRequest BuildRequest() const;
+  [[nodiscard]] ChatConfig ConfigSnapshot() const;
+  [[nodiscard]] static ChatRequest BuildRequest(const ChatConfig& config);
 
   provider::ProviderRegistry registry_;
   ChatConfig config_;

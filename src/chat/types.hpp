@@ -38,6 +38,11 @@ struct ChatRequest {
   bool stream = true;
 };
 
+struct ModelInfo {
+  std::string id;
+  std::string display_name;
+};
+
 enum class ChatEventType {
   Started,
   TextDelta,
@@ -52,6 +57,7 @@ enum class ChatEventType {
   MessageStatusChanged,
   QueueDepthChanged,
   ConversationCleared,
+  ModelChanged,
 };
 
 struct ChatEvent {

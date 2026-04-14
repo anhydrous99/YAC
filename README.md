@@ -20,7 +20,7 @@ The SVG previews show the current chat surface and command palette.
 | `yac_app` | Bridges chat service events into `ChatUI` updates |
 | `yac_service` | Queues prompts, tracks history, and streams provider responses |
 | `yac_presentation` | FTXUI components, Markdown rendering, theming, and tool cards |
-| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl |
+| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with OpenAI and Z.ai presets |
 | Config | Environment variables or `.env` in the current working directory |
 
 ## Highlights
@@ -29,6 +29,8 @@ The SVG previews show the current chat surface and command palette.
   queue handling
 - OpenAI-compatible provider configuration for model, base URL, API key
   variable, temperature, and system prompt
+- Z.ai Coding API preset with startup model discovery and command-palette model
+  switching
 - Rich Markdown rendering for headings, lists, blockquotes, links, inline code,
   fenced code blocks, bold, italic, and strikethrough
 - Keyword-based syntax highlighting for C++, Python, JavaScript, and Rust
@@ -76,6 +78,17 @@ in the current working directory.
 | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the variable containing the API key |
 | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
 
+Set `YAC_PROVIDER=zai` to use the Z.ai Coding API preset:
+
+```dotenv
+YAC_PROVIDER=zai
+ZAI_API_KEY=...
+```
+
+The preset uses `glm-5.1`,
+`https://api.z.ai/api/coding/paas/v4`, and `ZAI_API_KEY`. You can still
+override `YAC_MODEL`, `YAC_BASE_URL`, or `YAC_API_KEY_ENV`.
+
 Example `.env`:
 
 ```dotenv
@@ -85,9 +98,10 @@ YAC_TEMPERATURE=0.7
 YAC_SYSTEM_PROMPT="Use concise answers."
 ```
 
-Keep `YAC_PROVIDER=openai` unless you add and register another provider in code.
-To point at a compatible API, set `YAC_BASE_URL` and optionally
-`YAC_API_KEY_ENV`.
+YAC shows the active provider/model in the footer. For Z.ai, it fetches models
+from the provider at startup and adds a `Switch Model` command that opens a
+model picker. If discovery fails, YAC falls back to a built-in GLM model list
+seeded with `glm-5.1`.
 
 ## Usage
 
@@ -96,6 +110,7 @@ The interface is keyboard-first:
 - `Enter` sends the current message
 - `Shift+Enter`, `Ctrl+Enter`, and `Alt+Enter` insert a newline in the composer
 - `Ctrl+P` opens the command palette
+- `Switch Model` opens the model picker for future responses
 - `Escape` closes the command palette or slash command menu
 - `Up` and `Down` move through palette or slash command results
 - `Tab` moves upward through slash command results

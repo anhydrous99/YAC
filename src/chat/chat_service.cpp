@@ -43,6 +43,23 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   return id;
 }
 
+void ChatService::SetModel(std::string model) {
+  std::string provider_id;
+  {
+    std::lock_guard lock(mutex_);
+    if (config_.model == model) {
+      return;
+    }
+    config_.model = std::move(model);
+    provider_id = config_.provider_id;
+    model = config_.model;
+  }
+
+  EmitEvent(ChatEvent{.type = ChatEventType::ModelChanged,
+                      .provider_id = std::move(provider_id),
+                      .model = std::move(model)});
+}
+
 void ChatService::CancelActiveResponse() {
   std::lock_guard lock(mutex_);
   if (!active_) {
@@ -130,7 +147,8 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
                                 uint64_t generation,
                                 std::stop_token stop_token) {
   const auto assistant_id = NextMessageId();
-  auto provider = registry_.Resolve(config_.provider_id);
+  const auto config = ConfigSnapshot();
+  auto provider = registry_.Resolve(config.provider_id);
   if (provider == nullptr) {
     EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
                         .message_id = prompt.id,
@@ -140,14 +158,14 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
         .type = ChatEventType::Error,
         .message_id = assistant_id,
         .role = ChatRole::Assistant,
-        .text = "No provider registered for '" + config_.provider_id + "'.",
+        .text = "No provider registered for '" + config.provider_id + "'.",
         .status = ChatMessageStatus::Error});
     EmitEvent(
         ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
     return;
   }
 
-  ChatRequest request = BuildRequest();
+  ChatRequest request = BuildRequest(config);
   {
     std::lock_guard lock(mutex_);
     history_.push_back(ChatMessage{.id = prompt.id,
@@ -155,11 +173,11 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
                                    .status = ChatMessageStatus::Active,
                                    .content = prompt.content});
     request.messages = history_;
-    if (config_.system_prompt.has_value()) {
+    if (config.system_prompt.has_value()) {
       request.messages.insert(request.messages.begin(),
                               ChatMessage{.role = ChatRole::System,
                                           .status = ChatMessageStatus::Complete,
-                                          .content = *config_.system_prompt});
+                                          .content = *config.system_prompt});
     }
   }
 
@@ -170,8 +188,8 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
   EmitEvent(ChatEvent{.type = ChatEventType::Started,
                       .message_id = assistant_id,
                       .role = ChatRole::Assistant,
-                      .provider_id = config_.provider_id,
-                      .model = config_.model,
+                      .provider_id = config.provider_id,
+                      .model = config.model,
                       .status = ChatMessageStatus::Active});
 
   std::string assistant_text;
@@ -252,11 +270,16 @@ ChatMessageId ChatService::NextMessageId() {
   return next_id_.fetch_add(1);
 }
 
-ChatRequest ChatService::BuildRequest() const {
+ChatConfig ChatService::ConfigSnapshot() const {
+  std::lock_guard lock(mutex_);
+  return config_;
+}
+
+ChatRequest ChatService::BuildRequest(const ChatConfig& config) {
   ChatRequest request;
-  request.provider_id = config_.provider_id;
-  request.model = config_.model;
-  request.temperature = config_.temperature;
+  request.provider_id = config.provider_id;
+  request.model = config.model;
+  request.temperature = config.temperature;
   request.stream = true;
   return request;
 }

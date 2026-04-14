@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <string_view>
 #include <utility>
 
 namespace yac::presentation {
@@ -25,6 +26,8 @@ namespace yac::presentation {
 inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
+
+constexpr std::string_view kSwitchModelCommandId = "switch_model";
 
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
@@ -190,11 +193,21 @@ ftxui::Component ChatUI::Build() {
       footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
                                 ftxui::color(k_theme.role.agent) | ftxui::bold);
     }
+    footer_elements.push_back(ftxui::filler());
+    if (!provider_id_.empty() || !model_.empty()) {
+      auto provider_model = provider_id_;
+      if (!provider_model.empty() && !model_.empty()) {
+        provider_model += " / ";
+      }
+      provider_model += model_;
+      footer_elements.push_back(ftxui::text("  " + provider_model) |
+                                ftxui::color(k_theme.chrome.dim_text) |
+                                ftxui::dim);
+    }
     if (!session_.Empty()) {
       auto count_label = "  [" + std::to_string(session_.MessageCount()) +
                          " message" + (session_.MessageCount() > 1 ? "s" : "") +
                          "]";
-      footer_elements.push_back(ftxui::filler());
       footer_elements.push_back(ftxui::text(count_label) |
                                 ftxui::color(k_theme.chrome.dim_text) |
                                 ftxui::dim);
@@ -242,14 +255,33 @@ ftxui::Component ChatUI::Build() {
   });
 
   auto on_select = [this](int index) {
-    if (index >= 0 && static_cast<size_t>(index) < commands_.size() &&
-        on_command_) {
+    if (index < 0 || static_cast<size_t>(index) >= commands_.size()) {
+      return;
+    }
+    if (commands_[index].id == kSwitchModelCommandId) {
+      show_command_palette_ = false;
+      show_model_palette_ = true;
+      return;
+    }
+    if (on_command_) {
       on_command_(commands_[index].id);
+    }
+  };
+  auto on_model_select = [this](int index) {
+    if (index >= 0 && static_cast<size_t>(index) < model_commands_.size() &&
+        on_command_) {
+      on_command_(model_commands_[index].id);
     }
   };
   auto palette = CommandPalette(commands_, on_select, &show_command_palette_);
   auto dialog = DialogPanel("Command Palette", palette, &show_command_palette_);
-  auto modal = ftxui::Modal(main_ui, dialog, &show_command_palette_);
+  auto main_component = ftxui::Modal(main_ui, dialog, &show_command_palette_);
+  auto model_palette =
+      CommandPalette(model_commands_, on_model_select, &show_model_palette_);
+  auto modal_component =
+      DialogPanel("Switch Model", model_palette, &show_model_palette_);
+  auto modal =
+      ftxui::Modal(main_component, modal_component, &show_model_palette_);
   auto animated_modal = ftxui::Make<ThinkingAnimationDriver>(
       modal, [this] { return HasActiveAgentMessage(); },
       [this] { AdvanceThinkingFrame(); });
@@ -336,8 +368,17 @@ void ChatUI::SetCommands(std::vector<Command> commands) {
   commands_ = std::move(commands);
 }
 
+void ChatUI::SetModelCommands(std::vector<Command> commands) {
+  model_commands_ = std::move(commands);
+}
+
 void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
   slash_commands_ = std::move(registry);
+}
+
+void ChatUI::SetProviderModel(std::string provider_id, std::string model) {
+  provider_id_ = std::move(provider_id);
+  model_ = std::move(model);
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -364,6 +405,14 @@ bool ChatUI::HasMessage(MessageId id) const {
 
 bool ChatUI::IsTyping() const {
   return is_typing_;
+}
+
+std::string ChatUI::ProviderId() const {
+  return provider_id_;
+}
+
+std::string ChatUI::Model() const {
+  return model_;
 }
 
 void ChatUI::SubmitMessage() {

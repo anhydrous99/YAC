@@ -3,8 +3,11 @@
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/mouse.hpp>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using namespace yac::presentation;
 
@@ -32,6 +35,13 @@ ftxui::Event MakeAltEnterCR() {
 
 ftxui::Event MakeAltEnterLF() {
   return ftxui::Event::Special("\x1b\n");
+}
+
+std::string RenderComponent(const ftxui::Component& component, int width = 80,
+                            int height = 24) {
+  auto screen = ftxui::Screen(width, height);
+  ftxui::Render(screen, component->Render());
+  return screen.ToString();
 }
 
 }  // namespace
@@ -111,6 +121,16 @@ TEST_CASE("Build returns a non-null component") {
   ChatUI ui;
   auto component = ui.Build();
   REQUIRE(component != nullptr);
+}
+
+TEST_CASE("ChatUI renders active provider and model in footer") {
+  ChatUI ui;
+  ui.SetProviderModel("zai", "glm-5.1");
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("zai / glm-5.1"));
 }
 
 TEST_CASE("GetMessages returns const reference to internal state") {
