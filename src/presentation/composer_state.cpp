@@ -93,7 +93,22 @@ std::vector<int> ComposerState::FilteredSlashIndices(
   auto filter = SlashMenuFilter();
   std::vector<int> indices;
   for (int i = 0; i < static_cast<int>(commands.size()); ++i) {
-    if (filter.empty() || commands[i].name.substr(0, filter.size()) == filter) {
+    if (filter.empty()) {
+      indices.push_back(i);
+      continue;
+    }
+    if (commands[i].name.substr(0, filter.size()) == filter) {
+      indices.push_back(i);
+      continue;
+    }
+    bool alias_match = false;
+    for (const auto& alias : commands[i].aliases) {
+      if (alias.substr(0, filter.size()) == filter) {
+        alias_match = true;
+        break;
+      }
+    }
+    if (alias_match) {
       indices.push_back(i);
     }
   }

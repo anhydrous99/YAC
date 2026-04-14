@@ -13,7 +13,11 @@ constexpr int kMenuMaxWidth = 50;
 constexpr int kMenuMaxVisible = 8;
 
 ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
-  auto name = ftxui::text("/" + command.name) | ftxui::bold |
+  std::string label = "/" + command.name;
+  for (const auto& alias : command.aliases) {
+    label += ", /" + alias;
+  }
+  auto name = ftxui::text(label) | ftxui::bold |
               ftxui::size(ftxui::WIDTH, ftxui::GREATER_THAN, 14);
   auto desc = ftxui::text(command.description) | ftxui::flex;
 

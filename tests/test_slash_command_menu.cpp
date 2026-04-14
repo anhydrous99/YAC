@@ -10,6 +10,18 @@ using yac::presentation::ComposerState;
 using yac::presentation::SlashCommand;
 using yac::presentation::SlashCommandRegistry;
 
+namespace {
+auto MakeCommand(const std::string& name, const std::string& desc,
+                 std::vector<std::string> aliases = {})
+    -> SlashCommand {
+  return {.id = name,
+          .name = name,
+          .description = desc,
+          .aliases = std::move(aliases),
+          .handler = std::nullopt};
+}
+}  // namespace
+
 TEST_CASE("ComposerState slash menu is inactive by default",
           "[composer_state]") {
   ComposerState state;
@@ -68,8 +80,8 @@ TEST_CASE("ComposerState FilteredSlashIndices returns all for empty filter",
   ComposerState state;
   state.Content() = "/";
   *state.CursorPosition() = 1;
-  std::vector<SlashCommand> commands = {{"quit", "Exit", {}},
-                                        {"clear", "Clear", {}}};
+  std::vector<SlashCommand> commands = {MakeCommand("quit", "Exit"),
+                                        MakeCommand("clear", "Clear")};
   auto indices = state.FilteredSlashIndices(commands);
   REQUIRE(indices.size() == 2);
   CHECK(indices[0] == 0);
@@ -81,8 +93,8 @@ TEST_CASE("ComposerState FilteredSlashIndices filters by prefix",
   ComposerState state;
   state.Content() = "/qu";
   *state.CursorPosition() = 3;
-  std::vector<SlashCommand> commands = {{"quit", "Exit", {}},
-                                        {"clear", "Clear", {}}};
+  std::vector<SlashCommand> commands = {MakeCommand("quit", "Exit"),
+                                        MakeCommand("clear", "Clear")};
   auto indices = state.FilteredSlashIndices(commands);
   REQUIRE(indices.size() == 1);
   CHECK(indices[0] == 0);
@@ -93,10 +105,22 @@ TEST_CASE("ComposerState FilteredSlashIndices returns empty for no match",
   ComposerState state;
   state.Content() = "/xyz";
   *state.CursorPosition() = 4;
-  std::vector<SlashCommand> commands = {{"quit", "Exit", {}},
-                                        {"clear", "Clear", {}}};
+  std::vector<SlashCommand> commands = {MakeCommand("quit", "Exit"),
+                                        MakeCommand("clear", "Clear")};
   auto indices = state.FilteredSlashIndices(commands);
   CHECK(indices.empty());
+}
+
+TEST_CASE("ComposerState FilteredSlashIndices matches by alias",
+          "[composer_state]") {
+  ComposerState state;
+  state.Content() = "/ex";
+  *state.CursorPosition() = 3;
+  std::vector<SlashCommand> commands = {
+      MakeCommand("quit", "Exit", {"exit"})};
+  auto indices = state.FilteredSlashIndices(commands);
+  REQUIRE(indices.size() == 1);
+  CHECK(indices[0] == 0);
 }
 
 TEST_CASE("ComposerState Submit resets slash menu state", "[composer_state]") {

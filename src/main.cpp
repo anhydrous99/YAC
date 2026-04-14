@@ -59,8 +59,8 @@ int main() {
 
   auto exit_loop = screen.ExitLoopClosure();
   yac::presentation::SlashCommandRegistry slash_registry;
-  slash_registry.Register({"quit", "Exit the application", exit_loop});
-  slash_registry.Register({"exit", "Exit the application", exit_loop});
+  yac::presentation::RegisterBuiltinSlashCommands(slash_registry);
+  slash_registry.SetHandler("quit", exit_loop);
   chat_ui.SetSlashCommands(std::move(slash_registry));
 
   auto component = chat_ui.Build();

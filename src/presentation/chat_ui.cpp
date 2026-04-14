@@ -783,7 +783,9 @@ void ChatUI::DispatchSlashMenuSelection() {
   }
   const auto& command = slash_commands_.Commands()[filtered[selected]];
   (void)composer_.Submit();
-  command.handler();
+  if (command.handler.has_value()) {
+    (*command.handler)();
+  }
 }
 
 }  // namespace yac::presentation
