@@ -12,8 +12,12 @@
 #include "slash_command_menu.hpp"
 #include "slash_command_registry.hpp"
 
+#include <condition_variable>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace yac::presentation {
@@ -22,16 +26,24 @@ class ChatUI {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
   using OnCommandCallback = std::function<void(const std::string&)>;
+  using UiTask = std::function<void()>;
+  using UiTaskRunner = std::function<void(UiTask)>;
 
   static constexpr int kMaxInputLines = 8;
 
   ChatUI();
   explicit ChatUI(OnSendCallback on_send);
+  ~ChatUI();
+  ChatUI(const ChatUI&) = delete;
+  ChatUI(ChatUI&&) = delete;
+  ChatUI& operator=(const ChatUI&) = delete;
+  ChatUI& operator=(ChatUI&&) = delete;
 
   [[nodiscard]] ftxui::Component Build();
 
   void SetOnSend(OnSendCallback on_send);
   void SetOnCommand(OnCommandCallback on_command);
+  void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
   MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
@@ -70,7 +82,11 @@ class ChatUI {
   [[nodiscard]] int ViewportHeight() const;
   [[nodiscard]] int MaxScrollOffset() const;
   [[nodiscard]] bool HasActiveAgentMessage() const;
+  [[nodiscard]] bool HasPendingAgentMessage() const;
   void AdvanceThinkingFrame();
+  void SyncThinkingAnimation();
+  void StartThinkingAnimation();
+  void StopThinkingAnimation();
   void ClampScrollOffset();
   void UpdateSlashMenuState();
   [[nodiscard]] bool HandleSlashMenuEvent(const ftxui::Event& event);
@@ -101,6 +117,12 @@ class ChatUI {
   ftxui::CapturedMouse captured_mouse_;
   mutable int last_terminal_width_ = -1;
   int thinking_frame_ = 0;
+  struct AnimationState;
+  UiTaskRunner ui_task_runner_;
+  std::shared_ptr<AnimationState> animation_state_;
+  std::mutex thinking_animation_mutex_;
+  std::condition_variable_any thinking_animation_wake_;
+  std::jthread thinking_animation_worker_;
 };
 
 }  // namespace yac::presentation

@@ -3,7 +3,6 @@
 #include "collapsible.hpp"
 #include "command_palette.hpp"
 #include "dialog.hpp"
-#include "ftxui/component/animation.hpp"
 #include "ftxui/component/app.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
@@ -16,8 +15,10 @@
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -26,6 +27,8 @@ namespace yac::presentation {
 inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
+
+constexpr auto kThinkingFrameDuration = std::chrono::milliseconds(260);
 
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
@@ -50,54 +53,27 @@ class DynamicMessageStack : public ftxui::ComponentBase {
  private:
   void SyncChildren() {
     auto children = get_children_();
-    DetachAllChildren();
-    for (auto& child : children) {
-      Add(child);
+    const auto child_count = ChildCount();
+    bool rebuild = children.size() < child_count;
+    if (!rebuild) {
+      for (size_t i = 0; i < child_count; ++i) {
+        if (children[i] != children_[i]) {
+          rebuild = true;
+          break;
+        }
+      }
+    }
+
+    if (rebuild) {
+      DetachAllChildren();
+    }
+    const auto start = rebuild ? 0 : child_count;
+    for (size_t i = start; i < children.size(); ++i) {
+      Add(children[i]);
     }
   }
 
   std::function<ftxui::Components()> get_children_;
-};
-
-class ThinkingAnimationDriver : public ftxui::ComponentBase {
- public:
-  ThinkingAnimationDriver(ftxui::Component child,
-                          std::function<bool()> is_running,
-                          std::function<void()> advance_frame)
-      : is_running_(std::move(is_running)),
-        advance_frame_(std::move(advance_frame)) {
-    Add(std::move(child));
-  }
-
-  ftxui::Element OnRender() override {
-    if (is_running_()) {
-      ftxui::animation::RequestAnimationFrame();
-    }
-    return children_.front()->Render();
-  }
-
-  void OnAnimation(ftxui::animation::Params& params) override {
-    ComponentBase::OnAnimation(params);
-
-    if (!is_running_()) {
-      elapsed_ = ftxui::animation::Duration::zero();
-      return;
-    }
-
-    elapsed_ += params.duration();
-    const ftxui::animation::Duration frame_duration =
-        std::chrono::milliseconds(260);
-    while (elapsed_ >= frame_duration) {
-      advance_frame_();
-      elapsed_ -= frame_duration;
-    }
-    ftxui::animation::RequestAnimationFrame();
-  }
-
- private:
-  std::function<bool()> is_running_;
-  std::function<void()> advance_frame_;
-  ftxui::animation::Duration elapsed_{};
 };
 
 class SlashMenuInputWrapper : public ftxui::ComponentBase {
@@ -166,9 +142,24 @@ bool IsEnd(const ftxui::Event& event) {
 
 }  // namespace
 
-ChatUI::ChatUI() : on_send_([](const std::string&) {}) {}
+struct ChatUI::AnimationState {
+  std::atomic_bool alive = true;
+};
 
-ChatUI::ChatUI(OnSendCallback on_send) : on_send_(std::move(on_send)) {}
+ChatUI::ChatUI()
+    : on_send_([](const std::string&) {}),
+      animation_state_(std::make_shared<AnimationState>()) {}
+
+ChatUI::ChatUI(OnSendCallback on_send)
+    : on_send_(std::move(on_send)),
+      animation_state_(std::make_shared<AnimationState>()) {}
+
+ChatUI::~ChatUI() {
+  if (animation_state_) {
+    animation_state_->alive.store(false, std::memory_order_release);
+  }
+  StopThinkingAnimation();
+}
 
 void ChatUI::SetOnSend(OnSendCallback on_send) {
   on_send_ = std::move(on_send);
@@ -176,6 +167,11 @@ void ChatUI::SetOnSend(OnSendCallback on_send) {
 
 void ChatUI::SetOnCommand(OnCommandCallback on_command) {
   on_command_ = std::move(on_command);
+}
+
+void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
+  ui_task_runner_ = std::move(ui_task_runner);
+  SyncThinkingAnimation();
 }
 
 ftxui::Component ChatUI::Build() {
@@ -290,11 +286,8 @@ ftxui::Component ChatUI::Build() {
       DialogPanel("Switch Model", model_palette, &show_model_palette_);
   auto modal =
       ftxui::Modal(main_component, modal_component, &show_model_palette_);
-  auto animated_modal = ftxui::Make<ThinkingAnimationDriver>(
-      modal, [this] { return HasActiveAgentMessage(); },
-      [this] { AdvanceThinkingFrame(); });
 
-  return ftxui::CatchEvent(animated_modal,
+  return ftxui::CatchEvent(modal,
                            [this, sync_visibility](const ftxui::Event& event) {
                              if (event.input() == "\x10") {
                                palette_level_ = 0;
@@ -315,6 +308,7 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
+  SyncThinkingAnimation();
   return id;
 }
 
@@ -330,6 +324,7 @@ MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
     follow_tail_ = true;
   }
   SyncMessageComponents();
+  SyncThinkingAnimation();
   return added_id;
 }
 
@@ -341,6 +336,7 @@ MessageId ChatUI::StartAgentMessage() {
     follow_tail_ = true;
   }
   SyncMessageComponents();
+  SyncThinkingAnimation();
   return id;
 }
 
@@ -349,12 +345,16 @@ MessageId ChatUI::StartAgentMessage(MessageId id) {
 }
 
 void ChatUI::AppendToAgentMessage(MessageId id, std::string delta) {
+  if (delta.empty()) {
+    return;
+  }
   session_.AppendToAgentMessage(id, std::move(delta));
   render_cache_.ResetContent(id);
   if (!scrollbar_dragging_) {
     follow_tail_ = true;
   }
   SyncMessageComponents();
+  SyncThinkingAnimation();
 }
 
 void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
@@ -363,6 +363,7 @@ void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
   }
   session_.SetMessageStatus(id, status);
   render_cache_.ResetElement(id);
+  SyncThinkingAnimation();
 }
 
 void ChatUI::AddToolCallMessage(::yac::tool_call::ToolCallBlock block) {
@@ -403,6 +404,7 @@ void ChatUI::ClearMessages() {
   session_.ClearMessages();
   render_cache_.Clear();
   message_components_.clear();
+  SyncThinkingAnimation();
 }
 
 const std::vector<Message>& ChatUI::GetMessages() const {
@@ -775,8 +777,70 @@ bool ChatUI::HasActiveAgentMessage() const {
                      });
 }
 
+bool ChatUI::HasPendingAgentMessage() const {
+  return std::any_of(session_.Messages().begin(), session_.Messages().end(),
+                     [](const Message& message) {
+                       return message.sender == Sender::Agent &&
+                              message.status == MessageStatus::Active &&
+                              message.Text().empty();
+                     });
+}
+
 void ChatUI::AdvanceThinkingFrame() {
   thinking_frame_ = (thinking_frame_ + 1) % 4;
+}
+
+void ChatUI::SyncThinkingAnimation() {
+  if (HasPendingAgentMessage()) {
+    StartThinkingAnimation();
+    return;
+  }
+  StopThinkingAnimation();
+}
+
+void ChatUI::StartThinkingAnimation() {
+  if (thinking_animation_worker_.joinable() || !ui_task_runner_ ||
+      !animation_state_) {
+    return;
+  }
+
+  auto ui_task_runner = ui_task_runner_;
+  auto animation_state = animation_state_;
+  thinking_animation_worker_ =
+      std::jthread([this, ui_task_runner = std::move(ui_task_runner),
+                    animation_state = std::move(animation_state)](
+                       std::stop_token stop_token) mutable {
+        while (!stop_token.stop_requested()) {
+          std::unique_lock lock(thinking_animation_mutex_);
+          thinking_animation_wake_.wait_for(
+              lock, stop_token, kThinkingFrameDuration, [] { return false; });
+          if (stop_token.stop_requested()) {
+            return;
+          }
+          lock.unlock();
+
+          ui_task_runner([this, animation_state] {
+            if (!animation_state->alive.load(std::memory_order_acquire)) {
+              return;
+            }
+            if (!HasPendingAgentMessage()) {
+              SyncThinkingAnimation();
+              return;
+            }
+            AdvanceThinkingFrame();
+          });
+        }
+      });
+}
+
+void ChatUI::StopThinkingAnimation() {
+  if (!thinking_animation_worker_.joinable()) {
+    return;
+  }
+
+  thinking_animation_worker_.request_stop();
+  thinking_animation_wake_.notify_all();
+  thinking_animation_worker_ = std::jthread{};
 }
 
 void ChatUI::ClampScrollOffset() {

@@ -203,6 +203,9 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
     event.message_id = assistant_id;
     event.role = ChatRole::Assistant;
     if (event.type == ChatEventType::TextDelta) {
+      if (event.text.empty()) {
+        return;
+      }
       assistant_text += event.text;
     } else if (event.type == ChatEventType::Error) {
       assistant_error = true;

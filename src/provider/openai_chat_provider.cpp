@@ -52,8 +52,8 @@ void DispatchSseLine(const std::string& line, ChatEventSink& sink) {
   }
 
   auto event = OpenAiChatProvider::ParseStreamData(data);
-  if (event.type == chat::ChatEventType::TextDelta ||
-      event.type == chat::ChatEventType::Error) {
+  if (event.type == chat::ChatEventType::Error ||
+      (event.type == chat::ChatEventType::TextDelta && !event.text.empty())) {
     sink(std::move(event));
   }
 }

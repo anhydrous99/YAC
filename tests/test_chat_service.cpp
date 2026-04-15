@@ -149,6 +149,19 @@ class ErrorFakeProvider : public LanguageModelProvider {
   }
 };
 
+class EmptyDeltaProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "empty-delta"; }
+
+  void CompleteStream([[maybe_unused]] const ChatRequest& request,
+                      ChatEventSink sink,
+                      [[maybe_unused]] std::stop_token stop_token) override {
+    sink(ChatEvent{.type = ChatEventType::TextDelta});
+    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "ok"});
+    sink(ChatEvent{.type = ChatEventType::TextDelta});
+  }
+};
+
 std::vector<ChatEvent> CollectEvents(ChatService& service,
                                      const std::string& message) {
   std::mutex mutex;
@@ -226,6 +239,21 @@ TEST_CASE("ChatService streams provider events and records history") {
   REQUIRE(history[1].role == ChatRole::Assistant);
   REQUIRE(history[1].content == "hi there");
   REQUIRE(history[1].id == started.message_id);
+}
+
+TEST_CASE("ChatService drops empty streaming deltas") {
+  auto service = MakeService(std::make_shared<EmptyDeltaProvider>());
+  const auto events = CollectEvents(service, "hello");
+
+  const auto text_delta_count =
+      std::count_if(events.begin(), events.end(), [](const ChatEvent& event) {
+        return event.type == ChatEventType::TextDelta;
+      });
+
+  REQUIRE(text_delta_count == 1);
+  const auto& delta = FindEvent(events, ChatEventType::TextDelta);
+  REQUIRE(delta.text == "ok");
+  REQUIRE(service.History().back().content == "ok");
 }
 
 TEST_CASE("ChatService emits error for missing provider") {

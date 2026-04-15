@@ -61,7 +61,8 @@ ftxui::Element MessageRenderer::Render(const Message& message,
                                        const RenderContext& context) {
   int current_width = context.terminal_width;
   const bool is_animated = message.sender == Sender::Agent &&
-                           message.status == MessageStatus::Active;
+                           message.status == MessageStatus::Active &&
+                           message.Text().empty();
   if (!is_animated && message.sender != Sender::Tool && cache.element &&
       cache.terminal_width == current_width) {
     return *cache.element;

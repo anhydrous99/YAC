@@ -32,9 +32,15 @@ int main() {
   registry.Register(std::move(provider));
   yac::chat::ChatService chat_service(std::move(registry), config);
 
-  yac::presentation::ChatUI chat_ui;
-  chat_ui.SetProviderModel(config.provider_id, config.model);
   auto screen = ftxui::App::Fullscreen();
+  yac::presentation::ChatUI chat_ui;
+  chat_ui.SetUiTaskRunner([&screen](yac::presentation::ChatUI::UiTask task) {
+    screen.Post([&screen, task = std::move(task)]() mutable {
+      task();
+      screen.PostEvent(ftxui::Event::Custom);
+    });
+  });
+  chat_ui.SetProviderModel(config.provider_id, config.model);
 
   yac::app::ChatEventBridge bridge(chat_ui);
 

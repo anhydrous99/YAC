@@ -339,6 +339,19 @@ TEST_CASE("Render populates cached_element after first call") {
   REQUIRE(cache.terminal_width == 80);
 }
 
+TEST_CASE("Render caches active agent message once text is streaming") {
+  Message msg{Sender::Agent, "partial"};
+  msg.status = MessageStatus::Active;
+  MessageRenderCache cache;
+
+  auto elem =
+      MessageRenderer::Render(msg, cache, RenderContext{.terminal_width = 80});
+
+  REQUIRE(elem != nullptr);
+  REQUIRE(cache.element.has_value());
+  REQUIRE(cache.terminal_width == 80);
+}
+
 TEST_CASE("Render returns cached element on second call at same width") {
   Message msg{Sender::User, "cache hit test"};
   MessageRenderCache cache;

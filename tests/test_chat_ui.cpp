@@ -1,6 +1,11 @@
 #include "presentation/chat_ui.hpp"
 
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -158,6 +163,27 @@ TEST_CASE("Build returns non-null component with typing enabled") {
   ui.SetTyping(true);
   auto component = ui.Build();
   REQUIRE(component != nullptr);
+}
+
+TEST_CASE("ChatUI schedules pending thinking animation ticks") {
+  ChatUI ui;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::vector<ChatUI::UiTask> tasks;
+
+  ui.SetUiTaskRunner([&](ChatUI::UiTask task) {
+    {
+      std::lock_guard lock(mutex);
+      tasks.push_back(std::move(task));
+    }
+    cv.notify_one();
+  });
+
+  ui.StartAgentMessage();
+
+  std::unique_lock lock(mutex);
+  REQUIRE(cv.wait_for(lock, std::chrono::seconds(2),
+                      [&] { return !tasks.empty(); }));
 }
 
 TEST_CASE("CalculateInputHeight returns 1 for empty input") {
