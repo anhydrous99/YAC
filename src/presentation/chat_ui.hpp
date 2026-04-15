@@ -114,6 +114,7 @@ class ChatUI {
   ftxui::Box scrollbar_box_{};
   bool scrollbar_dragging_ = false;
   bool follow_tail_ = true;
+  size_t messages_seen_count_ = 0;
   ftxui::CapturedMouse captured_mouse_;
   mutable int last_terminal_width_ = -1;
   int thinking_frame_ = 0;

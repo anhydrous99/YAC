@@ -22,6 +22,7 @@ struct CodeColors {
   ftxui::Color fg;
   ftxui::Color inline_bg;
   ftxui::Color inline_fg;
+  ftxui::Color border;
 };
 
 struct SyntaxColors {

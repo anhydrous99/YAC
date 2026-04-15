@@ -69,7 +69,7 @@ TEST_CASE("ChatUI renders active assistant while streaming") {
   auto streaming_output = RenderComponent(component, 80, 24);
   REQUIRE_THAT(streaming_output, Catch::Matchers::ContainsSubstring("story"));
   REQUIRE_THAT(streaming_output,
-               Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
+               Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
 }
 
 TEST_CASE("ChatUI wraps long word-spaced messages") {

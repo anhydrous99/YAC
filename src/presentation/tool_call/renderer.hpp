@@ -17,6 +17,8 @@ class ToolCallRenderer {
       const tool_data::ToolCallBlock& block);
   [[nodiscard]] static ftxui::Element Render(
       const tool_data::ToolCallBlock& block, const RenderContext& context);
+  [[nodiscard]] static std::string BuildSummary(
+      const tool_data::ToolCallBlock& block);
 
  private:
   [[nodiscard]] static ftxui::Element RenderBash(

@@ -51,6 +51,15 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
 
 namespace {
 
+std::string RepeatUtf8(std::string_view unit, int count) {
+  std::string result;
+  result.reserve(unit.size() * static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    result.append(unit);
+  }
+  return result;
+}
+
 ftxui::Elements SplitIntoWords(const std::string& content,
                                const ftxui::Decorator& style) {
   ftxui::Elements elements;
@@ -108,8 +117,9 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
                   ftxui::bgcolor(theme.code.inline_bg) |
                   ftxui::color(theme.code.inline_fg)};
         } else if constexpr (std::is_same_v<T, Link>) {
-          return {ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
-                  ftxui::underlined};
+          return {ftxui::hyperlink(n.url, ftxui::text(n.text) |
+                                           ftxui::color(theme.markdown.link) |
+                                           ftxui::underlined)};
         } else {
           return {ftxui::text("")};
         }
@@ -122,8 +132,24 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   const auto& theme = context.Colors();
   auto inline_elem = RenderInline(h.children, context);
 
-  if (h.level <= 2) {
-    return inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading);
+  if (h.level == 1) {
+    auto line =
+        ftxui::text(RepeatUtf8("\xe2\x95\x81", 20)) |
+        ftxui::color(theme.markdown.heading) | ftxui::dim;
+    return ftxui::vbox({
+        inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
+        line,
+    });
+  }
+
+  if (h.level == 2) {
+    auto line =
+        ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+        ftxui::color(theme.markdown.heading) | ftxui::dim;
+    return ftxui::vbox({
+        inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
+        line,
+    });
   }
 
   if (h.level <= 4) {
@@ -166,6 +192,8 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb,
 
     auto bg = (i % 2 == 1) ? odd_bg : even_bg;
     inner.push_back(ftxui::hbox({
+        ftxui::text("\xe2\x96\x8e") | ftxui::color(theme.code.border) |
+            ftxui::bgcolor(bg),
         ftxui::text(padded_num) | ftxui::color(theme.chrome.dim_text) |
             ftxui::dim | ftxui::bgcolor(bg),
         line_elem | ftxui::bgcolor(bg),
@@ -187,8 +215,9 @@ ftxui::Element MarkdownRenderer::RenderBlockquote(
 
   ftxui::Elements line_elements;
   for (const auto& line : bq.lines) {
-    line_elements.push_back(
-        ftxui::hbox({ftxui::text(indent + "  "), RenderInline(line, context)}));
+    line_elements.push_back(ftxui::hbox(
+        {ftxui::text("\xe2\x96\x8e ") | ftxui::color(theme.chrome.dim_text),
+         ftxui::text(indent), RenderInline(line, context)}));
   }
 
   return ftxui::vbox(line_elements) | ftxui::bgcolor(theme.markdown.quote_bg);
@@ -221,8 +250,11 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(
   return ftxui::vbox(items);
 }
 
-ftxui::Element MarkdownRenderer::RenderHorizontalRule(const RenderContext&) {
-  return ftxui::text("");
+ftxui::Element MarkdownRenderer::RenderHorizontalRule(
+    const RenderContext& context) {
+  const auto& theme = context.Colors();
+  return ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+         ftxui::color(theme.chrome.dim_text) | ftxui::dim;
 }
 
 }  // namespace yac::presentation::markdown

@@ -4,6 +4,7 @@
 #include "util/time_util.hpp"
 
 #include <algorithm>
+#include <array>
 #include <utility>
 
 #include <ftxui/dom/elements.hpp>
@@ -13,16 +14,19 @@ namespace yac::presentation {
 namespace {
 
 const char* ThinkingPulseGlyph(int frame) {
-  switch (frame % 4) {
-    case 0:
-      return "\xC2\xB7";
-    case 1:
-    case 3:
-      return "\xE2\x80\xA2";
-    case 2:
-    default:
-      return "\xE2\x97\x8F";
-  }
+constexpr std::array<const char*, 10> kBrailleFrames = {
+    "\xe2\xa0\x8b",  // ⠋
+    "\xe2\xa0\x99",  // ⠙
+    "\xe2\xa0\xb9",  // ⠹
+    "\xe2\xa0\xb8",  // ⠸
+    "\xe2\xa0\xbc",  // ⠼
+    "\xe2\xa0\xb4",  // ⠴
+    "\xe2\xa0\xa6",  // ⠦
+    "\xe2\xa0\xa7",  // ⠧
+    "\xe2\xa0\x87",  // ⠇
+    "\xe2\xa0\x8f",  // ⠏
+};
+return kBrailleFrames.at(frame % kBrailleFrames.size());
 }
 
 int MessageCardMaxWidth(const RenderContext& context) {
@@ -148,7 +152,7 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
   if (is_active && !message.Text().empty()) {
     rows.push_back(ftxui::hbox({
         ftxui::text("  "),
-        ftxui::text("\xE2\x96\x8C") | ftxui::color(theme.role.agent) |
+        ftxui::text("\xe2\x96\x8e") | ftxui::color(theme.role.agent) |
             ftxui::dim,
     }));
   }
@@ -181,38 +185,42 @@ ftxui::Element MessageRenderer::RenderHeader(
       sender == Sender::Agent && status == MessageStatus::Error;
   const bool is_active =
       sender == Sender::Agent && status == MessageStatus::Active;
-  const auto& color = SenderSwitch(
+  const auto& icon_color = SenderSwitch(
       sender, [&]() -> const auto& { return theme.role.user; },
       [&]() -> const auto& {
         return is_error ? theme.role.error : theme.role.agent;
       },
       [&]() -> const auto& { return theme.tool.icon_fg; });
 
-  char initial = label.empty() ? '?' : label[0];
-  ftxui::Elements parts;
-  parts.push_back(ftxui::text("[") | ftxui::color(color));
-  parts.push_back(ftxui::text(std::string(1, initial)) | ftxui::bold |
-                  ftxui::color(color));
-  parts.push_back(ftxui::text("]") | ftxui::color(color));
-  parts.push_back(ftxui::text(" "));
-  parts.push_back(ftxui::text(label) | ftxui::bold | ftxui::color(color));
+  const char* avatar = SenderSwitch(
+      sender, [&]() -> const char* { return "\xe2\x97\x8f"; },
+      [&]() -> const char* { return "\xe2\x97\x86"; },
+      [&]() -> const char* { return "\xe2\x97\x8b"; });
+
+  ftxui::Elements left_parts;
+  left_parts.push_back(ftxui::text(avatar) | ftxui::bold |
+                       ftxui::color(icon_color));
+  left_parts.push_back(ftxui::text(" "));
+  left_parts.push_back(ftxui::text(label) | ftxui::bold |
+                       ftxui::color(icon_color));
 
   if (is_active) {
-    parts.push_back(ftxui::text(" \xC2\xB7 thinking ") |
-                    ftxui::color(theme.chrome.dim_text));
-    parts.push_back(ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
-                    ftxui::color(theme.role.agent) | ftxui::bold);
+    left_parts.push_back(ftxui::text(" \xC2\xB7 thinking ") |
+                         ftxui::color(theme.chrome.dim_text));
+    left_parts.push_back(
+        ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
+        ftxui::color(theme.role.agent) | ftxui::bold);
   }
 
+  auto left = ftxui::hbox(std::move(left_parts));
+
+  ftxui::Element right = ftxui::emptyElement();
   if (created_at != std::chrono::system_clock::time_point{}) {
     auto rel_time = util::FormatRelativeTime(created_at, cache);
-    parts.push_back(ftxui::text(" \xC2\xB7 ") |
-                    ftxui::color(theme.chrome.dim_text));
-    parts.push_back(ftxui::text(rel_time) |
-                    ftxui::color(theme.chrome.dim_text));
+    right = ftxui::text(rel_time) | ftxui::color(theme.chrome.dim_text);
   }
 
-  return ftxui::hbox(parts);
+  return ftxui::hbox({left | ftxui::flex, right});
 }
 
 }  // namespace yac::presentation

@@ -7,6 +7,6 @@
 namespace yac::presentation {
 
 ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
-                             bool* expanded);
+                             bool* expanded, std::string summary = "");
 
 }  // namespace yac::presentation

@@ -17,19 +17,22 @@ ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
   for (const auto& alias : command.aliases) {
     label += ", /" + alias;
   }
+  auto indicator = ftxui::text(selected ? " \xe2\x96\xb8 " : "   ");
   auto name = ftxui::text(label) | ftxui::bold |
               ftxui::size(ftxui::WIDTH, ftxui::GREATER_THAN, 14);
   auto desc = ftxui::text(command.description) | ftxui::flex;
 
   if (selected) {
+    indicator = indicator | ftxui::color(k_theme.dialog.selected_fg);
     name = name | ftxui::color(k_theme.dialog.selected_fg);
     desc = desc | ftxui::color(k_theme.dialog.selected_fg);
-    return ftxui::hbox({name, desc}) |
+    return ftxui::hbox({indicator, name, desc}) |
            ftxui::bgcolor(k_theme.dialog.selected_bg);
   }
+  indicator = indicator | ftxui::color(k_theme.dialog.dim_text);
   name = name | ftxui::color(k_theme.dialog.input_fg);
   desc = desc | ftxui::color(k_theme.dialog.dim_text) | ftxui::dim;
-  return ftxui::hbox({name, desc});
+  return ftxui::hbox({indicator, name, desc});
 }
 
 }  // namespace
@@ -54,7 +57,7 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
 
   auto content = ftxui::vbox(std::move(rows));
   int width = std::min(max_width, kMenuMaxWidth);
-  return content | ftxui::bgcolor(k_theme.dialog.input_bg) |
+  return content | ftxui::border | ftxui::bgcolor(k_theme.dialog.input_bg) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, width);
 }
 

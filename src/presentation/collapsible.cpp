@@ -17,13 +17,15 @@ inline const auto& k_theme = theme::Theme::Instance();
 }  // namespace
 
 ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
-                             bool* expanded) {
+                             bool* expanded, std::string summary) {
   class Impl : public ftxui::ComponentBase {
    public:
-    Impl(std::string header_text, ftxui::Component content, bool* expanded)
+    Impl(std::string header_text, ftxui::Component content, bool* expanded,
+         std::string summary)
         : header_text_(std::move(header_text)),
           content_(std::move(content)),
-          expanded_(expanded) {
+          expanded_(expanded),
+          summary_(std::move(summary)) {
       Add(content_);
     }
 
@@ -32,13 +34,22 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
                                   : ftxui::text("\xe2\x96\xb6");
       indicator |= ftxui::color(k_theme.tool.icon_fg);
 
-      auto header_elem = ftxui::hbox({
-                             indicator,
-                             ftxui::text(" "),
-                             ftxui::text(header_text_) | ftxui::bold |
-                                 ftxui::color(k_theme.chrome.body_text),
-                         }) |
-                         ftxui::bgcolor(k_theme.tool.header_bg);
+      ftxui::Elements header_parts;
+      header_parts.push_back(indicator);
+      header_parts.push_back(ftxui::text(" "));
+      header_parts.push_back(ftxui::text(header_text_) | ftxui::bold |
+                             ftxui::color(k_theme.chrome.body_text));
+      if (!summary_.empty()) {
+        header_parts.push_back(ftxui::filler());
+        header_parts.push_back(ftxui::text(" ") |
+                               ftxui::color(k_theme.chrome.dim_text));
+        header_parts.push_back(ftxui::text(summary_) |
+                               ftxui::color(k_theme.chrome.dim_text) |
+                               ftxui::dim);
+      }
+      auto header_elem =
+          ftxui::hbox(std::move(header_parts)) |
+          ftxui::bgcolor(k_theme.tool.header_bg);
 
       header_elem |= ftxui::reflect(header_box_);
 
@@ -71,11 +82,12 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
     std::string header_text_;
     ftxui::Component content_;
     bool* expanded_;
+    std::string summary_;
     ftxui::Box header_box_{};
   };
 
   return ftxui::Make<Impl>(std::move(header_text), std::move(content),
-                           expanded);
+                           expanded, std::move(summary));
 }
 
 }  // namespace yac::presentation

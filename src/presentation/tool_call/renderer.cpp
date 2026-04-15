@@ -107,6 +107,36 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
       block);
 }
 
+std::string ToolCallRenderer::BuildSummary(
+    const tool_data::ToolCallBlock& block) {
+  return std::visit(
+      [](const auto& call) -> std::string {
+        using T = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+          if (call.exit_code != 0) {
+            return "exit " + std::to_string(call.exit_code);
+          }
+          return "exit 0";
+        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
+          return std::to_string(call.diff.size()) + " lines";
+        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
+          return std::to_string(call.lines_loaded) + " lines";
+        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
+          return std::to_string(call.match_count) + " matches";
+        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
+          return std::to_string(call.matched_files.size()) + " files";
+        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
+          return call.title.empty() ? std::string{"fetched"}
+                                    : call.title;
+        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
+          return std::to_string(call.results.size()) + " results";
+        } else {
+          return "";
+        }
+      },
+      block);
+}
+
 ftxui::Element ToolCallRenderer::RenderBash(const tool_data::BashCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();

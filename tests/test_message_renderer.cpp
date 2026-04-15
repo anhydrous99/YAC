@@ -93,8 +93,6 @@ void RequireNoBoxGlyphs(const std::string& rendered) {
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╮"));
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╰"));
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╯"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("─"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("│"));
 }
 
 }  // namespace
@@ -195,14 +193,11 @@ TEST_CASE("Render active agent message animates thinking pulse") {
   msg.status = MessageStatus::Active;
   msg.created_at = std::chrono::system_clock::time_point{};
 
-  auto first_frame = StripAnsi(RenderMessageToString(msg, 80, 24, 0));
-  auto third_frame = StripAnsi(RenderMessageToString(msg, 80, 24, 2));
+  auto frame0 = StripAnsi(RenderMessageToString(msg, 80, 24, 0));
+  auto frame5 = StripAnsi(RenderMessageToString(msg, 80, 24, 5));
 
-  REQUIRE_THAT(first_frame,
-               Catch::Matchers::ContainsSubstring("thinking \xC2\xB7"));
-  REQUIRE_THAT(third_frame,
-               Catch::Matchers::ContainsSubstring("thinking \xE2\x97\x8F"));
-  REQUIRE(first_frame != third_frame);
+  REQUIRE_THAT(frame0, Catch::Matchers::ContainsSubstring("thinking"));
+  REQUIRE(frame0 != frame5);
 }
 
 TEST_CASE("Render complete agent message hides thinking indicator") {
@@ -220,7 +215,7 @@ TEST_CASE("Render active agent message with text shows stream cursor") {
 
   auto output = StripAnsi(RenderMessageToString(msg));
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
 }
 
 TEST_CASE("Render error agent message hides active indicator") {
@@ -230,7 +225,7 @@ TEST_CASE("Render error agent message hides active indicator") {
   auto output = StripAnsi(RenderMessageToString(msg));
 
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("thinking"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("\xE2\x96\x8C"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
 }
 
 TEST_CASE("Render agent message with markdown") {
@@ -295,16 +290,18 @@ TEST_CASE("Render unknown sender message uses fallback text") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Unknown Sender"));
 }
 
-TEST_CASE("RenderHeader shows bracket-initial role indicator for user") {
+TEST_CASE("RenderHeader shows avatar role indicator for user") {
   Message msg{Sender::User, "test"};
   auto output = StripAnsi(RenderMessageToString(msg));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[Y]"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x97\x8f"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("You"));
 }
 
-TEST_CASE("RenderHeader shows bracket-initial role indicator for agent") {
+TEST_CASE("RenderHeader shows avatar role indicator for agent") {
   Message msg{Sender::Agent, "test"};
   auto output = StripAnsi(RenderMessageToString(msg));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[A]"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x97\x86"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Assistant"));
 }
 
 TEST_CASE("RenderHeader shows relative timestamp") {
@@ -313,17 +310,11 @@ TEST_CASE("RenderHeader shows relative timestamp") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("just now"));
 }
 
-TEST_CASE("RenderHeader shows middle dot separator before timestamp") {
-  Message msg{Sender::User, "test"};
-  auto output = RenderMessageToString(msg);
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("·"));
-}
-
 TEST_CASE("RenderHeader hides timestamp for zero time_point") {
   Message msg{Sender::User, "test"};
   msg.created_at = std::chrono::system_clock::time_point{};
   auto output = StripAnsi(RenderMessageToString(msg, 120, 10));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[Y]"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("You"));
   REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("ago"));
 }
 
