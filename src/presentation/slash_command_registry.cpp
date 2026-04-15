@@ -73,6 +73,7 @@ std::string SlashCommandRegistry::ExtractCommandName(const std::string& input) {
 
 void RegisterBuiltinSlashCommands(SlashCommandRegistry& registry) {
   registry.Define("quit", "quit", "Exit the application", {"exit"});
+  registry.Define("clear", "clear", "Clear the conversation");
 }
 
 }  // namespace yac::presentation

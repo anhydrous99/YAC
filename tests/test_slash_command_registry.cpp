@@ -133,14 +133,28 @@ TEST_CASE("SlashCommandRegistry SetHandler on unknown id is a no-op",
   CHECK(registry.Commands().empty());
 }
 
-TEST_CASE("RegisterBuiltinSlashCommands defines quit with exit alias",
+TEST_CASE("RegisterBuiltinSlashCommands defines quit and clear",
           "[slash_command]") {
   SlashCommandRegistry registry;
   yac::presentation::RegisterBuiltinSlashCommands(registry);
 
   const auto& cmds = registry.Commands();
-  REQUIRE(cmds.size() == 1);
+  REQUIRE(cmds.size() == 2);
   CHECK(cmds[0].name == "quit");
   REQUIRE(cmds[0].aliases.size() == 1);
   CHECK(cmds[0].aliases[0] == "exit");
+  CHECK(cmds[1].name == "clear");
+  CHECK(cmds[1].description == "Clear the conversation");
+  CHECK(cmds[1].aliases.empty());
+}
+
+TEST_CASE("RegisterBuiltinSlashCommands dispatches clear after handler set",
+          "[slash_command]") {
+  SlashCommandRegistry registry;
+  bool called = false;
+  yac::presentation::RegisterBuiltinSlashCommands(registry);
+  registry.SetHandler("clear", [&] { called = true; });
+
+  CHECK(registry.TryDispatch("/clear"));
+  CHECK(called);
 }

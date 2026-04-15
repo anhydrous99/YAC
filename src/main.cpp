@@ -72,6 +72,8 @@ int main() {
   yac::presentation::SlashCommandRegistry slash_registry;
   yac::presentation::RegisterBuiltinSlashCommands(slash_registry);
   slash_registry.SetHandler("quit", exit_loop);
+  slash_registry.SetHandler(
+      "clear", [&chat_service] { chat_service.ResetConversation(); });
   chat_ui.SetSlashCommands(std::move(slash_registry));
 
   auto component = chat_ui.Build();
