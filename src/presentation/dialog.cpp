@@ -34,8 +34,8 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
           ftxui::text("  " + title_) | ftxui::bold |
               ftxui::color(k_theme.dialog.input_fg),
           ftxui::text(""),
-          ftxui::hbox({ftxui::text("  "), inner_content_->Render() |
-                                                ftxui::flex,
+          ftxui::hbox({ftxui::text("  "),
+                       inner_content_->Render() | ftxui::flex,
                        ftxui::text("  ")}),
       });
 

@@ -27,8 +27,6 @@ inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
 
-constexpr std::string_view kSwitchModelCommandId = "switch_model";
-
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
   explicit DynamicMessageStack(std::function<ftxui::Components()> get_children)
@@ -254,28 +252,38 @@ ftxui::Component ChatUI::Build() {
     return ftxui::vbox(std::move(main_parts));
   });
 
-  auto on_select = [this](int index) {
+  auto sync_visibility = [this] {
+    show_palette_ = palette_level_ >= 0;
+    show_model_palette_ = palette_level_ >= 1;
+  };
+
+  auto on_select = [this, sync_visibility](int index) {
     if (index < 0 || static_cast<size_t>(index) >= commands_.size()) {
       return;
     }
     if (commands_[index].id == kSwitchModelCommandId) {
-      show_command_palette_ = false;
-      show_model_palette_ = true;
+      palette_level_ = 1;
+      sync_visibility();
       return;
     }
+    palette_level_ = -1;
+    sync_visibility();
     if (on_command_) {
       on_command_(commands_[index].id);
     }
   };
-  auto on_model_select = [this](int index) {
+  auto on_model_select = [this, sync_visibility](int index) {
     if (index >= 0 && static_cast<size_t>(index) < model_commands_.size() &&
         on_command_) {
       on_command_(model_commands_[index].id);
     }
+    palette_level_ = -1;
+    sync_visibility();
   };
-  auto palette = CommandPalette(commands_, on_select, &show_command_palette_);
-  auto dialog = DialogPanel("Command Palette", palette, &show_command_palette_);
-  auto main_component = ftxui::Modal(main_ui, dialog, &show_command_palette_);
+
+  auto palette = CommandPalette(commands_, on_select, &show_palette_);
+  auto dialog = DialogPanel("Command Palette", palette, &show_palette_);
+  auto main_component = ftxui::Modal(main_ui, dialog, &show_palette_);
   auto model_palette =
       CommandPalette(model_commands_, on_model_select, &show_model_palette_);
   auto modal_component =
@@ -286,13 +294,15 @@ ftxui::Component ChatUI::Build() {
       modal, [this] { return HasActiveAgentMessage(); },
       [this] { AdvanceThinkingFrame(); });
 
-  return ftxui::CatchEvent(animated_modal, [this](const ftxui::Event& event) {
-    if (event.input() == "\x10") {
-      show_command_palette_ = true;
-      return true;
-    }
-    return false;
-  });
+  return ftxui::CatchEvent(animated_modal,
+                           [this, sync_visibility](const ftxui::Event& event) {
+                             if (event.input() == "\x10") {
+                               palette_level_ = 0;
+                               sync_visibility();
+                               return true;
+                             }
+                             return false;
+                           });
 }
 
 MessageId ChatUI::AddMessage(Sender sender, std::string content,

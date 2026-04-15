@@ -1,5 +1,7 @@
 #pragma once
 
+#include "model_info.hpp"
+
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -36,11 +38,6 @@ struct ChatRequest {
   std::vector<ChatMessage> messages;
   double temperature = 0.7;
   bool stream = true;
-};
-
-struct ModelInfo {
-  std::string id;
-  std::string display_name;
 };
 
 enum class ChatEventType {

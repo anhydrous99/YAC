@@ -71,9 +71,10 @@ target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)
 
 add_library(yac_app STATIC
   src/app/chat_event_bridge.cpp
+  src/app/model_discovery.cpp
 )
 target_include_directories(yac_app PUBLIC src)
-target_link_libraries(yac_app PUBLIC yac_presentation)
+target_link_libraries(yac_app PUBLIC yac_presentation yac_service)
 
 add_executable(yac src/main.cpp)
 target_link_libraries(yac PRIVATE yac_app yac_presentation yac_service)

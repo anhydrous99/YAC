@@ -51,8 +51,8 @@ ftxui::Element RenderContainer(const std::string& icon,
 
   return ftxui::vbox({
              header,
-             ftxui::hbox({ftxui::text("  "), body | ftxui::flex,
-                          ftxui::text("  ")}) |
+             ftxui::hbox(
+                 {ftxui::text("  "), body | ftxui::flex, ftxui::text("  ")}) |
                  ftxui::bgcolor(theme.cards.agent_bg),
              ftxui::text("") | ftxui::bgcolor(theme.cards.agent_bg),
          }) |

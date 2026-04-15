@@ -127,8 +127,8 @@ TEST_CASE("Render agent message surface hugs short content") {
   Message msg{Sender::Agent, "short"};
   msg.created_at = std::chrono::system_clock::time_point{};
 
-  auto [left_edge, right_edge] = ContentColumns(RenderMessageToString(msg, 60,
-                                                                      8));
+  auto [left_edge, right_edge] =
+      ContentColumns(RenderMessageToString(msg, 60, 8));
   REQUIRE(left_edge == 2);
   REQUIRE(right_edge < 59);
 }

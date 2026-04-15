@@ -23,6 +23,7 @@ class LanguageModelProvider {
   LanguageModelProvider& operator=(LanguageModelProvider&&) = delete;
 
   [[nodiscard]] virtual std::string Id() const = 0;
+  [[nodiscard]] virtual bool SupportsModelDiscovery() const { return false; }
   [[nodiscard]] virtual std::vector<chat::ModelInfo> ListModels(
       std::chrono::milliseconds timeout) {
     (void)timeout;

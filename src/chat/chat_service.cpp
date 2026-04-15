@@ -45,19 +45,20 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
 
 void ChatService::SetModel(std::string model) {
   std::string provider_id;
+  std::string new_model;
   {
     std::lock_guard lock(mutex_);
     if (config_.model == model) {
       return;
     }
-    config_.model = std::move(model);
+    config_.model = model;
     provider_id = config_.provider_id;
-    model = config_.model;
+    new_model = config_.model;
   }
 
   EmitEvent(ChatEvent{.type = ChatEventType::ModelChanged,
                       .provider_id = std::move(provider_id),
-                      .model = std::move(model)});
+                      .model = std::move(new_model)});
 }
 
 void ChatService::CancelActiveResponse() {

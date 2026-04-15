@@ -221,8 +221,7 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(
   return ftxui::vbox(items);
 }
 
-ftxui::Element MarkdownRenderer::RenderHorizontalRule(
-    const RenderContext&) {
+ftxui::Element MarkdownRenderer::RenderHorizontalRule(const RenderContext&) {
   return ftxui::text("");
 }
 

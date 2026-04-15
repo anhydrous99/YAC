@@ -8,12 +8,10 @@
 
 using yac::presentation::ComposerState;
 using yac::presentation::SlashCommand;
-using yac::presentation::SlashCommandRegistry;
 
 namespace {
 auto MakeCommand(const std::string& name, const std::string& desc,
-                 std::vector<std::string> aliases = {})
-    -> SlashCommand {
+                 std::vector<std::string> aliases = {}) -> SlashCommand {
   return {.id = name,
           .name = name,
           .description = desc,
@@ -116,8 +114,7 @@ TEST_CASE("ComposerState FilteredSlashIndices matches by alias",
   ComposerState state;
   state.Content() = "/ex";
   *state.CursorPosition() = 3;
-  std::vector<SlashCommand> commands = {
-      MakeCommand("quit", "Exit", {"exit"})};
+  std::vector<SlashCommand> commands = {MakeCommand("quit", "Exit", {"exit"})};
   auto indices = state.FilteredSlashIndices(commands);
   REQUIRE(indices.size() == 1);
   CHECK(indices[0] == 0);

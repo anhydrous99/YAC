@@ -14,6 +14,7 @@ class OpenAiChatProvider : public LanguageModelProvider {
   explicit OpenAiChatProvider(chat::ProviderConfig config = {});
 
   [[nodiscard]] std::string Id() const override;
+  [[nodiscard]] bool SupportsModelDiscovery() const override { return true; }
   [[nodiscard]] std::vector<chat::ModelInfo> ListModels(
       std::chrono::milliseconds timeout) override;
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,

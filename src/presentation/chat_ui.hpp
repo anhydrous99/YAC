@@ -83,7 +83,8 @@ class ChatUI {
   OnSendCallback on_send_;
   OnCommandCallback on_command_;
   bool is_typing_ = false;
-  bool show_command_palette_ = false;
+  int palette_level_ = -1;  // -1=hidden, 0=commands, 1=models
+  bool show_palette_ = false;
   bool show_model_palette_ = false;
   std::vector<Command> commands_;
   std::vector<Command> model_commands_;

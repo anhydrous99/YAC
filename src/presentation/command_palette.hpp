@@ -4,10 +4,14 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace yac::presentation {
+
+inline constexpr std::string_view kSwitchModelCommandId = "switch_model";
+inline constexpr std::string_view kSwitchModelPrefix = "switch_model:";
 
 struct Command {
   Command() = default;

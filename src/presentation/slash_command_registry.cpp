@@ -9,16 +9,16 @@ void SlashCommandRegistry::Define(std::string id, std::string name,
                                   std::string description,
                                   std::vector<std::string> aliases) {
   commands_.push_back({.id = std::move(id),
-                      .name = std::move(name),
-                      .description = std::move(description),
-                      .aliases = std::move(aliases),
-                      .handler = std::nullopt});
+                       .name = std::move(name),
+                       .description = std::move(description),
+                       .aliases = std::move(aliases),
+                       .handler = std::nullopt});
 }
 
 void SlashCommandRegistry::SetHandler(const std::string& id,
                                       std::function<void()> handler) {
-  auto it =
-      std::ranges::find_if(commands_, [&](const auto& cmd) { return cmd.id == id; });
+  auto it = std::ranges::find_if(commands_,
+                                 [&](const auto& cmd) { return cmd.id == id; });
   if (it != commands_.end()) {
     it->handler = std::move(handler);
   }
@@ -47,9 +47,12 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
     }
     return std::ranges::find(cmd.aliases, name) != cmd.aliases.end();
   });
-  if (command != commands_.end() && command->handler.has_value()) {
-    (*command->handler)();
-    return true;
+  if (command != commands_.end()) {
+    const auto& handler = command->handler;
+    if (handler.has_value()) {
+      (*handler)();
+      return true;
+    }
   }
 
   return false;

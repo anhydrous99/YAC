@@ -36,11 +36,29 @@ double ParseTemperature(const std::string& value) {
   return temp;
 }
 
+struct ProviderPreset {
+  std::string model;
+  std::string base_url;
+  std::string api_key_env;
+};
+
+const std::unordered_map<std::string, ProviderPreset>& ProviderPresets() {
+  static const std::unordered_map<std::string, ProviderPreset> kPresets = {
+      {"zai",
+       {.model = "glm-5.1",
+        .base_url = "https://api.z.ai/api/coding/paas/v4",
+        .api_key_env = "ZAI_API_KEY"}},
+  };
+  return kPresets;
+}
+
 void ApplyProviderDefaults(ChatConfig& config) {
-  if (config.provider_id == "zai") {
-    config.model = "glm-5.1";
-    config.base_url = "https://api.z.ai/api/coding/paas/v4";
-    config.api_key_env = "ZAI_API_KEY";
+  const auto& presets = ProviderPresets();
+  auto it = presets.find(config.provider_id);
+  if (it != presets.end()) {
+    config.model = it->second.model;
+    config.base_url = it->second.base_url;
+    config.api_key_env = it->second.api_key_env;
   }
 }
 
