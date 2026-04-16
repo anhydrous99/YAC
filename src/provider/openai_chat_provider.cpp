@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <curl/curl.h>
+#include <map>
 #include <memory>
 #include <openai.hpp>
 #include <sstream>
@@ -14,18 +15,61 @@ namespace {
 
 using Json = openai::_detail::Json;
 
+Json ParseSchema(const std::string& schema_json) {
+  try {
+    return Json::parse(schema_json);
+  } catch (const std::exception&) {
+    return Json::object();
+  }
+}
+
 Json BuildChatPayload(const chat::ChatRequest& request, bool stream) {
   Json messages = Json::array();
   for (const auto& message : request.messages) {
-    messages.push_back(
-        {{"role", OpenAiChatProvider::RoleToOpenAi(message.role)},
-         {"content", message.content}});
+    Json entry{{"role", OpenAiChatProvider::RoleToOpenAi(message.role)}};
+    if (message.role == chat::ChatRole::Tool) {
+      entry["content"] = message.content;
+      entry["tool_call_id"] = message.tool_call_id;
+      if (!message.tool_name.empty()) {
+        entry["name"] = message.tool_name;
+      }
+    } else {
+      entry["content"] = message.content;
+      if (!message.tool_calls.empty()) {
+        Json tool_calls = Json::array();
+        for (const auto& call : message.tool_calls) {
+          tool_calls.push_back(
+              {{"id", call.id},
+               {"type", "function"},
+               {"function",
+                {{"name", call.name}, {"arguments", call.arguments_json}}}});
+        }
+        entry["tool_calls"] = std::move(tool_calls);
+      }
+    }
+    messages.push_back(std::move(entry));
   }
 
-  return {{"model", request.model},
-          {"messages", std::move(messages)},
-          {"temperature", request.temperature},
-          {"stream", stream}};
+  Json payload{{"model", request.model},
+               {"messages", std::move(messages)},
+               {"temperature", request.temperature},
+               {"stream", stream}};
+
+  if (!request.tools.empty()) {
+    Json tools = Json::array();
+    for (const auto& tool : request.tools) {
+      tools.push_back(
+          {{"type", "function"},
+           {"function",
+            {{"name", tool.name},
+             {"description", tool.description},
+             {"parameters", ParseSchema(tool.parameters_schema_json)}}}});
+    }
+    payload["tools"] = std::move(tools);
+    payload["tool_choice"] = "auto";
+  }
+
+  return payload;
 }
 
 size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
@@ -38,9 +82,96 @@ size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
 struct StreamState {
   std::string buffer;
   ChatEventSink* sink = nullptr;
+  struct PendingToolCall {
+    std::string id;
+    std::string name;
+    std::string arguments_json;
+  };
+  std::map<int, PendingToolCall> pending_tool_calls;
 };
 
-void DispatchSseLine(const std::string& line, ChatEventSink& sink) {
+std::vector<chat::ToolCallRequest> PendingToolCalls(const StreamState& state) {
+  std::vector<chat::ToolCallRequest> calls;
+  for (const auto& [index, call] : state.pending_tool_calls) {
+    (void)index;
+    if (call.id.empty() || call.name.empty()) {
+      continue;
+    }
+    calls.push_back(
+        chat::ToolCallRequest{.id = call.id,
+                              .name = call.name,
+                              .arguments_json = call.arguments_json});
+  }
+  return calls;
+}
+
+void AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
+  if (!tool_call.contains("index")) {
+    return;
+  }
+  const auto index = tool_call["index"].get<int>();
+  auto& pending = state.pending_tool_calls[index];
+  if (tool_call.contains("id") && tool_call["id"].is_string()) {
+    pending.id = tool_call["id"].get<std::string>();
+  }
+  if (!tool_call.contains("function")) {
+    return;
+  }
+  const auto& function = tool_call["function"];
+  if (function.contains("name") && function["name"].is_string()) {
+    pending.name = function["name"].get<std::string>();
+  }
+  if (function.contains("arguments") && function["arguments"].is_string()) {
+    pending.arguments_json += function["arguments"].get<std::string>();
+  }
+}
+
+void DispatchSseData(const std::string& data, StreamState& state) {
+  try {
+    const auto json = Json::parse(data);
+    if (json.contains("error")) {
+      (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::Error,
+                                    .text = json["error"].dump()});
+      return;
+    }
+    if (!json.contains("choices") || json["choices"].empty()) {
+      return;
+    }
+    const auto& choice = json["choices"][0];
+    if (choice.contains("delta")) {
+      const auto& delta = choice["delta"];
+      if (delta.contains("content") && delta["content"].is_string()) {
+        auto text = delta["content"].get<std::string>();
+        if (!text.empty()) {
+          (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::TextDelta,
+                                        .text = std::move(text)});
+        }
+      }
+      if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
+        for (const auto& tool_call : delta["tool_calls"]) {
+          AccumulateToolCallDelta(tool_call, state);
+        }
+      }
+    }
+
+    if (choice.contains("finish_reason") &&
+        choice["finish_reason"].is_string() &&
+        choice["finish_reason"].get<std::string>() == "tool_calls") {
+      auto calls = PendingToolCalls(state);
+      if (!calls.empty()) {
+        (*state.sink)(
+            chat::ChatEvent{.type = chat::ChatEventType::ToolCallRequested,
+                            .tool_calls = std::move(calls)});
+      }
+      state.pending_tool_calls.clear();
+    }
+  } catch (const std::exception& error) {
+    (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::Error,
+                                  .text = error.what()});
+  }
+}
+
+void DispatchSseLine(const std::string& line, StreamState& state) {
   constexpr std::string_view kPrefix = "data: ";
   if (!line.starts_with(kPrefix)) {
     return;
@@ -51,11 +182,7 @@ void DispatchSseLine(const std::string& line, ChatEventSink& sink) {
     return;
   }
 
-  auto event = OpenAiChatProvider::ParseStreamData(data);
-  if (event.type == chat::ChatEventType::Error ||
-      (event.type == chat::ChatEventType::TextDelta && !event.text.empty())) {
-    sink(std::move(event));
-  }
+  DispatchSseData(data, state);
 }
 
 size_t WriteStream(char* ptr, size_t size, size_t nmemb, void* userdata) {
@@ -70,7 +197,7 @@ size_t WriteStream(char* ptr, size_t size, size_t nmemb, void* userdata) {
       line.pop_back();
     }
     state->buffer.erase(0, pos + 1);
-    DispatchSseLine(line, *state->sink);
+    DispatchSseLine(line, *state);
   }
 
   return bytes;
@@ -108,6 +235,37 @@ std::string ExtractBufferedText(const Json& response) {
     return {};
   }
   return choice["message"]["content"].get<std::string>();
+}
+
+std::vector<chat::ToolCallRequest> ExtractBufferedToolCalls(
+    const Json& response) {
+  std::vector<chat::ToolCallRequest> calls;
+  if (!response.contains("choices") || response["choices"].empty()) {
+    return calls;
+  }
+  const auto& choice = response["choices"][0];
+  if (!choice.contains("message") ||
+      !choice["message"].contains("tool_calls")) {
+    return calls;
+  }
+  const auto& tool_calls = choice["message"]["tool_calls"];
+  if (!tool_calls.is_array()) {
+    return calls;
+  }
+  for (const auto& tool_call : tool_calls) {
+    if (!tool_call.contains("id") || !tool_call.contains("function")) {
+      continue;
+    }
+    const auto& function = tool_call["function"];
+    if (!function.contains("name") || !function.contains("arguments")) {
+      continue;
+    }
+    calls.push_back(chat::ToolCallRequest{
+        .id = tool_call["id"].get<std::string>(),
+        .name = function["name"].get<std::string>(),
+        .arguments_json = function["arguments"].get<std::string>()});
+  }
+  return calls;
 }
 
 }  // namespace
@@ -272,6 +430,13 @@ void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
                          .text = text,
                          .provider_id = config_.id,
                          .model = request.model});
+  }
+  auto tool_calls = ExtractBufferedToolCalls(response);
+  if (!tool_calls.empty()) {
+    sink(chat::ChatEvent{.type = chat::ChatEventType::ToolCallRequested,
+                         .provider_id = config_.id,
+                         .model = request.model,
+                         .tool_calls = std::move(tool_calls)});
   }
 }
 

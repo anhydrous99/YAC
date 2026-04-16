@@ -3,6 +3,7 @@
 #include "../theme.hpp"
 #include "../util/string_util.hpp"
 
+#include <algorithm>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -14,6 +15,8 @@ namespace yac::presentation::tool_call {
 namespace tool_data = ::yac::tool_call;
 
 namespace {
+
+constexpr size_t kMaxPreviewRows = 20;
 
 ftxui::Element RenderCodeText(const std::string& text,
                               const theme::Theme& theme) {
@@ -75,6 +78,62 @@ ftxui::Element RenderLines(const std::vector<std::string>& lines,
   return ftxui::vbox(std::move(elements));
 }
 
+void AddOmittedRows(ftxui::Elements& content, size_t total,
+                    const theme::Theme& theme) {
+  if (total <= kMaxPreviewRows) {
+    return;
+  }
+  content.push_back(RenderWrappedLine(
+      "... " + std::to_string(total - kMaxPreviewRows) + " more omitted",
+      theme.chrome.dim_text));
+}
+
+std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
+  switch (type) {
+    case tool_data::DirectoryEntryType::File:
+      return "file";
+    case tool_data::DirectoryEntryType::Directory:
+      return "dir";
+    case tool_data::DirectoryEntryType::Other:
+      return "other";
+  }
+  return "other";
+}
+
+std::string DiagnosticSeverityLabel(tool_data::DiagnosticSeverity severity) {
+  switch (severity) {
+    case tool_data::DiagnosticSeverity::Error:
+      return "error";
+    case tool_data::DiagnosticSeverity::Warning:
+      return "warning";
+    case tool_data::DiagnosticSeverity::Information:
+      return "info";
+    case tool_data::DiagnosticSeverity::Hint:
+      return "hint";
+  }
+  return "info";
+}
+
+ftxui::Color DiagnosticSeverityColor(tool_data::DiagnosticSeverity severity,
+                                     const theme::Theme& theme) {
+  switch (severity) {
+    case tool_data::DiagnosticSeverity::Error:
+      return theme.tool.edit_remove;
+    case tool_data::DiagnosticSeverity::Warning:
+      return theme.tool.bash_accent;
+    case tool_data::DiagnosticSeverity::Information:
+      return theme.tool.read_accent;
+    case tool_data::DiagnosticSeverity::Hint:
+      return theme.chrome.dim_text;
+  }
+  return theme.chrome.dim_text;
+}
+
+ftxui::Element RenderError(const std::string& error,
+                           const theme::Theme& theme) {
+  return RenderWrappedLine("Error: " + error, theme.tool.edit_remove);
+}
+
 }  // namespace
 
 ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block) {
@@ -92,6 +151,10 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
           return RenderFileEdit(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
           return RenderFileRead(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
+          return RenderFileWrite(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
+          return RenderListDir(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
           return RenderGrep(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
@@ -100,8 +163,85 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
           return RenderWebFetch(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
           return RenderWebSearch(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
+          return RenderLspDiagnostics(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
+          return RenderLspReferences(call, context);
+        } else if constexpr (std::is_same_v<T,
+                                            tool_data::LspGotoDefinitionCall>) {
+          return RenderLspGotoDefinition(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
+          return RenderLspRename(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
+          return RenderLspSymbols(call, context);
         } else {
           return ftxui::text("");
+        }
+      },
+      block);
+}
+
+std::string ToolCallRenderer::BuildSummary(
+    const tool_data::ToolCallBlock& block) {
+  return std::visit(
+      [](const auto& call) -> std::string {
+        using T = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+          if (call.exit_code != 0) {
+            return "exit " + std::to_string(call.exit_code);
+          }
+          return "exit 0";
+        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
+          return std::to_string(call.diff.size()) + " lines";
+        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
+          return std::to_string(call.lines_loaded) + " lines";
+        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return "+" + std::to_string(call.lines_added) + " -" +
+                 std::to_string(call.lines_removed);
+        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.entries.size()) + " entries";
+        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
+          return std::to_string(call.match_count) + " matches";
+        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
+          return std::to_string(call.matched_files.size()) + " files";
+        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
+          return call.title.empty() ? std::string{"fetched"} : call.title;
+        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
+          return std::to_string(call.results.size()) + " results";
+        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.diagnostics.size()) + " diagnostics";
+        } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.references.size()) + " references";
+        } else if constexpr (std::is_same_v<T,
+                                            tool_data::LspGotoDefinitionCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.definitions.size()) + " definitions";
+        } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.changes_count) + " changes";
+        } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
+          if (call.is_error) {
+            return "failed";
+          }
+          return std::to_string(call.symbols.size()) + " symbols";
+        } else {
+          return "";
         }
       },
       block);
@@ -171,6 +311,67 @@ ftxui::Element ToolCallRenderer::RenderFileRead(
 
   return RenderContainer("◆", "read", theme.tool.read_accent,
                          std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderFileWrite(
+    const tool_data::FileWriteCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.filepath, theme));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else {
+    content.push_back(RenderWrappedLine(
+        "Added " + std::to_string(call.lines_added) + " lines, removed " +
+            std::to_string(call.lines_removed) + " lines",
+        theme.tool.edit_add));
+  }
+  if (!call.content_preview.empty()) {
+    content.push_back(RenderLabelValue("Preview: ", "", theme));
+    const auto lines = util::SplitLines(call.content_preview);
+    const auto limit = std::min(lines.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      content.push_back(
+          RenderWrappedLine(lines[index], theme.chrome.body_text));
+    }
+    AddOmittedRows(content, lines.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.edit_add;
+  return RenderContainer("✎", "write", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderListDir(
+    const tool_data::ListDirCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("Path: ", call.path, theme));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.entries.empty()) {
+    content.push_back(ftxui::text("No entries") |
+                      ftxui::color(theme.chrome.dim_text));
+  } else {
+    const auto limit = std::min(call.entries.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& entry = call.entries[index];
+      auto line = DirectoryEntryTypeLabel(entry.type) + "  " + entry.name;
+      if (entry.type == tool_data::DirectoryEntryType::File) {
+        line += "  " + std::to_string(entry.size) + " bytes";
+      }
+      content.push_back(RenderWrappedLine(line, theme.tool.glob_accent));
+    }
+    AddOmittedRows(content, call.entries.size(), theme);
+    if (call.truncated) {
+      content.push_back(
+          RenderWrappedLine("Result truncated", theme.chrome.dim_text));
+    }
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.glob_accent;
+  return RenderContainer("□", "ls", accent, std::move(content), theme);
 }
 
 ftxui::Element ToolCallRenderer::RenderGrep(const tool_data::GrepCall& call,
@@ -251,6 +452,157 @@ ftxui::Element ToolCallRenderer::RenderWebSearch(
 
   return RenderContainer("◎", "search", theme.tool.web_accent,
                          std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderLspDiagnostics(
+    const tool_data::LspDiagnosticsCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.diagnostics.empty()) {
+    content.push_back(ftxui::text("No diagnostics") |
+                      ftxui::color(theme.chrome.dim_text));
+  } else {
+    const auto limit = std::min(call.diagnostics.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& diag = call.diagnostics[index];
+      content.push_back(RenderWrappedLine(
+          std::to_string(diag.line) + " " +
+              DiagnosticSeverityLabel(diag.severity) + ": " + diag.message,
+          DiagnosticSeverityColor(diag.severity, theme)));
+    }
+    AddOmittedRows(content, call.diagnostics.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.read_accent;
+  return RenderContainer("λ", "diagnostics", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderLspReferences(
+    const tool_data::LspReferencesCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  if (!call.symbol.empty()) {
+    content.push_back(RenderLabelValue("Symbol: ", call.symbol, theme));
+  }
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.references.empty()) {
+    content.push_back(ftxui::text("No references") |
+                      ftxui::color(theme.chrome.dim_text));
+  } else {
+    const auto limit = std::min(call.references.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& ref = call.references[index];
+      content.push_back(RenderWrappedLine(ref.filepath + ":" +
+                                              std::to_string(ref.line) + ":" +
+                                              std::to_string(ref.character),
+                                          theme.tool.grep_accent));
+    }
+    AddOmittedRows(content, call.references.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.grep_accent;
+  return RenderContainer("⌕", "references", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderLspGotoDefinition(
+    const tool_data::LspGotoDefinitionCall& call,
+    const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(RenderWrappedLine("Position: " + std::to_string(call.line) +
+                                          ":" + std::to_string(call.character),
+                                      theme.chrome.dim_text));
+  if (!call.symbol.empty()) {
+    content.push_back(RenderLabelValue("Symbol: ", call.symbol, theme));
+  }
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.definitions.empty()) {
+    content.push_back(ftxui::text("No definitions") |
+                      ftxui::color(theme.chrome.dim_text));
+  } else {
+    const auto limit = std::min(call.definitions.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& def = call.definitions[index];
+      content.push_back(RenderWrappedLine(def.filepath + ":" +
+                                              std::to_string(def.line) + ":" +
+                                              std::to_string(def.character),
+                                          theme.tool.read_accent));
+    }
+    AddOmittedRows(content, call.definitions.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.read_accent;
+  return RenderContainer("↦", "definition", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderLspRename(
+    const tool_data::LspRenameCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(RenderWrappedLine("Position: " + std::to_string(call.line) +
+                                          ":" + std::to_string(call.character),
+                                      theme.chrome.dim_text));
+  if (!call.old_name.empty()) {
+    content.push_back(RenderLabelValue("Old: ", call.old_name, theme));
+  }
+  content.push_back(RenderLabelValue("New: ", call.new_name, theme));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else {
+    content.push_back(
+        RenderWrappedLine(std::to_string(call.changes_count) + " changes",
+                          theme.tool.edit_context));
+    const auto limit = std::min(call.changes.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& edit = call.changes[index];
+      content.push_back(RenderWrappedLine(
+          edit.filepath + ":" + std::to_string(edit.start_line) + ":" +
+              std::to_string(edit.start_character),
+          theme.chrome.dim_text));
+    }
+    AddOmittedRows(content, call.changes.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.edit_context;
+  return RenderContainer("↺", "rename", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderLspSymbols(
+    const tool_data::LspSymbolsCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.symbols.empty()) {
+    content.push_back(ftxui::text("No symbols") |
+                      ftxui::color(theme.chrome.dim_text));
+  } else {
+    const auto limit = std::min(call.symbols.size(), kMaxPreviewRows);
+    for (size_t index = 0; index < limit; ++index) {
+      const auto& symbol = call.symbols[index];
+      content.push_back(RenderWrappedLine(
+          std::to_string(symbol.line) + " " + symbol.kind + " " + symbol.name,
+          theme.tool.glob_accent));
+    }
+    AddOmittedRows(content, call.symbols.size(), theme);
+  }
+
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.glob_accent;
+  return RenderContainer("◇", "symbols", accent, std::move(content), theme);
 }
 
 }  // namespace yac::presentation::tool_call

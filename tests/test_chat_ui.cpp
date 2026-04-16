@@ -49,6 +49,12 @@ std::string RenderComponent(const ftxui::Component& component, int width = 80,
   return screen.ToString();
 }
 
+void TypeText(const ftxui::Component& component, const std::string& text) {
+  for (char ch : text) {
+    REQUIRE(component->OnEvent(ftxui::Event::Character(ch)));
+  }
+}
+
 }  // namespace
 
 TEST_CASE("Default constructor creates empty message list") {
@@ -282,6 +288,27 @@ TEST_CASE("HandleInputEvent Enter submits and clears content") {
   REQUIRE(sent);
   REQUIRE(captured == "\n");
   REQUIRE(ui.CalculateInputHeight() == 1);
+}
+
+TEST_CASE("Slash clear command dispatches without sending a message") {
+  bool sent = false;
+  int clear_count = 0;
+  ChatUI ui([&](const std::string&) { sent = true; });
+  SlashCommandRegistry registry;
+  RegisterBuiltinSlashCommands(registry);
+  registry.SetHandler("clear", [&] { ++clear_count; });
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/clear");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  REQUIRE(clear_count == 1);
+  REQUIRE_FALSE(sent);
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(clear_count == 1);
+  REQUIRE_FALSE(sent);
 }
 
 namespace {

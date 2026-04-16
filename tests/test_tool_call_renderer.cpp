@@ -99,6 +99,33 @@ TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Loaded 0 lines"));
 }
 
+TEST_CASE("ToolCallRenderer renders file write details") {
+  FileWriteCall call{"src/new.cpp", "int main() {}\n", 1, 0, false, ""};
+
+  auto output = RenderToString(call, 80, 10);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("write"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("src/new.cpp"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Added 1 lines"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("int main()"));
+}
+
+TEST_CASE("ToolCallRenderer renders list dir entries") {
+  ListDirCall call{"src",
+                   {{"presentation", DirectoryEntryType::Directory, 0},
+                    {"main.cpp", DirectoryEntryType::File, 42}},
+                   false,
+                   false,
+                   ""};
+
+  auto output = RenderToString(call, 80, 10);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("ls"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("src"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("dir"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("main.cpp"));
+}
+
 TEST_CASE("ToolCallRenderer renders grep details") {
   GrepCall call{"needle",
                 2,
@@ -198,12 +225,59 @@ TEST_CASE("ToolCallRenderer renders empty web search at narrow width") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("docs search"));
 }
 
+TEST_CASE("ToolCallRenderer renders LSP diagnostics") {
+  LspDiagnosticsCall call{
+      "src/main.cpp",
+      {{DiagnosticSeverity::Error, "expected expression", 12}},
+      false,
+      ""};
+
+  auto output = RenderToString(call, 80, 10);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("diagnostics"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("src/main.cpp"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("expected"));
+}
+
+TEST_CASE("ToolCallRenderer renders LSP navigation and rename tools") {
+  RenderAndCheck(
+      LspReferencesCall{
+          "main", "src/main.cpp", {{"src/main.cpp", 4, 3}}, false, ""},
+      80, 8);
+  RenderAndCheck(
+      LspGotoDefinitionCall{
+          "main", "src/main.cpp", 4, 3, {{"src/main.cpp", 1, 1}}, false, ""},
+      80, 8);
+  RenderAndCheck(LspRenameCall{"src/main.cpp",
+                               4,
+                               3,
+                               "old",
+                               "next",
+                               1,
+                               {{"src/main.cpp", 4, 3, 4, 6, "next"}},
+                               false,
+                               ""},
+                 80, 10);
+  RenderAndCheck(
+      LspSymbolsCall{"src/main.cpp", {{"main", "function", 4}}, false, ""}, 80,
+      8);
+}
+
 TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
   RenderAndCheck(BashCall{"pwd", "", 0, false}, 80, 8);
   RenderAndCheck(FileEditCall{"file.txt", {}}, 80, 8);
   RenderAndCheck(FileReadCall{"file.txt", 1, "line"}, 80, 8);
+  RenderAndCheck(FileWriteCall{"file.txt", "line", 1, 0, false, ""}, 80, 8);
+  RenderAndCheck(ListDirCall{"src", {}, false, false, ""}, 80, 8);
   RenderAndCheck(GrepCall{"pattern", 0, {}}, 80, 8);
   RenderAndCheck(GlobCall{"*.cpp", {}}, 80, 8);
   RenderAndCheck(WebFetchCall{"https://example.com", "", ""}, 80, 8);
   RenderAndCheck(WebSearchCall{"query", {}}, 80, 8);
+  RenderAndCheck(LspDiagnosticsCall{"file.txt", {}, false, ""}, 80, 8);
+  RenderAndCheck(LspReferencesCall{"symbol", "file.txt", {}, false, ""}, 80, 8);
+  RenderAndCheck(
+      LspGotoDefinitionCall{"symbol", "file.txt", 1, 1, {}, false, ""}, 80, 8);
+  RenderAndCheck(
+      LspRenameCall{"file.txt", 1, 1, "old", "new", 0, {}, false, ""}, 80, 8);
+  RenderAndCheck(LspSymbolsCall{"file.txt", {}, false, ""}, 80, 8);
 }

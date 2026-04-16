@@ -64,6 +64,10 @@ int main() {
       chat_service.SetModel(command.substr(kSwitchModelPrefix.size()));
     }
   });
+  chat_ui.SetOnToolApproval(
+      [&chat_service](const std::string& approval_id, bool approved) {
+        chat_service.ResolveToolApproval(approval_id, approved);
+      });
 
   chat_ui.SetCommands(yac::app::BuildCommands(models));
   chat_ui.SetModelCommands(yac::app::BuildModelCommands(models));
@@ -72,6 +76,8 @@ int main() {
   yac::presentation::SlashCommandRegistry slash_registry;
   yac::presentation::RegisterBuiltinSlashCommands(slash_registry);
   slash_registry.SetHandler("quit", exit_loop);
+  slash_registry.SetHandler(
+      "clear", [&chat_service] { chat_service.ResetConversation(); });
   chat_ui.SetSlashCommands(std::move(slash_registry));
 
   auto component = chat_ui.Build();

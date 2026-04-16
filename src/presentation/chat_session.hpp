@@ -17,8 +17,13 @@ class ChatSession {
   MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
                              MessageStatus status = MessageStatus::Complete);
   MessageId AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
+  MessageId AddToolCallMessageWithId(MessageId id,
+                                     ::yac::tool_call::ToolCallBlock block,
+                                     MessageStatus status);
   void AppendToAgentMessage(MessageId id, std::string delta);
   void SetMessageStatus(MessageId id, MessageStatus status);
+  void SetToolCallMessage(MessageId id, ::yac::tool_call::ToolCallBlock block,
+                          MessageStatus status);
   void SetToolExpanded(size_t index, bool expanded);
   void ClearMessages();
 

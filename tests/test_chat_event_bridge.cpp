@@ -1,10 +1,14 @@
 #include "app/chat_event_bridge.hpp"
+#include "tool_call/types.hpp"
+
+#include <variant>
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::app;
 using namespace yac::chat;
 using namespace yac::presentation;
+using namespace yac::tool_call;
 
 TEST_CASE("ChatEventBridge inserts queued user message by service ID") {
   ChatUI ui;
@@ -74,4 +78,37 @@ TEST_CASE("ChatEventBridge updates provider and model display") {
 
   REQUIRE(ui.ProviderId() == "zai");
   REQUIRE(ui.Model() == "glm-5.1");
+}
+
+TEST_CASE("ChatEventBridge creates and updates tool call messages") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(
+      ChatEvent{.type = ChatEventType::ToolCallStarted,
+                .message_id = 40,
+                .role = ChatRole::Tool,
+                .tool_call = ListDirCall{"src", {}, false, false, ""},
+                .status = ChatMessageStatus::Active});
+
+  REQUIRE(ui.GetMessages().size() == 1);
+  REQUIRE(ui.GetMessages()[0].id == 40);
+  REQUIRE(ui.GetMessages()[0].sender == Sender::Tool);
+  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Active);
+
+  bridge.HandleEvent(ChatEvent{
+      .type = ChatEventType::ToolCallDone,
+      .message_id = 40,
+      .role = ChatRole::Tool,
+      .tool_call = ListDirCall{"src",
+                               {{"main.cpp", DirectoryEntryType::File, 10}},
+                               false,
+                               false,
+                               ""},
+      .status = ChatMessageStatus::Complete});
+
+  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Complete);
+  const auto* call = ui.GetMessages()[0].ToolCall();
+  REQUIRE(call != nullptr);
+  REQUIRE(std::get<ListDirCall>(*call).entries.size() == 1);
 }

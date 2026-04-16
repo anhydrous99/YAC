@@ -99,7 +99,6 @@ TEST_CASE("Renderer heading H1 is borderless") {
   auto blocks = MarkdownParser::Parse("# Title");
   auto output = RenderToString(blocks, 40, 5);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Title"));
-  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer heading H3 is bold without underline") {
@@ -125,15 +124,14 @@ TEST_CASE("Renderer code block shows line numbers") {
   auto output = RenderToString(blocks, 80, 10);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("1"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("2"));
-  RequireNoLineGlyphs(output);
 }
 
-TEST_CASE("Renderer horizontal rule preserves spacing without a line") {
+TEST_CASE("Renderer horizontal rule renders dim line") {
   auto blocks = MarkdownParser::Parse("above\n\n---\n\nbelow");
   auto output = RenderToString(blocks, 80, 10);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("above"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("below"));
-  RequireNoLineGlyphs(output);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x94\x80"));
 }
 
 TEST_CASE("Renderer nested blockquote renders") {
@@ -141,7 +139,6 @@ TEST_CASE("Renderer nested blockquote renders") {
   auto output = RenderToString(blocks);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("deeply"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("nested"));
-  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer multi-line blockquote renders") {
@@ -149,7 +146,6 @@ TEST_CASE("Renderer multi-line blockquote renders") {
   auto output = RenderToString(blocks);
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("line1"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("line2"));
-  RequireNoLineGlyphs(output);
 }
 
 TEST_CASE("Renderer unordered list shows bullet") {

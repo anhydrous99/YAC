@@ -1,6 +1,7 @@
 #pragma once
 
 #include "model_info.hpp"
+#include "tool_call/types.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -25,17 +26,33 @@ enum class ChatMessageStatus {
   Error,
 };
 
+struct ToolDefinition {
+  std::string name;
+  std::string description;
+  std::string parameters_schema_json;
+};
+
+struct ToolCallRequest {
+  std::string id;
+  std::string name;
+  std::string arguments_json;
+};
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;
   ChatMessageStatus status = ChatMessageStatus::Complete;
   std::string content;
+  std::vector<ToolCallRequest> tool_calls;
+  std::string tool_call_id;
+  std::string tool_name;
 };
 
 struct ChatRequest {
   std::string provider_id = "openai";
   std::string model = "gpt-4o-mini";
   std::vector<ChatMessage> messages;
+  std::vector<ToolDefinition> tools;
   double temperature = 0.7;
   bool stream = true;
 };
@@ -55,6 +72,8 @@ enum class ChatEventType {
   QueueDepthChanged,
   ConversationCleared,
   ModelChanged,
+  ToolCallRequested,
+  ToolApprovalRequested,
 };
 
 struct ChatEvent {
@@ -64,6 +83,11 @@ struct ChatEvent {
   std::string text;
   std::string provider_id;
   std::string model;
+  std::string tool_call_id;
+  std::string tool_name;
+  std::string approval_id;
+  std::vector<ToolCallRequest> tool_calls;
+  std::optional<::yac::tool_call::ToolCallBlock> tool_call;
   ChatMessageStatus status = ChatMessageStatus::Complete;
   int queue_depth = 0;
   std::chrono::system_clock::time_point created_at =
@@ -87,6 +111,9 @@ struct ChatConfig {
   double temperature = 0.7;
   std::string api_key;
   std::string api_key_env = "OPENAI_API_KEY";
+  std::string workspace_root;
+  std::string lsp_clangd_command = "clangd";
+  std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
 };
 

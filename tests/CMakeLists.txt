@@ -13,6 +13,7 @@ endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
 yac_add_test(yac_test_tool_call_types  test_tool_call_types.cpp)
+yac_add_test(yac_test_tool_executor    test_tool_executor.cpp)
 yac_add_test(yac_test_chat_session     test_chat_session.cpp)
 yac_add_test(yac_test_composer_state   test_composer_state.cpp)
 yac_add_test(yac_test_parser           test_parser.cpp)

@@ -169,6 +169,10 @@ void ChatUI::SetOnCommand(OnCommandCallback on_command) {
   on_command_ = std::move(on_command);
 }
 
+void ChatUI::SetOnToolApproval(OnToolApprovalCallback on_tool_approval) {
+  on_tool_approval_ = std::move(on_tool_approval);
+}
+
 void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
   ui_task_runner_ = std::move(ui_task_runner);
   SyncThinkingAnimation();
@@ -210,6 +214,10 @@ ftxui::Component ChatUI::Build() {
     auto input_area = ftxui::hbox({
         ftxui::text(" > ") | ftxui::color(k_theme.chrome.prompt) | ftxui::bold,
         input->Render() | ftxui::flex,
+        ftxui::text(" " +
+                    std::to_string(composer_.CalculateHeight(kMaxInputLines)) +
+                    "/" + std::to_string(kMaxInputLines) + " ") |
+            ftxui::color(k_theme.chrome.dim_text) | ftxui::dim,
     });
 
     auto input_height = CalculateInputHeight();
@@ -225,11 +233,14 @@ ftxui::Component ChatUI::Build() {
     }
 
     ftxui::Elements footer_rows;
+    footer_rows.push_back(ftxui::text("") |
+                          ftxui::bgcolor(k_theme.chrome.dim_text));
     footer_rows.push_back(ftxui::hbox(footer_elements));
 
     footer_rows.push_back(
-        ftxui::text(" Enter=Send · Ctrl+P=Commands · ⇧+Enter=Newline · "
-                    "PgUp/PgDn=Scroll · Home/End") |
+        ftxui::text(" Enter=Send \xe2\x94\x82 Ctrl+P=Commands \xe2\x94\x82 "
+                    "\xe2\x87\xa7+Enter=Newline \xe2\x94\x82 "
+                    "PgUp/PgDn \xe2\x94\x82 Home/End") |
         ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
 
     auto footer_with_hints = ftxui::vbox(footer_rows);
@@ -284,11 +295,42 @@ ftxui::Component ChatUI::Build() {
       CommandPalette(model_commands_, on_model_select, &show_model_palette_);
   auto modal_component =
       DialogPanel("Switch Model", model_palette, &show_model_palette_);
-  auto modal =
+  auto main_with_model_picker =
       ftxui::Modal(main_component, modal_component, &show_model_palette_);
+  auto approval_content = ftxui::Renderer([this] {
+    return ftxui::vbox({
+        ftxui::paragraph("Tool: " + approval_tool_name_) |
+            ftxui::color(k_theme.dialog.input_fg),
+        ftxui::text(""),
+        ftxui::paragraph(approval_prompt_) |
+            ftxui::color(k_theme.chrome.body_text),
+        ftxui::text(""),
+        ftxui::text(" Enter/Y=Approve  N/Esc=Reject") |
+            ftxui::color(k_theme.dialog.dim_text),
+    });
+  });
+  auto tool_approval_panel =
+      DialogPanel("Approve Tool", approval_content, &show_tool_approval_);
+  auto approval_modal = ftxui::Modal(main_with_model_picker,
+                                     tool_approval_panel, &show_tool_approval_);
 
-  return ftxui::CatchEvent(modal,
+  return ftxui::CatchEvent(approval_modal,
                            [this, sync_visibility](const ftxui::Event& event) {
+                             if (show_tool_approval_) {
+                               if (event == ftxui::Event::Return ||
+                                   event == ftxui::Event::Character('y') ||
+                                   event == ftxui::Event::Character('Y')) {
+                                 DispatchToolApproval(true);
+                                 return true;
+                               }
+                               if (event == ftxui::Event::Escape ||
+                                   event == ftxui::Event::Character('n') ||
+                                   event == ftxui::Event::Character('N')) {
+                                 DispatchToolApproval(false);
+                                 return true;
+                               }
+                               return true;
+                             }
                              if (event.input() == "\x10") {
                                palette_level_ = 0;
                                sync_visibility();
@@ -375,6 +417,33 @@ void ChatUI::AddToolCallMessage(::yac::tool_call::ToolCallBlock block) {
   SyncMessageComponents();
 }
 
+void ChatUI::AddToolCallMessageWithId(MessageId id,
+                                      ::yac::tool_call::ToolCallBlock block,
+                                      MessageStatus status) {
+  session_.AddToolCallMessageWithId(id, std::move(block), status);
+  render_cache_.ResetContent(id);
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
+}
+
+void ChatUI::UpdateToolCallMessage(MessageId id,
+                                   ::yac::tool_call::ToolCallBlock block,
+                                   MessageStatus status) {
+  session_.SetToolCallMessage(id, std::move(block), status);
+  render_cache_.ResetContent(id);
+  SyncMessageComponents();
+}
+
+void ChatUI::ShowToolApproval(std::string approval_id, std::string tool_name,
+                              std::string prompt) {
+  approval_id_ = std::move(approval_id);
+  approval_tool_name_ = std::move(tool_name);
+  approval_prompt_ = std::move(prompt);
+  show_tool_approval_ = true;
+}
+
 void ChatUI::SetCommands(std::vector<Command> commands) {
   commands_ = std::move(commands);
 }
@@ -404,6 +473,7 @@ void ChatUI::ClearMessages() {
   session_.ClearMessages();
   render_cache_.Clear();
   message_components_.clear();
+  messages_seen_count_ = 0;
   SyncThinkingAnimation();
 }
 
@@ -568,10 +638,27 @@ ftxui::Component ChatUI::BuildMessageList() {
           ftxui::vbox(std::move(track_rows)) | ftxui::reflect(scrollbar_box_);
     }
 
-    return ftxui::hbox({
+    auto message_area = ftxui::hbox({
         messages | ftxui::flex,
         scrollbar,
     });
+
+    if (!follow_tail_ && session_.MessageCount() > 0) {
+      auto new_count = session_.MessageCount() - messages_seen_count_;
+      std::string label =
+          new_count > 0 ? " \xe2\x86\x93 " + std::to_string(new_count) + " new "
+                        : " \xe2\x86\x93 ";
+      auto fab = ftxui::text(label) | ftxui::color(k_theme.chrome.dim_text) |
+                 ftxui::bgcolor(k_theme.dialog.input_bg) |
+                 ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, 12);
+      auto fab_spacer = ftxui::vbox({
+          ftxui::filler(),
+          fab | ftxui::align_right,
+      });
+      message_area = ftxui::dbox({message_area, fab_spacer | ftxui::flex});
+    }
+
+    return message_area;
   });
 
   return ftxui::CatchEvent(content, [this](ftxui::Event event) {
@@ -730,9 +817,16 @@ void ChatUI::SyncMessageComponents() {
             *tool_call, RenderContext{.terminal_width = last_terminal_width_,
                                       .thinking_frame = thinking_frame_});
       });
+      const auto* block = messages[index].ToolCall();
+      auto summary =
+          block != nullptr
+              ? ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
+                    *block)
+              : "";
       message_components_.push_back(
           Collapsible(messages[index].DisplayLabel(), std::move(content),
-                      session_.ToolExpandedState(current_tool_index - 1)));
+                      session_.ToolExpandedState(current_tool_index - 1),
+                      std::move(summary)));
       continue;
     }
 
@@ -753,6 +847,7 @@ int ChatUI::PageLines() const {
 void ChatUI::ScrollUp(int lines) {
   scroll_offset_y_ = std::max(0, scroll_offset_y_ - lines);
   follow_tail_ = false;
+  messages_seen_count_ = session_.MessageCount();
 }
 
 void ChatUI::ScrollDown(int lines) {
@@ -787,7 +882,7 @@ bool ChatUI::HasPendingAgentMessage() const {
 }
 
 void ChatUI::AdvanceThinkingFrame() {
-  thinking_frame_ = (thinking_frame_ + 1) % 4;
+  thinking_frame_ = (thinking_frame_ + 1) % 10;
 }
 
 void ChatUI::SyncThinkingAnimation() {
@@ -908,6 +1003,17 @@ void ChatUI::DispatchSlashMenuSelection() {
   (void)composer_.Submit();
   if (command.handler.has_value()) {
     (*command.handler)();
+  }
+}
+
+void ChatUI::DispatchToolApproval(bool approved) {
+  auto approval_id = approval_id_;
+  show_tool_approval_ = false;
+  approval_id_.clear();
+  approval_tool_name_.clear();
+  approval_prompt_.clear();
+  if (on_tool_approval_ && !approval_id.empty()) {
+    on_tool_approval_(approval_id, approved);
   }
 }
 

@@ -58,6 +58,50 @@ class FakeProvider : public LanguageModelProvider {
   std::vector<ChatRequest> requests_;
 };
 
+class ToolRoundProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "tool-round"; }
+
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    if (stop_token.stop_requested()) {
+      return;
+    }
+    int call_index = 0;
+    {
+      std::lock_guard lock(mutex_);
+      requests_.push_back(request);
+      call_index = static_cast<int>(requests_.size());
+    }
+
+    if (call_index == 1) {
+      REQUIRE_FALSE(request.tools.empty());
+      sink(ChatEvent{.type = ChatEventType::ToolCallRequested,
+                     .tool_calls = {ToolCallRequest{
+                         .id = "tool_1",
+                         .name = "list_dir",
+                         .arguments_json = R"({"path":"."})"}}});
+      return;
+    }
+
+    REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
+                        [](const ChatMessage& message) {
+                          return message.role == ChatRole::Tool &&
+                                 message.tool_call_id == "tool_1";
+                        }));
+    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "listed"});
+  }
+
+  [[nodiscard]] size_t RequestCount() const {
+    std::lock_guard lock(mutex_);
+    return requests_.size();
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::vector<ChatRequest> requests_;
+};
+
 class BlockingFakeProvider : public LanguageModelProvider {
  public:
   [[nodiscard]] std::string Id() const override { return "blocking-fake"; }
@@ -239,6 +283,37 @@ TEST_CASE("ChatService streams provider events and records history") {
   REQUIRE(history[1].role == ChatRole::Assistant);
   REQUIRE(history[1].content == "hi there");
   REQUIRE(history[1].id == started.message_id);
+}
+
+TEST_CASE("ChatService executes a non-mutating tool round") {
+  auto root = std::filesystem::temp_directory_path() / "yac_tool_round";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  {
+    std::ofstream file(root / "note.txt");
+    file << "hello\n";
+  }
+
+  auto provider = std::make_shared<ToolRoundProvider>();
+  ChatConfig config;
+  config.provider_id = "tool-round";
+  config.model = "fake-model";
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  const auto events = CollectEvents(service, "list files");
+
+  REQUIRE(provider->RequestCount() == 2);
+  REQUIRE(HasEvent(events, ChatEventType::ToolCallStarted));
+  REQUIRE(HasEvent(events, ChatEventType::ToolCallDone));
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+
+  const auto history = service.History();
+  REQUIRE(std::any_of(history.begin(), history.end(), [](const auto& message) {
+    return message.role == ChatRole::Tool && message.tool_call_id == "tool_1" &&
+           message.content.find("note.txt") != std::string::npos;
+  }));
+  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ChatService drops empty streaming deltas") {
