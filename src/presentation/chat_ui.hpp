@@ -26,6 +26,7 @@ class ChatUI {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
   using OnCommandCallback = std::function<void(const std::string&)>;
+  using OnToolApprovalCallback = std::function<void(const std::string&, bool)>;
   using UiTask = std::function<void()>;
   using UiTaskRunner = std::function<void(UiTask)>;
 
@@ -43,6 +44,7 @@ class ChatUI {
 
   void SetOnSend(OnSendCallback on_send);
   void SetOnCommand(OnCommandCallback on_command);
+  void SetOnToolApproval(OnToolApprovalCallback on_tool_approval);
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
@@ -53,6 +55,14 @@ class ChatUI {
   void AppendToAgentMessage(MessageId id, std::string delta);
   void SetMessageStatus(MessageId id, MessageStatus status);
   void AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
+  void AddToolCallMessageWithId(MessageId id,
+                                ::yac::tool_call::ToolCallBlock block,
+                                MessageStatus status);
+  void UpdateToolCallMessage(MessageId id,
+                             ::yac::tool_call::ToolCallBlock block,
+                             MessageStatus status);
+  void ShowToolApproval(std::string approval_id, std::string tool_name,
+                        std::string prompt);
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
@@ -91,6 +101,7 @@ class ChatUI {
   void UpdateSlashMenuState();
   [[nodiscard]] bool HandleSlashMenuEvent(const ftxui::Event& event);
   void DispatchSlashMenuSelection();
+  void DispatchToolApproval(bool approved);
 
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;
@@ -98,10 +109,15 @@ class ChatUI {
   ComposerState composer_;
   OnSendCallback on_send_;
   OnCommandCallback on_command_;
+  OnToolApprovalCallback on_tool_approval_;
   bool is_typing_ = false;
   int palette_level_ = -1;  // -1=hidden, 0=commands, 1=models
   bool show_palette_ = false;
   bool show_model_palette_ = false;
+  bool show_tool_approval_ = false;
+  std::string approval_id_;
+  std::string approval_tool_name_;
+  std::string approval_prompt_;
   std::vector<Command> commands_;
   std::vector<Command> model_commands_;
   SlashCommandRegistry slash_commands_;

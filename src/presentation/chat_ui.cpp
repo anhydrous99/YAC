@@ -169,6 +169,10 @@ void ChatUI::SetOnCommand(OnCommandCallback on_command) {
   on_command_ = std::move(on_command);
 }
 
+void ChatUI::SetOnToolApproval(OnToolApprovalCallback on_tool_approval) {
+  on_tool_approval_ = std::move(on_tool_approval);
+}
+
 void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
   ui_task_runner_ = std::move(ui_task_runner);
   SyncThinkingAnimation();
@@ -208,11 +212,11 @@ ftxui::Component ChatUI::Build() {
     }
 
     auto input_area = ftxui::hbox({
-        ftxui::text(" > ") | ftxui::color(k_theme.chrome.prompt) |
-            ftxui::bold,
+        ftxui::text(" > ") | ftxui::color(k_theme.chrome.prompt) | ftxui::bold,
         input->Render() | ftxui::flex,
-        ftxui::text(" " + std::to_string(composer_.CalculateHeight(kMaxInputLines)) +
-                  "/" + std::to_string(kMaxInputLines) + " ") |
+        ftxui::text(" " +
+                    std::to_string(composer_.CalculateHeight(kMaxInputLines)) +
+                    "/" + std::to_string(kMaxInputLines) + " ") |
             ftxui::color(k_theme.chrome.dim_text) | ftxui::dim,
     });
 
@@ -229,9 +233,8 @@ ftxui::Component ChatUI::Build() {
     }
 
     ftxui::Elements footer_rows;
-    footer_rows.push_back(
-        ftxui::text("") |
-        ftxui::bgcolor(k_theme.chrome.dim_text));
+    footer_rows.push_back(ftxui::text("") |
+                          ftxui::bgcolor(k_theme.chrome.dim_text));
     footer_rows.push_back(ftxui::hbox(footer_elements));
 
     footer_rows.push_back(
@@ -292,11 +295,42 @@ ftxui::Component ChatUI::Build() {
       CommandPalette(model_commands_, on_model_select, &show_model_palette_);
   auto modal_component =
       DialogPanel("Switch Model", model_palette, &show_model_palette_);
-  auto modal =
+  auto main_with_model_picker =
       ftxui::Modal(main_component, modal_component, &show_model_palette_);
+  auto approval_content = ftxui::Renderer([this] {
+    return ftxui::vbox({
+        ftxui::paragraph("Tool: " + approval_tool_name_) |
+            ftxui::color(k_theme.dialog.input_fg),
+        ftxui::text(""),
+        ftxui::paragraph(approval_prompt_) |
+            ftxui::color(k_theme.chrome.body_text),
+        ftxui::text(""),
+        ftxui::text(" Enter/Y=Approve  N/Esc=Reject") |
+            ftxui::color(k_theme.dialog.dim_text),
+    });
+  });
+  auto tool_approval_panel =
+      DialogPanel("Approve Tool", approval_content, &show_tool_approval_);
+  auto approval_modal = ftxui::Modal(main_with_model_picker,
+                                     tool_approval_panel, &show_tool_approval_);
 
-  return ftxui::CatchEvent(modal,
+  return ftxui::CatchEvent(approval_modal,
                            [this, sync_visibility](const ftxui::Event& event) {
+                             if (show_tool_approval_) {
+                               if (event == ftxui::Event::Return ||
+                                   event == ftxui::Event::Character('y') ||
+                                   event == ftxui::Event::Character('Y')) {
+                                 DispatchToolApproval(true);
+                                 return true;
+                               }
+                               if (event == ftxui::Event::Escape ||
+                                   event == ftxui::Event::Character('n') ||
+                                   event == ftxui::Event::Character('N')) {
+                                 DispatchToolApproval(false);
+                                 return true;
+                               }
+                               return true;
+                             }
                              if (event.input() == "\x10") {
                                palette_level_ = 0;
                                sync_visibility();
@@ -381,6 +415,33 @@ void ChatUI::AddToolCallMessage(::yac::tool_call::ToolCallBlock block) {
     follow_tail_ = true;
   }
   SyncMessageComponents();
+}
+
+void ChatUI::AddToolCallMessageWithId(MessageId id,
+                                      ::yac::tool_call::ToolCallBlock block,
+                                      MessageStatus status) {
+  session_.AddToolCallMessageWithId(id, std::move(block), status);
+  render_cache_.ResetContent(id);
+  if (!scrollbar_dragging_) {
+    follow_tail_ = true;
+  }
+  SyncMessageComponents();
+}
+
+void ChatUI::UpdateToolCallMessage(MessageId id,
+                                   ::yac::tool_call::ToolCallBlock block,
+                                   MessageStatus status) {
+  session_.SetToolCallMessage(id, std::move(block), status);
+  render_cache_.ResetContent(id);
+  SyncMessageComponents();
+}
+
+void ChatUI::ShowToolApproval(std::string approval_id, std::string tool_name,
+                              std::string prompt) {
+  approval_id_ = std::move(approval_id);
+  approval_tool_name_ = std::move(tool_name);
+  approval_prompt_ = std::move(prompt);
+  show_tool_approval_ = true;
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
@@ -583,14 +644,11 @@ ftxui::Component ChatUI::BuildMessageList() {
     });
 
     if (!follow_tail_ && session_.MessageCount() > 0) {
-      auto new_count =
-          session_.MessageCount() - messages_seen_count_;
-      std::string label = new_count > 0
-                              ? " \xe2\x86\x93 " + std::to_string(new_count) +
-                                    " new "
-                              : " \xe2\x86\x93 ";
-      auto fab = ftxui::text(label) |
-                 ftxui::color(k_theme.chrome.dim_text) |
+      auto new_count = session_.MessageCount() - messages_seen_count_;
+      std::string label =
+          new_count > 0 ? " \xe2\x86\x93 " + std::to_string(new_count) + " new "
+                        : " \xe2\x86\x93 ";
+      auto fab = ftxui::text(label) | ftxui::color(k_theme.chrome.dim_text) |
                  ftxui::bgcolor(k_theme.dialog.input_bg) |
                  ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, 12);
       auto fab_spacer = ftxui::vbox({
@@ -760,10 +818,11 @@ void ChatUI::SyncMessageComponents() {
                                       .thinking_frame = thinking_frame_});
       });
       const auto* block = messages[index].ToolCall();
-      auto summary = block != nullptr
-                          ? ::yac::presentation::tool_call::ToolCallRenderer::
-                                BuildSummary(*block)
-                          : "";
+      auto summary =
+          block != nullptr
+              ? ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
+                    *block)
+              : "";
       message_components_.push_back(
           Collapsible(messages[index].DisplayLabel(), std::move(content),
                       session_.ToolExpandedState(current_tool_index - 1),
@@ -944,6 +1003,17 @@ void ChatUI::DispatchSlashMenuSelection() {
   (void)composer_.Submit();
   if (command.handler.has_value()) {
     (*command.handler)();
+  }
+}
+
+void ChatUI::DispatchToolApproval(bool approved) {
+  auto approval_id = approval_id_;
+  show_tool_approval_ = false;
+  approval_id_.clear();
+  approval_tool_name_.clear();
+  approval_prompt_.clear();
+  if (on_tool_approval_ && !approval_id.empty()) {
+    on_tool_approval_(approval_id, approved);
   }
 }
 

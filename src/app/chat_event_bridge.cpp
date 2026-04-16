@@ -51,8 +51,7 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       }
       chat_ui_->SetMessageStatus(event.message_id, event.status);
       chat_ui_->SetTyping(true);
-      yac::presentation::terminal::SetTitle(
-          "YAC \xe2\x80\x93 typing...");
+      yac::presentation::terminal::SetTitle("YAC \xe2\x80\x93 typing...");
       break;
 
     case ChatEventType::TextDelta:
@@ -75,15 +74,14 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
     case ChatEventType::AssistantMessageDone:
       chat_ui_->SetTyping(false);
       chat_ui_->SetMessageStatus(event.message_id, MessageStatus::Complete);
-      yac::presentation::terminal::SetTitle(
-          "YAC \xe2\x80\x93 " + event.model);
+      yac::presentation::terminal::SetTitle("YAC \xe2\x80\x93 " + event.model);
       yac::presentation::terminal::SendNotification("Response complete");
       break;
 
     case ChatEventType::Finished:
       chat_ui_->SetTyping(false);
-      yac::presentation::terminal::SetTitle(
-          "YAC \xe2\x80\x93 " + chat_ui_->Model());
+      yac::presentation::terminal::SetTitle("YAC \xe2\x80\x93 " +
+                                            chat_ui_->Model());
       break;
 
     case ChatEventType::Cancelled:
@@ -109,8 +107,29 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       break;
 
     case ChatEventType::QueueDepthChanged:
+      break;
+
     case ChatEventType::ToolCallStarted:
+      if (event.tool_call.has_value()) {
+        chat_ui_->AddToolCallMessageWithId(
+            event.message_id, std::move(*event.tool_call), event.status);
+      }
+      break;
+
     case ChatEventType::ToolCallDone:
+      if (event.tool_call.has_value()) {
+        chat_ui_->UpdateToolCallMessage(
+            event.message_id, std::move(*event.tool_call), event.status);
+      }
+      break;
+
+    case ChatEventType::ToolApprovalRequested:
+      chat_ui_->ShowToolApproval(std::move(event.approval_id),
+                                 std::move(event.tool_name),
+                                 std::move(event.text));
+      break;
+
+    case ChatEventType::ToolCallRequested:
       break;
   }
 }

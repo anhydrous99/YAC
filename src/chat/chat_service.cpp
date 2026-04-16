@@ -1,11 +1,54 @@
 #include "chat/chat_service.hpp"
 
+#include "tool_call/lsp_client.hpp"
+
+#include <filesystem>
+#include <memory>
+#include <optional>
 #include <utility>
 
 namespace yac::chat {
 
+namespace {
+
+constexpr int kMaxToolRounds = 8;
+
+std::vector<ChatMessage> WithSystemPrompt(std::vector<ChatMessage> messages,
+                                          const ChatConfig& config) {
+  if (config.system_prompt.has_value()) {
+    messages.insert(messages.begin(),
+                    ChatMessage{.role = ChatRole::System,
+                                .status = ChatMessageStatus::Complete,
+                                .content = *config.system_prompt});
+  }
+  return messages;
+}
+
+std::string ToolRejectedJson() {
+  return R"({"error":"User rejected tool execution."})";
+}
+
+std::shared_ptr<::yac::tool_call::ToolExecutor> MakeToolExecutor(
+    const ChatConfig& config) {
+  auto root = config.workspace_root.empty()
+                  ? std::filesystem::current_path()
+                  : std::filesystem::path(config.workspace_root);
+  auto lsp = std::make_shared<::yac::tool_call::JsonRpcLspClient>(
+      ::yac::tool_call::LspServerConfig{
+          .command = config.lsp_clangd_command,
+          .args = config.lsp_clangd_args,
+          .workspace_root = root,
+      });
+  return std::make_shared<::yac::tool_call::ToolExecutor>(std::move(root),
+                                                          std::move(lsp));
+}
+
+}  // namespace
+
 ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
-    : registry_(std::move(registry)), config_(std::move(config)) {
+    : registry_(std::move(registry)),
+      config_(std::move(config)),
+      tool_executor_(MakeToolExecutor(config_)) {
   worker_ = std::jthread([this](std::stop_token st) { WorkerLoop(st); });
 }
 
@@ -70,6 +113,22 @@ void ChatService::CancelActiveResponse() {
   if (active_stop_source_.has_value()) {
     active_stop_source_->request_stop();
   }
+  if (pending_approval_.has_value()) {
+    pending_approval_->approved = false;
+    approval_wake_.notify_all();
+  }
+}
+
+void ChatService::ResolveToolApproval(std::string approval_id, bool approved) {
+  {
+    std::lock_guard lock(mutex_);
+    if (!pending_approval_.has_value() ||
+        pending_approval_->id != approval_id) {
+      return;
+    }
+    pending_approval_->approved = approved;
+  }
+  approval_wake_.notify_all();
 }
 
 void ChatService::ResetConversation() {
@@ -85,8 +144,12 @@ void ChatService::ResetConversation() {
     pending_.clear();
     active_ = false;
     active_stop_source_.reset();
+    if (pending_approval_.has_value()) {
+      pending_approval_->approved = false;
+    }
   }
   wake_.notify_one();
+  approval_wake_.notify_all();
 
   EmitEvent(ChatEvent{.type = ChatEventType::ConversationCleared});
 }
@@ -166,20 +229,12 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
     return;
   }
 
-  ChatRequest request = BuildRequest(config);
   {
     std::lock_guard lock(mutex_);
     history_.push_back(ChatMessage{.id = prompt.id,
                                    .role = ChatRole::User,
                                    .status = ChatMessageStatus::Active,
                                    .content = prompt.content});
-    request.messages = history_;
-    if (config.system_prompt.has_value()) {
-      request.messages.insert(request.messages.begin(),
-                              ChatMessage{.role = ChatRole::System,
-                                          .status = ChatMessageStatus::Complete,
-                                          .content = *config.system_prompt});
-    }
   }
 
   EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
@@ -193,53 +248,169 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
                       .model = config.model,
                       .status = ChatMessageStatus::Active});
 
-  std::string assistant_text;
+  std::string visible_assistant_text;
   bool assistant_error = false;
-  auto sink = [this, &assistant_text, assistant_id, generation,
-               &assistant_error](ChatEvent event) mutable {
-    if (generation_.load() != generation) {
-      return;
+  for (int round = 0; round <= kMaxToolRounds; ++round) {
+    std::string round_text;
+    std::vector<ToolCallRequest> requested_tools;
+    ChatRequest request = BuildRequest(config);
+    {
+      std::lock_guard lock(mutex_);
+      request.messages = WithSystemPrompt(history_, config);
     }
-    event.message_id = assistant_id;
-    event.role = ChatRole::Assistant;
-    if (event.type == ChatEventType::TextDelta) {
-      if (event.text.empty()) {
+    request.tools = tool_executor_->Definitions();
+
+    auto sink = [this, &round_text, assistant_id, generation, &assistant_error,
+                 &requested_tools](ChatEvent event) mutable {
+      if (generation_.load() != generation) {
         return;
       }
-      assistant_text += event.text;
-    } else if (event.type == ChatEventType::Error) {
-      assistant_error = true;
-      event.status = ChatMessageStatus::Error;
+      if (event.type == ChatEventType::ToolCallRequested) {
+        requested_tools = std::move(event.tool_calls);
+        return;
+      }
+      event.message_id = assistant_id;
+      event.role = ChatRole::Assistant;
+      if (event.type == ChatEventType::TextDelta) {
+        if (event.text.empty()) {
+          return;
+        }
+        round_text += event.text;
+      } else if (event.type == ChatEventType::Error) {
+        assistant_error = true;
+        event.status = ChatMessageStatus::Error;
+      }
+      EmitEvent(std::move(event));
+    };
+
+    provider->CompleteStream(request, std::move(sink), stop_token);
+
+    if (generation_.load() != generation) {
+      EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
+                          .message_id = assistant_id,
+                          .role = ChatRole::Assistant,
+                          .status = ChatMessageStatus::Cancelled});
+      EmitEvent(ChatEvent{.type = ChatEventType::Finished,
+                          .message_id = assistant_id});
+      return;
     }
-    EmitEvent(std::move(event));
-  };
 
-  provider->CompleteStream(request, std::move(sink), stop_token);
+    if (assistant_error) {
+      EmitEvent(ChatEvent{.type = ChatEventType::Finished,
+                          .message_id = assistant_id});
+      return;
+    }
 
-  if (generation_.load() != generation) {
-    EmitEvent(ChatEvent{.type = ChatEventType::MessageStatusChanged,
-                        .message_id = assistant_id,
-                        .role = ChatRole::Assistant,
-                        .status = ChatMessageStatus::Cancelled});
-    EmitEvent(
-        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
-    return;
-  }
+    visible_assistant_text += round_text;
 
-  if (assistant_error) {
-    EmitEvent(
-        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
-    return;
-  }
+    if (requested_tools.empty()) {
+      break;
+    }
 
-  if (!assistant_text.empty()) {
     {
       std::lock_guard lock(mutex_);
       history_.push_back(ChatMessage{.id = assistant_id,
                                      .role = ChatRole::Assistant,
                                      .status = ChatMessageStatus::Complete,
-                                     .content = assistant_text});
+                                     .content = round_text,
+                                     .tool_calls = requested_tools});
     }
+
+    for (const auto& tool_request : requested_tools) {
+      auto tool_message_id = NextMessageId();
+      auto prepared = tool_executor_->Prepare(tool_request);
+      EmitEvent(ChatEvent{.type = ChatEventType::ToolCallStarted,
+                          .message_id = tool_message_id,
+                          .role = ChatRole::Tool,
+                          .tool_call_id = tool_request.id,
+                          .tool_name = tool_request.name,
+                          .tool_call = prepared.preview,
+                          .status = ChatMessageStatus::Active});
+
+      bool approved = true;
+      if (prepared.requires_approval) {
+        auto approval_id =
+            "tool-" + std::to_string(next_approval_id_.fetch_add(1));
+        {
+          std::lock_guard lock(mutex_);
+          pending_approval_ = PendingApproval{.id = approval_id};
+        }
+        EmitEvent(ChatEvent{.type = ChatEventType::ToolApprovalRequested,
+                            .message_id = tool_message_id,
+                            .role = ChatRole::Tool,
+                            .text = prepared.approval_prompt,
+                            .tool_call_id = tool_request.id,
+                            .tool_name = tool_request.name,
+                            .approval_id = approval_id,
+                            .tool_call = prepared.preview,
+                            .status = ChatMessageStatus::Queued});
+        approved = WaitForApproval(approval_id, stop_token);
+      }
+
+      ::yac::tool_call::ToolExecutionResult result =
+          approved ? tool_executor_->Execute(prepared, stop_token)
+                   : ::yac::tool_call::ToolExecutionResult{
+                         .block = prepared.preview,
+                         .result_json = ToolRejectedJson(),
+                         .is_error = true};
+      if (!approved) {
+        std::visit(
+            [](auto& call) {
+              if constexpr (requires {
+                              call.is_error;
+                              call.error;
+                            }) {
+                call.is_error = true;
+                call.error = "User rejected tool execution.";
+              }
+            },
+            result.block);
+      }
+
+      EmitEvent(ChatEvent{.type = ChatEventType::ToolCallDone,
+                          .message_id = tool_message_id,
+                          .role = ChatRole::Tool,
+                          .tool_call_id = tool_request.id,
+                          .tool_name = tool_request.name,
+                          .tool_call = result.block,
+                          .status = result.is_error
+                                        ? ChatMessageStatus::Error
+                                        : ChatMessageStatus::Complete});
+      {
+        std::lock_guard lock(mutex_);
+        history_.push_back(
+            ChatMessage{.id = tool_message_id,
+                        .role = ChatRole::Tool,
+                        .status = result.is_error ? ChatMessageStatus::Error
+                                                  : ChatMessageStatus::Complete,
+                        .content = result.result_json,
+                        .tool_call_id = tool_request.id,
+                        .tool_name = tool_request.name});
+      }
+
+      if (stop_token.stop_requested()) {
+        break;
+      }
+    }
+
+    if (round == kMaxToolRounds) {
+      EmitEvent(ChatEvent{.type = ChatEventType::Error,
+                          .message_id = assistant_id,
+                          .role = ChatRole::Assistant,
+                          .text = "Tool round limit reached.",
+                          .status = ChatMessageStatus::Error});
+      EmitEvent(ChatEvent{.type = ChatEventType::Finished,
+                          .message_id = assistant_id});
+      return;
+    }
+  }
+
+  if (!visible_assistant_text.empty()) {
+    std::lock_guard lock(mutex_);
+    history_.push_back(ChatMessage{.id = assistant_id,
+                                   .role = ChatRole::Assistant,
+                                   .status = ChatMessageStatus::Complete,
+                                   .content = visible_assistant_text});
   }
   EmitEvent(ChatEvent{.type = ChatEventType::AssistantMessageDone,
                       .message_id = assistant_id,
@@ -247,6 +418,25 @@ void ChatService::ProcessPrompt(const PendingPrompt& prompt,
                       .status = ChatMessageStatus::Complete});
   EmitEvent(
       ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
+}
+
+bool ChatService::WaitForApproval(const std::string& approval_id,
+                                  std::stop_token stop_token) {
+  std::unique_lock lock(mutex_);
+  approval_wake_.wait(lock, stop_token, [&] {
+    return !pending_approval_.has_value() ||
+           pending_approval_->id != approval_id ||
+           pending_approval_->approved.has_value();
+  });
+  if (stop_token.stop_requested() || !pending_approval_.has_value() ||
+      pending_approval_->id != approval_id ||
+      !pending_approval_->approved.has_value()) {
+    pending_approval_.reset();
+    return false;
+  }
+  const bool approved = *pending_approval_->approved;
+  pending_approval_.reset();
+  return approved;
 }
 
 void ChatService::EmitEvent(ChatEvent event) const {

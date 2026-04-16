@@ -26,8 +26,18 @@ MessageId ChatSession::AddMessageWithId(MessageId id, Sender sender,
 MessageId ChatSession::AddToolCallMessage(
     ::yac::tool_call::ToolCallBlock block) {
   auto id = next_id_++;
+  return AddToolCallMessageWithId(id, std::move(block),
+                                  MessageStatus::Complete);
+}
+
+MessageId ChatSession::AddToolCallMessageWithId(
+    MessageId id, ::yac::tool_call::ToolCallBlock block, MessageStatus status) {
+  if (id >= next_id_) {
+    next_id_ = id + 1;
+  }
   auto message = Message::Tool(std::move(block));
   message.id = id;
+  message.status = status;
   messages_.push_back(std::move(message));
   tool_expanded_states_.push_back(std::make_unique<bool>(true));
   return id;
@@ -57,6 +67,19 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
   if (message.status == status) {
     return;
   }
+  message.status = status;
+}
+
+void ChatSession::SetToolCallMessage(MessageId id,
+                                     ::yac::tool_call::ToolCallBlock block,
+                                     MessageStatus status) {
+  auto idx = FindMessageIndex(id);
+  if (!idx.has_value()) {
+    return;
+  }
+
+  auto& message = messages_[*idx];
+  message.body = ToolContent{std::move(block)};
   message.status = status;
 }
 

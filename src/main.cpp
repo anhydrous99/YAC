@@ -64,6 +64,10 @@ int main() {
       chat_service.SetModel(command.substr(kSwitchModelPrefix.size()));
     }
   });
+  chat_ui.SetOnToolApproval(
+      [&chat_service](const std::string& approval_id, bool approved) {
+        chat_service.ResolveToolApproval(approval_id, approved);
+      });
 
   chat_ui.SetCommands(yac::app::BuildCommands(models));
   chat_ui.SetModelCommands(yac::app::BuildModelCommands(models));

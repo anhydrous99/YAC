@@ -65,6 +65,8 @@ add_library(yac_service STATIC
   src/chat/env_file.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
+  src/tool_call/executor.cpp
+  src/tool_call/lsp_client.cpp
 )
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)

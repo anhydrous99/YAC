@@ -3,7 +3,10 @@
 #include "chat/env_file.hpp"
 
 #include <cstdlib>
+#include <filesystem>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace yac::chat {
 
@@ -34,6 +37,16 @@ double ParseTemperature(const std::string& value) {
     throw std::out_of_range("YAC_TEMPERATURE must be between 0.0 and 2.0");
   }
   return temp;
+}
+
+std::vector<std::string> SplitArgs(const std::string& value) {
+  std::istringstream stream(value);
+  std::vector<std::string> args;
+  std::string arg;
+  while (stream >> arg) {
+    args.push_back(arg);
+  }
+  return args;
 }
 
 struct ProviderPreset {
@@ -67,6 +80,7 @@ void ApplyProviderDefaults(ChatConfig& config) {
 ChatConfig LoadChatConfigFromEnv() {
   const auto env_file = LoadEnvFile();
   ChatConfig config;
+  config.workspace_root = std::filesystem::current_path().string();
 
   if (auto val = GetEnv(env_file, "YAC_PROVIDER")) {
     config.provider_id = std::move(*val);
@@ -89,6 +103,15 @@ ChatConfig LoadChatConfigFromEnv() {
   }
   if (auto val = GetEnv(env_file, "YAC_SYSTEM_PROMPT")) {
     config.system_prompt = std::move(*val);
+  }
+  if (auto val = GetEnv(env_file, "YAC_WORKSPACE_ROOT")) {
+    config.workspace_root = std::move(*val);
+  }
+  if (auto val = GetEnv(env_file, "YAC_LSP_CLANGD_COMMAND")) {
+    config.lsp_clangd_command = std::move(*val);
+  }
+  if (auto val = GetEnv(env_file, "YAC_LSP_CLANGD_ARGS")) {
+    config.lsp_clangd_args = SplitArgs(*val);
   }
 
   return config;

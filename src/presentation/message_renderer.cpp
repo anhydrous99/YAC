@@ -217,7 +217,7 @@ ftxui::Element MessageRenderer::RenderHeader(
   ftxui::Element right = ftxui::emptyElement();
   if (created_at != std::chrono::system_clock::time_point{}) {
     auto rel_time = util::FormatRelativeTime(created_at, cache);
-    right = ftxui::text(rel_time) | ftxui::color(theme.chrome.dim_text);
+    right = ftxui::text(" " + rel_time) | ftxui::color(theme.chrome.dim_text);
   }
 
   return ftxui::hbox({left | ftxui::flex, right});
