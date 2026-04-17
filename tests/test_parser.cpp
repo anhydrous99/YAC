@@ -52,6 +52,9 @@ const InlineCode* AsInlineCode(const InlineNode& node) {
 const Link* AsLink(const InlineNode& node) {
   return std::get_if<Link>(&node);
 }
+const Image* AsImage(const InlineNode& node) {
+  return std::get_if<Image>(&node);
+}
 
 }  // namespace
 
@@ -546,4 +549,176 @@ TEST_CASE("Table with header-only body is valid") {
 TEST_CASE("Column count mismatch rejects table") {
   auto blocks = MarkdownParser::Parse("| A | B |\n| - | - | - |\n| 1 | 2 |");
   REQUIRE(AsTable(blocks[0]) == nullptr);
+}
+
+TEST_CASE("Backslash escapes asterisk to literal text") {
+  auto blocks = MarkdownParser::Parse("\\*not bold\\*");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "*not bold*");
+}
+
+TEST_CASE("Backslash escapes backtick") {
+  auto blocks = MarkdownParser::Parse("\\`not code\\`");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "`not code`");
+}
+
+TEST_CASE("Backslash before non-escapable char is preserved") {
+  auto blocks = MarkdownParser::Parse("foo\\zbar");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "foo\\zbar");
+}
+
+TEST_CASE("Adjacent bold and italic do not bleed") {
+  auto blocks = MarkdownParser::Parse("**bold***italic*");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 2);
+  const auto* b = AsBold(p->children[0]);
+  REQUIRE(b != nullptr);
+  REQUIRE(b->content == "bold");
+  const auto* it = AsItalic(p->children[1]);
+  REQUIRE(it != nullptr);
+  REQUIRE(it->content == "italic");
+}
+
+TEST_CASE("Code span containing asterisks stays code") {
+  auto blocks = MarkdownParser::Parse("`**not bold**`");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ic = AsInlineCode(p->children[0]);
+  REQUIRE(ic != nullptr);
+  REQUIRE(ic->content == "**not bold**");
+}
+
+TEST_CASE("Double-backtick code span contains a single backtick") {
+  auto blocks = MarkdownParser::Parse("`` a`b ``");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ic = AsInlineCode(p->children[0]);
+  REQUIRE(ic != nullptr);
+  REQUIRE(ic->content == "a`b");
+}
+
+TEST_CASE("Link with parens in URL is balanced") {
+  auto blocks =
+      MarkdownParser::Parse("[wiki](https://en.wikipedia.org/wiki/Foo_(bar))");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ln = AsLink(p->children[0]);
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->text == "wiki");
+  REQUIRE(ln->url == "https://en.wikipedia.org/wiki/Foo_(bar)");
+}
+
+TEST_CASE("Image syntax produces Image node") {
+  auto blocks = MarkdownParser::Parse("![logo](https://example.com/logo.png)");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* img = AsImage(p->children[0]);
+  REQUIRE(img != nullptr);
+  REQUIRE(img->alt == "logo");
+  REQUIRE(img->url == "https://example.com/logo.png");
+}
+
+TEST_CASE("Autolink in angle brackets") {
+  auto blocks = MarkdownParser::Parse("see <https://example.com> for details");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 3);
+  const auto* ln = AsLink(p->children[1]);
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->url == "https://example.com");
+  REQUIRE(ln->text == "https://example.com");
+}
+
+TEST_CASE("Bare https URL is autolinked") {
+  auto blocks = MarkdownParser::Parse("visit https://example.com today");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found = false;
+  for (const auto& node : p->children) {
+    const auto* ln = AsLink(node);
+    if (ln != nullptr && ln->url == "https://example.com") {
+      found = true;
+    }
+  }
+  REQUIRE(found);
+}
+
+TEST_CASE("Bare URL trailing punctuation is not part of URL") {
+  auto blocks = MarkdownParser::Parse("see https://example.com.");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const Link* ln = nullptr;
+  for (const auto& node : p->children) {
+    ln = AsLink(node);
+    if (ln != nullptr) {
+      break;
+    }
+  }
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->url == "https://example.com");
+}
+
+TEST_CASE("Underscore inside word does not start emphasis") {
+  auto blocks = MarkdownParser::Parse("snake_case_name");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "snake_case_name");
+}
+
+TEST_CASE("Asterisk emphasis works inside words") {
+  auto blocks = MarkdownParser::Parse("foo*bar*baz");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_italic = false;
+  for (const auto& node : p->children) {
+    const auto* it = AsItalic(node);
+    if (it != nullptr && it->content == "bar") {
+      found_italic = true;
+    }
+  }
+  REQUIRE(found_italic);
+}
+
+TEST_CASE("Strikethrough requires double tilde") {
+  auto blocks = MarkdownParser::Parse("~single~ ~~double~~");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_strike = false;
+  for (const auto& node : p->children) {
+    const auto* s = AsStrikethrough(node);
+    if (s != nullptr && s->content == "double") {
+      found_strike = true;
+    }
+  }
+  REQUIRE(found_strike);
+}
+
+TEST_CASE("Emphasis with whitespace inside delimiter does not match") {
+  auto blocks = MarkdownParser::Parse("a * not emphasis * b");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  for (const auto& node : p->children) {
+    REQUIRE(AsItalic(node) == nullptr);
+    REQUIRE(AsBold(node) == nullptr);
+  }
 }

@@ -31,8 +31,13 @@ struct Link {
   std::string url;
 };
 
+struct Image {
+  std::string alt;
+  std::string url;
+};
+
 using InlineNode =
-    std::variant<Text, Bold, Italic, Strikethrough, InlineCode, Link>;
+    std::variant<Text, Bold, Italic, Strikethrough, InlineCode, Link, Image>;
 
 struct Paragraph {
   std::vector<InlineNode> children;

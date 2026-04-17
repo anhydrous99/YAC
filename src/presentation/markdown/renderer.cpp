@@ -142,6 +142,13 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
           return {ftxui::hyperlink(
               n.url, ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
                          ftxui::underlined)};
+        } else if constexpr (std::is_same_v<T, Image>) {
+          std::string label = "[" + (n.alt.empty() ? std::string("image")
+                                                   : n.alt) +
+                              "]";
+          return {ftxui::hyperlink(
+              n.url, ftxui::text(label) | ftxui::color(theme.markdown.link) |
+                         ftxui::underlined)};
         } else {
           return {ftxui::text("")};
         }
