@@ -26,10 +26,8 @@ class MarkdownParser {
       const std::vector<std::string>& lines, size_t& index);
   [[nodiscard]] static std::optional<HorizontalRule> TryParseHorizontalRule(
       const std::string& line);
-  [[nodiscard]] static std::optional<UnorderedList::Item> TryParseUnorderedItem(
-      const std::string& line);
-  [[nodiscard]] static std::optional<OrderedList::Item> TryParseOrderedItem(
-      const std::string& line);
+  [[nodiscard]] static std::optional<BlockNode> TryParseList(
+      const std::vector<std::string>& lines, size_t& index);
   [[nodiscard]] static std::optional<Table> TryParseTable(
       const std::vector<std::string>& lines, size_t& index);
 

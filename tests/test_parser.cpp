@@ -19,13 +19,13 @@ const CodeBlock* AsCodeBlock(const BlockNode& node) {
   return std::get_if<CodeBlock>(&node);
 }
 const Blockquote* AsBlockquote(const BlockNode& node) {
-  return std::get_if<Blockquote>(&node);
+  return AsBlock<Blockquote>(node);
 }
 const UnorderedList* AsUnorderedList(const BlockNode& node) {
-  return std::get_if<UnorderedList>(&node);
+  return AsBlock<UnorderedList>(node);
 }
 const OrderedList* AsOrderedList(const BlockNode& node) {
-  return std::get_if<OrderedList>(&node);
+  return AsBlock<OrderedList>(node);
 }
 const HorizontalRule* AsHorizontalRule(const BlockNode& node) {
   return std::get_if<HorizontalRule>(&node);
@@ -150,9 +150,11 @@ TEST_CASE("Blockquote with space after >") {
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines.size() == 1);
-  REQUIRE(bq->lines[0].size() == 1);
-  const auto* t = AsText(bq->lines[0][0]);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "quoted text");
 }
@@ -162,34 +164,43 @@ TEST_CASE("Blockquote without space after >") {
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines[0].size() == 1);
-  const auto* t = AsText(bq->lines[0][0]);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "tight");
 }
 
-TEST_CASE("Multi-line blockquote merges into single block") {
+TEST_CASE("Multi-line blockquote merges into single paragraph") {
   auto blocks = MarkdownParser::Parse("> line1\n> line2\n> line3");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines.size() == 3);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
 }
 
-TEST_CASE("Blockquote nesting level 1 with >>") {
+TEST_CASE("Nested blockquote with >> contains inner blockquote") {
   auto blocks = MarkdownParser::Parse(">> nested");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->nesting_level == 1);
+  REQUIRE(bq->children.size() == 1);
+  const auto* inner = AsBlockquote(bq->children[0]);
+  REQUIRE(inner != nullptr);
+  REQUIRE(inner->children.size() == 1);
+  REQUIRE(AsParagraph(inner->children[0]) != nullptr);
 }
 
-TEST_CASE("Blockquote nesting level 0 with single >") {
+TEST_CASE("Single-level blockquote has no nested children") {
   auto blocks = MarkdownParser::Parse("> not nested");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->nesting_level == 0);
+  REQUIRE(bq->children.size() == 1);
+  REQUIRE(AsBlockquote(bq->children[0]) == nullptr);
 }
 
 TEST_CASE("Blockquote stops at non-quote line") {
@@ -228,7 +239,10 @@ TEST_CASE("Unordered list item content") {
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
-  const auto* t = AsText(ul->items[0].children[0]);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "hello world");
 }
@@ -247,7 +261,10 @@ TEST_CASE("Ordered list with multi-digit numbers") {
   const auto* ol = AsOrderedList(blocks[0]);
   REQUIRE(ol != nullptr);
   REQUIRE(ol->items.size() == 1);
-  const auto* t = AsText(ol->items[0].children[0]);
+  REQUIRE(ol->start == 10);
+  const auto* p = AsParagraph(ol->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "item");
 }
@@ -428,7 +445,10 @@ TEST_CASE("Inline formatting inside list items") {
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
-  const auto* b = AsBold(ul->items[0].children[0]);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* b = AsBold(p->children[0]);
   REQUIRE(b != nullptr);
   REQUIRE(b->content == "bold item");
 }
@@ -721,4 +741,75 @@ TEST_CASE("Emphasis with whitespace inside delimiter does not match") {
     REQUIRE(AsItalic(node) == nullptr);
     REQUIRE(AsBold(node) == nullptr);
   }
+}
+
+TEST_CASE("Nested unordered list parses two levels") {
+  auto blocks = MarkdownParser::Parse("- outer\n  - inner1\n  - inner2");
+  REQUIRE(blocks.size() == 1);
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 1);
+  REQUIRE(ul->items[0].children.size() == 2);
+  REQUIRE(AsParagraph(ul->items[0].children[0]) != nullptr);
+  const auto* nested = AsUnorderedList(ul->items[0].children[1]);
+  REQUIRE(nested != nullptr);
+  REQUIRE(nested->items.size() == 2);
+}
+
+TEST_CASE("Multi-line list item collects continuation paragraph") {
+  auto blocks = MarkdownParser::Parse("- first line\n  second line");
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 1);
+  REQUIRE(ul->items[0].children.size() == 1);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  bool saw_second = false;
+  for (const auto& node : p->children) {
+    const auto* t = AsText(node);
+    if (t != nullptr && t->content.find("second") != std::string::npos) {
+      saw_second = true;
+    }
+  }
+  REQUIRE(saw_second);
+}
+
+TEST_CASE("Task list checked and unchecked items") {
+  auto blocks = MarkdownParser::Parse("- [ ] todo\n- [x] done");
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 2);
+  REQUIRE(ul->items[0].task);
+  REQUIRE_FALSE(ul->items[0].checked);
+  REQUIRE(ul->items[1].task);
+  REQUIRE(ul->items[1].checked);
+}
+
+TEST_CASE("Blockquote can contain a code block") {
+  auto blocks = MarkdownParser::Parse("> ```\n> int x;\n> ```");
+  REQUIRE(blocks.size() == 1);
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->children.size() == 1);
+  const auto* cb = AsCodeBlock(bq->children[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->source == "int x;");
+}
+
+TEST_CASE("Blockquote can contain a list") {
+  auto blocks = MarkdownParser::Parse("> - one\n> - two");
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->children.size() == 1);
+  const auto* ul = AsUnorderedList(bq->children[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 2);
+}
+
+TEST_CASE("Ordered list preserves starting number") {
+  auto blocks = MarkdownParser::Parse("3. three\n4. four");
+  const auto* ol = AsOrderedList(blocks[0]);
+  REQUIRE(ol != nullptr);
+  REQUIRE(ol->start == 3);
+  REQUIRE(ol->items.size() == 2);
 }
