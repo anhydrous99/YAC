@@ -4,19 +4,33 @@
 #include "presentation/util/string_util.hpp"
 
 #include <string>
+#include <utility>
 
 namespace yac::presentation::markdown {
 
 ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks) {
-  return Render(blocks, RenderContext{});
+  return Render(blocks, RenderContext{}, ftxui::Element{});
 }
 
 ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks,
                                         const RenderContext& context) {
+  return Render(blocks, context, ftxui::Element{});
+}
+
+ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks,
+                                        const RenderContext& context,
+                                        ftxui::Element trailing_inline) {
+  if (blocks.empty()) {
+    return trailing_inline ? std::move(trailing_inline)
+                           : ftxui::vbox({ftxui::text("")});
+  }
   ftxui::Elements elements;
   for (size_t i = 0; i < blocks.size(); ++i) {
-    elements.push_back(RenderBlock(blocks[i], context));
-    if (i + 1 < blocks.size()) {
+    const bool is_last = (i + 1 == blocks.size());
+    elements.push_back(
+        RenderBlock(blocks[i], context,
+                    is_last ? std::move(trailing_inline) : ftxui::Element{}));
+    if (!is_last) {
       elements.push_back(ftxui::text(""));
     }
   }
@@ -24,24 +38,25 @@ ftxui::Element MarkdownRenderer::Render(const std::vector<BlockNode>& blocks,
 }
 
 ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
-                                             const RenderContext& context) {
+                                             const RenderContext& context,
+                                             ftxui::Element trailing_inline) {
   return std::visit(
-      [&context](const auto& node) -> ftxui::Element {
+      [&context, &trailing_inline](const auto& node) -> ftxui::Element {
         using T = std::decay_t<decltype(node)>;
         if constexpr (std::is_same_v<T, Heading>) {
-          return RenderHeading(node, context);
+          return RenderHeading(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, Paragraph>) {
-          return RenderParagraph(node, context);
+          return RenderParagraph(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, CodeBlock>) {
-          return RenderCodeBlock(node, context);
+          return RenderCodeBlock(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, Blockquote>) {
-          return RenderBlockquote(node, context);
+          return RenderBlockquote(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, UnorderedList>) {
-          return RenderUnorderedList(node, context);
+          return RenderUnorderedList(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, OrderedList>) {
-          return RenderOrderedList(node, context);
+          return RenderOrderedList(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, HorizontalRule>) {
-          return RenderHorizontalRule(context);
+          return RenderHorizontalRule(context, std::move(trailing_inline));
         } else {
           return ftxui::text("");
         }
@@ -84,11 +99,15 @@ ftxui::Elements SplitIntoWords(const std::string& content,
 }  // namespace
 
 ftxui::Element MarkdownRenderer::RenderInline(
-    const std::vector<InlineNode>& nodes, const RenderContext& context) {
+    const std::vector<InlineNode>& nodes, const RenderContext& context,
+    ftxui::Element trailing_inline) {
   ftxui::Elements elements;
   for (const auto& node : nodes) {
     auto node_elements = RenderInlineWords(node, context);
     elements.insert(elements.end(), node_elements.begin(), node_elements.end());
+  }
+  if (trailing_inline) {
+    elements.push_back(std::move(trailing_inline));
   }
   return ftxui::hflow(elements);
 }
@@ -128,9 +147,11 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
 }
 
 ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
-                                               const RenderContext& context) {
+                                               const RenderContext& context,
+                                               ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
-  auto inline_elem = RenderInline(h.children, context);
+  auto inline_elem =
+      RenderInline(h.children, context, std::move(trailing_inline));
 
   if (h.level == 1) {
     auto line = ftxui::text(RepeatUtf8("\xe2\x95\x81", 20)) |
@@ -157,13 +178,15 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   return inline_elem | ftxui::color(theme.chrome.dim_text);
 }
 
-ftxui::Element MarkdownRenderer::RenderParagraph(const Paragraph& p,
-                                                 const RenderContext& context) {
-  return RenderInline(p.children, context);
+ftxui::Element MarkdownRenderer::RenderParagraph(
+    const Paragraph& p, const RenderContext& context,
+    ftxui::Element trailing_inline) {
+  return RenderInline(p.children, context, std::move(trailing_inline));
 }
 
-ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb,
-                                                 const RenderContext& context) {
+ftxui::Element MarkdownRenderer::RenderCodeBlock(
+    const CodeBlock& cb, const RenderContext& context,
+    ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
   auto code_lines = util::SplitLines(cb.source);
   auto gutter_width = std::to_string(code_lines.size()).size() + 1;
@@ -189,13 +212,17 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb,
                                                           cb.language, context);
 
     auto bg = (i % 2 == 1) ? odd_bg : even_bg;
-    inner.push_back(ftxui::hbox({
+    ftxui::Elements row_children = {
         ftxui::text("\xe2\x96\x8e") | ftxui::color(theme.code.border) |
             ftxui::bgcolor(bg),
         ftxui::text(padded_num) | ftxui::color(theme.chrome.dim_text) |
             ftxui::dim | ftxui::bgcolor(bg),
         line_elem | ftxui::bgcolor(bg),
-    }));
+    };
+    if (trailing_inline && i + 1 == code_lines.size()) {
+      row_children.push_back(std::move(trailing_inline) | ftxui::bgcolor(bg));
+    }
+    inner.push_back(ftxui::hbox(std::move(row_children)));
   }
 
   return ftxui::vbox({
@@ -207,52 +234,81 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(const CodeBlock& cb,
 }
 
 ftxui::Element MarkdownRenderer::RenderBlockquote(
-    const Blockquote& bq, const RenderContext& context) {
+    const Blockquote& bq, const RenderContext& context,
+    ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
   std::string indent(static_cast<size_t>(bq.nesting_level) * 2, ' ');
 
   ftxui::Elements line_elements;
-  for (const auto& line : bq.lines) {
+  for (size_t i = 0; i < bq.lines.size(); ++i) {
+    const bool is_last = (i + 1 == bq.lines.size());
+    auto inline_elem =
+        RenderInline(bq.lines[i], context,
+                     is_last ? std::move(trailing_inline) : ftxui::Element{});
     line_elements.push_back(ftxui::hbox(
         {ftxui::text("\xe2\x96\x8e ") | ftxui::color(theme.chrome.dim_text),
-         ftxui::text(indent), RenderInline(line, context)}));
+         ftxui::text(indent), std::move(inline_elem)}));
+  }
+  if (trailing_inline && bq.lines.empty()) {
+    line_elements.push_back(std::move(trailing_inline));
   }
 
   return ftxui::vbox(line_elements) | ftxui::bgcolor(theme.markdown.quote_bg);
 }
 
 ftxui::Element MarkdownRenderer::RenderUnorderedList(
-    const UnorderedList& ul, const RenderContext& context) {
+    const UnorderedList& ul, const RenderContext& context,
+    ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
   ftxui::Elements items;
-  for (const auto& item : ul.items) {
-    items.push_back(ftxui::hbox(
-        {ftxui::text("  "),
-         ftxui::text("• ") | ftxui::color(theme.role.agent) | ftxui::bold,
-         RenderInline(item.children, context)}));
+  for (size_t i = 0; i < ul.items.size(); ++i) {
+    const bool is_last = (i + 1 == ul.items.size());
+    auto inline_elem =
+        RenderInline(ul.items[i].children, context,
+                     is_last ? std::move(trailing_inline) : ftxui::Element{});
+    items.push_back(
+        ftxui::hbox({ftxui::text("  "),
+                     ftxui::text("\xe2\x80\xa2 ") |
+                         ftxui::color(theme.role.agent) | ftxui::bold,
+                     std::move(inline_elem)}));
+  }
+  if (trailing_inline && ul.items.empty()) {
+    items.push_back(std::move(trailing_inline));
   }
   return ftxui::vbox(items);
 }
 
 ftxui::Element MarkdownRenderer::RenderOrderedList(
-    const OrderedList& ol, const RenderContext& context) {
+    const OrderedList& ol, const RenderContext& context,
+    ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
   ftxui::Elements items;
   for (size_t i = 0; i < ol.items.size(); ++i) {
+    const bool is_last = (i + 1 == ol.items.size());
     auto num = std::to_string(i + 1) + ". ";
+    auto inline_elem =
+        RenderInline(ol.items[i].children, context,
+                     is_last ? std::move(trailing_inline) : ftxui::Element{});
     items.push_back(ftxui::hbox(
         {ftxui::text("  "),
          ftxui::text(num) | ftxui::color(theme.chrome.dim_text) | ftxui::bold,
-         RenderInline(ol.items[i].children, context)}));
+         std::move(inline_elem)}));
+  }
+  if (trailing_inline && ol.items.empty()) {
+    items.push_back(std::move(trailing_inline));
   }
   return ftxui::vbox(items);
 }
 
 ftxui::Element MarkdownRenderer::RenderHorizontalRule(
-    const RenderContext& context) {
+    const RenderContext& context, ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
-  return ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
-         ftxui::color(theme.chrome.dim_text) | ftxui::dim;
+  auto hr = ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+            ftxui::color(theme.chrome.dim_text) | ftxui::dim;
+  if (trailing_inline) {
+    return ftxui::vbox({hr, std::move(trailing_inline)});
+  }
+  return hr;
 }
 
 }  // namespace yac::presentation::markdown

@@ -148,14 +148,14 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
                               message.created_at, cache.relative_time, context,
                               message.status));
   rows.push_back(ftxui::text(""));
-  rows.push_back(markdown::MarkdownRenderer::Render(blocks, context));
+
+  ftxui::Element stream_cursor;
   if (is_active && !message.Text().empty()) {
-    rows.push_back(ftxui::hbox({
-        ftxui::text("  "),
-        ftxui::text("\xe2\x96\x8e") | ftxui::color(theme.role.agent) |
-            ftxui::dim,
-    }));
+    stream_cursor = ftxui::text(" \xe2\x96\x8e") |
+                    ftxui::color(theme.role.agent) | ftxui::dim;
   }
+  rows.push_back(markdown::MarkdownRenderer::Render(blocks, context,
+                                                    std::move(stream_cursor)));
 
   auto content = ftxui::vbox(std::move(rows));
 

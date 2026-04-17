@@ -218,6 +218,25 @@ TEST_CASE("Render active agent message with text shows stream cursor") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
 }
 
+TEST_CASE("Stream cursor stays inline with the last streamed text") {
+  Message msg{Sender::Agent, "partial"};
+  msg.status = MessageStatus::Active;
+
+  auto lines = Lines(StripAnsi(RenderMessageToString(msg)));
+
+  size_t text_line = std::string::npos;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (lines[i].find("partial") != std::string::npos) {
+      text_line = i;
+      break;
+    }
+  }
+
+  REQUIRE(text_line != std::string::npos);
+  REQUIRE_THAT(lines[text_line],
+               Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
+}
+
 TEST_CASE("Render error agent message hides active indicator") {
   Message msg{Sender::Agent, "failed"};
   msg.status = MessageStatus::Error;
