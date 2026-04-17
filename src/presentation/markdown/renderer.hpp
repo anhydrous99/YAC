@@ -53,6 +53,13 @@ class MarkdownRenderer {
       ftxui::Element trailing_inline);
   [[nodiscard]] static ftxui::Element RenderHorizontalRule(
       const RenderContext& context, ftxui::Element trailing_inline);
+  [[nodiscard]] static ftxui::Element RenderTable(
+      const Table& t, const RenderContext& context,
+      ftxui::Element trailing_inline);
+  [[nodiscard]] static ftxui::Element RenderTableCell(
+      const std::vector<InlineNode>& cell, ColumnAlignment align,
+      const RenderContext& context, bool is_header,
+      ftxui::Element trailing_inline);
 };
 
 }  // namespace yac::presentation::markdown

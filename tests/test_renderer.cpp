@@ -159,3 +159,88 @@ TEST_CASE("Renderer inter-block spacing") {
   auto elem = MarkdownRenderer::Render(blocks);
   REQUIRE(elem != nullptr);
 }
+
+TEST_CASE("Renderer draws table with headers and data") {
+  auto blocks = MarkdownParser::Parse(
+      "| HeaderAlpha | HeaderBeta |\n"
+      "| ----------- | ---------- |\n"
+      "| CellOne     | CellTwo    |");
+  auto output = RenderToString(blocks, 60, 10);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("HeaderAlpha"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("HeaderBeta"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("CellOne"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("CellTwo"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x94\x80"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x94\x82"));
+
+  std::vector<std::string> lines;
+  std::string current;
+  for (char c : output) {
+    if (c == '\n') {
+      lines.push_back(current);
+      current.clear();
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    lines.push_back(current);
+  }
+  size_t header_line = std::string::npos;
+  size_t cell_line = std::string::npos;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (header_line == std::string::npos &&
+        lines[i].find("HeaderAlpha") != std::string::npos) {
+      header_line = i;
+    }
+    if (cell_line == std::string::npos &&
+        lines[i].find("CellOne") != std::string::npos) {
+      cell_line = i;
+    }
+  }
+  REQUIRE(header_line != std::string::npos);
+  REQUIRE(cell_line != std::string::npos);
+  REQUIRE(header_line < cell_line);
+}
+
+TEST_CASE("Renderer right-aligns column with ---: delimiter") {
+  auto blocks = MarkdownParser::Parse(
+      "| Value                  |\n"
+      "| ---------------------: |\n"
+      "| x                      |");
+  auto output = RenderToString(blocks, 40, 6);
+  std::vector<std::string> lines;
+  std::string current;
+  for (char c : output) {
+    if (c == '\n') {
+      lines.push_back(current);
+      current.clear();
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    lines.push_back(current);
+  }
+  size_t data_line = std::string::npos;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (lines[i].find('x') != std::string::npos &&
+        lines[i].find("Value") == std::string::npos &&
+        lines[i].find("\xe2\x94\x80") == std::string::npos) {
+      data_line = i;
+      break;
+    }
+  }
+  REQUIRE(data_line != std::string::npos);
+  const auto& row = lines[data_line];
+  auto x_pos = row.find('x');
+  auto left_border = row.find("\xe2\x94\x82");
+  auto right_border = row.rfind("\xe2\x94\x82", x_pos);
+  auto closing_border = row.find("\xe2\x94\x82", x_pos + 1);
+  REQUIRE(x_pos != std::string::npos);
+  REQUIRE(left_border != std::string::npos);
+  REQUIRE(closing_border != std::string::npos);
+  size_t leading = x_pos - right_border - 3;
+  size_t trailing = closing_border - x_pos - 1;
+  REQUIRE(leading > trailing);
+}

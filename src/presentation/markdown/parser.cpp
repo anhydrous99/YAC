@@ -14,6 +14,140 @@ using util::SplitLines;
 using util::Trim;
 using util::TrimLeft;
 
+bool LineLooksLikeBlock(const std::string& line) {
+  if (line.starts_with("```") || line.starts_with("~~~")) {
+    return true;
+  }
+  auto trimmed = TrimLeft(line);
+  if (trimmed.empty()) {
+    return true;
+  }
+  if (trimmed.starts_with("#") || trimmed.starts_with(">") ||
+      trimmed.starts_with("- ") || trimmed.starts_with("* ") ||
+      trimmed.starts_with("+ ")) {
+    return true;
+  }
+  if (std::isdigit(static_cast<unsigned char>(trimmed[0])) != 0) {
+    size_t idx = 0;
+    while (idx < trimmed.size() &&
+           std::isdigit(static_cast<unsigned char>(trimmed[idx])) != 0) {
+      ++idx;
+    }
+    if (idx < trimmed.size() && trimmed[idx] == '.') {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HasUnescapedPipe(std::string_view s) {
+  for (size_t i = 0; i < s.size(); ++i) {
+    if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '|') {
+      ++i;
+      continue;
+    }
+    if (s[i] == '|') {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<std::string> SplitTableRow(std::string_view line) {
+  auto trimmed = Trim(line);
+  std::string_view view = trimmed;
+  if (!view.empty() && view.front() == '|') {
+    view.remove_prefix(1);
+  }
+  if (!view.empty() && view.back() == '|' &&
+      (view.size() < 2 || view[view.size() - 2] != '\\')) {
+    view.remove_suffix(1);
+  }
+
+  std::vector<std::string> cells;
+  std::string current;
+  for (size_t i = 0; i < view.size(); ++i) {
+    if (view[i] == '\\' && i + 1 < view.size() && view[i + 1] == '|') {
+      current += '|';
+      ++i;
+      continue;
+    }
+    if (view[i] == '|') {
+      cells.push_back(Trim(current));
+      current.clear();
+      continue;
+    }
+    current += view[i];
+  }
+  cells.push_back(Trim(current));
+  return cells;
+}
+
+std::optional<std::vector<ColumnAlignment>> ParseDelimiterRow(
+    std::string_view line) {
+  auto trimmed = Trim(line);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+
+  std::string_view view = trimmed;
+  if (!view.empty() && view.front() == '|') {
+    view.remove_prefix(1);
+  }
+  if (!view.empty() && view.back() == '|') {
+    view.remove_suffix(1);
+  }
+
+  std::vector<ColumnAlignment> alignments;
+  std::string current;
+  auto flush = [&](const std::string& cell) -> bool {
+    auto c = Trim(cell);
+    if (c.empty()) {
+      return false;
+    }
+    bool left_colon = c.front() == ':';
+    bool right_colon = c.back() == ':';
+    size_t dash_start = left_colon ? 1 : 0;
+    size_t dash_end = right_colon ? c.size() - 1 : c.size();
+    if (dash_start >= dash_end) {
+      return false;
+    }
+    for (size_t i = dash_start; i < dash_end; ++i) {
+      if (c[i] != '-') {
+        return false;
+      }
+    }
+    if (left_colon && right_colon) {
+      alignments.push_back(ColumnAlignment::Center);
+    } else if (left_colon) {
+      alignments.push_back(ColumnAlignment::Left);
+    } else if (right_colon) {
+      alignments.push_back(ColumnAlignment::Right);
+    } else {
+      alignments.push_back(ColumnAlignment::Default);
+    }
+    return true;
+  };
+
+  for (char ch : view) {
+    if (ch == '|') {
+      if (!flush(current)) {
+        return std::nullopt;
+      }
+      current.clear();
+    } else {
+      current += ch;
+    }
+  }
+  if (!flush(current)) {
+    return std::nullopt;
+  }
+  if (alignments.empty()) {
+    return std::nullopt;
+  }
+  return alignments;
+}
+
 }  // namespace
 
 std::vector<BlockNode> MarkdownParser::Parse(std::string_view markdown) {
@@ -87,6 +221,11 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
         }
       }
       blocks.emplace_back(std::move(ol));
+      continue;
+    }
+
+    if (auto tbl = TryParseTable(lines, i)) {
+      blocks.emplace_back(std::move(*tbl));
       continue;
     }
 
@@ -295,6 +434,64 @@ std::optional<HorizontalRule> MarkdownParser::TryParseHorizontalRule(
   }
 
   return HorizontalRule{};
+}
+
+std::optional<Table> MarkdownParser::TryParseTable(
+    const std::vector<std::string>& lines, size_t& index) {
+  if (index + 1 >= lines.size()) {
+    return std::nullopt;
+  }
+
+  const auto& header_line = lines[index];
+  if (Trim(header_line).empty()) {
+    return std::nullopt;
+  }
+  if (!HasUnescapedPipe(header_line)) {
+    return std::nullopt;
+  }
+
+  auto alignments = ParseDelimiterRow(lines[index + 1]);
+  if (!alignments) {
+    return std::nullopt;
+  }
+
+  auto header_cells = SplitTableRow(header_line);
+  if (header_cells.size() != alignments->size()) {
+    return std::nullopt;
+  }
+
+  Table table;
+  table.columns = std::move(*alignments);
+  table.header.reserve(table.columns.size());
+  for (auto& cell : header_cells) {
+    table.header.push_back(ParseInline(cell));
+  }
+
+  size_t cursor = index + 2;
+  while (cursor < lines.size()) {
+    const auto& row_line = lines[cursor];
+    if (Trim(row_line).empty()) {
+      break;
+    }
+    if (LineLooksLikeBlock(row_line)) {
+      break;
+    }
+    auto raw_cells = SplitTableRow(row_line);
+    Table::Row row;
+    row.reserve(table.columns.size());
+    for (size_t c = 0; c < table.columns.size(); ++c) {
+      if (c < raw_cells.size()) {
+        row.push_back(ParseInline(raw_cells[c]));
+      } else {
+        row.emplace_back();
+      }
+    }
+    table.rows.push_back(std::move(row));
+    ++cursor;
+  }
+
+  index = cursor;
+  return table;
 }
 
 std::vector<InlineNode> MarkdownParser::ParseInline(std::string_view text) {

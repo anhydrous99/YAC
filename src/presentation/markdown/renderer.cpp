@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include "ftxui/dom/elements.hpp"
+#include "ftxui/dom/table.hpp"
 #include "presentation/util/string_util.hpp"
 
 #include <string>
@@ -57,6 +58,8 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
           return RenderOrderedList(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, HorizontalRule>) {
           return RenderHorizontalRule(context, std::move(trailing_inline));
+        } else if constexpr (std::is_same_v<T, Table>) {
+          return RenderTable(node, context, std::move(trailing_inline));
         } else {
           return ftxui::text("");
         }
@@ -309,6 +312,90 @@ ftxui::Element MarkdownRenderer::RenderHorizontalRule(
     return ftxui::vbox({hr, std::move(trailing_inline)});
   }
   return hr;
+}
+
+ftxui::Element MarkdownRenderer::RenderTableCell(
+    const std::vector<InlineNode>& cell, ColumnAlignment align,
+    const RenderContext& context, bool is_header,
+    ftxui::Element trailing_inline) {
+  const auto& theme = context.Colors();
+  ftxui::Elements words;
+  for (const auto& node : cell) {
+    auto pieces = RenderInlineWords(node, context);
+    words.insert(words.end(), pieces.begin(), pieces.end());
+  }
+  if (trailing_inline) {
+    words.push_back(std::move(trailing_inline));
+  }
+  if (words.empty()) {
+    words.push_back(ftxui::text(""));
+  }
+
+  auto content = ftxui::hbox(words);
+  if (is_header) {
+    content = content | ftxui::bold | ftxui::color(theme.markdown.heading);
+  }
+
+  switch (align) {
+    case ColumnAlignment::Right:
+      return ftxui::hbox(
+          {ftxui::filler(), std::move(content), ftxui::text(" ")});
+    case ColumnAlignment::Center:
+      return ftxui::hbox(
+          {ftxui::filler(), std::move(content), ftxui::filler()});
+    case ColumnAlignment::Left:
+    case ColumnAlignment::Default:
+      return ftxui::hbox(
+          {ftxui::text(" "), std::move(content), ftxui::filler()});
+  }
+  return content;
+}
+
+ftxui::Element MarkdownRenderer::RenderTable(const Table& t,
+                                             const RenderContext& context,
+                                             ftxui::Element trailing_inline) {
+  const auto& theme = context.Colors();
+  const size_t ncols = t.columns.size();
+  if (ncols == 0) {
+    return trailing_inline ? std::move(trailing_inline) : ftxui::text("");
+  }
+
+  const size_t ndata = t.rows.size();
+  std::vector<std::vector<ftxui::Element>> grid;
+  grid.reserve(1 + ndata);
+
+  std::vector<ftxui::Element> header_cells;
+  header_cells.reserve(ncols);
+  for (size_t c = 0; c < ncols; ++c) {
+    header_cells.push_back(RenderTableCell(t.header[c], t.columns[c], context,
+                                           /*is_header=*/true,
+                                           ftxui::Element{}));
+  }
+  grid.push_back(std::move(header_cells));
+
+  for (size_t r = 0; r < ndata; ++r) {
+    const bool is_last_row = (r + 1 == ndata);
+    std::vector<ftxui::Element> cells;
+    cells.reserve(ncols);
+    for (size_t c = 0; c < ncols; ++c) {
+      const bool is_trailing_cell =
+          is_last_row && (c + 1 == ncols) && static_cast<bool>(trailing_inline);
+      cells.push_back(RenderTableCell(
+          t.rows[r][c], t.columns[c], context, /*is_header=*/false,
+          is_trailing_cell ? std::move(trailing_inline) : ftxui::Element{}));
+    }
+    grid.push_back(std::move(cells));
+  }
+
+  ftxui::Table tab(grid);
+  tab.SelectAll().Border(ftxui::LIGHT);
+  tab.SelectAll().Separator(ftxui::LIGHT);
+  auto table_elem = tab.Render() | ftxui::color(theme.code.border);
+
+  if (ndata == 0 && trailing_inline) {
+    return ftxui::vbox({std::move(table_elem), std::move(trailing_inline)});
+  }
+  return table_elem;
 }
 
 }  // namespace yac::presentation::markdown

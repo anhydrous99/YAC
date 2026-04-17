@@ -69,7 +69,18 @@ struct OrderedList {
 
 struct HorizontalRule {};
 
-using BlockNode = std::variant<Paragraph, Heading, CodeBlock, Blockquote,
-                               UnorderedList, OrderedList, HorizontalRule>;
+enum class ColumnAlignment { Default, Left, Center, Right };
+
+struct Table {
+  using Cell = std::vector<InlineNode>;
+  using Row = std::vector<Cell>;
+  std::vector<Cell> header;
+  std::vector<ColumnAlignment> columns;
+  std::vector<Row> rows;
+};
+
+using BlockNode =
+    std::variant<Paragraph, Heading, CodeBlock, Blockquote, UnorderedList,
+                 OrderedList, HorizontalRule, Table>;
 
 }  // namespace yac::presentation::markdown

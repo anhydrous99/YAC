@@ -30,6 +30,9 @@ const OrderedList* AsOrderedList(const BlockNode& node) {
 const HorizontalRule* AsHorizontalRule(const BlockNode& node) {
   return std::get_if<HorizontalRule>(&node);
 }
+const Table* AsTable(const BlockNode& node) {
+  return std::get_if<Table>(&node);
+}
 
 const Text* AsText(const InlineNode& node) {
   return std::get_if<Text>(&node);
@@ -435,4 +438,112 @@ TEST_CASE("Inline formatting inside heading") {
   const auto* b = AsBold(h->children[0]);
   REQUIRE(b != nullptr);
   REQUIRE(b->content == "Bold Title");
+}
+
+TEST_CASE("Table with simple 2x2 layout") {
+  auto blocks = MarkdownParser::Parse("| A | B |\n| - | - |\n| 1 | 2 |");
+  REQUIRE(blocks.size() == 1);
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->columns.size() == 2);
+  REQUIRE(tbl->header.size() == 2);
+  REQUIRE(tbl->rows.size() == 1);
+  REQUIRE(tbl->header[0].size() == 1);
+  const auto* ht = AsText(tbl->header[0][0]);
+  REQUIRE(ht != nullptr);
+  REQUIRE(ht->content == "A");
+  REQUIRE(tbl->rows[0].size() == 2);
+  const auto* ct = AsText(tbl->rows[0][0][0]);
+  REQUIRE(ct != nullptr);
+  REQUIRE(ct->content == "1");
+}
+
+TEST_CASE("Table parses column alignment") {
+  auto blocks = MarkdownParser::Parse(
+      "| A | B | C |\n| :-- | :-: | --: |\n| x | y | z |");
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->columns.size() == 3);
+  REQUIRE(tbl->columns[0] == ColumnAlignment::Left);
+  REQUIRE(tbl->columns[1] == ColumnAlignment::Center);
+  REQUIRE(tbl->columns[2] == ColumnAlignment::Right);
+}
+
+TEST_CASE("Table cells parse inline formatting") {
+  auto blocks =
+      MarkdownParser::Parse("| **bold** | `code` |\n| - | - |\n| x | y |");
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->header[0].size() == 1);
+  const auto* b = AsBold(tbl->header[0][0]);
+  REQUIRE(b != nullptr);
+  REQUIRE(b->content == "bold");
+  const auto* ic = AsInlineCode(tbl->header[1][0]);
+  REQUIRE(ic != nullptr);
+  REQUIRE(ic->content == "code");
+}
+
+TEST_CASE("Table cell escapes pipe") {
+  auto blocks = MarkdownParser::Parse("| a \\| b | c |\n| - | - |\n| 1 | 2 |");
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->header.size() == 2);
+  REQUIRE(tbl->header[0].size() == 1);
+  const auto* t = AsText(tbl->header[0][0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "a | b");
+}
+
+TEST_CASE("Missing delimiter does not parse as table") {
+  auto blocks = MarkdownParser::Parse("| A | B |\nnot a delim");
+  REQUIRE(AsTable(blocks[0]) == nullptr);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Table truncates overly wide data rows") {
+  auto blocks = MarkdownParser::Parse("| A | B |\n| - | - |\n| 1 | 2 | 3 |");
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->rows.size() == 1);
+  REQUIRE(tbl->rows[0].size() == 2);
+}
+
+TEST_CASE("Table pads short data rows") {
+  auto blocks = MarkdownParser::Parse("| A | B |\n| - | - |\n| 1 |");
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->rows.size() == 1);
+  REQUIRE(tbl->rows[0].size() == 2);
+  REQUIRE(tbl->rows[0][1].empty());
+}
+
+TEST_CASE("Table without outer pipes is accepted") {
+  auto blocks = MarkdownParser::Parse("A | B\n- | -\n1 | 2");
+  REQUIRE(blocks.size() == 1);
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->columns.size() == 2);
+  REQUIRE(tbl->rows.size() == 1);
+}
+
+TEST_CASE("Blank line terminates table") {
+  auto blocks =
+      MarkdownParser::Parse("| A | B |\n| - | - |\n| 1 | 2 |\n\nafter");
+  REQUIRE(blocks.size() == 2);
+  REQUIRE(AsTable(blocks[0]) != nullptr);
+  REQUIRE(AsParagraph(blocks[1]) != nullptr);
+}
+
+TEST_CASE("Table with header-only body is valid") {
+  auto blocks = MarkdownParser::Parse("| A | B |\n| - | - |");
+  REQUIRE(blocks.size() == 1);
+  const auto* tbl = AsTable(blocks[0]);
+  REQUIRE(tbl != nullptr);
+  REQUIRE(tbl->rows.empty());
+  REQUIRE(tbl->header.size() == 2);
+}
+
+TEST_CASE("Column count mismatch rejects table") {
+  auto blocks = MarkdownParser::Parse("| A | B |\n| - | - | - |\n| 1 | 2 |");
+  REQUIRE(AsTable(blocks[0]) == nullptr);
 }

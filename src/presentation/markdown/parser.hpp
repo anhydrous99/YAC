@@ -30,6 +30,8 @@ class MarkdownParser {
       const std::string& line);
   [[nodiscard]] static std::optional<OrderedList::Item> TryParseOrderedItem(
       const std::string& line);
+  [[nodiscard]] static std::optional<Table> TryParseTable(
+      const std::vector<std::string>& lines, size_t& index);
 
   static size_t TryParseParagraph(const std::vector<std::string>& lines,
                                   size_t start, std::vector<BlockNode>& blocks);
