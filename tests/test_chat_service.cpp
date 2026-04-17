@@ -21,6 +21,34 @@ using namespace yac::provider;
 
 namespace {
 
+// RAII guard that saves and clears YAC_* env vars, restoring them on
+// destruction. Prevents the host environment from polluting config tests.
+class ScopedEnvClear {
+ public:
+  ScopedEnvClear() {
+    static constexpr const char* kVars[] = {
+        "YAC_PROVIDER",      "YAC_MODEL",       "YAC_BASE_URL",
+        "YAC_TEMPERATURE",   "YAC_API_KEY_ENV", "YAC_SYSTEM_PROMPT",
+        "YAC_WORKSPACE_ROOT"};
+    for (const auto* name : kVars) {
+      if (const char* val = std::getenv(name)) {
+        saved_.emplace_back(name, val);
+        unsetenv(name);
+      }
+    }
+  }
+  ~ScopedEnvClear() {
+    for (const auto& [name, val] : saved_) {
+      setenv(name.c_str(), val.c_str(), 1);
+    }
+  }
+  ScopedEnvClear(const ScopedEnvClear&) = delete;
+  ScopedEnvClear& operator=(const ScopedEnvClear&) = delete;
+
+ private:
+  std::vector<std::pair<std::string, std::string>> saved_;
+};
+
 class FakeProvider : public LanguageModelProvider {
  public:
   explicit FakeProvider(std::string expected_model = "fake-model")
@@ -833,6 +861,7 @@ TEST_CASE("ChatService assigns unique message IDs") {
 }
 
 TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
+  ScopedEnvClear env_guard;
   auto config = LoadChatConfigFromEnv();
   REQUIRE(config.provider_id == "openai");
   REQUIRE(config.model == "gpt-4o-mini");
@@ -841,6 +870,7 @@ TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
 }
 
 TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {
+  ScopedEnvClear env_guard;
   const auto original_dir = std::filesystem::current_path();
 
   const auto temp_dir =
@@ -869,6 +899,7 @@ TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {
 }
 
 TEST_CASE("LoadChatConfigFromEnv explicit values override Z.ai defaults") {
+  ScopedEnvClear env_guard;
   const auto original_dir = std::filesystem::current_path();
 
   const auto temp_dir =
@@ -900,6 +931,7 @@ TEST_CASE("LoadChatConfigFromEnv explicit values override Z.ai defaults") {
 }
 
 TEST_CASE("LoadChatConfigFromEnv loads from .env file") {
+  ScopedEnvClear env_guard;
   const auto original_dir = std::filesystem::current_path();
 
   const auto temp_dir =
