@@ -384,6 +384,21 @@ TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {
   REQUIRE_FALSE(sent);
 }
 
+TEST_CASE("Tool approval modal renders prominent permission prompt") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt");
+
+  auto output = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Permission Required"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("file_write"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Write notes.txt"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Enter/Y Approve"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("N/Esc Reject"));
+}
+
 TEST_CASE("Tool approval modal approves on uppercase Y") {
   int approval_calls = 0;
   std::string approval_id;

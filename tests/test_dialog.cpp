@@ -53,18 +53,14 @@ TEST_CASE("DialogPanel returns non-null component") {
   REQUIRE(comp != nullptr);
 }
 
-TEST_CASE("DialogPanel renders title without decorative border glyphs") {
+TEST_CASE("DialogPanel renders title with prominent border") {
   bool show = true;
   auto comp = DialogPanel("My Title", StaticText("content"), &show);
   auto output = RenderComponent(comp, 80, 24);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("My Title"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╭"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╮"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╰"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("╯"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("─"));
-  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("│"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("━"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("┃"));
 }
 
 TEST_CASE("DialogPanel renders inner content when shown") {
@@ -103,11 +99,31 @@ TEST_CASE("DialogPanel forwards non-Escape events to visible child content") {
   REQUIRE(show);
 }
 
-TEST_CASE("DialogPanel caps width below 60 columns") {
+TEST_CASE("DialogPanel caps width below 72 columns") {
   bool show = true;
   auto comp = DialogPanel("Wide", StaticText(std::string(100, 'X')), &show);
   auto output = RenderComponent(comp, 100, 24);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Wide"));
-  REQUIRE(output.find(std::string(60, 'X')) == std::string::npos);
+  REQUIRE(output.find(std::string(72, 'X')) == std::string::npos);
+}
+
+TEST_CASE("DialogModal renders only main content when hidden") {
+  bool show = false;
+  auto comp =
+      DialogModal(StaticText("main body"), StaticText("modal body"), &show);
+  auto output = RenderComponent(comp, 80, 24);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("main body"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("modal body"));
+}
+
+TEST_CASE("DialogModal overlays modal content when shown") {
+  bool show = true;
+  auto comp =
+      DialogModal(StaticText("main body"), StaticText("modal body"), &show);
+  auto output = RenderComponent(comp, 80, 24);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("main body"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("modal body"));
 }

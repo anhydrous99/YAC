@@ -9,6 +9,24 @@ namespace {
 
 inline const auto& k_theme = theme::Theme::Instance();
 
+ftxui::Element ApprovalToolLabel(const std::string& tool_name) {
+  return ftxui::hbox({
+      ftxui::text("Tool: ") | ftxui::color(k_theme.dialog.dim_text),
+      ftxui::text(tool_name) | ftxui::bold |
+          ftxui::color(k_theme.dialog.input_fg),
+  });
+}
+
+ftxui::Element ApprovalActions() {
+  return ftxui::hbox({
+      ftxui::text(" Enter/Y Approve ") | ftxui::bold |
+          ftxui::color(k_theme.role.agent),
+      ftxui::text("  "),
+      ftxui::text(" N/Esc Reject ") | ftxui::bold |
+          ftxui::color(k_theme.role.error),
+  });
+}
+
 }  // namespace
 
 void ChatUiOverlayState::SetOnCommand(OnCommandCallback on_command) {
@@ -57,31 +75,29 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
 
   auto palette = CommandPalette(commands_, on_select, &show_palette_);
   auto dialog = DialogPanel("Command Palette", palette, &show_palette_);
-  auto main_component = ftxui::Modal(main_ui, dialog, &show_palette_);
+  auto main_component = DialogModal(main_ui, dialog, &show_palette_);
 
   auto model_palette =
       CommandPalette(model_commands_, on_model_select, &show_model_palette_);
   auto modal_component =
       DialogPanel("Switch Model", model_palette, &show_model_palette_);
   auto main_with_model_picker =
-      ftxui::Modal(main_component, modal_component, &show_model_palette_);
+      DialogModal(main_component, modal_component, &show_model_palette_);
 
   auto approval_content = ftxui::Renderer([this] {
     return ftxui::vbox({
-        ftxui::paragraph("Tool: " + approval_tool_name_) |
-            ftxui::color(k_theme.dialog.input_fg),
+        ApprovalToolLabel(approval_tool_name_),
         ftxui::text(""),
         ftxui::paragraph(approval_prompt_) |
             ftxui::color(k_theme.chrome.body_text),
         ftxui::text(""),
-        ftxui::text(" Enter/Y=Approve  N/Esc=Reject") |
-            ftxui::color(k_theme.dialog.dim_text),
+        ApprovalActions(),
     });
   });
-  auto tool_approval_panel =
-      DialogPanel("Approve Tool", approval_content, &show_tool_approval_);
-  auto approval_modal = ftxui::Modal(main_with_model_picker,
-                                     tool_approval_panel, &show_tool_approval_);
+  auto tool_approval_panel = DialogPanel(
+      "Permission Required", approval_content, &show_tool_approval_);
+  auto approval_modal = DialogModal(main_with_model_picker, tool_approval_panel,
+                                    &show_tool_approval_);
 
   return ftxui::CatchEvent(approval_modal, [this](const ftxui::Event& event) {
     return HandleGlobalEvent(event);
