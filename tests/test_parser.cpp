@@ -19,13 +19,13 @@ const CodeBlock* AsCodeBlock(const BlockNode& node) {
   return std::get_if<CodeBlock>(&node);
 }
 const Blockquote* AsBlockquote(const BlockNode& node) {
-  return std::get_if<Blockquote>(&node);
+  return AsBlock<Blockquote>(node);
 }
 const UnorderedList* AsUnorderedList(const BlockNode& node) {
-  return std::get_if<UnorderedList>(&node);
+  return AsBlock<UnorderedList>(node);
 }
 const OrderedList* AsOrderedList(const BlockNode& node) {
-  return std::get_if<OrderedList>(&node);
+  return AsBlock<OrderedList>(node);
 }
 const HorizontalRule* AsHorizontalRule(const BlockNode& node) {
   return std::get_if<HorizontalRule>(&node);
@@ -51,6 +51,9 @@ const InlineCode* AsInlineCode(const InlineNode& node) {
 }
 const Link* AsLink(const InlineNode& node) {
   return std::get_if<Link>(&node);
+}
+const Image* AsImage(const InlineNode& node) {
+  return std::get_if<Image>(&node);
 }
 
 }  // namespace
@@ -147,9 +150,11 @@ TEST_CASE("Blockquote with space after >") {
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines.size() == 1);
-  REQUIRE(bq->lines[0].size() == 1);
-  const auto* t = AsText(bq->lines[0][0]);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "quoted text");
 }
@@ -159,34 +164,43 @@ TEST_CASE("Blockquote without space after >") {
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines[0].size() == 1);
-  const auto* t = AsText(bq->lines[0][0]);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "tight");
 }
 
-TEST_CASE("Multi-line blockquote merges into single block") {
+TEST_CASE("Multi-line blockquote merges into single paragraph") {
   auto blocks = MarkdownParser::Parse("> line1\n> line2\n> line3");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->lines.size() == 3);
+  REQUIRE(bq->children.size() == 1);
+  const auto* p = AsParagraph(bq->children[0]);
+  REQUIRE(p != nullptr);
 }
 
-TEST_CASE("Blockquote nesting level 1 with >>") {
+TEST_CASE("Nested blockquote with >> contains inner blockquote") {
   auto blocks = MarkdownParser::Parse(">> nested");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->nesting_level == 1);
+  REQUIRE(bq->children.size() == 1);
+  const auto* inner = AsBlockquote(bq->children[0]);
+  REQUIRE(inner != nullptr);
+  REQUIRE(inner->children.size() == 1);
+  REQUIRE(AsParagraph(inner->children[0]) != nullptr);
 }
 
-TEST_CASE("Blockquote nesting level 0 with single >") {
+TEST_CASE("Single-level blockquote has no nested children") {
   auto blocks = MarkdownParser::Parse("> not nested");
   REQUIRE(blocks.size() == 1);
   const auto* bq = AsBlockquote(blocks[0]);
   REQUIRE(bq != nullptr);
-  REQUIRE(bq->nesting_level == 0);
+  REQUIRE(bq->children.size() == 1);
+  REQUIRE(AsBlockquote(bq->children[0]) == nullptr);
 }
 
 TEST_CASE("Blockquote stops at non-quote line") {
@@ -225,7 +239,10 @@ TEST_CASE("Unordered list item content") {
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
-  const auto* t = AsText(ul->items[0].children[0]);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "hello world");
 }
@@ -244,7 +261,10 @@ TEST_CASE("Ordered list with multi-digit numbers") {
   const auto* ol = AsOrderedList(blocks[0]);
   REQUIRE(ol != nullptr);
   REQUIRE(ol->items.size() == 1);
-  const auto* t = AsText(ol->items[0].children[0]);
+  REQUIRE(ol->start == 10);
+  const auto* p = AsParagraph(ol->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
   REQUIRE(t != nullptr);
   REQUIRE(t->content == "item");
 }
@@ -425,7 +445,10 @@ TEST_CASE("Inline formatting inside list items") {
   const auto* ul = AsUnorderedList(blocks[0]);
   REQUIRE(ul != nullptr);
   REQUIRE(ul->items[0].children.size() == 1);
-  const auto* b = AsBold(ul->items[0].children[0]);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* b = AsBold(p->children[0]);
   REQUIRE(b != nullptr);
   REQUIRE(b->content == "bold item");
 }
@@ -546,4 +569,344 @@ TEST_CASE("Table with header-only body is valid") {
 TEST_CASE("Column count mismatch rejects table") {
   auto blocks = MarkdownParser::Parse("| A | B |\n| - | - | - |\n| 1 | 2 |");
   REQUIRE(AsTable(blocks[0]) == nullptr);
+}
+
+TEST_CASE("Backslash escapes asterisk to literal text") {
+  auto blocks = MarkdownParser::Parse("\\*not bold\\*");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "*not bold*");
+}
+
+TEST_CASE("Backslash escapes backtick") {
+  auto blocks = MarkdownParser::Parse("\\`not code\\`");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "`not code`");
+}
+
+TEST_CASE("Backslash before non-escapable char is preserved") {
+  auto blocks = MarkdownParser::Parse("foo\\zbar");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "foo\\zbar");
+}
+
+TEST_CASE("Adjacent bold and italic do not bleed") {
+  auto blocks = MarkdownParser::Parse("**bold***italic*");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 2);
+  const auto* b = AsBold(p->children[0]);
+  REQUIRE(b != nullptr);
+  REQUIRE(b->content == "bold");
+  const auto* it = AsItalic(p->children[1]);
+  REQUIRE(it != nullptr);
+  REQUIRE(it->content == "italic");
+}
+
+TEST_CASE("Code span containing asterisks stays code") {
+  auto blocks = MarkdownParser::Parse("`**not bold**`");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ic = AsInlineCode(p->children[0]);
+  REQUIRE(ic != nullptr);
+  REQUIRE(ic->content == "**not bold**");
+}
+
+TEST_CASE("Double-backtick code span contains a single backtick") {
+  auto blocks = MarkdownParser::Parse("`` a`b ``");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ic = AsInlineCode(p->children[0]);
+  REQUIRE(ic != nullptr);
+  REQUIRE(ic->content == "a`b");
+}
+
+TEST_CASE("Link with parens in URL is balanced") {
+  auto blocks =
+      MarkdownParser::Parse("[wiki](https://en.wikipedia.org/wiki/Foo_(bar))");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* ln = AsLink(p->children[0]);
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->text == "wiki");
+  REQUIRE(ln->url == "https://en.wikipedia.org/wiki/Foo_(bar)");
+}
+
+TEST_CASE("Image syntax produces Image node") {
+  auto blocks = MarkdownParser::Parse("![logo](https://example.com/logo.png)");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* img = AsImage(p->children[0]);
+  REQUIRE(img != nullptr);
+  REQUIRE(img->alt == "logo");
+  REQUIRE(img->url == "https://example.com/logo.png");
+}
+
+TEST_CASE("Autolink in angle brackets") {
+  auto blocks = MarkdownParser::Parse("see <https://example.com> for details");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 3);
+  const auto* ln = AsLink(p->children[1]);
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->url == "https://example.com");
+  REQUIRE(ln->text == "https://example.com");
+}
+
+TEST_CASE("Bare https URL is autolinked") {
+  auto blocks = MarkdownParser::Parse("visit https://example.com today");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found = false;
+  for (const auto& node : p->children) {
+    const auto* ln = AsLink(node);
+    if (ln != nullptr && ln->url == "https://example.com") {
+      found = true;
+    }
+  }
+  REQUIRE(found);
+}
+
+TEST_CASE("Bare URL trailing punctuation is not part of URL") {
+  auto blocks = MarkdownParser::Parse("see https://example.com.");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  const Link* ln = nullptr;
+  for (const auto& node : p->children) {
+    ln = AsLink(node);
+    if (ln != nullptr) {
+      break;
+    }
+  }
+  REQUIRE(ln != nullptr);
+  REQUIRE(ln->url == "https://example.com");
+}
+
+TEST_CASE("Underscore inside word does not start emphasis") {
+  auto blocks = MarkdownParser::Parse("snake_case_name");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  REQUIRE(p->children.size() == 1);
+  const auto* t = AsText(p->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "snake_case_name");
+}
+
+TEST_CASE("Asterisk emphasis works inside words") {
+  auto blocks = MarkdownParser::Parse("foo*bar*baz");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_italic = false;
+  for (const auto& node : p->children) {
+    const auto* it = AsItalic(node);
+    if (it != nullptr && it->content == "bar") {
+      found_italic = true;
+    }
+  }
+  REQUIRE(found_italic);
+}
+
+TEST_CASE("Strikethrough requires double tilde") {
+  auto blocks = MarkdownParser::Parse("~single~ ~~double~~");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_strike = false;
+  for (const auto& node : p->children) {
+    const auto* s = AsStrikethrough(node);
+    if (s != nullptr && s->content == "double") {
+      found_strike = true;
+    }
+  }
+  REQUIRE(found_strike);
+}
+
+TEST_CASE("Emphasis with whitespace inside delimiter does not match") {
+  auto blocks = MarkdownParser::Parse("a * not emphasis * b");
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  for (const auto& node : p->children) {
+    REQUIRE(AsItalic(node) == nullptr);
+    REQUIRE(AsBold(node) == nullptr);
+  }
+}
+
+TEST_CASE("Nested unordered list parses two levels") {
+  auto blocks = MarkdownParser::Parse("- outer\n  - inner1\n  - inner2");
+  REQUIRE(blocks.size() == 1);
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 1);
+  REQUIRE(ul->items[0].children.size() == 2);
+  REQUIRE(AsParagraph(ul->items[0].children[0]) != nullptr);
+  const auto* nested = AsUnorderedList(ul->items[0].children[1]);
+  REQUIRE(nested != nullptr);
+  REQUIRE(nested->items.size() == 2);
+}
+
+TEST_CASE("Multi-line list item collects continuation paragraph") {
+  auto blocks = MarkdownParser::Parse("- first line\n  second line");
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 1);
+  REQUIRE(ul->items[0].children.size() == 1);
+  const auto* p = AsParagraph(ul->items[0].children[0]);
+  REQUIRE(p != nullptr);
+  bool saw_second = false;
+  for (const auto& node : p->children) {
+    const auto* t = AsText(node);
+    if (t != nullptr && t->content.find("second") != std::string::npos) {
+      saw_second = true;
+    }
+  }
+  REQUIRE(saw_second);
+}
+
+TEST_CASE("Task list checked and unchecked items") {
+  auto blocks = MarkdownParser::Parse("- [ ] todo\n- [x] done");
+  const auto* ul = AsUnorderedList(blocks[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 2);
+  REQUIRE(ul->items[0].task);
+  REQUIRE_FALSE(ul->items[0].checked);
+  REQUIRE(ul->items[1].task);
+  REQUIRE(ul->items[1].checked);
+}
+
+TEST_CASE("Blockquote can contain a code block") {
+  auto blocks = MarkdownParser::Parse("> ```\n> int x;\n> ```");
+  REQUIRE(blocks.size() == 1);
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->children.size() == 1);
+  const auto* cb = AsCodeBlock(bq->children[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->source == "int x;");
+}
+
+TEST_CASE("Blockquote can contain a list") {
+  auto blocks = MarkdownParser::Parse("> - one\n> - two");
+  const auto* bq = AsBlockquote(blocks[0]);
+  REQUIRE(bq != nullptr);
+  REQUIRE(bq->children.size() == 1);
+  const auto* ul = AsUnorderedList(bq->children[0]);
+  REQUIRE(ul != nullptr);
+  REQUIRE(ul->items.size() == 2);
+}
+
+TEST_CASE("Ordered list preserves starting number") {
+  auto blocks = MarkdownParser::Parse("3. three\n4. four");
+  const auto* ol = AsOrderedList(blocks[0]);
+  REQUIRE(ol != nullptr);
+  REQUIRE(ol->start == 3);
+  REQUIRE(ol->items.size() == 2);
+}
+
+TEST_CASE("Indented code block with 4 spaces") {
+  auto blocks = MarkdownParser::Parse("    int x = 0;\n    int y = 1;");
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->source == "int x = 0;\nint y = 1;");
+  REQUIRE(cb->language.empty());
+}
+
+TEST_CASE("Indented code does not interrupt paragraph") {
+  auto blocks = MarkdownParser::Parse("first line\n    not code");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Setext heading level 1 with ===") {
+  auto blocks = MarkdownParser::Parse("Title\n===");
+  REQUIRE(blocks.size() == 1);
+  const auto* h = AsHeading(blocks[0]);
+  REQUIRE(h != nullptr);
+  REQUIRE(h->level == 1);
+  const auto* t = AsText(h->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "Title");
+}
+
+TEST_CASE("Setext heading level 2 with ---") {
+  auto blocks = MarkdownParser::Parse("Subtitle\n---");
+  REQUIRE(blocks.size() == 1);
+  const auto* h = AsHeading(blocks[0]);
+  REQUIRE(h != nullptr);
+  REQUIRE(h->level == 2);
+}
+
+TEST_CASE("Setext does not collide with horizontal rule") {
+  auto blocks = MarkdownParser::Parse("para\n\n---\n\nafter");
+  REQUIRE(blocks.size() == 3);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+  REQUIRE(AsHorizontalRule(blocks[1]) != nullptr);
+  REQUIRE(AsParagraph(blocks[2]) != nullptr);
+}
+
+TEST_CASE("Hard line break with two trailing spaces") {
+  auto blocks = MarkdownParser::Parse("line one  \nline two");
+  REQUIRE(blocks.size() == 1);
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_break = false;
+  for (const auto& node : p->children) {
+    if (std::holds_alternative<LineBreak>(node)) {
+      found_break = true;
+    }
+  }
+  REQUIRE(found_break);
+}
+
+TEST_CASE("Hard line break with trailing backslash") {
+  auto blocks = MarkdownParser::Parse("line one\\\nline two");
+  REQUIRE(blocks.size() == 1);
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_break = false;
+  for (const auto& node : p->children) {
+    if (std::holds_alternative<LineBreak>(node)) {
+      found_break = true;
+    }
+  }
+  REQUIRE(found_break);
+}
+
+TEST_CASE("Streaming mode marks unclosed code fence as partial") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\nint y = 1;",
+                                      ParseOptions{.streaming = true});
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->partial);
+  REQUIRE(cb->source == "int x = 0;\nint y = 1;");
+}
+
+TEST_CASE("Streaming mode marks closed code fence as complete") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\n```",
+                                      ParseOptions{.streaming = true});
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE_FALSE(cb->partial);
+}
+
+TEST_CASE("Default mode never marks code fence as partial") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;");
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE_FALSE(cb->partial);
 }
