@@ -1,4 +1,5 @@
 #include "app/chat_event_bridge.hpp"
+#include "presentation/chat_ui.hpp"
 #include "tool_call/types.hpp"
 
 #include <variant>

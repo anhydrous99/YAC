@@ -3,9 +3,8 @@
 #include "chat/types.hpp"
 #include "tool_call/lsp_client.hpp"
 #include "tool_call/types.hpp"
+#include "tool_call/workspace_filesystem.hpp"
 
-#include <filesystem>
-#include <functional>
 #include <memory>
 #include <stop_token>
 #include <string>
@@ -38,27 +37,7 @@ class ToolExecutor {
                                             std::stop_token stop_token) const;
 
  private:
-  [[nodiscard]] ToolExecutionResult ExecuteFileWrite(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteListDir(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteLspDiagnostics(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteLspReferences(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteLspGotoDefinition(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteLspRename(
-      const chat::ToolCallRequest& request) const;
-  [[nodiscard]] ToolExecutionResult ExecuteLspSymbols(
-      const chat::ToolCallRequest& request) const;
-
-  [[nodiscard]] std::filesystem::path ResolveWorkspacePath(
-      const std::string& path) const;
-  [[nodiscard]] std::string DisplayPath(
-      const std::filesystem::path& path) const;
-
-  std::filesystem::path workspace_root_;
+  WorkspaceFilesystem workspace_filesystem_;
   std::shared_ptr<ILspClient> lsp_client_;
 };
 

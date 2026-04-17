@@ -59,6 +59,36 @@ class FakeLspClient : public ILspClient {
   }
 };
 
+class ErrorRenameLspClient : public FakeLspClient {
+ public:
+  LspRenameCall Rename(const std::string& file_path, int line, int character,
+                       const std::string& old_name,
+                       const std::string& new_name) override {
+    return LspRenameCall{.file_path = file_path,
+                         .line = line,
+                         .character = character,
+                         .old_name = old_name,
+                         .new_name = new_name,
+                         .is_error = true,
+                         .error = "rename failed"};
+  }
+};
+
+class OutsideWorkspaceRenameLspClient : public FakeLspClient {
+ public:
+  LspRenameCall Rename(const std::string& file_path, int line, int character,
+                       const std::string& old_name,
+                       const std::string& new_name) override {
+    return LspRenameCall{.file_path = file_path,
+                         .line = line,
+                         .character = character,
+                         .old_name = old_name,
+                         .new_name = new_name,
+                         .changes_count = 1,
+                         .changes = {{"../outside.cpp", 1, 1, 1, 4, new_name}}};
+  }
+};
+
 std::filesystem::path TempRoot(const std::string& name) {
   auto path =
       std::filesystem::temp_directory_path() / ("yac_tool_executor_" + name);
@@ -154,5 +184,73 @@ TEST_CASE("ToolExecutor applies LSP rename edits after approval") {
 
   REQUIRE_FALSE(result.is_error);
   REQUIRE(ReadFile(root / "rename.cpp") == "int next = 0;\nnext++;\n");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor reports cancelled execution before running tool") {
+  auto root = TempRoot("cancelled");
+  auto executor = MakeExecutor(root);
+  ToolCallRequest request{
+      .id = "call_1", .name = "list_dir", .arguments_json = R"({"path":"."})"};
+  auto prepared = ToolExecutor::Prepare(request);
+  std::stop_source stop_source;
+  stop_source.request_stop();
+
+  auto result = executor.Execute(prepared, stop_source.get_token());
+
+  REQUIRE(result.is_error);
+  const auto& call = std::get<ListDirCall>(result.block);
+  REQUIRE(call.is_error);
+  REQUIRE(call.error == "Tool execution cancelled.");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor preserves LSP rename errors from the client seam") {
+  auto root = TempRoot("rename_error");
+  {
+    std::ofstream file(root / "rename.cpp");
+    file << "int old = 0;\nold++;\n";
+  }
+  ToolExecutor executor(root, std::make_shared<ErrorRenameLspClient>());
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "lsp_rename",
+      .arguments_json =
+          R"({"file_path":"rename.cpp","line":1,"character":5,"old_name":"old","new_name":"next"})"};
+
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
+
+  REQUIRE(result.is_error);
+  const auto& call = std::get<LspRenameCall>(result.block);
+  REQUIRE(call.is_error);
+  REQUIRE(call.error == "rename failed");
+  REQUIRE(ReadFile(root / "rename.cpp") == "int old = 0;\nold++;\n");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor rejects LSP rename edits outside the workspace") {
+  auto root = TempRoot("rename_outside");
+  {
+    std::ofstream file(root / "rename.cpp");
+    file << "old\n";
+  }
+  ToolExecutor executor(root,
+                        std::make_shared<OutsideWorkspaceRenameLspClient>());
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "lsp_rename",
+      .arguments_json =
+          R"({"file_path":"rename.cpp","line":1,"character":1,"old_name":"old","new_name":"next"})"};
+
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
+
+  REQUIRE(result.is_error);
+  const auto& call = std::get<LspRenameCall>(result.block);
+  REQUIRE(call.is_error);
+  REQUIRE(call.error.find("Path is outside the workspace") !=
+          std::string::npos);
+  REQUIRE(ReadFile(root / "rename.cpp") == "old\n");
   std::filesystem::remove_all(root);
 }

@@ -56,13 +56,13 @@ struct ProviderPreset {
 };
 
 const std::unordered_map<std::string, ProviderPreset>& ProviderPresets() {
-  static const std::unordered_map<std::string, ProviderPreset> kPresets = {
+  static const std::unordered_map<std::string, ProviderPreset> presets = {
       {"zai",
        {.model = "glm-5.1",
         .base_url = "https://api.z.ai/api/coding/paas/v4",
         .api_key_env = "ZAI_API_KEY"}},
   };
-  return kPresets;
+  return presets;
 }
 
 void ApplyProviderDefaults(ChatConfig& config) {

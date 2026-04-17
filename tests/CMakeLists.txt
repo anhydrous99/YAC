@@ -8,7 +8,7 @@ function(yac_add_test name source)
     yac_service
     Catch2::Catch2WithMain
   )
-  catch_discover_tests(${name})
+  catch_discover_tests(${name} TEST_PREFIX "${name}::")
 endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
@@ -33,6 +33,7 @@ yac_add_test(yac_test_time_util        test_time_util.cpp)
 yac_add_test(yac_test_scroll_math      test_scroll_math.cpp)
 yac_add_test(yac_test_chat_service     test_chat_service.cpp)
 yac_add_test(yac_test_chat_event_bridge test_chat_event_bridge.cpp)
+yac_add_test(yac_test_model_discovery  test_model_discovery.cpp)
 yac_add_test(yac_test_openai_chat_provider test_openai_chat_provider.cpp)
 yac_add_test(yac_test_slash_command_registry test_slash_command_registry.cpp)
 yac_add_test(yac_test_slash_command_menu test_slash_command_menu.cpp)

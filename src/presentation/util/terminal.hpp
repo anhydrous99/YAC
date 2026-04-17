@@ -6,8 +6,7 @@
 namespace yac::presentation::terminal {
 
 inline void SetTitle(std::string_view title) {
-  std::printf("\033]0;%.*s\007", static_cast<int>(title.size()),
-              title.data());
+  std::printf("\033]0;%.*s\007", static_cast<int>(title.size()), title.data());
   std::fflush(stdout);
 }
 

@@ -311,6 +311,99 @@ TEST_CASE("Slash clear command dispatches without sending a message") {
   REQUIRE_FALSE(sent);
 }
 
+TEST_CASE("Slash menu Return dismisses unmatched command before raw submit") {
+  bool sent = false;
+  std::string captured;
+  ChatUI ui([&](const std::string& msg) {
+    sent = true;
+    captured = msg;
+  });
+  SlashCommandRegistry registry;
+  RegisterBuiltinSlashCommands(registry);
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/does-not-exist");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE_FALSE(sent);
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(sent);
+  REQUIRE(captured == "/does-not-exist");
+}
+
+TEST_CASE("Slash menu Escape preserves raw slash input for later submit") {
+  bool sent = false;
+  std::string captured;
+  ChatUI ui([&](const std::string& msg) {
+    sent = true;
+    captured = msg;
+  });
+  SlashCommandRegistry registry;
+  RegisterBuiltinSlashCommands(registry);
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/quit-later");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Escape));
+  REQUIRE_FALSE(sent);
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(sent);
+  REQUIRE(captured == "/quit-later");
+}
+
+TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {
+  bool sent = false;
+  int approval_calls = 0;
+  std::string approval_id;
+  bool approved = true;
+  ChatUI ui([&](const std::string&) { sent = true; });
+  ui.SetOnToolApproval([&](const std::string& id, bool value) {
+    ++approval_calls;
+    approval_id = id;
+    approved = value;
+  });
+  auto component = ui.Build();
+
+  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Character('x')));
+  REQUIRE(approval_calls == 0);
+  REQUIRE_FALSE(sent);
+
+  REQUIRE(component->OnEvent(ftxui::Event::Escape));
+  REQUIRE(approval_calls == 1);
+  REQUIRE(approval_id == "approval-1");
+  REQUIRE_FALSE(approved);
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(approval_calls == 1);
+  REQUIRE_FALSE(sent);
+}
+
+TEST_CASE("Tool approval modal approves on uppercase Y") {
+  int approval_calls = 0;
+  std::string approval_id;
+  bool approved = false;
+  ChatUI ui;
+  ui.SetOnToolApproval([&](const std::string& id, bool value) {
+    ++approval_calls;
+    approval_id = id;
+    approved = value;
+  });
+  auto component = ui.Build();
+
+  ui.ShowToolApproval("approval-2", "lsp_rename", "Rename symbol");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Character('Y')));
+  REQUIRE(approval_calls == 1);
+  REQUIRE(approval_id == "approval-2");
+  REQUIRE(approved);
+}
+
 namespace {
 
 ftxui::Event MakeHomeXterm() {

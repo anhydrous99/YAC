@@ -1,25 +1,17 @@
 #include "chat_ui.hpp"
 
 #include "collapsible.hpp"
-#include "command_palette.hpp"
-#include "dialog.hpp"
 #include "ftxui/component/app.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/component_options.hpp"
 #include "ftxui/component/event.hpp"
-#include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
-#include "slash_command_menu.hpp"
 #include "theme.hpp"
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <functional>
-#include <memory>
-#include <string_view>
 #include <utility>
 
 namespace yac::presentation {
@@ -27,8 +19,6 @@ namespace yac::presentation {
 inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
-
-constexpr auto kThinkingFrameDuration = std::chrono::milliseconds(260);
 
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
@@ -100,81 +90,32 @@ class SlashMenuInputWrapper : public ftxui::ComponentBase {
   std::function<void()> post_handler_;
 };
 
-bool IsAltEnter(const ftxui::Event& event) {
-  if (event.is_mouse() || event.input().empty()) {
-    return false;
-  }
-  const auto& seq = event.input();
-  return seq == "\x1b\r" || seq == "\x1b\n";
-}
-
-bool IsShiftEnter(const ftxui::Event& event) {
-  if (event.is_mouse() || event.input().empty()) {
-    return false;
-  }
-  const auto& seq = event.input();
-  return seq == "\x1b[13;2~" || seq == "\x1b[27;2;13~" || seq == "\x1b[13;2u";
-}
-
-bool IsCtrlEnter(const ftxui::Event& event) {
-  if (event.is_mouse() || event.input().empty()) {
-    return false;
-  }
-  const auto& seq = event.input();
-  return seq == "\x1b[13;5~" || seq == "\x1b[27;5;13~" || seq == "\x1b[13;5u";
-}
-
-bool IsHome(const ftxui::Event& event) {
-  if (event.is_mouse() || event.input().empty()) {
-    return false;
-  }
-  const auto& seq = event.input();
-  return seq == "\x1b[H" || seq == "\x1b[1~" || seq == "\x1bOH";
-}
-
-bool IsEnd(const ftxui::Event& event) {
-  if (event.is_mouse() || event.input().empty()) {
-    return false;
-  }
-  const auto& seq = event.input();
-  return seq == "\x1b[F" || seq == "\x1b[4~" || seq == "\x1bOF";
-}
-
 }  // namespace
 
-struct ChatUI::AnimationState {
-  std::atomic_bool alive = true;
-};
-
 ChatUI::ChatUI()
-    : on_send_([](const std::string&) {}),
-      animation_state_(std::make_shared<AnimationState>()) {}
+    : input_controller_(composer_, slash_commands_),
+      on_send_([](const std::string&) {}) {}
 
 ChatUI::ChatUI(OnSendCallback on_send)
-    : on_send_(std::move(on_send)),
-      animation_state_(std::make_shared<AnimationState>()) {}
+    : input_controller_(composer_, slash_commands_),
+      on_send_(std::move(on_send)) {}
 
-ChatUI::~ChatUI() {
-  if (animation_state_) {
-    animation_state_->alive.store(false, std::memory_order_release);
-  }
-  StopThinkingAnimation();
-}
+ChatUI::~ChatUI() = default;
 
 void ChatUI::SetOnSend(OnSendCallback on_send) {
   on_send_ = std::move(on_send);
 }
 
 void ChatUI::SetOnCommand(OnCommandCallback on_command) {
-  on_command_ = std::move(on_command);
+  overlay_state_.SetOnCommand(std::move(on_command));
 }
 
 void ChatUI::SetOnToolApproval(OnToolApprovalCallback on_tool_approval) {
-  on_tool_approval_ = std::move(on_tool_approval);
+  overlay_state_.SetOnToolApproval(std::move(on_tool_approval));
 }
 
 void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
-  ui_task_runner_ = std::move(ui_task_runner);
+  thinking_animation_.SetUiTaskRunner(std::move(ui_task_runner));
   SyncThinkingAnimation();
 }
 
@@ -192,12 +133,13 @@ ftxui::Component ChatUI::Build() {
                                 ftxui::color(k_theme.role.agent) | ftxui::bold);
     }
     footer_elements.push_back(ftxui::filler());
-    if (!provider_id_.empty() || !model_.empty()) {
-      auto provider_model = provider_id_;
-      if (!provider_model.empty() && !model_.empty()) {
+    if (!overlay_state_.ProviderId().empty() ||
+        !overlay_state_.Model().empty()) {
+      auto provider_model = overlay_state_.ProviderId();
+      if (!provider_model.empty() && !overlay_state_.Model().empty()) {
         provider_model += " / ";
       }
-      provider_model += model_;
+      provider_model += overlay_state_.Model();
       footer_elements.push_back(ftxui::text("  " + provider_model) |
                                 ftxui::color(k_theme.chrome.dim_text) |
                                 ftxui::dim);
@@ -222,16 +164,6 @@ ftxui::Component ChatUI::Build() {
 
     auto input_height = CalculateInputHeight();
 
-    ftxui::Element slash_menu;
-    if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
-      auto filtered =
-          composer_.FilteredSlashIndices(slash_commands_.Commands());
-      int term_width = ftxui::Terminal::Size().dimx;
-      slash_menu = RenderSlashCommandMenu(slash_commands_.Commands(), filtered,
-                                          composer_.SlashMenuSelectedIndex(),
-                                          term_width - 4);
-    }
-
     ftxui::Elements footer_rows;
     footer_rows.push_back(ftxui::text("") |
                           ftxui::bgcolor(k_theme.chrome.dim_text));
@@ -250,7 +182,8 @@ ftxui::Component ChatUI::Build() {
     main_parts.push_back(footer_with_hints |
                          ftxui::bgcolor(k_theme.cards.agent_bg));
     if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
-      main_parts.push_back(slash_menu);
+      main_parts.push_back(
+          input_controller_.RenderSlashMenu(ftxui::Terminal::Size().dimx));
     }
     main_parts.push_back(
         input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
@@ -259,85 +192,7 @@ ftxui::Component ChatUI::Build() {
     return ftxui::vbox(std::move(main_parts));
   });
 
-  auto sync_visibility = [this] {
-    show_palette_ = palette_level_ >= 0;
-    show_model_palette_ = palette_level_ >= 1;
-  };
-
-  auto on_select = [this, sync_visibility](int index) {
-    if (index < 0 || static_cast<size_t>(index) >= commands_.size()) {
-      return;
-    }
-    if (commands_[index].id == kSwitchModelCommandId) {
-      palette_level_ = 1;
-      sync_visibility();
-      return;
-    }
-    palette_level_ = -1;
-    sync_visibility();
-    if (on_command_) {
-      on_command_(commands_[index].id);
-    }
-  };
-  auto on_model_select = [this, sync_visibility](int index) {
-    if (index >= 0 && static_cast<size_t>(index) < model_commands_.size() &&
-        on_command_) {
-      on_command_(model_commands_[index].id);
-    }
-    palette_level_ = -1;
-    sync_visibility();
-  };
-
-  auto palette = CommandPalette(commands_, on_select, &show_palette_);
-  auto dialog = DialogPanel("Command Palette", palette, &show_palette_);
-  auto main_component = ftxui::Modal(main_ui, dialog, &show_palette_);
-  auto model_palette =
-      CommandPalette(model_commands_, on_model_select, &show_model_palette_);
-  auto modal_component =
-      DialogPanel("Switch Model", model_palette, &show_model_palette_);
-  auto main_with_model_picker =
-      ftxui::Modal(main_component, modal_component, &show_model_palette_);
-  auto approval_content = ftxui::Renderer([this] {
-    return ftxui::vbox({
-        ftxui::paragraph("Tool: " + approval_tool_name_) |
-            ftxui::color(k_theme.dialog.input_fg),
-        ftxui::text(""),
-        ftxui::paragraph(approval_prompt_) |
-            ftxui::color(k_theme.chrome.body_text),
-        ftxui::text(""),
-        ftxui::text(" Enter/Y=Approve  N/Esc=Reject") |
-            ftxui::color(k_theme.dialog.dim_text),
-    });
-  });
-  auto tool_approval_panel =
-      DialogPanel("Approve Tool", approval_content, &show_tool_approval_);
-  auto approval_modal = ftxui::Modal(main_with_model_picker,
-                                     tool_approval_panel, &show_tool_approval_);
-
-  return ftxui::CatchEvent(approval_modal,
-                           [this, sync_visibility](const ftxui::Event& event) {
-                             if (show_tool_approval_) {
-                               if (event == ftxui::Event::Return ||
-                                   event == ftxui::Event::Character('y') ||
-                                   event == ftxui::Event::Character('Y')) {
-                                 DispatchToolApproval(true);
-                                 return true;
-                               }
-                               if (event == ftxui::Event::Escape ||
-                                   event == ftxui::Event::Character('n') ||
-                                   event == ftxui::Event::Character('N')) {
-                                 DispatchToolApproval(false);
-                                 return true;
-                               }
-                               return true;
-                             }
-                             if (event.input() == "\x10") {
-                               palette_level_ = 0;
-                               sync_visibility();
-                               return true;
-                             }
-                             return false;
-                           });
+  return overlay_state_.Wrap(main_ui);
 }
 
 MessageId ChatUI::AddMessage(Sender sender, std::string content,
@@ -345,11 +200,9 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
   auto id = session_.AddMessage(sender, std::move(content), status);
   render_cache_.ResetContent(id);
   if (sender == Sender::Agent && status == MessageStatus::Active) {
-    thinking_frame_ = 0;
+    thinking_animation_.ResetFrame();
   }
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncThinkingAnimation();
   return id;
 }
@@ -360,11 +213,9 @@ MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
       session_.AddMessageWithId(id, sender, std::move(content), status);
   render_cache_.ResetContent(added_id);
   if (sender == Sender::Agent && status == MessageStatus::Active) {
-    thinking_frame_ = 0;
+    thinking_animation_.ResetFrame();
   }
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncMessageComponents();
   SyncThinkingAnimation();
   return added_id;
@@ -372,11 +223,9 @@ MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
 
 MessageId ChatUI::StartAgentMessage() {
   auto id = session_.AddMessage(Sender::Agent, "", MessageStatus::Active);
-  thinking_frame_ = 0;
+  thinking_animation_.ResetFrame();
   render_cache_.ResetContent(id);
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncMessageComponents();
   SyncThinkingAnimation();
   return id;
@@ -392,16 +241,14 @@ void ChatUI::AppendToAgentMessage(MessageId id, std::string delta) {
   }
   session_.AppendToAgentMessage(id, std::move(delta));
   render_cache_.ResetContent(id);
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncMessageComponents();
   SyncThinkingAnimation();
 }
 
 void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
   if (status == MessageStatus::Active) {
-    thinking_frame_ = 0;
+    thinking_animation_.ResetFrame();
   }
   session_.SetMessageStatus(id, status);
   render_cache_.ResetElement(id);
@@ -411,9 +258,7 @@ void ChatUI::SetMessageStatus(MessageId id, MessageStatus status) {
 void ChatUI::AddToolCallMessage(::yac::tool_call::ToolCallBlock block) {
   auto id = session_.AddToolCallMessage(std::move(block));
   render_cache_.ResetContent(id);
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncMessageComponents();
 }
 
@@ -422,9 +267,7 @@ void ChatUI::AddToolCallMessageWithId(MessageId id,
                                       MessageStatus status) {
   session_.AddToolCallMessageWithId(id, std::move(block), status);
   render_cache_.ResetContent(id);
-  if (!scrollbar_dragging_) {
-    follow_tail_ = true;
-  }
+  scroll_state_.OnMessagesChanged();
   SyncMessageComponents();
 }
 
@@ -438,18 +281,16 @@ void ChatUI::UpdateToolCallMessage(MessageId id,
 
 void ChatUI::ShowToolApproval(std::string approval_id, std::string tool_name,
                               std::string prompt) {
-  approval_id_ = std::move(approval_id);
-  approval_tool_name_ = std::move(tool_name);
-  approval_prompt_ = std::move(prompt);
-  show_tool_approval_ = true;
+  overlay_state_.ShowToolApproval(std::move(approval_id), std::move(tool_name),
+                                  std::move(prompt));
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
-  commands_ = std::move(commands);
+  overlay_state_.SetCommands(std::move(commands));
 }
 
 void ChatUI::SetModelCommands(std::vector<Command> commands) {
-  model_commands_ = std::move(commands);
+  overlay_state_.SetModelCommands(std::move(commands));
 }
 
 void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
@@ -457,8 +298,7 @@ void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
 }
 
 void ChatUI::SetProviderModel(std::string provider_id, std::string model) {
-  provider_id_ = std::move(provider_id);
-  model_ = std::move(model);
+  overlay_state_.SetProviderModel(std::move(provider_id), std::move(model));
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -473,7 +313,7 @@ void ChatUI::ClearMessages() {
   session_.ClearMessages();
   render_cache_.Clear();
   message_components_.clear();
-  messages_seen_count_ = 0;
+  scroll_state_.Clear();
   SyncThinkingAnimation();
 }
 
@@ -490,11 +330,11 @@ bool ChatUI::IsTyping() const {
 }
 
 std::string ChatUI::ProviderId() const {
-  return provider_id_;
+  return overlay_state_.ProviderId();
 }
 
 std::string ChatUI::Model() const {
-  return model_;
+  return overlay_state_.Model();
 }
 
 void ChatUI::SubmitMessage() {
@@ -529,7 +369,7 @@ ftxui::Component ChatUI::BuildInput() {
   return ftxui::Make<SlashMenuInputWrapper>(
       input,
       [this](const ftxui::Event& event) { return HandleInputEvent(event); },
-      [this] { UpdateSlashMenuState(); });
+      [this] { input_controller_.UpdateSlashMenuState(); });
 }
 
 int ChatUI::CalculateInputHeight() const {
@@ -541,47 +381,8 @@ void ChatUI::InsertNewline() {
 }
 
 bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
-  if (composer_.IsSlashMenuActive()) {
-    if (event == ftxui::Event::Escape) {
-      composer_.DismissSlashMenu();
-      return true;
-    }
-    if (event == ftxui::Event::Return) {
-      DispatchSlashMenuSelection();
-      return true;
-    }
-    if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Tab) {
-      auto filtered =
-          composer_.FilteredSlashIndices(slash_commands_.Commands());
-      if (!filtered.empty()) {
-        int current = composer_.SlashMenuSelectedIndex();
-        int next = (current - 1 + static_cast<int>(filtered.size())) %
-                   static_cast<int>(filtered.size());
-        composer_.SetSlashMenuSelectedIndex(next);
-      }
-      return true;
-    }
-    if (event == ftxui::Event::ArrowDown) {
-      auto filtered =
-          composer_.FilteredSlashIndices(slash_commands_.Commands());
-      if (!filtered.empty()) {
-        int current = composer_.SlashMenuSelectedIndex();
-        int next = (current + 1) % static_cast<int>(filtered.size());
-        composer_.SetSlashMenuSelectedIndex(next);
-      }
-      return true;
-    }
-  }
-
-  if (event == ftxui::Event::Return) {
-    SubmitMessage();
-    return true;
-  }
-  if (IsAltEnter(event) || IsShiftEnter(event) || IsCtrlEnter(event)) {
-    InsertNewline();
-    return true;
-  }
-  return false;
+  return input_controller_.HandleEvent(
+      event, [this] { SubmitMessage(); }, [this] { InsertNewline(); });
 }
 
 ftxui::Component ChatUI::BuildMessageList() {
@@ -597,33 +398,30 @@ ftxui::Component ChatUI::BuildMessageList() {
         message_stack->Render() | ftxui::color(k_theme.chrome.dim_text);
 
     msg_element->ComputeRequirement();
-    content_height_ = msg_element->requirement().min_y;
-    int viewport_height = ViewportHeight();
-    if (follow_tail_) {
-      scroll_offset_y_ = MaxScrollOffset();
-    } else {
-      ClampScrollOffset();
-    }
+    scroll_state_.SetContentHeight(msg_element->requirement().min_y);
+    int viewport_height = scroll_state_.ViewportHeight();
+    scroll_state_.ApplyMeasuredLayout();
 
     ftxui::Element focused_messages;
-    if (follow_tail_) {
+    if (scroll_state_.FollowTail()) {
       focused_messages = msg_element | ftxui::focusPositionRelative(0.0F, 1.0F);
     } else {
-      int focus_y =
-          util::CalculateFrameFocusY(scroll_offset_y_, viewport_height);
+      int focus_y = util::CalculateFrameFocusY(scroll_state_.ScrollOffsetY(),
+                                               viewport_height);
       focused_messages = msg_element | ftxui::focusPosition(0, focus_y);
     }
     auto messages = focused_messages | ftxui::frame |
-                    ftxui::reflect(visible_box_) | ftxui::flex;
+                    ftxui::reflect(scroll_state_.VisibleBox()) | ftxui::flex;
 
     auto scrollbar = ftxui::emptyElement();
-    if (util::ShouldShowScrollbar(content_height_, viewport_height)) {
+    if (util::ShouldShowScrollbar(scroll_state_.ContentHeight(),
+                                  viewport_height)) {
       int track_height = viewport_height;
-      int thumb_size = util::CalculateThumbSize(content_height_,
+      int thumb_size = util::CalculateThumbSize(scroll_state_.ContentHeight(),
                                                 viewport_height, track_height);
       int thumb_pos = util::CalculateThumbPosition(
-          scroll_offset_y_, content_height_, viewport_height, track_height,
-          thumb_size);
+          scroll_state_.ScrollOffsetY(), scroll_state_.ContentHeight(),
+          viewport_height, track_height, thumb_size);
       ftxui::Elements track_rows;
       for (int i = 0; i < track_height; ++i) {
         if (i >= thumb_pos && i < thumb_pos + thumb_size) {
@@ -634,8 +432,8 @@ ftxui::Component ChatUI::BuildMessageList() {
                                ftxui::bgcolor(k_theme.cards.agent_bg));
         }
       }
-      scrollbar =
-          ftxui::vbox(std::move(track_rows)) | ftxui::reflect(scrollbar_box_);
+      scrollbar = ftxui::vbox(std::move(track_rows)) |
+                  ftxui::reflect(scroll_state_.ScrollbarBox());
     }
 
     auto message_area = ftxui::hbox({
@@ -643,8 +441,8 @@ ftxui::Component ChatUI::BuildMessageList() {
         scrollbar,
     });
 
-    if (!follow_tail_ && session_.MessageCount() > 0) {
-      auto new_count = session_.MessageCount() - messages_seen_count_;
+    if (!scroll_state_.FollowTail() && session_.MessageCount() > 0) {
+      auto new_count = scroll_state_.NewMessageCount(session_.MessageCount());
       std::string label =
           new_count > 0 ? " \xe2\x86\x93 " + std::to_string(new_count) + " new "
                         : " \xe2\x86\x93 ";
@@ -662,98 +460,7 @@ ftxui::Component ChatUI::BuildMessageList() {
   });
 
   return ftxui::CatchEvent(content, [this](ftxui::Event event) {
-    if (event.is_mouse()) {
-      if (captured_mouse_) {
-        if (event.mouse().motion == ftxui::Mouse::Released) {
-          captured_mouse_ = nullptr;
-          scrollbar_dragging_ = false;
-          return true;
-        }
-        int content_height = content_height_;
-        int viewport_height = ViewportHeight();
-        if (content_height > 0 && viewport_height > 0 &&
-            scrollbar_box_.y_max >= scrollbar_box_.y_min) {
-          int track_height = viewport_height;
-          int thumb_size = util::CalculateThumbSize(
-              content_height, viewport_height, track_height);
-          int track_usable = track_height - thumb_size;
-          if (track_usable > 0) {
-            int mouse_y =
-                event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
-            float ratio =
-                static_cast<float>(mouse_y) / static_cast<float>(track_usable);
-            ratio = std::max(0.0F, std::min(1.0F, ratio));
-            scroll_offset_y_ = util::CalculateScrollOffsetFromRatio(
-                ratio, content_height, viewport_height);
-            follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
-          }
-        }
-        return true;
-      }
-
-      if (event.mouse().button == ftxui::Mouse::Left &&
-          event.mouse().motion == ftxui::Mouse::Pressed) {
-        if (scrollbar_box_.Contain(event.mouse().x, event.mouse().y)) {
-          if (event.screen_ != nullptr) {
-            captured_mouse_ = event.screen_->CaptureMouse();
-          }
-          if (captured_mouse_) {
-            scrollbar_dragging_ = true;
-            int content_height = content_height_;
-            int viewport_height = ViewportHeight();
-            if (content_height > 0 && viewport_height > 0 &&
-                scrollbar_box_.y_max >= scrollbar_box_.y_min) {
-              int track_height = viewport_height;
-              int thumb_size = util::CalculateThumbSize(
-                  content_height, viewport_height, track_height);
-              int track_usable = track_height - thumb_size;
-              if (track_usable > 0) {
-                int mouse_y =
-                    event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
-                float ratio = static_cast<float>(mouse_y) /
-                              static_cast<float>(track_usable);
-                ratio = std::max(0.0F, std::min(1.0F, ratio));
-                scroll_offset_y_ = util::CalculateScrollOffsetFromRatio(
-                    ratio, content_height, viewport_height);
-                follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
-              }
-            }
-            return true;
-          }
-        }
-      }
-
-      switch (event.mouse().button) {
-        case ftxui::Mouse::WheelUp:
-          ScrollUp(3);
-          return true;
-        case ftxui::Mouse::WheelDown:
-          ScrollDown(3);
-          return true;
-        default:
-          break;
-      }
-    }
-
-    if (event == ftxui::Event::PageUp) {
-      ScrollUp(PageLines());
-      return true;
-    }
-    if (event == ftxui::Event::PageDown) {
-      ScrollDown(PageLines());
-      return true;
-    }
-    if (IsHome(event)) {
-      scroll_offset_y_ = 0;
-      follow_tail_ = false;
-      return true;
-    }
-    if (IsEnd(event)) {
-      scroll_offset_y_ = MaxScrollOffset();
-      follow_tail_ = true;
-      return true;
-    }
-    return false;
+    return scroll_state_.HandleEvent(event, session_.MessageCount());
   });
 }
 
@@ -784,7 +491,7 @@ ftxui::Element ChatUI::RenderMessages() const {
   return MessageRenderer::RenderAll(
       session_.Messages(), render_cache_,
       RenderContext{.terminal_width = current_width,
-                    .thinking_frame = thinking_frame_});
+                    .thinking_frame = thinking_animation_.Frame()});
 }
 
 void ChatUI::SyncMessageComponents() {
@@ -814,8 +521,9 @@ void ChatUI::SyncMessageComponents() {
           return ftxui::text("Tool call unavailable");
         }
         return tool_call::ToolCallRenderer::Render(
-            *tool_call, RenderContext{.terminal_width = last_terminal_width_,
-                                      .thinking_frame = thinking_frame_});
+            *tool_call,
+            RenderContext{.terminal_width = last_terminal_width_,
+                          .thinking_frame = thinking_animation_.Frame()});
       });
       const auto* block = messages[index].ToolCall();
       auto summary =
@@ -835,33 +543,9 @@ void ChatUI::SyncMessageComponents() {
       return MessageRenderer::Render(
           message, render_cache_.For(message.id),
           RenderContext{.terminal_width = last_terminal_width_,
-                        .thinking_frame = thinking_frame_});
+                        .thinking_frame = thinking_animation_.Frame()});
     }));
   }
-}
-
-int ChatUI::PageLines() const {
-  return ViewportHeight();
-}
-
-void ChatUI::ScrollUp(int lines) {
-  scroll_offset_y_ = std::max(0, scroll_offset_y_ - lines);
-  follow_tail_ = false;
-  messages_seen_count_ = session_.MessageCount();
-}
-
-void ChatUI::ScrollDown(int lines) {
-  scroll_offset_y_ = std::min(scroll_offset_y_ + lines, MaxScrollOffset());
-  follow_tail_ = scroll_offset_y_ >= MaxScrollOffset();
-}
-
-int ChatUI::ViewportHeight() const {
-  int visible = visible_box_.y_max - visible_box_.y_min + 1;
-  return std::max(1, visible);
-}
-
-int ChatUI::MaxScrollOffset() const {
-  return util::CalculateMaxScrollOffset(content_height_, ViewportHeight());
 }
 
 bool ChatUI::HasActiveAgentMessage() const {
@@ -881,140 +565,8 @@ bool ChatUI::HasPendingAgentMessage() const {
                      });
 }
 
-void ChatUI::AdvanceThinkingFrame() {
-  thinking_frame_ = (thinking_frame_ + 1) % 10;
-}
-
 void ChatUI::SyncThinkingAnimation() {
-  if (HasPendingAgentMessage()) {
-    StartThinkingAnimation();
-    return;
-  }
-  StopThinkingAnimation();
-}
-
-void ChatUI::StartThinkingAnimation() {
-  if (thinking_animation_worker_.joinable() || !ui_task_runner_ ||
-      !animation_state_) {
-    return;
-  }
-
-  auto ui_task_runner = ui_task_runner_;
-  auto animation_state = animation_state_;
-  thinking_animation_worker_ =
-      std::jthread([this, ui_task_runner = std::move(ui_task_runner),
-                    animation_state = std::move(animation_state)](
-                       std::stop_token stop_token) mutable {
-        while (!stop_token.stop_requested()) {
-          std::unique_lock lock(thinking_animation_mutex_);
-          thinking_animation_wake_.wait_for(
-              lock, stop_token, kThinkingFrameDuration, [] { return false; });
-          if (stop_token.stop_requested()) {
-            return;
-          }
-          lock.unlock();
-
-          ui_task_runner([this, animation_state] {
-            if (!animation_state->alive.load(std::memory_order_acquire)) {
-              return;
-            }
-            if (!HasPendingAgentMessage()) {
-              SyncThinkingAnimation();
-              return;
-            }
-            AdvanceThinkingFrame();
-          });
-        }
-      });
-}
-
-void ChatUI::StopThinkingAnimation() {
-  if (!thinking_animation_worker_.joinable()) {
-    return;
-  }
-
-  thinking_animation_worker_.request_stop();
-  thinking_animation_wake_.notify_all();
-  thinking_animation_worker_ = std::jthread{};
-}
-
-void ChatUI::ClampScrollOffset() {
-  scroll_offset_y_ = util::ClampScrollOffset(scroll_offset_y_, content_height_,
-                                             ViewportHeight());
-  if (scroll_offset_y_ < MaxScrollOffset()) {
-    follow_tail_ = false;
-  }
-}
-
-void ChatUI::UpdateSlashMenuState() {
-  const auto& content = composer_.Content();
-  if (content.empty() || content.front() != '/') {
-    composer_.DismissSlashMenu();
-    return;
-  }
-  if (!composer_.IsSlashMenuActive()) {
-    composer_.ActivateSlashMenu();
-  }
-}
-
-bool ChatUI::HandleSlashMenuEvent(const ftxui::Event& event) {
-  if (!composer_.IsSlashMenuActive()) {
-    return false;
-  }
-
-  if (event == ftxui::Event::Escape) {
-    composer_.DismissSlashMenu();
-    return true;
-  }
-
-  if (event == ftxui::Event::Return) {
-    DispatchSlashMenuSelection();
-    return true;
-  }
-
-  auto filtered = composer_.FilteredSlashIndices(slash_commands_.Commands());
-  if (filtered.empty()) {
-    return false;
-  }
-  int count = static_cast<int>(filtered.size());
-
-  if (event == ftxui::Event::ArrowUp || event == ftxui::Event::Tab) {
-    int current = composer_.SlashMenuSelectedIndex();
-    composer_.SetSlashMenuSelectedIndex((current - 1 + count) % count);
-    return true;
-  }
-  if (event == ftxui::Event::ArrowDown) {
-    int current = composer_.SlashMenuSelectedIndex();
-    composer_.SetSlashMenuSelectedIndex((current + 1) % count);
-    return true;
-  }
-
-  return false;
-}
-
-void ChatUI::DispatchSlashMenuSelection() {
-  auto filtered = composer_.FilteredSlashIndices(slash_commands_.Commands());
-  int selected = composer_.SlashMenuSelectedIndex();
-  if (selected < 0 || selected >= static_cast<int>(filtered.size())) {
-    composer_.DismissSlashMenu();
-    return;
-  }
-  const auto& command = slash_commands_.Commands()[filtered[selected]];
-  (void)composer_.Submit();
-  if (command.handler.has_value()) {
-    (*command.handler)();
-  }
-}
-
-void ChatUI::DispatchToolApproval(bool approved) {
-  auto approval_id = approval_id_;
-  show_tool_approval_ = false;
-  approval_id_.clear();
-  approval_tool_name_.clear();
-  approval_prompt_.clear();
-  if (on_tool_approval_ && !approval_id.empty()) {
-    on_tool_approval_(approval_id, approved);
-  }
+  thinking_animation_.Sync([this] { return HasPendingAgentMessage(); });
 }
 
 }  // namespace yac::presentation

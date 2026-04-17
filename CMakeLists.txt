@@ -10,7 +10,8 @@ include(FetchContent)
 FetchContent_Declare(
   ftxui
   GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI
-  GIT_TAG main
+  # Pin a known-good upstream revision for reproducible builds.
+  GIT_TAG 84af6469fc54e2505802517ee62b4831897ab319
 )
 FetchContent_MakeAvailable(ftxui)
 
@@ -24,7 +25,8 @@ FetchContent_MakeAvailable(Catch2)
 FetchContent_Declare(
   openai_cpp
   GIT_REPOSITORY https://github.com/olrea/openai-cpp.git
-  GIT_TAG main
+  # Pin a known-good upstream revision for reproducible builds.
+  GIT_TAG 9554a4d86d7650bb3b46db772dbacd5f3e054b8c
 )
 FetchContent_GetProperties(openai_cpp)
 if(NOT openai_cpp_POPULATED)
@@ -41,6 +43,10 @@ find_package(CURL REQUIRED)
 add_library(yac_presentation STATIC
   src/presentation/chat_session.cpp
   src/presentation/chat_ui.cpp
+  src/presentation/chat_ui_input_controller.cpp
+  src/presentation/chat_ui_overlay_state.cpp
+  src/presentation/chat_ui_scroll_state.cpp
+  src/presentation/chat_ui_thinking_animation.cpp
   src/presentation/composer_state.cpp
   src/presentation/command_palette.cpp
   src/presentation/collapsible.cpp
@@ -61,17 +67,27 @@ target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::co
 
 add_library(yac_service STATIC
   src/chat/chat_service.cpp
+  src/chat/chat_service_history.cpp
+  src/chat/chat_service_prompt_processor.cpp
+  src/chat/chat_service_request_builder.cpp
+  src/chat/chat_service_tool_approval.cpp
   src/chat/config.cpp
   src/chat/env_file.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
+  src/tool_call/executor_arguments.cpp
+  src/tool_call/executor_catalog.cpp
   src/tool_call/executor.cpp
+  src/tool_call/filesystem_tool_executor.cpp
   src/tool_call/lsp_client.cpp
+  src/tool_call/lsp_tool_executor.cpp
+  src/tool_call/workspace_filesystem.cpp
 )
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)
 
 add_library(yac_app STATIC
+  src/app/bootstrap.cpp
   src/app/chat_event_bridge.cpp
   src/app/model_discovery.cpp
 )
@@ -108,9 +124,77 @@ add_custom_target(format
   COMMENT "Formatting source files with clang-format"
 )
 
-add_custom_target(lint
-  COMMAND clang-tidy ${CLANG_TIDY_EXTRA_ARGS} -p ${CMAKE_BINARY_DIR} "-header-filter=^(src|tests)/" ${ALL_SOURCES}
+add_custom_target(format-check
+  COMMAND clang-format --dry-run --Werror ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Running clang-tidy checks"
+  COMMENT "Checking source files with clang-format"
+)
+
+string(REPLACE ";" "\",\n    \"" LINT_EXTRA_ARGS_PY
+  "${CLANG_TIDY_EXTRA_ARGS}")
+
+set(LINT_RUNNER_TEMPLATE [[
+import json
+import pathlib
+import subprocess
+import sys
+
+source_dir = pathlib.Path(sys.argv[1]).resolve()
+build_dir = pathlib.Path(sys.argv[2]).resolve()
+excluded = {(source_dir / path).resolve() for path in sys.argv[3:]}
+
+with (build_dir / "compile_commands.json").open(encoding="utf-8") as handle:
+    entries = json.load(handle)
+
+raw_extra_args = [
+    "@LINT_EXTRA_ARGS_PY@"
+]
+extra_args = []
+for arg in raw_extra_args:
+    if arg.startswith("--extra-arg="):
+        extra_args.append(
+            "-extra-arg=" + arg.removeprefix("--extra-arg="))
+    else:
+        extra_args.append(arg)
+
+files = []
+for entry in entries:
+    file_path = pathlib.Path(entry["file"]).resolve()
+    if file_path in excluded:
+        continue
+    try:
+        relative_path = file_path.relative_to(source_dir)
+    except ValueError:
+        continue
+    if not relative_path.parts or relative_path.parts[0] not in {"src", "tests"}:
+        continue
+    files.append(str(relative_path))
+
+command = [
+    "run-clang-tidy-18",
+    "-p",
+    str(build_dir),
+    "-header-filter=^(src|tests)/",
+    "-j",
+    "0",
+    *extra_args,
+    *files,
+]
+subprocess.run(command, cwd=source_dir, check=True)
+]])
+
+string(CONFIGURE "${LINT_RUNNER_TEMPLATE}" LINT_RUNNER_SCRIPT @ONLY)
+
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/run_clang_tidy.py"
+  CONTENT "${LINT_RUNNER_SCRIPT}")
+
+add_custom_target(lint
+  COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_BINARY_DIR}/run_clang_tidy.py
+          ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}
+          src/tool_call/executor.cpp
+          src/tool_call/filesystem_tool_executor.cpp
+          src/tool_call/lsp_tool_executor.cpp
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  COMMENT "Running clang-tidy checks (parallel, ICE-filtered)"
   VERBATIM
 )

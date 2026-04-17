@@ -22,6 +22,11 @@ std::vector<chat::ModelInfo> ZaiFallbackModels() {
   };
 }
 
+bool UsesZaiFallback(const provider::LanguageModelProvider& provider,
+                     const chat::ChatConfig& config) {
+  return provider.Id() == "zai" || config.provider_id == "zai";
+}
+
 void EnsureModelPresent(std::vector<chat::ModelInfo>& models,
                         const std::string& model_id) {
   if (model_id.empty()) {
@@ -50,7 +55,7 @@ std::vector<chat::ModelInfo> DiscoverModels(
   } catch (const std::exception&) {
     models.clear();
   }
-  if (models.empty()) {
+  if (models.empty() && UsesZaiFallback(provider, config)) {
     models = ZaiFallbackModels();
   }
   EnsureModelPresent(models, config.model);

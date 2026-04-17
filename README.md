@@ -149,12 +149,12 @@ ctest --test-dir build -R "^ATX heading level 1$" --output-on-failure
 ```bash
 cmake --build build --target format
 cmake --build build --target lint
+cmake --build build --target format-check
 ```
 
 ## Project Map
 
-- `src/main.cpp` loads config, registers the OpenAI-compatible provider, wires
-  callbacks, and starts the fullscreen FTXUI loop
+- `src/main.cpp` is a thin handoff to app bootstrap; it loads config, registers the OpenAI-compatible provider, and wires minimal startup hooks, delegating full startup orchestration to the app bootstrap component
 - `src/app/chat_event_bridge.*` translates service events into presentation
   updates
 - `src/chat/` contains chat config loading, `.env` parsing, queueing, history,
@@ -197,10 +197,10 @@ flowchart TD
 ## Notes
 
 - Dependencies are fetched by CMake with `FetchContent`.
-- `FTXUI` and `openai-cpp` track upstream `main`; `Catch2` is pinned to
-  `v3.5.2`.
+- `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
+- `Catch2` is pinned to `v3.5.2`.
 - libcurl is required for the OpenAI-compatible streaming provider.
 - `build/compile_commands.json` is generated during configure and is used by
-  `.clangd`.
+- `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure
-  after adding or renaming source files.
+- after adding or renaming source files.

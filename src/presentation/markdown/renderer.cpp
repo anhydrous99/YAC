@@ -117,9 +117,9 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
                   ftxui::bgcolor(theme.code.inline_bg) |
                   ftxui::color(theme.code.inline_fg)};
         } else if constexpr (std::is_same_v<T, Link>) {
-          return {ftxui::hyperlink(n.url, ftxui::text(n.text) |
-                                           ftxui::color(theme.markdown.link) |
-                                           ftxui::underlined)};
+          return {ftxui::hyperlink(
+              n.url, ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
+                         ftxui::underlined)};
         } else {
           return {ftxui::text("")};
         }
@@ -133,9 +133,8 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   auto inline_elem = RenderInline(h.children, context);
 
   if (h.level == 1) {
-    auto line =
-        ftxui::text(RepeatUtf8("\xe2\x95\x81", 20)) |
-        ftxui::color(theme.markdown.heading) | ftxui::dim;
+    auto line = ftxui::text(RepeatUtf8("\xe2\x95\x81", 20)) |
+                ftxui::color(theme.markdown.heading) | ftxui::dim;
     return ftxui::vbox({
         inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
         line,
@@ -143,9 +142,8 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   }
 
   if (h.level == 2) {
-    auto line =
-        ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
-        ftxui::color(theme.markdown.heading) | ftxui::dim;
+    auto line = ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+                ftxui::color(theme.markdown.heading) | ftxui::dim;
     return ftxui::vbox({
         inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
         line,

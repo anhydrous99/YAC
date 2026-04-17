@@ -1,28 +1,27 @@
 #pragma once
 
+#include "chat_event_sink.hpp"
 #include "chat_session.hpp"
+#include "chat_ui_input_controller.hpp"
+#include "chat_ui_overlay_state.hpp"
+#include "chat_ui_scroll_state.hpp"
+#include "chat_ui_thinking_animation.hpp"
 #include "command_palette.hpp"
 #include "composer_state.hpp"
-#include "ftxui/component/captured_mouse.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
-#include "ftxui/screen/box.hpp"
 #include "message.hpp"
 #include "message_renderer.hpp"
-#include "slash_command_menu.hpp"
 #include "slash_command_registry.hpp"
 
-#include <condition_variable>
+#include <cstddef>
 #include <functional>
-#include <memory>
-#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace yac::presentation {
 
-class ChatUI {
+class ChatUI : public ChatEventSink {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
   using OnCommandCallback = std::function<void(const std::string&)>;
@@ -34,7 +33,7 @@ class ChatUI {
 
   ChatUI();
   explicit ChatUI(OnSendCallback on_send);
-  ~ChatUI();
+  ~ChatUI() override;
   ChatUI(const ChatUI&) = delete;
   ChatUI(ChatUI&&) = delete;
   ChatUI& operator=(const ChatUI&) = delete;
@@ -48,34 +47,35 @@ class ChatUI {
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
-  MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
-                             MessageStatus status = MessageStatus::Complete);
+  MessageId AddMessageWithId(
+      MessageId id, Sender sender, std::string content,
+      MessageStatus status = MessageStatus::Complete) override;
   MessageId StartAgentMessage();
-  MessageId StartAgentMessage(MessageId id);
-  void AppendToAgentMessage(MessageId id, std::string delta);
-  void SetMessageStatus(MessageId id, MessageStatus status);
+  MessageId StartAgentMessage(MessageId id) override;
+  void AppendToAgentMessage(MessageId id, std::string delta) override;
+  void SetMessageStatus(MessageId id, MessageStatus status) override;
   void AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
   void AddToolCallMessageWithId(MessageId id,
                                 ::yac::tool_call::ToolCallBlock block,
-                                MessageStatus status);
+                                MessageStatus status) override;
   void UpdateToolCallMessage(MessageId id,
                              ::yac::tool_call::ToolCallBlock block,
-                             MessageStatus status);
+                             MessageStatus status) override;
   void ShowToolApproval(std::string approval_id, std::string tool_name,
-                        std::string prompt);
+                        std::string prompt) override;
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
-  void SetProviderModel(std::string provider_id, std::string model);
-  void SetTyping(bool typing);
+  void SetProviderModel(std::string provider_id, std::string model) override;
+  void SetTyping(bool typing) override;
   void SetToolExpanded(size_t index, bool expanded);
-  void ClearMessages();
+  void ClearMessages() override;
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
-  [[nodiscard]] bool HasMessage(MessageId id) const;
+  [[nodiscard]] bool HasMessage(MessageId id) const override;
   [[nodiscard]] bool IsTyping() const;
   [[nodiscard]] std::string ProviderId() const;
-  [[nodiscard]] std::string Model() const;
+  [[nodiscard]] std::string Model() const override;
   [[nodiscard]] int CalculateInputHeight() const;
   [[nodiscard]] bool HandleInputEvent(const ftxui::Event& event);
 
@@ -86,60 +86,22 @@ class ChatUI {
   ftxui::Component BuildMessageList();
   [[nodiscard]] ftxui::Element RenderMessages() const;
   void SyncMessageComponents();
-  void ScrollUp(int lines);
-  void ScrollDown(int lines);
-  [[nodiscard]] int PageLines() const;
-  [[nodiscard]] int ViewportHeight() const;
-  [[nodiscard]] int MaxScrollOffset() const;
   [[nodiscard]] bool HasActiveAgentMessage() const;
   [[nodiscard]] bool HasPendingAgentMessage() const;
-  void AdvanceThinkingFrame();
   void SyncThinkingAnimation();
-  void StartThinkingAnimation();
-  void StopThinkingAnimation();
-  void ClampScrollOffset();
-  void UpdateSlashMenuState();
-  [[nodiscard]] bool HandleSlashMenuEvent(const ftxui::Event& event);
-  void DispatchSlashMenuSelection();
-  void DispatchToolApproval(bool approved);
 
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;
   std::vector<ftxui::Component> message_components_;
   ComposerState composer_;
+  ChatUiInputController input_controller_;
+  ChatUiOverlayState overlay_state_;
+  ChatUiScrollState scroll_state_;
+  ChatUiThinkingAnimation thinking_animation_;
   OnSendCallback on_send_;
-  OnCommandCallback on_command_;
-  OnToolApprovalCallback on_tool_approval_;
   bool is_typing_ = false;
-  int palette_level_ = -1;  // -1=hidden, 0=commands, 1=models
-  bool show_palette_ = false;
-  bool show_model_palette_ = false;
-  bool show_tool_approval_ = false;
-  std::string approval_id_;
-  std::string approval_tool_name_;
-  std::string approval_prompt_;
-  std::vector<Command> commands_;
-  std::vector<Command> model_commands_;
   SlashCommandRegistry slash_commands_;
-  std::string provider_id_;
-  std::string model_;
-
-  int scroll_offset_y_ = 0;
-  int content_height_ = 0;
-  ftxui::Box visible_box_{};
-  ftxui::Box scrollbar_box_{};
-  bool scrollbar_dragging_ = false;
-  bool follow_tail_ = true;
-  size_t messages_seen_count_ = 0;
-  ftxui::CapturedMouse captured_mouse_;
   mutable int last_terminal_width_ = -1;
-  int thinking_frame_ = 0;
-  struct AnimationState;
-  UiTaskRunner ui_task_runner_;
-  std::shared_ptr<AnimationState> animation_state_;
-  std::mutex thinking_animation_mutex_;
-  std::condition_variable_any thinking_animation_wake_;
-  std::jthread thinking_animation_worker_;
 };
 
 }  // namespace yac::presentation

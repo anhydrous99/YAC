@@ -206,6 +206,122 @@ class EmptyDeltaProvider : public LanguageModelProvider {
   }
 };
 
+class ApprovalRejectionProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "approval-rejection"; }
+
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    if (stop_token.stop_requested()) {
+      return;
+    }
+
+    ++request_count_;
+    if (request_count_ == 1) {
+      sink(ChatEvent{
+          .type = ChatEventType::ToolCallRequested,
+          .tool_calls = {ToolCallRequest{
+              .id = "tool_1",
+              .name = "file_write",
+              .arguments_json =
+                  R"({"filepath":"notes.txt","content":"denied\n"})"}}});
+      return;
+    }
+
+    REQUIRE(
+        std::any_of(request.messages.begin(), request.messages.end(),
+                    [](const ChatMessage& message) {
+                      return message.role == ChatRole::Tool &&
+                             message.tool_call_id == "tool_1" &&
+                             message.content ==
+                                 R"({"error":"User rejected tool execution."})";
+                    }));
+    sink(ChatEvent{.type = ChatEventType::TextDelta,
+                   .text = "continued after rejection"});
+  }
+
+ private:
+  int request_count_ = 0;
+};
+
+class ToolErrorProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "tool-error"; }
+
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    if (stop_token.stop_requested()) {
+      return;
+    }
+
+    ++request_count_;
+    if (request_count_ == 1) {
+      sink(ChatEvent{.type = ChatEventType::ToolCallRequested,
+                     .tool_calls = {ToolCallRequest{
+                         .id = "tool_1",
+                         .name = "list_dir",
+                         .arguments_json = R"({"path":"../"})"}}});
+      return;
+    }
+
+    REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
+                        [](const ChatMessage& message) {
+                          return message.role == ChatRole::Tool &&
+                                 message.tool_call_id == "tool_1" &&
+                                 message.content.find(
+                                     "Path is outside the workspace") !=
+                                     std::string::npos;
+                        }));
+    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "recovered"});
+  }
+
+ private:
+  int request_count_ = 0;
+};
+
+class SequentialApprovalProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override {
+    return "sequential-approval";
+  }
+
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) override {
+    if (stop_token.stop_requested()) {
+      return;
+    }
+
+    ++request_count_;
+    if (request_count_ == 1) {
+      sink(ChatEvent{
+          .type = ChatEventType::ToolCallRequested,
+          .tool_calls = {
+              ToolCallRequest{
+                  .id = "tool_1",
+                  .name = "file_write",
+                  .arguments_json =
+                      R"({"filepath":"first.txt","content":"one\n"})"},
+              ToolCallRequest{
+                  .id = "tool_2",
+                  .name = "file_write",
+                  .arguments_json =
+                      R"({"filepath":"second.txt","content":"two\n"})"},
+          }});
+      return;
+    }
+
+    REQUIRE(std::count_if(request.messages.begin(), request.messages.end(),
+                          [](const ChatMessage& message) {
+                            return message.role == ChatRole::Tool;
+                          }) == 2);
+    sink(ChatEvent{.type = ChatEventType::TextDelta,
+                   .text = "all approvals resolved"});
+  }
+
+ private:
+  int request_count_ = 0;
+};
+
 std::vector<ChatEvent> CollectEvents(ChatService& service,
                                      const std::string& message) {
   std::mutex mutex;
@@ -313,6 +429,145 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
     return message.role == ChatRole::Tool && message.tool_call_id == "tool_1" &&
            message.content.find("note.txt") != std::string::npos;
   }));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ChatService records rejected approval as tool error and continues") {
+  auto root =
+      std::filesystem::temp_directory_path() / "yac_tool_approval_rejection";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto provider = std::make_shared<ApprovalRejectionProvider>();
+  ChatConfig config;
+  config.provider_id = "approval-rejection";
+  config.model = "fake-model";
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  std::vector<ChatEvent> events;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::string approval_id;
+  bool approval_requested = false;
+  bool finished = false;
+
+  service.SetEventCallback([&](ChatEvent event) {
+    std::lock_guard lock(mutex);
+    if (event.type == ChatEventType::ToolApprovalRequested) {
+      approval_id = event.approval_id;
+      approval_requested = true;
+      cv.notify_all();
+    }
+    if (event.type == ChatEventType::Finished) {
+      finished = true;
+      cv.notify_all();
+    }
+    events.push_back(std::move(event));
+  });
+
+  service.SubmitUserMessage("write file");
+
+  {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [&] { return approval_requested; });
+  }
+
+  service.ResolveToolApproval(approval_id, false);
+
+  {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [&] { return finished; });
+  }
+
+  REQUIRE_FALSE(std::filesystem::exists(root / "notes.txt"));
+  const auto& tool_done = FindEvent(events, ChatEventType::ToolCallDone);
+  REQUIRE(tool_done.status == ChatMessageStatus::Error);
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+  REQUIRE(service.History().back().content == "continued after rejection");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ChatService sequences approval requests one tool at a time") {
+  auto root =
+      std::filesystem::temp_directory_path() / "yac_tool_approval_sequencing";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto provider = std::make_shared<SequentialApprovalProvider>();
+  ChatConfig config;
+  config.provider_id = "sequential-approval";
+  config.model = "fake-model";
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  std::vector<ChatEvent> events;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::vector<std::string> approval_ids;
+  bool finished = false;
+
+  service.SetEventCallback([&](ChatEvent event) {
+    std::lock_guard lock(mutex);
+    if (event.type == ChatEventType::ToolApprovalRequested) {
+      approval_ids.push_back(event.approval_id);
+      cv.notify_all();
+    }
+    if (event.type == ChatEventType::Finished) {
+      finished = true;
+      cv.notify_all();
+    }
+    events.push_back(std::move(event));
+  });
+
+  service.SubmitUserMessage("write two files");
+
+  {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [&] { return approval_ids.size() == 1; });
+    REQUIRE(approval_ids.size() == 1);
+  }
+
+  service.ResolveToolApproval(approval_ids[0], true);
+
+  {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [&] { return approval_ids.size() == 2; });
+    REQUIRE(approval_ids.size() == 2);
+  }
+
+  service.ResolveToolApproval(approval_ids[1], true);
+
+  {
+    std::unique_lock lock(mutex);
+    cv.wait(lock, [&] { return finished; });
+  }
+
+  REQUIRE(std::filesystem::exists(root / "first.txt"));
+  REQUIRE(std::filesystem::exists(root / "second.txt"));
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE(
+    "ChatService keeps tool error results in history for follow-up round") {
+  auto root = std::filesystem::temp_directory_path() / "yac_tool_error_round";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto provider = std::make_shared<ToolErrorProvider>();
+  ChatConfig config;
+  config.provider_id = "tool-error";
+  config.model = "fake-model";
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  const auto events = CollectEvents(service, "list parent");
+
+  const auto& tool_done = FindEvent(events, ChatEventType::ToolCallDone);
+  REQUIRE(tool_done.status == ChatMessageStatus::Error);
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+  REQUIRE(service.History().back().content == "recovered");
   std::filesystem::remove_all(root);
 }
 

@@ -14,19 +14,19 @@ namespace yac::presentation {
 namespace {
 
 const char* ThinkingPulseGlyph(int frame) {
-constexpr std::array<const char*, 10> kBrailleFrames = {
-    "\xe2\xa0\x8b",  // ⠋
-    "\xe2\xa0\x99",  // ⠙
-    "\xe2\xa0\xb9",  // ⠹
-    "\xe2\xa0\xb8",  // ⠸
-    "\xe2\xa0\xbc",  // ⠼
-    "\xe2\xa0\xb4",  // ⠴
-    "\xe2\xa0\xa6",  // ⠦
-    "\xe2\xa0\xa7",  // ⠧
-    "\xe2\xa0\x87",  // ⠇
-    "\xe2\xa0\x8f",  // ⠏
-};
-return kBrailleFrames.at(frame % kBrailleFrames.size());
+  constexpr std::array<const char*, 10> kBrailleFrames = {
+      "\xe2\xa0\x8b",  // ⠋
+      "\xe2\xa0\x99",  // ⠙
+      "\xe2\xa0\xb9",  // ⠹
+      "\xe2\xa0\xb8",  // ⠸
+      "\xe2\xa0\xbc",  // ⠼
+      "\xe2\xa0\xb4",  // ⠴
+      "\xe2\xa0\xa6",  // ⠦
+      "\xe2\xa0\xa7",  // ⠧
+      "\xe2\xa0\x87",  // ⠇
+      "\xe2\xa0\x8f",  // ⠏
+  };
+  return kBrailleFrames.at(frame % kBrailleFrames.size());
 }
 
 int MessageCardMaxWidth(const RenderContext& context) {

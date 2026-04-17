@@ -47,9 +47,8 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
                                ftxui::color(k_theme.chrome.dim_text) |
                                ftxui::dim);
       }
-      auto header_elem =
-          ftxui::hbox(std::move(header_parts)) |
-          ftxui::bgcolor(k_theme.tool.header_bg);
+      auto header_elem = ftxui::hbox(std::move(header_parts)) |
+                         ftxui::bgcolor(k_theme.tool.header_bg);
 
       header_elem |= ftxui::reflect(header_box_);
 
@@ -86,8 +85,8 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
     ftxui::Box header_box_{};
   };
 
-  return ftxui::Make<Impl>(std::move(header_text), std::move(content),
-                           expanded, std::move(summary));
+  return ftxui::Make<Impl>(std::move(header_text), std::move(content), expanded,
+                           std::move(summary));
 }
 
 }  // namespace yac::presentation

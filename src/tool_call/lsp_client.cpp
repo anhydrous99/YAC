@@ -139,6 +139,27 @@ std::string JsonStringAt(const Json& object, const std::string& key) {
   return object[key].get<std::string>();
 }
 
+std::string DisplayWorkspacePath(const std::filesystem::path& path,
+                                 const std::filesystem::path& workspace_root) {
+  auto normalized = std::filesystem::absolute(path).lexically_normal();
+  std::error_code error;
+  auto relative = std::filesystem::relative(normalized, workspace_root, error);
+  if (!error && !relative.empty() && !relative.native().starts_with("..")) {
+    return relative.string();
+  }
+  return normalized.string();
+}
+
+int SymbolLine(const Json& item) {
+  if (item.contains("selectionRange")) {
+    return JsonIntAt(item["selectionRange"]["start"], "line", 0) + 1;
+  }
+  if (item.contains("location")) {
+    return JsonIntAt(item["location"]["range"]["start"], "line", 0) + 1;
+  }
+  return 1;
+}
+
 }  // namespace
 
 class JsonRpcLspClient::Impl {
@@ -543,20 +564,22 @@ class JsonRpcLspClient::Impl {
     }
     if (result.is_array()) {
       for (const auto& item : result) {
-        ParseLocation(item, locations);
+        ParseLocation(item, workspace_root_, locations);
       }
       return locations;
     }
-    ParseLocation(result, locations);
+    ParseLocation(result, workspace_root_, locations);
     return locations;
   }
 
-  void ParseLocation(const Json& item, std::vector<LspLocation>& locations) {
+  static void ParseLocation(const Json& item,
+                            const std::filesystem::path& workspace_root,
+                            std::vector<LspLocation>& locations) {
     if (!item.contains("uri") || !item.contains("range")) {
       return;
     }
-    const auto path =
-        DisplayPath(PathFromFileUri(item["uri"].get<std::string>()));
+    const auto path = DisplayWorkspacePath(
+        PathFromFileUri(item["uri"].get<std::string>()), workspace_root);
     const auto& start = item["range"]["start"];
     locations.push_back(
         LspLocation{.filepath = path,
@@ -612,7 +635,8 @@ class JsonRpcLspClient::Impl {
     }
   }
 
-  void ParseSymbols(const Json& result, std::vector<LspSymbol>& symbols) {
+  static void ParseSymbols(const Json& result,
+                           std::vector<LspSymbol>& symbols) {
     if (!result.is_array()) {
       return;
     }
@@ -621,20 +645,14 @@ class JsonRpcLspClient::Impl {
     }
   }
 
-  void ParseSymbol(const Json& item, std::vector<LspSymbol>& symbols) {
+  static void ParseSymbol(const Json& item, std::vector<LspSymbol>& symbols) {
     if (!item.contains("name")) {
       return;
-    }
-    int line = 1;
-    if (item.contains("selectionRange")) {
-      line = JsonIntAt(item["selectionRange"]["start"], "line", 0) + 1;
-    } else if (item.contains("location")) {
-      line = JsonIntAt(item["location"]["range"]["start"], "line", 0) + 1;
     }
     symbols.push_back(
         LspSymbol{.name = JsonStringAt(item, "name"),
                   .kind = SymbolKindFromLsp(JsonIntAt(item, "kind", 0)),
-                  .line = line});
+                  .line = SymbolLine(item)});
     if (item.contains("children") && item["children"].is_array()) {
       for (const auto& child : item["children"]) {
         ParseSymbol(child, symbols);
@@ -663,14 +681,7 @@ class JsonRpcLspClient::Impl {
 
   [[nodiscard]] std::string DisplayPath(
       const std::filesystem::path& path) const {
-    auto normalized = std::filesystem::absolute(path).lexically_normal();
-    std::error_code error;
-    auto relative =
-        std::filesystem::relative(normalized, workspace_root_, error);
-    if (!error && !relative.empty() && !relative.native().starts_with("..")) {
-      return relative.string();
-    }
-    return normalized.string();
+    return DisplayWorkspacePath(path, workspace_root_);
   }
 
   LspServerConfig config_;
