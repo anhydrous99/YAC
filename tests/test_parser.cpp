@@ -813,3 +813,73 @@ TEST_CASE("Ordered list preserves starting number") {
   REQUIRE(ol->start == 3);
   REQUIRE(ol->items.size() == 2);
 }
+
+TEST_CASE("Indented code block with 4 spaces") {
+  auto blocks = MarkdownParser::Parse("    int x = 0;\n    int y = 1;");
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->source == "int x = 0;\nint y = 1;");
+  REQUIRE(cb->language.empty());
+}
+
+TEST_CASE("Indented code does not interrupt paragraph") {
+  auto blocks = MarkdownParser::Parse("first line\n    not code");
+  REQUIRE(blocks.size() == 1);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+}
+
+TEST_CASE("Setext heading level 1 with ===") {
+  auto blocks = MarkdownParser::Parse("Title\n===");
+  REQUIRE(blocks.size() == 1);
+  const auto* h = AsHeading(blocks[0]);
+  REQUIRE(h != nullptr);
+  REQUIRE(h->level == 1);
+  const auto* t = AsText(h->children[0]);
+  REQUIRE(t != nullptr);
+  REQUIRE(t->content == "Title");
+}
+
+TEST_CASE("Setext heading level 2 with ---") {
+  auto blocks = MarkdownParser::Parse("Subtitle\n---");
+  REQUIRE(blocks.size() == 1);
+  const auto* h = AsHeading(blocks[0]);
+  REQUIRE(h != nullptr);
+  REQUIRE(h->level == 2);
+}
+
+TEST_CASE("Setext does not collide with horizontal rule") {
+  auto blocks = MarkdownParser::Parse("para\n\n---\n\nafter");
+  REQUIRE(blocks.size() == 3);
+  REQUIRE(AsParagraph(blocks[0]) != nullptr);
+  REQUIRE(AsHorizontalRule(blocks[1]) != nullptr);
+  REQUIRE(AsParagraph(blocks[2]) != nullptr);
+}
+
+TEST_CASE("Hard line break with two trailing spaces") {
+  auto blocks = MarkdownParser::Parse("line one  \nline two");
+  REQUIRE(blocks.size() == 1);
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_break = false;
+  for (const auto& node : p->children) {
+    if (std::holds_alternative<LineBreak>(node)) {
+      found_break = true;
+    }
+  }
+  REQUIRE(found_break);
+}
+
+TEST_CASE("Hard line break with trailing backslash") {
+  auto blocks = MarkdownParser::Parse("line one\\\nline two");
+  REQUIRE(blocks.size() == 1);
+  const auto* p = AsParagraph(blocks[0]);
+  REQUIRE(p != nullptr);
+  bool found_break = false;
+  for (const auto& node : p->children) {
+    if (std::holds_alternative<LineBreak>(node)) {
+      found_break = true;
+    }
+  }
+  REQUIRE(found_break);
+}

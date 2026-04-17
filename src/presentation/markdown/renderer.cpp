@@ -109,15 +109,29 @@ ftxui::Elements SplitIntoWords(const std::string& content,
 ftxui::Element MarkdownRenderer::RenderInline(
     const std::vector<InlineNode>& nodes, const RenderContext& context,
     ftxui::Element trailing_inline) {
-  ftxui::Elements elements;
+  // Split into rows on LineBreak boundaries so hard breaks visually wrap.
+  std::vector<ftxui::Elements> rows;
+  rows.emplace_back();
   for (const auto& node : nodes) {
-    auto node_elements = RenderInlineWords(node, context);
-    elements.insert(elements.end(), node_elements.begin(), node_elements.end());
+    if (std::holds_alternative<LineBreak>(node)) {
+      rows.emplace_back();
+      continue;
+    }
+    auto pieces = RenderInlineWords(node, context);
+    rows.back().insert(rows.back().end(), pieces.begin(), pieces.end());
   }
   if (trailing_inline) {
-    elements.push_back(std::move(trailing_inline));
+    rows.back().push_back(std::move(trailing_inline));
   }
-  return ftxui::hflow(elements);
+  if (rows.size() == 1) {
+    return ftxui::hflow(rows[0]);
+  }
+  ftxui::Elements row_elems;
+  row_elems.reserve(rows.size());
+  for (auto& row : rows) {
+    row_elems.push_back(ftxui::hflow(row));
+  }
+  return ftxui::vbox(std::move(row_elems));
 }
 
 ftxui::Elements MarkdownRenderer::RenderInlineWords(

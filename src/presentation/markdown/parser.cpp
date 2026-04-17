@@ -780,6 +780,44 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
       continue;
     }
 
+    // Indented code block: 4+ leading spaces, only when not interrupting a
+    // paragraph (the paragraph fallback below would otherwise be hit first).
+    const bool last_was_paragraph =
+        !blocks.empty() && std::holds_alternative<Paragraph>(blocks.back());
+    if (!last_was_paragraph && LeadingSpaces(line) >= 4) {
+      CodeBlock cb;
+      std::string source;
+      while (i < lines.size()) {
+        if (Trim(lines[i]).empty()) {
+          // Blank lines belong to the code block only if a non-blank indented
+          // line follows.
+          size_t look = i + 1;
+          while (look < lines.size() && Trim(lines[look]).empty()) {
+            ++look;
+          }
+          if (look >= lines.size() || LeadingSpaces(lines[look]) < 4) {
+            break;
+          }
+          if (!source.empty()) {
+            source += '\n';
+          }
+          ++i;
+          continue;
+        }
+        if (LeadingSpaces(lines[i]) < 4) {
+          break;
+        }
+        if (!source.empty()) {
+          source += '\n';
+        }
+        source += lines[i].substr(4);
+        ++i;
+      }
+      cb.source = source;
+      blocks.emplace_back(std::move(cb));
+      continue;
+    }
+
     i = TryParseParagraph(lines, i, blocks);
   }
 
@@ -789,21 +827,62 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
 size_t MarkdownParser::TryParseParagraph(const std::vector<std::string>& lines,
                                          size_t start,
                                          std::vector<BlockNode>& blocks) {
+  auto IsSetextUnderline = [](const std::string& line, char marker) {
+    auto t = Trim(line);
+    if (t.size() < 1) {
+      return false;
+    }
+    for (char c : t) {
+      if (c != marker) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   Paragraph para;
   size_t i = start;
   bool first_line = true;
+  bool pending_hard_break = false;
   while (i < lines.size() && !Trim(lines[i]).empty()) {
     if (!first_line && LineLooksLikeBlock(lines[i])) {
       break;
     }
-    if (!first_line) {
-      para.children.emplace_back(Text{" "});
+    // Setext heading: a non-first line of `=` (h1) or `-` (h2) terminates and
+    // upgrades the paragraph.
+    if (!first_line && (IsSetextUnderline(lines[i], '=') ||
+                        IsSetextUnderline(lines[i], '-'))) {
+      int level = IsSetextUnderline(lines[i], '=') ? 1 : 2;
+      Heading h;
+      h.level = level;
+      h.children = std::move(para.children);
+      blocks.emplace_back(std::move(h));
+      return i + 1;
     }
-    first_line = false;
-    auto inline_nodes = ParseInline(Trim(lines[i]));
+    if (!first_line) {
+      if (pending_hard_break) {
+        para.children.emplace_back(LineBreak{});
+      } else {
+        para.children.emplace_back(Text{" "});
+      }
+    }
+
+    const auto& raw = lines[i];
+    bool ends_with_two_spaces =
+        raw.size() >= 2 && raw[raw.size() - 1] == ' ' &&
+        raw[raw.size() - 2] == ' ';
+    std::string content = Trim(raw);
+    bool ends_with_backslash = !content.empty() && content.back() == '\\';
+    if (ends_with_backslash) {
+      content.pop_back();
+    }
+    pending_hard_break = ends_with_two_spaces || ends_with_backslash;
+
+    auto inline_nodes = ParseInline(content);
     for (auto& node : inline_nodes) {
       para.children.push_back(std::move(node));
     }
+    first_line = false;
     ++i;
   }
   if (i == start) {
