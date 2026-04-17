@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <string>
 #include <utility>
 
 namespace yac::presentation {
@@ -19,6 +20,34 @@ namespace yac::presentation {
 inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
+
+std::string FormatTokens(int tokens) {
+  if (tokens < 1000) {
+    return std::to_string(tokens);
+  }
+  if (tokens < 10000) {
+    const int whole = tokens / 1000;
+    const int tenths = (tokens % 1000) / 100;
+    return std::to_string(whole) + "." + std::to_string(tenths) + "k";
+  }
+  return std::to_string(tokens / 1000) + "k";
+}
+
+std::string FormatPercent(double percent) {
+  const int whole = static_cast<int>(percent);
+  const int tenths = static_cast<int>(percent * 10) % 10;
+  return std::to_string(whole) + "." + std::to_string(tenths) + "%";
+}
+
+ftxui::Color PercentColor(double percent) {
+  if (percent < 60.0) {
+    return ftxui::Color::Green;
+  }
+  if (percent < 85.0) {
+    return ftxui::Color::Yellow;
+  }
+  return ftxui::Color::Red;
+}
 
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
@@ -126,13 +155,43 @@ ftxui::Component ChatUI::Build() {
   auto container = ftxui::Container::Stacked({message_list, input});
 
   auto main_ui = ftxui::Renderer(container, [this, message_list, input] {
-    ftxui::Elements footer_elements;
+    ftxui::Elements stats_left;
     const bool has_active_agent = HasActiveAgentMessage();
     if (is_typing_ && !has_active_agent) {
-      footer_elements.push_back(ftxui::text("  ● Assistant is typing...") |
-                                ftxui::color(k_theme.role.agent) | ftxui::bold);
+      stats_left.push_back(ftxui::text(" ● typing") |
+                           ftxui::color(k_theme.role.agent) | ftxui::bold);
     }
-    footer_elements.push_back(ftxui::filler());
+    if (const auto& last_usage = overlay_state_.LastUsage()) {
+      stats_left.push_back(
+          ftxui::text(" ↑" + FormatTokens(last_usage->prompt_tokens) + " ↓" +
+                      FormatTokens(last_usage->completion_tokens)) |
+          ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
+    }
+
+    ftxui::Elements stats_right;
+    const int window = overlay_state_.ContextWindowTokens();
+    const int total = overlay_state_.LastUsage()
+                          ? overlay_state_.LastUsage()->total_tokens
+                          : 0;
+    if (window > 0 && total > 0) {
+      const double percent =
+          (static_cast<double>(total) / static_cast<double>(window)) * 100.0;
+      stats_right.push_back(ftxui::text(" " + FormatTokens(total) + " / " +
+                                        FormatTokens(window) + "  ") |
+                            ftxui::color(k_theme.chrome.body_text));
+      stats_right.push_back(ftxui::text(FormatPercent(percent)) |
+                            ftxui::color(PercentColor(percent)) | ftxui::bold);
+    } else {
+      stats_right.push_back(ftxui::text(" — / —") |
+                            ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
+    }
+    if (!session_.Empty()) {
+      auto count_label = "  [" + std::to_string(session_.MessageCount()) +
+                         " message" + (session_.MessageCount() > 1 ? "s" : "") +
+                         "]";
+      stats_right.push_back(ftxui::text(count_label) |
+                            ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
+    }
     if (!overlay_state_.ProviderId().empty() ||
         !overlay_state_.Model().empty()) {
       auto provider_model = overlay_state_.ProviderId();
@@ -140,17 +199,17 @@ ftxui::Component ChatUI::Build() {
         provider_model += " / ";
       }
       provider_model += overlay_state_.Model();
-      footer_elements.push_back(ftxui::text("  " + provider_model) |
-                                ftxui::color(k_theme.chrome.dim_text) |
-                                ftxui::dim);
+      stats_right.push_back(ftxui::text("  " + provider_model + " ") |
+                            ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
     }
-    if (!session_.Empty()) {
-      auto count_label = "  [" + std::to_string(session_.MessageCount()) +
-                         " message" + (session_.MessageCount() > 1 ? "s" : "") +
-                         "]";
-      footer_elements.push_back(ftxui::text(count_label) |
-                                ftxui::color(k_theme.chrome.dim_text) |
-                                ftxui::dim);
+
+    ftxui::Elements stats_row;
+    for (auto& element : stats_left) {
+      stats_row.push_back(std::move(element));
+    }
+    stats_row.push_back(ftxui::filler());
+    for (auto& element : stats_right) {
+      stats_row.push_back(std::move(element));
     }
 
     auto input_area = ftxui::hbox({
@@ -162,13 +221,8 @@ ftxui::Component ChatUI::Build() {
             ftxui::color(k_theme.chrome.dim_text) | ftxui::dim,
     });
 
-    auto input_height = CalculateInputHeight();
-
     ftxui::Elements footer_rows;
-    footer_rows.push_back(ftxui::text("") |
-                          ftxui::bgcolor(k_theme.chrome.dim_text));
-    footer_rows.push_back(ftxui::hbox(footer_elements));
-
+    footer_rows.push_back(ftxui::hbox(std::move(stats_row)));
     footer_rows.push_back(
         ftxui::text(" Enter=Send \xe2\x94\x82 Ctrl+P=Commands \xe2\x94\x82 "
                     "\xe2\x87\xa7+Enter=Newline \xe2\x94\x82 "
@@ -187,7 +241,7 @@ ftxui::Component ChatUI::Build() {
     }
     main_parts.push_back(
         input_area | ftxui::bgcolor(k_theme.cards.user_bg) |
-        ftxui::size(ftxui::HEIGHT, ftxui::GREATER_THAN, input_height));
+        ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, kMaxInputLines));
 
     return ftxui::vbox(std::move(main_parts));
   });
@@ -303,6 +357,14 @@ void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
 
 void ChatUI::SetProviderModel(std::string provider_id, std::string model) {
   overlay_state_.SetProviderModel(std::move(provider_id), std::move(model));
+}
+
+void ChatUI::SetLastUsage(UsageStats usage) {
+  overlay_state_.SetLastUsage(usage);
+}
+
+void ChatUI::SetContextWindowTokens(int tokens) {
+  overlay_state_.SetContextWindowTokens(tokens);
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -585,11 +647,10 @@ void ChatUI::SyncMessageComponents() {
                               .thinking_frame = thinking_animation_.Frame()});
           });
           const auto* block = messages[t].ToolCall();
-          auto summary =
-              block != nullptr
-                  ? ::yac::presentation::tool_call::ToolCallRenderer::
-                        BuildSummary(*block)
-                  : "";
+          auto summary = block != nullptr
+                             ? ::yac::presentation::tool_call::
+                                   ToolCallRenderer::BuildSummary(*block)
+                             : "";
           group_children.push_back(Collapsible(
               messages[t].DisplayLabel(), std::move(tool_content),
               session_.ToolExpandedState(ti - 1), std::move(summary)));

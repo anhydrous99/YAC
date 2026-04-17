@@ -5,10 +5,17 @@
 #include "ftxui/component/event.hpp"
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace yac::presentation {
+
+struct UsageStats {
+  int prompt_tokens = 0;
+  int completion_tokens = 0;
+  int total_tokens = 0;
+};
 
 class ChatUiOverlayState {
  public:
@@ -20,6 +27,8 @@ class ChatUiOverlayState {
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetProviderModel(std::string provider_id, std::string model);
+  void SetLastUsage(UsageStats usage);
+  void SetContextWindowTokens(int tokens);
   void ShowToolApproval(std::string approval_id, std::string tool_name,
                         std::string prompt);
 
@@ -27,6 +36,8 @@ class ChatUiOverlayState {
   [[nodiscard]] bool HandleGlobalEvent(const ftxui::Event& event);
   [[nodiscard]] const std::string& ProviderId() const;
   [[nodiscard]] const std::string& Model() const;
+  [[nodiscard]] const std::optional<UsageStats>& LastUsage() const;
+  [[nodiscard]] int ContextWindowTokens() const;
 
  private:
   void SyncPaletteVisibility();
@@ -47,6 +58,8 @@ class ChatUiOverlayState {
   std::vector<Command> model_commands_;
   std::string provider_id_;
   std::string model_;
+  std::optional<UsageStats> last_usage_;
+  int context_window_tokens_ = 0;
 };
 
 }  // namespace yac::presentation

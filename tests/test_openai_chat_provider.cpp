@@ -12,6 +12,30 @@ TEST_CASE("OpenAiChatProvider maps neutral roles") {
   REQUIRE(OpenAiChatProvider::RoleToOpenAi(ChatRole::Tool) == "tool");
 }
 
+TEST_CASE("OpenAiChatProvider parses usage block from buffered response") {
+  const auto usage = OpenAiChatProvider::ParseUsageJson(
+      R"({"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}})");
+
+  REQUIRE(usage.has_value());
+  const auto& value = usage.value();
+  REQUIRE(value.prompt_tokens == 10);
+  REQUIRE(value.completion_tokens == 20);
+  REQUIRE(value.total_tokens == 30);
+}
+
+TEST_CASE("OpenAiChatProvider derives total_tokens when missing") {
+  const auto usage = OpenAiChatProvider::ParseUsageJson(
+      R"({"prompt_tokens":40,"completion_tokens":60})");
+
+  REQUIRE(usage.has_value());
+  REQUIRE(usage.value().total_tokens == 100);
+}
+
+TEST_CASE("OpenAiChatProvider returns nullopt when usage is absent") {
+  REQUIRE_FALSE(OpenAiChatProvider::ParseUsageJson(R"({"choices":[]})"));
+  REQUIRE_FALSE(OpenAiChatProvider::ParseUsageJson("{"));
+}
+
 TEST_CASE("OpenAiChatProvider parses streaming content delta") {
   const auto event = OpenAiChatProvider::ParseStreamData(
       R"({"choices":[{"delta":{"content":"hello"}}]})");

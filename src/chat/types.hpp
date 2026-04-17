@@ -38,6 +38,12 @@ struct ToolCallRequest {
   std::string arguments_json;
 };
 
+struct TokenUsage {
+  int prompt_tokens = 0;
+  int completion_tokens = 0;
+  int total_tokens = 0;
+};
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;
@@ -74,6 +80,7 @@ enum class ChatEventType {
   ModelChanged,
   ToolCallRequested,
   ToolApprovalRequested,
+  UsageReported,
 };
 
 struct ChatEvent {
@@ -88,6 +95,7 @@ struct ChatEvent {
   std::string approval_id;
   std::vector<ToolCallRequest> tool_calls;
   std::optional<::yac::tool_call::ToolCallBlock> tool_call;
+  std::optional<TokenUsage> usage;
   ChatMessageStatus status = ChatMessageStatus::Complete;
   int queue_depth = 0;
   std::chrono::system_clock::time_point created_at =

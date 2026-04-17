@@ -128,8 +128,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(
                                           ftxui::flex}),
   });
 
-  auto styled_card =
-      MessageRenderer::CardSurface(std::move(content), theme.cards.user_bg, context);
+  auto styled_card = MessageRenderer::CardSurface(std::move(content),
+                                                  theme.cards.user_bg, context);
 
   return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
 }
@@ -168,8 +168,8 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
 
   auto content = RenderAgentMessageContent(message, cache, context);
 
-  auto styled_card =
-      MessageRenderer::CardSurface(std::move(content), theme.cards.agent_bg, context);
+  auto styled_card = MessageRenderer::CardSurface(
+      std::move(content), theme.cards.agent_bg, context);
 
   return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
 }

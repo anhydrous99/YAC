@@ -257,7 +257,7 @@ TEST_CASE("HandleInputEvent accumulates newlines") {
   (void)ui.HandleInputEvent(MakeShiftEnter());
   (void)ui.HandleInputEvent(MakeCtrlEnter());
   (void)ui.HandleInputEvent(MakeKittyShiftEnter());
-  REQUIRE(ui.CalculateInputHeight() == 4);
+  REQUIRE(ui.CalculateInputHeight() == ChatUI::kMaxInputLines);
 }
 
 TEST_CASE("HandleInputEvent inserts newline on Alt+Enter (CR variant)") {

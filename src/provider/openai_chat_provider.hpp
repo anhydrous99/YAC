@@ -4,6 +4,7 @@
 #include "provider/language_model_provider.hpp"
 
 #include <chrono>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,8 @@ class OpenAiChatProvider : public LanguageModelProvider {
   [[nodiscard]] static std::vector<chat::ModelInfo> ParseModelsData(
       const std::string& data);
   [[nodiscard]] static chat::ChatEvent ParseStreamData(const std::string& data);
+  [[nodiscard]] static std::optional<chat::TokenUsage> ParseUsageJson(
+      const std::string& data);
 
  private:
   void CompleteBuffered(const chat::ChatRequest& request, ChatEventSink sink);

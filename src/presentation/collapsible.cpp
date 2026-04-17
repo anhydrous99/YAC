@@ -78,8 +78,8 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
         // Interpolate visible height. We use a generous upper bound since
         // FTXUI's LESS_THAN only constrains, never expands. Content shorter
         // than max_height renders at its natural size.
-        int max_height = std::max(1, static_cast<int>(std::ceil(
-                                         progress_ * 50.0f)));
+        int max_height =
+            std::max(1, static_cast<int>(std::ceil(progress_ * 50.0f)));
         rendered_content =
             rendered_content |
             ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, max_height);

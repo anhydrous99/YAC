@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <openai.hpp>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -23,7 +24,19 @@ Json ParseSchema(const std::string& schema_json) {
   }
 }
 
-Json BuildChatPayload(const chat::ChatRequest& request, bool stream) {
+bool ProviderOptionEnabled(const std::map<std::string, std::string>& options,
+                           const std::string& key, bool default_value) {
+  const auto it = options.find(key);
+  if (it == options.end()) {
+    return default_value;
+  }
+  const auto& value = it->second;
+  return !(value == "0" || value == "false" || value == "False" ||
+           value == "FALSE" || value == "no" || value == "No" || value == "NO");
+}
+
+Json BuildChatPayload(const chat::ChatRequest& request, bool stream,
+                      const chat::ProviderConfig& config) {
   Json messages = Json::array();
   for (const auto& message : request.messages) {
     Json entry{{"role", OpenAiChatProvider::RoleToOpenAi(message.role)}};
@@ -54,6 +67,11 @@ Json BuildChatPayload(const chat::ChatRequest& request, bool stream) {
                {"messages", std::move(messages)},
                {"temperature", request.temperature},
                {"stream", stream}};
+
+  if (stream &&
+      ProviderOptionEnabled(config.options, "include_stream_usage", true)) {
+    payload["stream_options"] = {{"include_usage", true}};
+  }
 
   if (!request.tools.empty()) {
     Json tools = Json::array();
@@ -88,7 +106,33 @@ struct StreamState {
     std::string arguments_json;
   };
   std::map<int, PendingToolCall> pending_tool_calls;
+  std::optional<chat::TokenUsage> pending_usage;
 };
+
+std::optional<chat::TokenUsage> ExtractUsageFromNode(const Json& node) {
+  if (!node.is_object()) {
+    return std::nullopt;
+  }
+  chat::TokenUsage usage;
+  if (node.contains("prompt_tokens") && node["prompt_tokens"].is_number()) {
+    usage.prompt_tokens = node["prompt_tokens"].get<int>();
+  }
+  if (node.contains("completion_tokens") &&
+      node["completion_tokens"].is_number()) {
+    usage.completion_tokens = node["completion_tokens"].get<int>();
+  }
+  if (node.contains("total_tokens") && node["total_tokens"].is_number()) {
+    usage.total_tokens = node["total_tokens"].get<int>();
+  }
+  if (usage.prompt_tokens == 0 && usage.completion_tokens == 0 &&
+      usage.total_tokens == 0) {
+    return std::nullopt;
+  }
+  if (usage.total_tokens == 0) {
+    usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+  }
+  return usage;
+}
 
 std::vector<chat::ToolCallRequest> PendingToolCalls(const StreamState& state) {
   std::vector<chat::ToolCallRequest> calls;
@@ -133,6 +177,11 @@ void DispatchSseData(const std::string& data, StreamState& state) {
       (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::Error,
                                     .text = json["error"].dump()});
       return;
+    }
+    if (json.contains("usage") && json["usage"].is_object()) {
+      if (auto usage = ExtractUsageFromNode(json["usage"])) {
+        state.pending_usage = std::move(usage);
+      }
     }
     if (!json.contains("choices") || json["choices"].empty()) {
       return;
@@ -235,6 +284,13 @@ std::string ExtractBufferedText(const Json& response) {
     return {};
   }
   return choice["message"]["content"].get<std::string>();
+}
+
+std::optional<chat::TokenUsage> ExtractBufferedUsage(const Json& response) {
+  if (!response.contains("usage")) {
+    return std::nullopt;
+  }
+  return ExtractUsageFromNode(response["usage"]);
 }
 
 std::vector<chat::ToolCallRequest> ExtractBufferedToolCalls(
@@ -420,10 +476,24 @@ chat::ChatEvent OpenAiChatProvider::ParseStreamData(const std::string& data) {
   }
 }
 
+std::optional<chat::TokenUsage> OpenAiChatProvider::ParseUsageJson(
+    const std::string& data) {
+  try {
+    const auto json = Json::parse(data);
+    if (json.contains("usage")) {
+      return ExtractUsageFromNode(json["usage"]);
+    }
+    return ExtractUsageFromNode(json);
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
+}
+
 void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
                                           ChatEventSink sink) {
   openai::OpenAI client(ResolveApiKey(), "", true, config_.base_url);
-  const auto response = client.chat.create(BuildChatPayload(request, false));
+  const auto response =
+      client.chat.create(BuildChatPayload(request, false, config_));
   const auto text = ExtractBufferedText(response);
   if (!text.empty()) {
     sink(chat::ChatEvent{.type = chat::ChatEventType::TextDelta,
@@ -437,6 +507,12 @@ void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
                          .provider_id = config_.id,
                          .model = request.model,
                          .tool_calls = std::move(tool_calls)});
+  }
+  if (auto usage = ExtractBufferedUsage(response)) {
+    sink(chat::ChatEvent{.type = chat::ChatEventType::UsageReported,
+                         .provider_id = config_.id,
+                         .model = request.model,
+                         .usage = std::move(usage)});
   }
 }
 
@@ -456,7 +532,7 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
   const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
 
-  auto payload = BuildChatPayload(request, true).dump();
+  auto payload = BuildChatPayload(request, true, config_).dump();
   StreamState stream_state{.sink = &sink};
   ProgressState progress_state{.stop_token = &stop_token};
 
@@ -498,6 +574,13 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
     std::ostringstream message;
     message << "OpenAI request failed with HTTP " << status << ".";
     throw std::runtime_error(message.str());
+  }
+
+  if (stream_state.pending_usage.has_value()) {
+    sink(chat::ChatEvent{.type = chat::ChatEventType::UsageReported,
+                         .provider_id = config_.id,
+                         .model = request.model,
+                         .usage = std::move(stream_state.pending_usage)});
   }
 }
 

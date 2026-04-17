@@ -1,6 +1,7 @@
 #include "app/bootstrap.hpp"
 
 #include "app/chat_event_bridge.hpp"
+#include "app/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
@@ -96,6 +97,7 @@ int RunApp() {
   auto screen = ftxui::App::Fullscreen();
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
+  chat_ui.SetContextWindowTokens(LookupContextWindow(config.model));
   chat_ui.SetProviderModel(config.provider_id, config.model);
 
   ChatEventBridge bridge(chat_ui);

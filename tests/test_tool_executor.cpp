@@ -263,10 +263,9 @@ TEST_CASE("ToolExecutor reads files inside the workspace") {
     file << "line one\nline two\nline three\n";
   }
   auto executor = MakeExecutor(root);
-  ToolCallRequest request{
-      .id = "call_1",
-      .name = "file_read",
-      .arguments_json = R"({"filepath":"src/hello.cpp"})"};
+  ToolCallRequest request{.id = "call_1",
+                          .name = "file_read",
+                          .arguments_json = R"({"filepath":"src/hello.cpp"})"};
 
   auto prepared = ToolExecutor::Prepare(request);
   REQUIRE_FALSE(prepared.requires_approval);

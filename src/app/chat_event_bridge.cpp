@@ -1,5 +1,7 @@
 #include "app/chat_event_bridge.hpp"
 
+#include "app/model_context_windows.hpp"
+#include "presentation/chat_ui_overlay_state.hpp"
 #include "presentation/util/terminal.hpp"
 
 #include <utility>
@@ -103,8 +105,17 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       break;
 
     case ChatEventType::ModelChanged:
+      chat_ui.SetContextWindowTokens(LookupContextWindow(event.model));
       chat_ui.SetProviderModel(std::move(event.provider_id),
                                std::move(event.model));
+      break;
+
+    case ChatEventType::UsageReported:
+      if (event.usage.has_value()) {
+        chat_ui.SetLastUsage(presentation::UsageStats{
+            event.usage->prompt_tokens, event.usage->completion_tokens,
+            event.usage->total_tokens});
+      }
       break;
 
     case ChatEventType::QueueDepthChanged:

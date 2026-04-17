@@ -34,6 +34,14 @@ void ChatUiOverlayState::SetProviderModel(std::string provider_id,
   model_ = std::move(model);
 }
 
+void ChatUiOverlayState::SetLastUsage(UsageStats usage) {
+  last_usage_ = usage;
+}
+
+void ChatUiOverlayState::SetContextWindowTokens(int tokens) {
+  context_window_tokens_ = tokens;
+}
+
 void ChatUiOverlayState::ShowToolApproval(std::string approval_id,
                                           std::string tool_name,
                                           std::string prompt) {
@@ -112,6 +120,14 @@ const std::string& ChatUiOverlayState::ProviderId() const {
 
 const std::string& ChatUiOverlayState::Model() const {
   return model_;
+}
+
+const std::optional<UsageStats>& ChatUiOverlayState::LastUsage() const {
+  return last_usage_;
+}
+
+int ChatUiOverlayState::ContextWindowTokens() const {
+  return context_window_tokens_;
 }
 
 void ChatUiOverlayState::SyncPaletteVisibility() {

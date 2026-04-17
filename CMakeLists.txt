@@ -89,6 +89,7 @@ target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)
 add_library(yac_app STATIC
   src/app/bootstrap.cpp
   src/app/chat_event_bridge.cpp
+  src/app/model_context_windows.cpp
   src/app/model_discovery.cpp
 )
 target_include_directories(yac_app PUBLIC src)

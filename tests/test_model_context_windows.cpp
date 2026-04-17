@@ -1,0 +1,24 @@
+#include "app/model_context_windows.hpp"
+
+#include <catch2/catch_test_macros.hpp>
+
+using yac::app::LookupContextWindow;
+
+TEST_CASE("LookupContextWindow returns zero for unknown ids") {
+  REQUIRE(LookupContextWindow("") == 0);
+  REQUIRE(LookupContextWindow("totally-made-up-model") == 0);
+}
+
+TEST_CASE("LookupContextWindow resolves exact matches") {
+  REQUIRE(LookupContextWindow("gpt-4o") == 128000);
+  REQUIRE(LookupContextWindow("gpt-4o-mini") == 128000);
+}
+
+TEST_CASE("LookupContextWindow falls back to prefix families") {
+  REQUIRE(LookupContextWindow("gpt-4o-2024-11-20") == 128000);
+  REQUIRE(LookupContextWindow("gpt-4.1-preview") == 1000000);
+  REQUIRE(LookupContextWindow("o3-mini") == 200000);
+  REQUIRE(LookupContextWindow("claude-sonnet-4-6") == 200000);
+  REQUIRE(LookupContextWindow("glm-4.6-air") == 200000);
+  REQUIRE(LookupContextWindow("glm-4.5-flash") == 128000);
+}

@@ -6,6 +6,8 @@
 
 namespace yac::presentation {
 
+struct UsageStats;
+
 class ChatEventSink {
  public:
   ChatEventSink() = default;
@@ -30,6 +32,8 @@ class ChatEventSink {
   virtual void ShowToolApproval(std::string approval_id, std::string tool_name,
                                 std::string prompt) = 0;
   virtual void SetProviderModel(std::string provider_id, std::string model) = 0;
+  virtual void SetLastUsage(UsageStats usage) = 0;
+  virtual void SetContextWindowTokens(int tokens) = 0;
   virtual void SetTyping(bool typing) = 0;
   virtual void ClearMessages() = 0;
 

@@ -29,7 +29,7 @@ class ChatUI : public ChatEventSink {
   using UiTask = std::function<void()>;
   using UiTaskRunner = std::function<void(UiTask)>;
 
-  static constexpr int kMaxInputLines = 8;
+  static constexpr int kMaxInputLines = 3;
 
   ChatUI();
   explicit ChatUI(OnSendCallback on_send);
@@ -67,6 +67,8 @@ class ChatUI : public ChatEventSink {
   void SetModelCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
   void SetProviderModel(std::string provider_id, std::string model) override;
+  void SetLastUsage(UsageStats usage) override;
+  void SetContextWindowTokens(int tokens) override;
   void SetTyping(bool typing) override;
   void SetToolExpanded(size_t index, bool expanded);
   void ClearMessages() override;
