@@ -731,17 +731,22 @@ std::optional<std::vector<ColumnAlignment>> ParseDelimiterRow(
 }  // namespace
 
 std::vector<BlockNode> MarkdownParser::Parse(std::string_view markdown) {
+  return Parse(markdown, ParseOptions{});
+}
+
+std::vector<BlockNode> MarkdownParser::Parse(std::string_view markdown,
+                                            const ParseOptions& opts) {
   auto lines = SplitLines(markdown);
-  return ParseBlocks(lines);
+  return ParseBlocks(lines, opts);
 }
 
 std::vector<BlockNode> MarkdownParser::ParseBlocks(
-    const std::vector<std::string>& lines) {
+    const std::vector<std::string>& lines, const ParseOptions& opts) {
   std::vector<BlockNode> blocks;
   size_t i = 0;
 
   while (i < lines.size()) {
-    if (auto cb = TryParseCodeBlock(lines, i)) {
+    if (auto cb = TryParseCodeBlock(lines, i, opts)) {
       blocks.emplace_back(std::move(*cb));
       continue;
     }
@@ -765,12 +770,12 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
       continue;
     }
 
-    if (auto bq = TryParseBlockquote(lines, i)) {
+    if (auto bq = TryParseBlockquote(lines, i, opts)) {
       blocks.emplace_back(MakeBlock(std::move(*bq)));
       continue;
     }
 
-    if (auto list_block = TryParseList(lines, i)) {
+    if (auto list_block = TryParseList(lines, i, opts)) {
       blocks.emplace_back(std::move(*list_block));
       continue;
     }
@@ -914,7 +919,8 @@ std::optional<Heading> MarkdownParser::TryParseHeading(
 }
 
 std::optional<CodeBlock> MarkdownParser::TryParseCodeBlock(
-    const std::vector<std::string>& lines, size_t& index) {
+    const std::vector<std::string>& lines, size_t& index,
+    const ParseOptions& opts) {
   if (index >= lines.size()) {
     return std::nullopt;
   }
@@ -934,9 +940,11 @@ std::optional<CodeBlock> MarkdownParser::TryParseCodeBlock(
   ++index;
 
   std::string source;
+  bool closed = false;
   while (index < lines.size()) {
     if (TrimLeft(lines[index]).starts_with(fence)) {
       ++index;
+      closed = true;
       break;
     }
     if (!source.empty()) {
@@ -947,11 +955,13 @@ std::optional<CodeBlock> MarkdownParser::TryParseCodeBlock(
   }
 
   cb.source = source;
+  cb.partial = opts.streaming && !closed;
   return cb;
 }
 
 std::optional<Blockquote> MarkdownParser::TryParseBlockquote(
-    const std::vector<std::string>& lines, size_t& index) {
+    const std::vector<std::string>& lines, size_t& index,
+    const ParseOptions& opts) {
   auto trimmed = TrimLeft(lines[index]);
   if (!trimmed.starts_with(">")) {
     return std::nullopt;
@@ -972,12 +982,13 @@ std::optional<Blockquote> MarkdownParser::TryParseBlockquote(
   }
 
   Blockquote bq;
-  bq.children = ParseBlocks(stripped);
+  bq.children = ParseBlocks(stripped, opts);
   return bq;
 }
 
 std::optional<BlockNode> MarkdownParser::TryParseList(
-    const std::vector<std::string>& lines, size_t& index) {
+    const std::vector<std::string>& lines, size_t& index,
+    const ParseOptions& opts) {
   if (index >= lines.size()) {
     return std::nullopt;
   }
@@ -1055,7 +1066,7 @@ std::optional<BlockNode> MarkdownParser::TryParseList(
       body.pop_back();
     }
 
-    auto children = ParseBlocks(body);
+    auto children = ParseBlocks(body, opts);
     if (ordered) {
       OrderedList::Item item;
       item.children = std::move(children);

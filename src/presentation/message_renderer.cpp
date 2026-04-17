@@ -140,7 +140,8 @@ ftxui::Element MessageRenderer::RenderAgentMessageContent(
   const auto& theme = context.Colors();
   const bool is_active = message.status == MessageStatus::Active;
   if (!cache.markdown_blocks.has_value()) {
-    cache.markdown_blocks = markdown::MarkdownParser::Parse(message.Text());
+    cache.markdown_blocks = markdown::MarkdownParser::Parse(
+        message.Text(), markdown::ParseOptions{.streaming = is_active});
   }
   const auto& blocks = *cache.markdown_blocks;
 

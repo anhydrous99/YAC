@@ -883,3 +883,30 @@ TEST_CASE("Hard line break with trailing backslash") {
   }
   REQUIRE(found_break);
 }
+
+TEST_CASE("Streaming mode marks unclosed code fence as partial") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\nint y = 1;",
+                                      ParseOptions{.streaming = true});
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE(cb->partial);
+  REQUIRE(cb->source == "int x = 0;\nint y = 1;");
+}
+
+TEST_CASE("Streaming mode marks closed code fence as complete") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;\n```",
+                                      ParseOptions{.streaming = true});
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE_FALSE(cb->partial);
+}
+
+TEST_CASE("Default mode never marks code fence as partial") {
+  auto blocks = MarkdownParser::Parse("```cpp\nint x = 0;");
+  REQUIRE(blocks.size() == 1);
+  const auto* cb = AsCodeBlock(blocks[0]);
+  REQUIRE(cb != nullptr);
+  REQUIRE_FALSE(cb->partial);
+}

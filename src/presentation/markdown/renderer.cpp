@@ -223,11 +223,15 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
   auto gutter_width = std::to_string(code_lines.size()).size() + 1;
 
   ftxui::Elements inner;
-  if (!cb.language.empty()) {
+  if (!cb.language.empty() || cb.partial) {
     auto label_pad = std::string(gutter_width, ' ');
+    std::string label = cb.language.empty() ? std::string("...") : cb.language;
+    if (cb.partial && !cb.language.empty()) {
+      label += " ...";
+    }
     inner.push_back(ftxui::hbox({
         ftxui::text(label_pad) | ftxui::bgcolor(theme.code.bg),
-        ftxui::text(" " + cb.language + " ") | ftxui::bgcolor(theme.code.fg) |
+        ftxui::text(" " + label + " ") | ftxui::bgcolor(theme.code.fg) |
             ftxui::color(theme.code.bg) | ftxui::bold,
     }));
   }
