@@ -1,5 +1,7 @@
 #include "message.hpp"
 
+#include "tool_call/renderer.hpp"
+
 #include <utility>
 
 namespace yac::presentation {
@@ -52,8 +54,13 @@ std::string Message::DisplayLabel() const {
       return "You";
     case Sender::Agent:
       return "Assistant";
-    case Sender::Tool:
+    case Sender::Tool: {
+      const auto* block = ToolCall();
+      if (block != nullptr) {
+        return tool_call::ToolCallRenderer::BuildLabel(*block);
+      }
       return "Tool";
+    }
   }
 
   return "Unknown";

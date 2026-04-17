@@ -1,11 +1,14 @@
 #include "collapsible.hpp"
 
+#include "ftxui/component/animation.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "theme.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace yac::presentation {
@@ -13,6 +16,8 @@ namespace yac::presentation {
 namespace {
 
 inline const auto& k_theme = theme::Theme::Instance();
+
+constexpr auto kAnimationDuration = std::chrono::milliseconds(150);
 
 }  // namespace
 
@@ -25,11 +30,19 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
         : header_text_(std::move(header_text)),
           content_(std::move(content)),
           expanded_(expanded),
-          summary_(std::move(summary)) {
+          summary_(std::move(summary)),
+          progress_(*expanded ? 1.0f : 0.0f),
+          last_expanded_(*expanded) {
       Add(content_);
     }
 
     ftxui::Element OnRender() override {
+      // Detect external state changes (e.g., programmatic toggle).
+      if (*expanded_ != last_expanded_) {
+        last_expanded_ = *expanded_;
+        StartAnimation();
+      }
+
       auto indicator = *expanded_ ? ftxui::text("\xe2\x96\xbc")
                                   : ftxui::text("\xe2\x96\xb6");
       indicator |= ftxui::color(k_theme.tool.icon_fg);
@@ -52,13 +65,30 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
 
       header_elem |= ftxui::reflect(header_box_);
 
-      if (*expanded_) {
-        return ftxui::vbox({
-            header_elem,
-            content_->Render() | ftxui::color(k_theme.chrome.body_text),
-        });
+      // Fully collapsed — no content.
+      if (progress_ <= 0.0f) {
+        return header_elem;
       }
-      return header_elem;
+
+      auto rendered_content =
+          content_->Render() | ftxui::color(k_theme.chrome.body_text);
+
+      // Animating — clip content height.
+      if (progress_ < 1.0f) {
+        // Interpolate visible height. We use a generous upper bound since
+        // FTXUI's LESS_THAN only constrains, never expands. Content shorter
+        // than max_height renders at its natural size.
+        int max_height = std::max(1, static_cast<int>(std::ceil(
+                                         progress_ * 50.0f)));
+        rendered_content =
+            rendered_content |
+            ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, max_height);
+      }
+
+      return ftxui::vbox({
+          header_elem,
+          rendered_content,
+      });
     }
 
     bool OnEvent(ftxui::Event event) override {
@@ -70,6 +100,8 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
           event.mouse().motion == ftxui::Mouse::Pressed) {
         if (header_box_.Contain(event.mouse().x, event.mouse().y)) {
           *expanded_ = !*expanded_;
+          last_expanded_ = *expanded_;
+          StartAnimation();
           return true;
         }
       }
@@ -77,12 +109,37 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
       return *expanded_ && ComponentBase::OnEvent(event);
     }
 
+    void OnAnimation(ftxui::animation::Params& params) override {
+      if (animator_) {
+        animator_->OnAnimation(params);
+        // Keep requesting frames while animating.
+        float target = *expanded_ ? 1.0f : 0.0f;
+        if (std::abs(progress_ - target) > 0.001f) {
+          ftxui::animation::RequestAnimationFrame();
+        } else {
+          animator_.reset();
+          progress_ = target;
+        }
+      }
+    }
+
    private:
+    void StartAnimation() {
+      float target = *expanded_ ? 1.0f : 0.0f;
+      animator_ = std::make_unique<ftxui::animation::Animator>(
+          &progress_, target, kAnimationDuration,
+          ftxui::animation::easing::QuadraticInOut);
+      ftxui::animation::RequestAnimationFrame();
+    }
+
     std::string header_text_;
     ftxui::Component content_;
     bool* expanded_;
     std::string summary_;
+    float progress_;
+    bool last_expanded_;
     ftxui::Box header_box_{};
+    std::unique_ptr<ftxui::animation::Animator> animator_;
   };
 
   return ftxui::Make<Impl>(std::move(header_text), std::move(content), expanded,

@@ -93,6 +93,9 @@ class ChatUI : public ChatEventSink {
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;
   std::vector<ftxui::Component> message_components_;
+  size_t messages_synced_ = 0;  // Tracks how many messages have been processed
+                                // into components (may differ from
+                                // message_components_.size() due to grouping).
   ComposerState composer_;
   ChatUiInputController input_controller_;
   ChatUiOverlayState overlay_state_;

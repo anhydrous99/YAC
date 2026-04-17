@@ -276,6 +276,10 @@ void ChatUI::UpdateToolCallMessage(MessageId id,
                                    MessageStatus status) {
   session_.SetToolCallMessage(id, std::move(block), status);
   render_cache_.ResetContent(id);
+  // Force a full component rebuild so Collapsible headers/summaries refresh
+  // with the updated tool data (labels and summaries are captured by value).
+  message_components_.clear();
+  messages_synced_ = 0;
   SyncMessageComponents();
 }
 
@@ -313,6 +317,7 @@ void ChatUI::ClearMessages() {
   session_.ClearMessages();
   render_cache_.Clear();
   message_components_.clear();
+  messages_synced_ = 0;
   scroll_state_.Clear();
   SyncThinkingAnimation();
 }
@@ -506,15 +511,110 @@ void ChatUI::SyncMessageComponents() {
   }
 
   const auto& messages = session_.Messages();
-  while (message_components_.size() < messages.size()) {
-    const auto index = message_components_.size();
-    if (messages[index].sender == Sender::Tool) {
+  while (messages_synced_ < messages.size()) {
+    const auto index = messages_synced_;
+    const auto& msg = messages[index];
+
+    if (msg.sender == Sender::Tool) {
+      // Count tool index for expanded state tracking.
       size_t current_tool_index = 0;
       for (size_t i = 0; i <= index; ++i) {
         if (messages[i].sender == Sender::Tool) {
           current_tool_index = current_tool_index + 1;
         }
       }
+
+      // Check if the preceding message was an Agent — if so, we need to group
+      // this tool call into the agent's card.
+      bool has_preceding_agent =
+          index > 0 && messages[index - 1].sender != Sender::User;
+      // Walk back to find the agent that starts this group.
+      size_t group_start = index;
+      if (has_preceding_agent) {
+        // Find the agent message that starts this group by walking back past
+        // any preceding tool messages.
+        group_start = index - 1;
+        while (group_start > 0 &&
+               messages[group_start].sender == Sender::Tool) {
+          group_start--;
+        }
+        has_preceding_agent = messages[group_start].sender == Sender::Agent;
+      }
+
+      if (has_preceding_agent) {
+        // Pop the existing group/agent component — we'll rebuild it with the
+        // new tool message included.
+        message_components_.pop_back();
+
+        // Collect all message indices in this group: [agent, tool, tool, ...]
+        const size_t agent_index = group_start;
+
+        // Build interactive tool collapsible components.
+        ftxui::Components group_children;
+
+        // Agent renderer (non-interactive).
+        group_children.push_back(ftxui::Renderer([this, agent_index] {
+          const auto& agent_msg = session_.Messages()[agent_index];
+          return MessageRenderer::RenderAgentMessageContent(
+              agent_msg, render_cache_.For(agent_msg.id),
+              RenderContext{.terminal_width = last_terminal_width_,
+                            .thinking_frame = thinking_animation_.Frame()});
+        }));
+
+        // Tool collapsible components (interactive — handle mouse clicks).
+        for (size_t t = agent_index + 1; t <= index; ++t) {
+          if (messages[t].sender != Sender::Tool) {
+            continue;
+          }
+          // Compute this tool's expanded-state index.
+          size_t ti = 0;
+          for (size_t i = 0; i <= t; ++i) {
+            if (messages[i].sender == Sender::Tool) {
+              ti++;
+            }
+          }
+          auto t_idx = t;
+          auto tool_content = ftxui::Renderer([this, t_idx] {
+            const auto* tool_call = session_.Messages()[t_idx].ToolCall();
+            if (tool_call == nullptr) {
+              return ftxui::text("Tool call unavailable");
+            }
+            return tool_call::ToolCallRenderer::Render(
+                *tool_call,
+                RenderContext{.terminal_width = last_terminal_width_,
+                              .thinking_frame = thinking_animation_.Frame()});
+          });
+          const auto* block = messages[t].ToolCall();
+          auto summary =
+              block != nullptr
+                  ? ::yac::presentation::tool_call::ToolCallRenderer::
+                        BuildSummary(*block)
+                  : "";
+          group_children.push_back(Collapsible(
+              messages[t].DisplayLabel(), std::move(tool_content),
+              session_.ToolExpandedState(ti - 1), std::move(summary)));
+        }
+
+        // Wrap the vertical container in a single CardSurface with agent_bg.
+        auto group_container = ftxui::Container::Vertical(group_children);
+        message_components_.push_back(
+            ftxui::Renderer(group_container, [this, group_container] {
+              auto ctx =
+                  RenderContext{.terminal_width = last_terminal_width_,
+                                .thinking_frame = thinking_animation_.Frame()};
+              const auto& theme_ref = ctx.Colors();
+              auto inner = group_container->Render();
+              auto styled_card = MessageRenderer::CardSurface(
+                  std::move(inner), theme_ref.cards.agent_bg, ctx);
+              return ftxui::hbox(
+                  {styled_card | ftxui::xflex_shrink, ftxui::filler()});
+            }));
+
+        messages_synced_++;
+        continue;
+      }
+
+      // Standalone tool message (no preceding agent) — render as before.
       auto content = ftxui::Renderer([this, index] {
         const auto* tool_call = session_.Messages()[index].ToolCall();
         if (tool_call == nullptr) {
@@ -535,9 +635,11 @@ void ChatUI::SyncMessageComponents() {
           Collapsible(messages[index].DisplayLabel(), std::move(content),
                       session_.ToolExpandedState(current_tool_index - 1),
                       std::move(summary)));
+      messages_synced_++;
       continue;
     }
 
+    // Non-tool message (User or Agent) — render with full CardSurface.
     message_components_.push_back(ftxui::Renderer([this, index] {
       const auto& message = session_.Messages()[index];
       return MessageRenderer::Render(
@@ -545,6 +647,7 @@ void ChatUI::SyncMessageComponents() {
           RenderContext{.terminal_width = last_terminal_width_,
                         .thinking_frame = thinking_animation_.Frame()});
     }));
+    messages_synced_++;
   }
 }
 

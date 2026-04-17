@@ -34,8 +34,11 @@ int MessageCardMaxWidth(const RenderContext& context) {
   return std::max(1, context.terminal_width - kHorizontalBreathingRoom);
 }
 
-ftxui::Element CardSurface(ftxui::Element content, ftxui::Color background,
-                           const RenderContext& context) {
+}  // namespace
+
+ftxui::Element MessageRenderer::CardSurface(ftxui::Element content,
+                                            ftxui::Color background,
+                                            const RenderContext& context) {
   return ftxui::vbox({
              ftxui::text(""),
              ftxui::hbox({ftxui::text("  "), std::move(content) | ftxui::flex,
@@ -46,8 +49,6 @@ ftxui::Element CardSurface(ftxui::Element content, ftxui::Color background,
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
                      MessageCardMaxWidth(context));
 }
-
-}  // namespace
 
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        int current_width) {
@@ -128,12 +129,12 @@ ftxui::Element MessageRenderer::RenderUserMessage(
   });
 
   auto styled_card =
-      CardSurface(std::move(content), theme.cards.user_bg, context);
+      MessageRenderer::CardSurface(std::move(content), theme.cards.user_bg, context);
 
   return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
 }
 
-ftxui::Element MessageRenderer::RenderAgentMessage(
+ftxui::Element MessageRenderer::RenderAgentMessageContent(
     const Message& message, MessageRenderCache& cache,
     const RenderContext& context) {
   const auto& theme = context.Colors();
@@ -157,10 +158,18 @@ ftxui::Element MessageRenderer::RenderAgentMessage(
   rows.push_back(markdown::MarkdownRenderer::Render(blocks, context,
                                                     std::move(stream_cursor)));
 
-  auto content = ftxui::vbox(std::move(rows));
+  return ftxui::vbox(std::move(rows));
+}
+
+ftxui::Element MessageRenderer::RenderAgentMessage(
+    const Message& message, MessageRenderCache& cache,
+    const RenderContext& context) {
+  const auto& theme = context.Colors();
+
+  auto content = RenderAgentMessageContent(message, cache, context);
 
   auto styled_card =
-      CardSurface(std::move(content), theme.cards.agent_bg, context);
+      MessageRenderer::CardSurface(std::move(content), theme.cards.agent_bg, context);
 
   return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
 }

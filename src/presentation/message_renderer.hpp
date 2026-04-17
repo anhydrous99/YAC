@@ -37,6 +37,18 @@ class MessageRenderer {
       const std::vector<Message>& messages,
       MessageRenderCacheStore& cache_store, const RenderContext& context);
 
+  /// Renders agent message content (header + markdown) without CardSurface
+  /// wrapping. Used by the grouping layer when nesting tool calls inside an
+  /// agent card.
+  [[nodiscard]] static ftxui::Element RenderAgentMessageContent(
+      const Message& message, MessageRenderCache& cache,
+      const RenderContext& context);
+
+  /// Wraps content in a card surface with padding and background color.
+  [[nodiscard]] static ftxui::Element CardSurface(ftxui::Element content,
+                                                  ftxui::Color background,
+                                                  const RenderContext& context);
+
  private:
   [[nodiscard]] static ftxui::Element RenderUserMessage(
       const Message& message, MessageRenderCache& cache,

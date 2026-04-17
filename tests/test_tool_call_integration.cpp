@@ -72,15 +72,15 @@ TEST_CASE(
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("response"));
 }
 
-TEST_CASE("ChatUI tool messages render expanded chevron by default") {
+TEST_CASE("ChatUI tool messages render collapsed chevron by default") {
   ChatUI ui;
   ui.AddToolCallMessage(BashCall{"git status", "working tree clean", 0, false});
 
   auto component = ui.Build();
   auto output = RenderComponent(component);
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\xbc"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("git status"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\xb6"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Run command"));
 }
 
 TEST_CASE("ChatUI SetToolExpanded collapsed hides tool content") {
@@ -104,5 +104,5 @@ TEST_CASE("AddToolCallMessage increases tool block count") {
   auto component = ui.Build();
   auto output = RenderComponent(component);
 
-  REQUIRE(CountOccurrences(output, "bash") >= 2);
+  REQUIRE(CountOccurrences(output, "Run command") >= 2);
 }

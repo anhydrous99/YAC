@@ -39,7 +39,7 @@ MessageId ChatSession::AddToolCallMessageWithId(
   message.id = id;
   message.status = status;
   messages_.push_back(std::move(message));
-  tool_expanded_states_.push_back(std::make_unique<bool>(true));
+  tool_expanded_states_.push_back(std::make_unique<bool>(false));
   return id;
 }
 

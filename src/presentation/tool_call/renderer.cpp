@@ -88,6 +88,18 @@ void AddOmittedRows(ftxui::Elements& content, size_t total,
       theme.chrome.dim_text));
 }
 
+std::string TruncateString(const std::string& s, size_t max_len) {
+  if (s.size() <= max_len) {
+    return s;
+  }
+  return s.substr(0, max_len) + "...";
+}
+
+std::string Basename(const std::string& path) {
+  auto pos = path.find_last_of('/');
+  return pos == std::string::npos ? path : path.substr(pos + 1);
+}
+
 std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
   switch (type) {
     case tool_data::DirectoryEntryType::File:
@@ -242,6 +254,47 @@ std::string ToolCallRenderer::BuildSummary(
           return std::to_string(call.symbols.size()) + " symbols";
         } else {
           return "";
+        }
+      },
+      block);
+}
+
+std::string ToolCallRenderer::BuildLabel(
+    const tool_data::ToolCallBlock& block) {
+  return std::visit(
+      [](const auto& call) -> std::string {
+        using T = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+          return "Run command";
+        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
+          return "Edit " + TruncateString(Basename(call.filepath), 30);
+        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
+          return "Read " + TruncateString(Basename(call.filepath), 30);
+        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
+          return "Write " + TruncateString(Basename(call.filepath), 30);
+        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
+          return "List directory";
+        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
+          return "Search for \"" + TruncateString(call.pattern, 20) + "\"";
+        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
+          return "Find files";
+        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
+          return "Fetch URL";
+        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
+          return "Web search";
+        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
+          return "Get diagnostics";
+        } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
+          return "Find references";
+        } else if constexpr (std::is_same_v<T,
+                                            tool_data::LspGotoDefinitionCall>) {
+          return "Go to definition";
+        } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
+          return "Rename symbol";
+        } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
+          return "List symbols";
+        } else {
+          return "Tool";
         }
       },
       block);

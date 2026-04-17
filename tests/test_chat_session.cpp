@@ -25,7 +25,7 @@ TEST_CASE("ChatSession stores tool messages with expansion state") {
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].sender == Sender::Tool);
   REQUIRE(session.Messages()[0].ToolCall() != nullptr);
-  REQUIRE(*session.ToolExpandedState(0));
+  REQUIRE_FALSE(*session.ToolExpandedState(0));
 }
 
 TEST_CASE("ChatSession updates tool expansion state") {
