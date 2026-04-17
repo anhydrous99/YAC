@@ -52,6 +52,9 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
     return ErrorResult(prepared.preview, "Tool execution cancelled.");
   }
   try {
+    if (prepared.request.name == "file_read") {
+      return ExecuteFileReadTool(prepared.request, workspace_filesystem_);
+    }
     if (prepared.request.name == "file_write") {
       return ExecuteFileWriteTool(prepared.request, workspace_filesystem_);
     }

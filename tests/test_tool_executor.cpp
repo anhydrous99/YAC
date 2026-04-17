@@ -254,3 +254,61 @@ TEST_CASE("ToolExecutor rejects LSP rename edits outside the workspace") {
   REQUIRE(ReadFile(root / "rename.cpp") == "old\n");
   std::filesystem::remove_all(root);
 }
+
+TEST_CASE("ToolExecutor reads files inside the workspace") {
+  auto root = TempRoot("read");
+  std::filesystem::create_directories(root / "src");
+  {
+    std::ofstream file(root / "src/hello.cpp");
+    file << "line one\nline two\nline three\n";
+  }
+  auto executor = MakeExecutor(root);
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "file_read",
+      .arguments_json = R"({"filepath":"src/hello.cpp"})"};
+
+  auto prepared = ToolExecutor::Prepare(request);
+  REQUIRE_FALSE(prepared.requires_approval);
+  auto result = executor.Execute(prepared, std::stop_token{});
+
+  REQUIRE_FALSE(result.is_error);
+  REQUIRE(std::holds_alternative<FileReadCall>(result.block));
+  const auto& call = std::get<FileReadCall>(result.block);
+  REQUIRE(call.filepath == "src/hello.cpp");
+  REQUIRE(call.lines_loaded == 3);
+  REQUIRE_FALSE(call.excerpt.empty());
+  REQUIRE(result.result_json.find("line one\\nline two\\nline three\\n") !=
+          std::string::npos);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor reports error for missing file") {
+  auto root = TempRoot("read_missing");
+  auto executor = MakeExecutor(root);
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "file_read",
+      .arguments_json = R"({"filepath":"does_not_exist.txt"})"};
+
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
+
+  REQUIRE(result.is_error);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor rejects file_read paths outside the workspace") {
+  auto root = TempRoot("read_outside");
+  auto executor = MakeExecutor(root);
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "file_read",
+      .arguments_json = R"({"filepath":"../../etc/passwd"})"};
+
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
+
+  REQUIRE(result.is_error);
+  std::filesystem::remove_all(root);
+}

@@ -24,6 +24,28 @@ std::string DirectoryEntryTypeToJson(DirectoryEntryType type) {
 
 }  // namespace
 
+ToolExecutionResult ExecuteFileReadTool(
+    const chat::ToolCallRequest& request,
+    const WorkspaceFilesystem& workspace_filesystem) {
+  const auto args = ParseArguments(request);
+  const auto filepath = RequireString(args, "filepath");
+  const auto path = workspace_filesystem.ResolvePath(filepath);
+  if (!std::filesystem::exists(path)) {
+    throw std::runtime_error("file not found: " + filepath);
+  }
+  const auto content = WorkspaceFilesystem::ReadFile(path);
+  const auto lines_loaded = CountLines(content);
+
+  auto block = FileReadCall{.filepath = workspace_filesystem.DisplayPath(path),
+                            .lines_loaded = lines_loaded,
+                            .excerpt = PreviewText(content)};
+  Json result{{"filepath", block.filepath},
+              {"lines_loaded", lines_loaded},
+              {"content", content}};
+  return ToolExecutionResult{.block = std::move(block),
+                             .result_json = result.dump()};
+}
+
 ToolExecutionResult ExecuteFileWriteTool(
     const chat::ToolCallRequest& request,
     const WorkspaceFilesystem& workspace_filesystem) {

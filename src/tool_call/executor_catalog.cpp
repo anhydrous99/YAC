@@ -11,6 +11,10 @@ namespace yac::tool_call {
 
 std::vector<chat::ToolDefinition> ToolDefinitions() {
   return {
+      {.name = "file_read",
+       .description = "Read the contents of a workspace file.",
+       .parameters_schema_json =
+           R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"}},"required":["filepath"]})"},
       {.name = "file_write",
        .description = "Create or fully overwrite a workspace file.",
        .parameters_schema_json =
@@ -57,6 +61,11 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
           .requires_approval = true,
           .approval_prompt = "Write " + filepath + " (" +
                              std::to_string(CountLines(content)) + " lines)."};
+    }
+    if (request.name == "file_read") {
+      const auto filepath = RequireString(args, "filepath");
+      return PreparedToolCall{.request = request,
+                              .preview = FileReadCall{.filepath = filepath}};
     }
     if (request.name == "list_dir") {
       const auto path = RequireString(args, "path");

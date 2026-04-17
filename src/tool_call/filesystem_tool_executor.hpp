@@ -5,6 +5,9 @@
 
 namespace yac::tool_call {
 
+[[nodiscard]] ToolExecutionResult ExecuteFileReadTool(
+    const chat::ToolCallRequest& request,
+    const WorkspaceFilesystem& workspace_filesystem);
 [[nodiscard]] ToolExecutionResult ExecuteFileWriteTool(
     const chat::ToolCallRequest& request,
     const WorkspaceFilesystem& workspace_filesystem);
