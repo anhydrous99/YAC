@@ -1,6 +1,5 @@
 #include "slash_command_registry.hpp"
 
-#include <algorithm>
 #include <utility>
 
 namespace yac::presentation {
@@ -8,19 +7,34 @@ namespace yac::presentation {
 void SlashCommandRegistry::Define(std::string id, std::string name,
                                   std::string description,
                                   std::vector<std::string> aliases) {
-  commands_.push_back({.id = std::move(id),
-                       .name = std::move(name),
-                       .description = std::move(description),
-                       .aliases = std::move(aliases),
-                       .handler = std::nullopt});
+  const auto index = commands_.size();
+  commands_.resize(index + 1);
+  auto& command = commands_[index];
+  command.id = std::move(id);
+  command.name = std::move(name);
+  command.description = std::move(description);
+  command.aliases = std::move(aliases);
+  command.handler = std::nullopt;
+  command.arguments_handler = std::nullopt;
 }
 
 void SlashCommandRegistry::SetHandler(const std::string& id,
                                       std::function<void()> handler) {
-  auto it = std::ranges::find_if(commands_,
-                                 [&](const auto& cmd) { return cmd.id == id; });
-  if (it != commands_.end()) {
-    it->handler = std::move(handler);
+  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+    if (commands_[i].id == id) {
+      commands_[i].handler = std::move(handler);
+      break;
+    }
+  }
+}
+
+void SlashCommandRegistry::SetArgumentsHandler(
+    const std::string& id, std::function<void(std::string)> handler) {
+  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+    if (commands_[i].id == id) {
+      commands_[i].arguments_handler = std::move(handler);
+      break;
+    }
   }
 }
 
@@ -28,7 +42,9 @@ void SlashCommandRegistry::Register(SlashCommand command) {
   if (command.id.empty()) {
     command.id = command.name;
   }
-  commands_.push_back(std::move(command));
+  const auto index = commands_.size();
+  commands_.resize(index + 1);
+  commands_[index] = std::move(command);
 }
 
 bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
@@ -41,17 +57,34 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
     return false;
   }
 
-  auto command = std::ranges::find_if(commands_, [&](const auto& cmd) {
-    if (cmd.name == name) {
-      return true;
+  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+    const auto& command = commands_[i];
+    auto alias_match = false;
+    for (std::size_t j = 0; j < command.aliases.size(); ++j) {  // NOLINT(modernize-loop-convert)
+      if (command.aliases[j] == name) {
+        alias_match = true;
+        break;
+      }
     }
-    return std::ranges::find(cmd.aliases, name) != cmd.aliases.end();
-  });
-  if (command != commands_.end()) {
-    const auto& handler = command->handler;
-    if (handler.has_value()) {
-      (*handler)();
-      return true;
+
+    if (command.name == name || alias_match) {
+      if (command.arguments_handler.has_value()) {
+        auto args_start = name.length() + 1;
+        while (args_start < input.size() &&
+               (input[args_start] == ' ' || input[args_start] == '\t' ||
+                input[args_start] == '\n' || input[args_start] == '\r' ||
+                input[args_start] == '\f' || input[args_start] == '\v')) {
+          ++args_start;
+        }
+        auto args = input.substr(args_start);
+        (*command.arguments_handler)(std::move(args));
+        return true;
+      }
+      const auto& handler = command.handler;
+      if (handler.has_value()) {
+        (*handler)();
+        return true;
+      }
     }
   }
 
