@@ -871,19 +871,63 @@ TEST_CASE("ChatService assigns unique message IDs") {
   REQUIRE(id1 != id2);
 }
 
-TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
+namespace {
+
+class ScopedSettingsFile {
+ public:
+  explicit ScopedSettingsFile(std::string_view name)
+      : path_(std::filesystem::temp_directory_path() / name) {
+    std::filesystem::remove_all(path_);
+  }
+  ~ScopedSettingsFile() { std::filesystem::remove_all(path_); }
+  ScopedSettingsFile(const ScopedSettingsFile&) = delete;
+  ScopedSettingsFile& operator=(const ScopedSettingsFile&) = delete;
+  ScopedSettingsFile(ScopedSettingsFile&&) = delete;
+  ScopedSettingsFile& operator=(ScopedSettingsFile&&) = delete;
+
+  void Write(std::string_view content) const {
+    std::ofstream stream(path_, std::ios::trunc);
+    stream << content;
+  }
+
+  [[nodiscard]] const std::filesystem::path& Path() const { return path_; }
+
+ private:
+  std::filesystem::path path_;
+};
+
+}  // namespace
+
+TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
   ScopedEnvClear env_guard;
-  auto config = LoadChatConfigFromEnv();
+  ScopedSettingsFile settings("yac_test_cfg_defaults.toml");
+  auto config =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
+          .config;
   REQUIRE(config.provider_id == "openai");
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE_FALSE(config.system_prompt.has_value());
 }
 
-TEST_CASE("LoadChatConfigResultFromEnv warns when API key is missing") {
+TEST_CASE(
+    "LoadChatConfigResult creates settings.toml on first run when requested") {
   ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_first_run.toml");
+  REQUIRE_FALSE(std::filesystem::exists(settings.Path()));
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/true);
+  REQUIRE(std::filesystem::exists(settings.Path()));
+  REQUIRE(result.config.provider_id == "openai");
+  REQUIRE(result.config.model == "gpt-4o-mini");
+}
 
-  auto result = LoadChatConfigResultFromEnv();
+TEST_CASE("LoadChatConfigResult warns when API key is missing") {
+  ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_missing_key.toml");
+
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
 
   REQUIRE(result.config.api_key.empty());
   REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
@@ -893,15 +937,13 @@ TEST_CASE("LoadChatConfigResultFromEnv warns when API key is missing") {
   }));
 }
 
-TEST_CASE("LoadChatConfigResultFromEnv reports invalid temperature") {
+TEST_CASE("YAC_TEMPERATURE env var reports invalid values") {
   ScopedEnvClear env_guard;
-#ifdef _WIN32
-  _putenv_s("YAC_TEMPERATURE", "too-hot");
-#else
+  ScopedSettingsFile settings("yac_test_cfg_bad_temp_env.toml");
   setenv("YAC_TEMPERATURE", "too-hot", 1);
-#endif
 
-  auto result = LoadChatConfigResultFromEnv();
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
 
   REQUIRE(result.config.temperature == 0.7);
   REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
@@ -909,31 +951,35 @@ TEST_CASE("LoadChatConfigResultFromEnv reports invalid temperature") {
            issue.message == "Invalid YAC_TEMPERATURE";
   }));
 
-#ifdef _WIN32
-  _putenv_s("YAC_TEMPERATURE", "");
-#else
   unsetenv("YAC_TEMPERATURE");
-#endif
 }
 
-TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {
+TEST_CASE("settings.toml reports out-of-range temperature as an error") {
   ScopedEnvClear env_guard;
-  const auto original_dir = std::filesystem::current_path();
+  ScopedSettingsFile settings("yac_test_cfg_bad_temp_toml.toml");
+  settings.Write("temperature = 5.0\n");
 
-  const auto temp_dir =
-      std::filesystem::temp_directory_path() / "test_env_config_zai_defaults";
-  std::filesystem::create_directories(temp_dir);
-  std::filesystem::current_path(temp_dir);
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
 
-  const std::string env_content =
-      "YAC_PROVIDER=zai\n"
-      "ZAI_API_KEY=zai-api-key\n";
+  REQUIRE(result.config.temperature == 0.7);
+  REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("temperature") != std::string::npos;
+  }));
+}
 
-  std::ofstream env_file(temp_dir / ".env");
-  env_file << env_content;
-  env_file.close();
+TEST_CASE("[provider].id = zai applies the Z.ai preset") {
+  ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_zai_defaults.toml");
+  settings.Write(
+      "[provider]\n"
+      "id = \"zai\"\n");
+  setenv("ZAI_API_KEY", "zai-api-key", 1);
 
-  auto config = LoadChatConfigFromEnv();
+  auto config =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
+          .config;
 
   REQUIRE(config.provider_id == "zai");
   REQUIRE(config.model == "glm-5.1");
@@ -941,31 +987,23 @@ TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {
   REQUIRE(config.api_key_env == "ZAI_API_KEY");
   REQUIRE(config.api_key == "zai-api-key");
 
-  std::filesystem::current_path(original_dir);
-  std::filesystem::remove_all(temp_dir);
+  unsetenv("ZAI_API_KEY");
 }
 
-TEST_CASE("LoadChatConfigFromEnv explicit values override Z.ai defaults") {
+TEST_CASE("TOML values override the Z.ai preset") {
   ScopedEnvClear env_guard;
-  const auto original_dir = std::filesystem::current_path();
+  ScopedSettingsFile settings("yac_test_cfg_zai_overrides.toml");
+  settings.Write(
+      "[provider]\n"
+      "id = \"zai\"\n"
+      "model = \"glm-4.7\"\n"
+      "base_url = \"https://zai.example.com/v1\"\n"
+      "api_key_env = \"YAC_CUSTOM_ZAI_KEY\"\n");
+  setenv("YAC_CUSTOM_ZAI_KEY", "custom-zai-key", 1);
 
-  const auto temp_dir =
-      std::filesystem::temp_directory_path() / "test_env_config_zai_overrides";
-  std::filesystem::create_directories(temp_dir);
-  std::filesystem::current_path(temp_dir);
-
-  const std::string env_content =
-      "YAC_PROVIDER=zai\n"
-      "YAC_MODEL=glm-4.7\n"
-      "YAC_BASE_URL=https://zai.example.com/v1\n"
-      "YAC_API_KEY_ENV=YAC_CUSTOM_ZAI_KEY\n"
-      "YAC_CUSTOM_ZAI_KEY=custom-zai-key\n";
-
-  std::ofstream env_file(temp_dir / ".env");
-  env_file << env_content;
-  env_file.close();
-
-  auto config = LoadChatConfigFromEnv();
+  auto config =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
+          .config;
 
   REQUIRE(config.provider_id == "zai");
   REQUIRE(config.model == "glm-4.7");
@@ -973,98 +1011,84 @@ TEST_CASE("LoadChatConfigFromEnv explicit values override Z.ai defaults") {
   REQUIRE(config.api_key_env == "YAC_CUSTOM_ZAI_KEY");
   REQUIRE(config.api_key == "custom-zai-key");
 
-  std::filesystem::current_path(original_dir);
-  std::filesystem::remove_all(temp_dir);
+  unsetenv("YAC_CUSTOM_ZAI_KEY");
 }
 
-TEST_CASE("LoadChatConfigFromEnv loads from .env file") {
+TEST_CASE("settings.toml values are read end-to-end") {
   ScopedEnvClear env_guard;
-  const auto original_dir = std::filesystem::current_path();
+  ScopedSettingsFile settings("yac_test_cfg_full.toml");
+  settings.Write(
+      "temperature = 1.5\n"
+      "system_prompt = \"TOML system prompt\"\n"
+      "\n"
+      "[provider]\n"
+      "id = \"custom-provider\"\n"
+      "model = \"custom-model\"\n"
+      "base_url = \"https://example.com/v1/\"\n"
+      "api_key_env = \"YAC_TEST_API_KEY_FROM_FILE\"\n");
+  setenv("YAC_TEST_API_KEY_FROM_FILE", "toml-api-key", 1);
 
-  const auto temp_dir =
-      std::filesystem::temp_directory_path() / "test_env_config";
-  std::filesystem::create_directories(temp_dir);
-  std::filesystem::current_path(temp_dir);
+  auto config =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
+          .config;
 
-  const std::string env_content =
-      "YAC_PROVIDER=env-provider\n"
-      "YAC_MODEL=env-model\n"
-      "YAC_BASE_URL=https://env.example.com/v1/\n"
-      "YAC_TEMPERATURE=1.5\n"
-      "YAC_API_KEY_ENV=YAC_TEST_API_KEY_FROM_FILE\n"
-      "YAC_TEST_API_KEY_FROM_FILE=env-api-key\n"
-      "YAC_SYSTEM_PROMPT=\"Env system prompt\"\n";
+  REQUIRE(config.provider_id == "custom-provider");
+  REQUIRE(config.model == "custom-model");
+  REQUIRE(config.base_url == "https://example.com/v1/");
+  REQUIRE(config.temperature == 1.5);
+  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_FILE");
+  REQUIRE(config.api_key == "toml-api-key");
+  REQUIRE(config.system_prompt == std::string{"TOML system prompt"});
 
-  std::ofstream env_file(temp_dir / ".env");
-  env_file << env_content;
-  env_file.close();
+  unsetenv("YAC_TEST_API_KEY_FROM_FILE");
+}
 
-  auto config = LoadChatConfigFromEnv();
+TEST_CASE("YAC_* env vars override settings.toml values") {
+  ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_env_override.toml");
+  settings.Write(
+      "temperature = 1.5\n"
+      "\n"
+      "[provider]\n"
+      "id = \"file-provider\"\n"
+      "model = \"file-model\"\n"
+      "api_key_env = \"YAC_TEST_API_KEY_OVERRIDE\"\n");
+
+  setenv("YAC_PROVIDER", "env-provider", 1);
+  setenv("YAC_MODEL", "env-model", 1);
+  setenv("YAC_TEMPERATURE", "0.8", 1);
+  setenv("YAC_TEST_API_KEY_OVERRIDE", "env-api-key", 1);
+
+  auto config =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
+          .config;
 
   REQUIRE(config.provider_id == "env-provider");
   REQUIRE(config.model == "env-model");
-  REQUIRE(config.base_url == "https://env.example.com/v1/");
-  REQUIRE(config.temperature == 1.5);
-  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_FILE");
-  REQUIRE(config.api_key == "env-api-key");
-  REQUIRE(config.system_prompt.has_value());
-  REQUIRE(config.system_prompt == std::string{"Env system prompt"});
-
-  std::filesystem::current_path(original_dir);
-  std::filesystem::remove_all(temp_dir);
-}
-
-TEST_CASE("LoadChatConfigFromEnv: environment variables override .env") {
-  const auto original_dir = std::filesystem::current_path();
-
-  const auto temp_dir =
-      std::filesystem::temp_directory_path() / "test_env_override";
-  std::filesystem::create_directories(temp_dir);
-  std::filesystem::current_path(temp_dir);
-
-  const std::string env_content =
-      "YAC_PROVIDER=env-provider\n"
-      "YAC_MODEL=env-model\n"
-      "YAC_TEMPERATURE=1.5\n"
-      "YAC_API_KEY_ENV=YAC_TEST_API_KEY_OVERRIDE\n"
-      "YAC_TEST_API_KEY_OVERRIDE=env-api-key\n";
-
-  std::ofstream env_file(temp_dir / ".env");
-  env_file << env_content;
-  env_file.close();
-
-#ifdef _WIN32
-  _putenv_s("YAC_PROVIDER", "system-provider");
-  _putenv_s("YAC_MODEL", "system-model");
-  _putenv_s("YAC_TEMPERATURE", "0.8");
-  _putenv_s("YAC_TEST_API_KEY_OVERRIDE", "system-api-key");
-#else
-  setenv("YAC_PROVIDER", "system-provider", 1);
-  setenv("YAC_MODEL", "system-model", 1);
-  setenv("YAC_TEMPERATURE", "0.8", 1);
-  setenv("YAC_TEST_API_KEY_OVERRIDE", "system-api-key", 1);
-#endif
-
-  auto config = LoadChatConfigFromEnv();
-
-  REQUIRE(config.provider_id == "system-provider");
-  REQUIRE(config.model == "system-model");
   REQUIRE(config.temperature == 0.8);
   REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_OVERRIDE");
-  REQUIRE(config.api_key == "system-api-key");
+  REQUIRE(config.api_key == "env-api-key");
 
-#ifdef _WIN32
-  _putenv_s("YAC_PROVIDER", "");
-  _putenv_s("YAC_MODEL", "");
-  _putenv_s("YAC_TEMPERATURE", "");
-  _putenv_s("YAC_TEST_API_KEY_OVERRIDE", "");
-#else
   unsetenv("YAC_PROVIDER");
   unsetenv("YAC_MODEL");
   unsetenv("YAC_TEMPERATURE");
   unsetenv("YAC_TEST_API_KEY_OVERRIDE");
-#endif
+}
 
-  std::filesystem::current_path(original_dir);
-  std::filesystem::remove_all(temp_dir);
+TEST_CASE(
+    "Malformed settings.toml reports an error but yields a usable "
+    "config") {
+  ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_malformed.toml");
+  settings.Write("this is =  not = valid\n");
+
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
+
+  REQUIRE(result.config.provider_id == "openai");
+  REQUIRE(result.config.model == "gpt-4o-mini");
+  REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("settings.toml") != std::string::npos;
+  }));
 }

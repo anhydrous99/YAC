@@ -21,7 +21,7 @@ The SVG previews show the current chat surface and command palette.
 | `yac_service` | Queues prompts, tracks history, and streams provider responses |
 | `yac_presentation` | FTXUI components, Markdown rendering, theming, and tool cards |
 | Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with OpenAI and Z.ai presets |
-| Config | Environment variables or `.env` in the current working directory |
+| Config | `~/.yac/settings.toml`, with `YAC_*` environment variable overrides |
 
 ## Highlights
 
@@ -70,37 +70,49 @@ key remains unset.
 
 ## Configuration
 
-YAC reads process environment variables first, then falls back to a `.env` file
-in the current working directory.
+YAC reads `~/.yac/settings.toml`. On first launch the file is auto-created with
+a commented default template; edit it and restart to pick up changes. Shell
+environment variables named `YAC_*` override whatever is in the file — useful
+for CI, per-shell experiments, and quick flips.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `YAC_PROVIDER` | `openai` | Provider ID registered by the app |
-| `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
-| `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
-| `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
-| `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the variable containing the API key |
-| `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
+Example `~/.yac/settings.toml`:
 
-Set `YAC_PROVIDER=zai` to use the Z.ai Coding API preset:
+```toml
+temperature = 0.7
+# system_prompt = "You are a helpful assistant."
 
-```dotenv
-YAC_PROVIDER=zai
-ZAI_API_KEY=...
+[provider]
+id          = "openai"
+model       = "gpt-4o-mini"
+base_url    = "https://api.openai.com/v1/"
+api_key_env = "OPENAI_API_KEY"
+
+[lsp.clangd]
+command = "clangd"
+args    = []
 ```
 
-The preset uses `glm-5.1`,
-`https://api.z.ai/api/coding/paas/v4`, and `ZAI_API_KEY`. You can still
-override `YAC_MODEL`, `YAC_BASE_URL`, or `YAC_API_KEY_ENV`.
+| Setting | Env override | Default | Purpose |
+| --- | --- | --- | --- |
+| `provider.id` | `YAC_PROVIDER` | `openai` | Provider ID registered by the app |
+| `provider.model` | `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
+| `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
+| `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
+| `provider.api_key` | — | unset | Optional inline key; prefer the env var |
+| `temperature` | `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
+| `system_prompt` | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
+| `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
+| `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
+| `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
 
-Example `.env`:
+Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
+preset. When only `id` is set, the preset fills in `glm-5.1`,
+`https://api.z.ai/api/coding/paas/v4`, and `ZAI_API_KEY`; any field you set
+explicitly overrides the preset.
 
-```dotenv
-OPENAI_API_KEY=sk-...
-YAC_MODEL=gpt-4o-mini
-YAC_TEMPERATURE=0.7
-YAC_SYSTEM_PROMPT="Use concise answers."
-```
+API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell over
+placing `api_key` in the TOML file. Plaintext secrets in `$HOME` are harder to
+rotate safely and don't travel well across shells or CI.
 
 YAC shows the active provider/model in the footer. It starts the UI immediately,
 then fetches models in the background and adds a `Switch Model` command when a
@@ -163,8 +175,8 @@ cmake --build build --target format-check
 - `src/main.cpp` is a thin handoff to app bootstrap; it loads config, registers the OpenAI-compatible provider, and wires minimal startup hooks, delegating full startup orchestration to the app bootstrap component
 - `src/app/chat_event_bridge.*` translates service events into presentation
   updates
-- `src/chat/` contains chat config loading, `.env` parsing, queueing, history,
-  cancellation, and stream event flow
+- `src/chat/` contains chat config loading (`~/.yac/settings.toml` + env var
+  overrides), queueing, history, cancellation, and stream event flow
 - `src/provider/` contains the provider interface, registry, and OpenAI
   chat-completions implementation
 - `src/presentation/chat_ui.*` owns messages, input handling, scrolling, command
@@ -182,7 +194,7 @@ cmake --build build --target format-check
 
 ```mermaid
 flowchart TD
-  Main[src/main.cpp] --> Config[LoadChatConfigFromEnv]
+  Main[src/main.cpp] --> Config[LoadChatConfig]
   Main --> Registry[ProviderRegistry]
   Registry --> OpenAI[OpenAiChatProvider]
   Main --> ChatService[ChatService]

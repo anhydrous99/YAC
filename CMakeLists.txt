@@ -38,6 +38,13 @@ target_include_directories(openai_cpp INTERFACE
   ${openai_cpp_SOURCE_DIR}/include/openai
 )
 
+FetchContent_Declare(
+  tomlplusplus
+  GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+  GIT_TAG v3.4.0
+)
+FetchContent_MakeAvailable(tomlplusplus)
+
 find_package(CURL REQUIRED)
 
 add_library(yac_core_types INTERFACE)
@@ -75,7 +82,8 @@ add_library(yac_service STATIC
   src/chat/chat_service_request_builder.cpp
   src/chat/chat_service_tool_approval.cpp
   src/chat/config.cpp
-  src/chat/env_file.cpp
+  src/chat/config_paths.cpp
+  src/chat/settings_toml.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
   src/tool_call/executor_arguments.cpp
@@ -87,7 +95,9 @@ add_library(yac_service STATIC
   src/tool_call/workspace_filesystem.cpp
 )
 target_include_directories(yac_service PUBLIC src)
-target_link_libraries(yac_service PUBLIC yac_core_types openai_cpp CURL::libcurl)
+target_link_libraries(yac_service
+  PUBLIC yac_core_types openai_cpp CURL::libcurl
+  PRIVATE tomlplusplus::tomlplusplus)
 
 add_library(yac_app STATIC
   src/app/bootstrap.cpp

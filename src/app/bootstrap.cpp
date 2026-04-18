@@ -212,7 +212,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 }  // namespace
 
 int RunApp() {
-  auto config_result = chat::LoadChatConfigResultFromEnv();
+  auto config_result = chat::LoadChatConfigResult();
   auto config = config_result.config;
   auto provider = BuildProvider(config);
 
