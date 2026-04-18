@@ -59,6 +59,8 @@ class ToolCallRenderer {
       const tool_data::LspRenameCall& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderLspSymbols(
       const tool_data::LspSymbolsCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderSubAgent(
+      const tool_data::SubAgentCall& call, const RenderContext& context);
 };
 
 }  // namespace yac::presentation::tool_call
