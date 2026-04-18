@@ -263,6 +263,86 @@ TEST_CASE("ToolCallRenderer renders LSP navigation and rename tools") {
       8);
 }
 
+TEST_CASE("ToolCallRenderer::BuildGroupSummary empty input yields empty") {
+  REQUIRE(ToolCallRenderer::BuildGroupSummary({}).empty());
+}
+
+TEST_CASE(
+    "ToolCallRenderer::BuildGroupSummary single variant returns one term") {
+  BashCall a{"echo", "", 0, false};
+  BashCall b{"ls", "", 0, false};
+  BashCall c{"pwd", "", 0, false};
+  std::vector<ToolCallBlock> blocks{ToolCallBlock{a}, ToolCallBlock{b},
+                                    ToolCallBlock{c}};
+  std::vector<const ToolCallBlock*> ptrs;
+  ptrs.reserve(blocks.size());
+  for (const auto& block : blocks) {
+    ptrs.push_back(&block);
+  }
+
+  REQUIRE(ToolCallRenderer::BuildGroupSummary(ptrs) == "3 bash");
+}
+
+TEST_CASE(
+    "ToolCallRenderer::BuildGroupSummary orders terms by descending count") {
+  std::vector<ToolCallBlock> blocks;
+  for (int i = 0; i < 5; ++i) {
+    blocks.emplace_back(BashCall{"echo", "", 0, false});
+  }
+  for (int i = 0; i < 4; ++i) {
+    blocks.emplace_back(FileReadCall{"a.txt", 1, ""});
+  }
+  for (int i = 0; i < 3; ++i) {
+    blocks.emplace_back(FileEditCall{"a.txt", {}});
+  }
+  std::vector<const ToolCallBlock*> ptrs;
+  ptrs.reserve(blocks.size());
+  for (const auto& b : blocks) {
+    ptrs.push_back(&b);
+  }
+
+  REQUIRE(ToolCallRenderer::BuildGroupSummary(ptrs) ==
+          "5 bash \xc2\xb7 4 read \xc2\xb7 3 edit");
+}
+
+TEST_CASE("ToolCallRenderer::BuildGroupSummary collapses LSP variants") {
+  std::vector<ToolCallBlock> blocks;
+  blocks.emplace_back(LspDiagnosticsCall{"f", {}, false, ""});
+  blocks.emplace_back(LspReferencesCall{"s", "f", {}, false, ""});
+  blocks.emplace_back(LspRenameCall{"f", 0, 0, "", "", 0, {}, false, ""});
+  std::vector<const ToolCallBlock*> ptrs;
+  ptrs.reserve(blocks.size());
+  for (const auto& block : blocks) {
+    ptrs.push_back(&block);
+  }
+
+  REQUIRE(ToolCallRenderer::BuildGroupSummary(ptrs) == "3 lsp");
+}
+
+TEST_CASE(
+    "ToolCallRenderer::BuildGroupSummary caps at four terms and appends "
+    "ellipsis when more variants exist") {
+  std::vector<ToolCallBlock> blocks;
+  blocks.emplace_back(BashCall{"c", "", 0, false});
+  blocks.emplace_back(FileReadCall{"r", 1, ""});
+  blocks.emplace_back(FileEditCall{"e", {}});
+  blocks.emplace_back(FileWriteCall{"w", "", "", 0, 0, false, ""});
+  blocks.emplace_back(GrepCall{"g", 0, {}});
+  blocks.emplace_back(GlobCall{"*", {}});
+  std::vector<const ToolCallBlock*> ptrs;
+  for (const auto& b : blocks) {
+    ptrs.push_back(&b);
+  }
+
+  const auto summary = ToolCallRenderer::BuildGroupSummary(ptrs);
+
+  // Six variants, all count 1 — alphabetical tie-break; top four, then
+  // ellipsis.
+  REQUIRE(summary ==
+          "1 bash \xc2\xb7 1 edit \xc2\xb7 1 glob \xc2\xb7 1 grep "
+          "\xc2\xb7 \xe2\x80\xa6");
+}
+
 TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
   RenderAndCheck(BashCall{"pwd", "", 0, false}, 80, 8);
   RenderAndCheck(FileEditCall{"file.txt", {}}, 80, 8);

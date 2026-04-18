@@ -3,6 +3,9 @@
 #include "../render_context.hpp"
 #include "tool_call/types.hpp"
 
+#include <string>
+#include <vector>
+
 #include <ftxui/dom/elements.hpp>
 
 namespace yac::presentation::tool_call {
@@ -21,6 +24,8 @@ class ToolCallRenderer {
       const tool_data::ToolCallBlock& block);
   [[nodiscard]] static std::string BuildLabel(
       const tool_data::ToolCallBlock& block);
+  [[nodiscard]] static std::string BuildGroupSummary(
+      const std::vector<const tool_data::ToolCallBlock*>& blocks);
   [[nodiscard]] static ftxui::Element BuildWritePeek(
       const tool_data::FileWriteCall& call, const RenderContext& context);
 

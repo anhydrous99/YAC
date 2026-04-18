@@ -94,6 +94,7 @@ void ChatSession::SetToolExpanded(size_t index, bool expanded) {
 void ChatSession::ClearMessages() {
   messages_.clear();
   tool_expanded_states_.clear();
+  group_expanded_states_.clear();
 }
 
 std::optional<size_t> ChatSession::FindMessageIndex(MessageId id) const {
@@ -126,6 +127,14 @@ bool* ChatSession::ToolExpandedState(size_t index) {
     tool_expanded_states_.push_back(std::make_unique<bool>(false));
   }
   return tool_expanded_states_[index].get();
+}
+
+bool* ChatSession::GroupExpandedState(size_t group_index,
+                                      bool default_expanded) {
+  while (group_expanded_states_.size() <= group_index) {
+    group_expanded_states_.push_back(std::make_unique<bool>(default_expanded));
+  }
+  return group_expanded_states_[group_index].get();
 }
 
 }  // namespace yac::presentation

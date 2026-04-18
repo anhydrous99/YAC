@@ -33,11 +33,14 @@ class ChatSession {
   [[nodiscard]] bool Empty() const;
   [[nodiscard]] size_t MessageCount() const;
   [[nodiscard]] bool* ToolExpandedState(size_t index);
+  [[nodiscard]] bool* GroupExpandedState(size_t group_index,
+                                         bool default_expanded);
 
  private:
   MessageId next_id_ = 1;
   std::vector<Message> messages_;
   std::vector<std::unique_ptr<bool>> tool_expanded_states_;
+  std::vector<std::unique_ptr<bool>> group_expanded_states_;
 };
 
 }  // namespace yac::presentation

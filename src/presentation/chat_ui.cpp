@@ -23,6 +23,8 @@ inline const auto& k_theme = theme::Theme::Instance();
 
 namespace {
 
+constexpr size_t kToolGroupThreshold = 3;
+
 std::string FormatTokens(int tokens) {
   if (tokens < 1000) {
     return std::to_string(tokens);
@@ -728,27 +730,23 @@ void ChatUI::SyncMessageComponents() {
         // new tool message included.
         message_components_.pop_back();
 
-        // Collect all message indices in this group: [agent, tool, tool, ...]
         const size_t agent_index = group_start;
 
-        // Build interactive tool collapsible components.
-        ftxui::Components group_children;
-
-        // Agent renderer (non-interactive).
-        group_children.push_back(ftxui::Renderer([this, agent_index] {
+        auto agent_renderer = ftxui::Renderer([this, agent_index] {
           const auto& agent_msg = session_.Messages()[agent_index];
           return MessageRenderer::RenderAgentMessageContent(
               agent_msg, render_cache_.For(agent_msg.id),
               RenderContext{.terminal_width = last_terminal_width_,
                             .thinking_frame = thinking_animation_.Frame()});
-        }));
+        });
 
-        // Tool collapsible components (interactive — handle mouse clicks).
+        ftxui::Components tool_children;
+        std::vector<const ::yac::tool_call::ToolCallBlock*> tool_blocks;
+        bool any_tool_active = false;
         for (size_t t = agent_index + 1; t <= index; ++t) {
           if (messages[t].sender != Sender::Tool) {
             continue;
           }
-          // Compute this tool's expanded-state index.
           size_t ti = 0;
           for (size_t i = 0; i <= t; ++i) {
             if (messages[i].sender == Sender::Tool) {
@@ -767,6 +765,10 @@ void ChatUI::SyncMessageComponents() {
                               .thinking_frame = thinking_animation_.Frame()});
           });
           const auto* block = messages[t].ToolCall();
+          tool_blocks.push_back(block);
+          if (messages[t].status == MessageStatus::Active) {
+            any_tool_active = true;
+          }
           auto summary = block != nullptr
                              ? ::yac::presentation::tool_call::
                                    ToolCallRenderer::BuildSummary(*block)
@@ -782,13 +784,37 @@ void ChatUI::SyncMessageComponents() {
                                 .thinking_frame = thinking_animation_.Frame()});
             }
           }
-          group_children.push_back(
+          tool_children.push_back(
               Collapsible(messages[t].DisplayLabel(), std::move(tool_content),
                           session_.ToolExpandedState(ti - 1),
                           std::move(summary), std::move(peek)));
         }
 
-        // Wrap the vertical container in a single CardSurface with agent_bg.
+        ftxui::Component tools_component;
+        if (tool_children.size() >= kToolGroupThreshold) {
+          auto tools_stack = ftxui::Container::Vertical(tool_children);
+          size_t group_ordinal = 0;
+          for (size_t i = 0; i <= agent_index; ++i) {
+            if (messages[i].sender == Sender::Agent) {
+              group_ordinal++;
+            }
+          }
+          group_ordinal = group_ordinal > 0 ? group_ordinal - 1 : 0;
+          auto group_label = std::string{"Tool calls ("} +
+                             std::to_string(tool_children.size()) + ")";
+          auto group_summary = ::yac::presentation::tool_call::
+              ToolCallRenderer::BuildGroupSummary(tool_blocks);
+          bool* group_expanded =
+              session_.GroupExpandedState(group_ordinal, any_tool_active);
+          tools_component =
+              Collapsible(std::move(group_label), tools_stack, group_expanded,
+                          std::move(group_summary), ftxui::Element{});
+        } else {
+          tools_component = ftxui::Container::Vertical(tool_children);
+        }
+
+        ftxui::Components group_children{std::move(agent_renderer),
+                                         std::move(tools_component)};
         auto group_container = ftxui::Container::Vertical(group_children);
         message_components_.push_back(
             ftxui::Renderer(group_container, [this, group_container] {

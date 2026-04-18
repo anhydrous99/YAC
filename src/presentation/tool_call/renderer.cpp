@@ -4,9 +4,11 @@
 #include "../util/string_util.hpp"
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <ftxui/dom/elements.hpp>
 
@@ -146,6 +148,42 @@ ftxui::Element RenderError(const std::string& error,
   return RenderWrappedLine("Error: " + error, theme.tool.edit_remove);
 }
 
+std::string VariantTag(const tool_data::ToolCallBlock& block) {
+  return std::visit(
+      [](const auto& call) -> std::string {
+        using T = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+          return "bash";
+        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
+          return "edit";
+        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
+          return "read";
+        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
+          return "write";
+        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
+          return "list";
+        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
+          return "grep";
+        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
+          return "glob";
+        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
+          return "fetch";
+        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
+          return "search";
+        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall> ||
+                             std::is_same_v<T, tool_data::LspReferencesCall> ||
+                             std::is_same_v<T,
+                                            tool_data::LspGotoDefinitionCall> ||
+                             std::is_same_v<T, tool_data::LspRenameCall> ||
+                             std::is_same_v<T, tool_data::LspSymbolsCall>) {
+          return "lsp";
+        } else {
+          return "tool";
+        }
+      },
+      block);
+}
+
 }  // namespace
 
 ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block) {
@@ -257,6 +295,62 @@ std::string ToolCallRenderer::BuildSummary(
         }
       },
       block);
+}
+
+std::string ToolCallRenderer::BuildGroupSummary(
+    const std::vector<const tool_data::ToolCallBlock*>& blocks) {
+  if (blocks.empty()) {
+    return {};
+  }
+
+  struct Tally {
+    std::string tag;
+    int count;
+  };
+  std::vector<Tally> tallies;
+  tallies.reserve(10);
+  for (const auto* block : blocks) {
+    if (block == nullptr) {
+      continue;
+    }
+    auto tag = VariantTag(*block);
+    auto it = std::find_if(tallies.begin(), tallies.end(),
+                           [&tag](const Tally& t) { return t.tag == tag; });
+    if (it == tallies.end()) {
+      tallies.push_back({std::move(tag), 1});
+    } else {
+      it->count = it->count + 1;
+    }
+  }
+
+  if (tallies.empty()) {
+    return {};
+  }
+
+  std::sort(tallies.begin(), tallies.end(), [](const Tally& a, const Tally& b) {
+    if (a.count != b.count) {
+      return a.count > b.count;
+    }
+    return a.tag < b.tag;
+  });
+
+  constexpr size_t kMaxTerms = 4;
+  const bool overflow = tallies.size() > kMaxTerms;
+  const size_t limit = std::min(tallies.size(), kMaxTerms);
+
+  std::string out;
+  for (size_t i = 0; i < limit; ++i) {
+    if (!out.empty()) {
+      out += " \xc2\xb7 ";
+    }
+    out += std::to_string(tallies[i].count);
+    out += ' ';
+    out += tallies[i].tag;
+  }
+  if (overflow) {
+    out += " \xc2\xb7 \xe2\x80\xa6";
+  }
+  return out;
 }
 
 ftxui::Element ToolCallRenderer::BuildWritePeek(
