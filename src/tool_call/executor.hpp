@@ -11,9 +11,7 @@
 #include <vector>
 
 namespace yac::chat {
-
 class SubAgentManager;
-
 }  // namespace yac::chat
 
 namespace yac::tool_call {
@@ -41,7 +39,7 @@ class ToolExecutor {
       const chat::ToolCallRequest& request);
   [[nodiscard]] ToolExecutionResult Execute(const PreparedToolCall& prepared,
                                             std::stop_token stop_token) const;
-  void SetSubAgentManager(chat::SubAgentManager* sub_agent_manager);
+  void SetSubAgentManager(chat::SubAgentManager* manager);
 
  private:
   WorkspaceFilesystem workspace_filesystem_;

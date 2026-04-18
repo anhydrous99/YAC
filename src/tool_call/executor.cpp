@@ -4,6 +4,7 @@
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/filesystem_tool_executor.hpp"
 #include "tool_call/lsp_tool_executor.hpp"
+#include "tool_call/sub_agent_tool_executor.hpp"
 
 #include <stdexcept>
 #include <utility>
@@ -37,6 +38,10 @@ ToolExecutor::ToolExecutor(std::filesystem::path workspace_root,
                            std::shared_ptr<ILspClient> lsp_client)
     : workspace_filesystem_(std::move(workspace_root)),
       lsp_client_(std::move(lsp_client)) {}
+
+void ToolExecutor::SetSubAgentManager(chat::SubAgentManager* manager) {
+  sub_agent_manager_ = manager;
+}
 
 std::vector<chat::ToolDefinition> ToolExecutor::Definitions() {
   return ToolDefinitions();
@@ -81,15 +86,14 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
       return ExecuteLspSymbolsTool(prepared.request, *lsp_client_,
                                    workspace_filesystem_);
     }
+    if (prepared.request.name == "sub_agent") {
+      return ExecuteSubAgentTool(prepared, sub_agent_manager_);
+    }
     return ErrorResult(prepared.preview,
                        "Unknown tool: " + prepared.request.name);
   } catch (const std::exception& error) {
     return ErrorResult(prepared.preview, error.what());
   }
-}
-
-void ToolExecutor::SetSubAgentManager(chat::SubAgentManager* sub_agent_manager) {
-  sub_agent_manager_ = sub_agent_manager;
 }
 
 }  // namespace yac::tool_call
