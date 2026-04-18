@@ -51,9 +51,10 @@ std::string LastAssistantMessage(const std::vector<ChatMessage>& history) {
 }
 
 int ToolCount(const std::vector<ChatMessage>& history) {
-  return static_cast<int>(std::count_if(
-      history.begin(), history.end(),
-      [](const ChatMessage& message) { return message.role == ChatRole::Tool; }));
+  return static_cast<int>(std::count_if(history.begin(), history.end(),
+                                        [](const ChatMessage& message) {
+                                          return message.role == ChatRole::Tool;
+                                        }));
 }
 
 ChatConfig MakeSubAgentConfig(const ChatConfig& parent_config) {
@@ -111,18 +112,19 @@ std::string SubAgentManager::SpawnForeground(const std::string& task) {
   session->task = task;
   session->mode = tool_call::SubAgentMode::Foreground;
   session->card_message_id = parent_next_message_id_();
-  session->deadline = std::chrono::steady_clock::now() +
-                      std::chrono::seconds(timeout_seconds_);
+  session->deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds_);
   session->started_at = std::chrono::steady_clock::now();
 
-  const auto filtered_emit = [this, session_ptr = session.get()](ChatEvent event) {
+  const auto filtered_emit = [this,
+                              session_ptr = session.get()](ChatEvent event) {
     event.message_id = session_ptr->card_message_id;
     event.sub_agent_id = session_ptr->agent_id;
     event.sub_agent_task = session_ptr->task;
     if (event.type == ChatEventType::ToolApprovalRequested) {
-      event.text = "[Sub-agent: " +
-                   TruncateWithEllipsis(session_ptr->task, 48) + "] " +
-                   event.text;
+      event.text =
+          "[Sub-agent: " + TruncateWithEllipsis(session_ptr->task, 48) + "] " +
+          event.text;
       parent_emit_(std::move(event));
       return;
     }
@@ -195,10 +197,10 @@ std::string SubAgentManager::SpawnForeground(const std::string& task) {
   }
 
   result = TruncateWithEllipsis(result, kMaxResultChars);
-  const auto elapsed_ms = static_cast<int>(std::chrono::duration_cast<
-      std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                 session_ptr->started_at)
-                                            .count());
+  const auto elapsed_ms = static_cast<int>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - session_ptr->started_at)
+          .count());
   parent_emit_(ChatEvent{.type = completion_type,
                          .message_id = session_ptr->card_message_id,
                          .role = ChatRole::Assistant,
@@ -227,11 +229,12 @@ std::string SubAgentManager::SpawnBackground(const std::string& task) {
   session->task = task;
   session->mode = tool_call::SubAgentMode::Background;
   session->card_message_id = parent_next_message_id_();
-  session->deadline = std::chrono::steady_clock::now() +
-                      std::chrono::seconds(timeout_seconds_);
+  session->deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(timeout_seconds_);
   session->started_at = std::chrono::steady_clock::now();
 
-  const auto filtered_emit = [this, session_ptr = session.get()](ChatEvent event) {
+  const auto filtered_emit = [this,
+                              session_ptr = session.get()](ChatEvent event) {
     if (std::chrono::steady_clock::now() > session_ptr->deadline) {
       session_ptr->timed_out = true;
       session_ptr->stop_source.request_stop();
@@ -240,9 +243,9 @@ std::string SubAgentManager::SpawnBackground(const std::string& task) {
     event.sub_agent_id = session_ptr->agent_id;
     event.sub_agent_task = session_ptr->task;
     if (event.type == ChatEventType::ToolApprovalRequested) {
-      event.text = "[Sub-agent: " +
-                   TruncateWithEllipsis(session_ptr->task, 48) + "] " +
-                   event.text;
+      event.text =
+          "[Sub-agent: " + TruncateWithEllipsis(session_ptr->task, 48) + "] " +
+          event.text;
       parent_emit_(std::move(event));
     }
   };
@@ -308,10 +311,10 @@ std::string SubAgentManager::SpawnBackground(const std::string& task) {
     }
 
     result = TruncateWithEllipsis(result, kMaxResultChars);
-    const auto elapsed_ms = static_cast<int>(std::chrono::duration_cast<
-        std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                   session_ptr->started_at)
-                                              .count());
+    const auto elapsed_ms = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - session_ptr->started_at)
+            .count());
     parent_emit_(ChatEvent{.type = completion_type,
                            .message_id = session_ptr->card_message_id,
                            .role = ChatRole::Assistant,

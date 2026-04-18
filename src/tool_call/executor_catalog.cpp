@@ -39,18 +39,18 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
        .description = "Rename a symbol across the workspace.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"old_name":{"type":"string"},"new_name":{"type":"string"}},"required":["file_path","line","character","new_name"]})"},
-       {.name = "lsp_symbols",
-        .description = "Return document symbols for a file.",
-        .parameters_schema_json =
-            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
-       {.name = "sub_agent",
-        .description =
-            "Spawn a sub-agent to perform a task in an isolated "
-            "conversation. Use for tasks that benefit from context isolation "
-            "(exploration, research, focused work). The sub-agent has access "
-            "to all tools but cannot spawn further sub-agents.",
-        .parameters_schema_json =
-            R"({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})"},
+      {.name = "lsp_symbols",
+       .description = "Return document symbols for a file.",
+       .parameters_schema_json =
+           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
+      {.name = "sub_agent",
+       .description =
+           "Spawn a sub-agent to perform a task in an isolated "
+           "conversation. Use for tasks that benefit from context isolation "
+           "(exploration, research, focused work). The sub-agent has access "
+           "to all tools but cannot spawn further sub-agents.",
+       .parameters_schema_json =
+           R"({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})"},
   };
 }
 
@@ -127,7 +127,7 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
       const auto task = RequireString(args, "task");
       const auto mode_str = OptionalString(args, "mode");
       const auto mode = (mode_str == "background") ? SubAgentMode::Background
-                                                    : SubAgentMode::Foreground;
+                                                   : SubAgentMode::Foreground;
       return PreparedToolCall{
           .request = request,
           .preview = SubAgentCall{.task = task,

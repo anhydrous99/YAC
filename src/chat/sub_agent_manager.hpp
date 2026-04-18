@@ -28,13 +28,13 @@ class SubAgentManager {
   using NextMessageIdFn = std::function<ChatMessageId()>;
   using ConfigSnapshotFn = std::function<ChatConfig()>;
 
-  SubAgentManager(
-      provider::ProviderRegistry& registry,
-      std::shared_ptr<tool_call::ToolExecutor> tool_executor,
-      internal::ChatServiceToolApproval& tool_approval, EmitEventFn parent_emit,
-      ConfigSnapshotFn parent_config_snapshot,
-      NextMessageIdFn parent_next_message_id,
-      int timeout_seconds = kDefaultSubAgentTimeoutSeconds);
+  SubAgentManager(provider::ProviderRegistry& registry,
+                  std::shared_ptr<tool_call::ToolExecutor> tool_executor,
+                  internal::ChatServiceToolApproval& tool_approval,
+                  EmitEventFn parent_emit,
+                  ConfigSnapshotFn parent_config_snapshot,
+                  NextMessageIdFn parent_next_message_id,
+                  int timeout_seconds = kDefaultSubAgentTimeoutSeconds);
   ~SubAgentManager();
 
   SubAgentManager(const SubAgentManager&) = delete;

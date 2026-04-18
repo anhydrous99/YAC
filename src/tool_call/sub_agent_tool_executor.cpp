@@ -68,12 +68,12 @@ ToolExecutionResult ExecuteSubAgentTool(
                               .agent_id = agent_id};
     return ToolExecutionResult{
         .block = std::move(block),
-        .result_json =
-            Json{{"status", "spawned"},
-                 {"agent_id", agent_id},
-                 {"message", "Sub-agent spawned in background. "
+        .result_json = Json{{"status", "spawned"},
+                            {"agent_id", agent_id},
+                            {"message",
+                             "Sub-agent spawned in background. "
                              "Results will appear when complete."}}
-                .dump()};
+                           .dump()};
   }
 
   const auto result = sub_agent_manager->SpawnForeground(call->task);

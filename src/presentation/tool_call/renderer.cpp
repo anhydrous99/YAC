@@ -171,11 +171,11 @@ std::string VariantTag(const tool_data::ToolCallBlock& block) {
         } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
           return "search";
         } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall> ||
-                              std::is_same_v<T, tool_data::LspReferencesCall> ||
-                              std::is_same_v<T,
-                                             tool_data::LspGotoDefinitionCall> ||
-                              std::is_same_v<T, tool_data::LspRenameCall> ||
-                              std::is_same_v<T, tool_data::LspSymbolsCall>) {
+                             std::is_same_v<T, tool_data::LspReferencesCall> ||
+                             std::is_same_v<T,
+                                            tool_data::LspGotoDefinitionCall> ||
+                             std::is_same_v<T, tool_data::LspRenameCall> ||
+                             std::is_same_v<T, tool_data::LspSymbolsCall>) {
           return "lsp";
         } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
           return "agent";
@@ -868,10 +868,10 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
     case tool_data::SubAgentStatus::Running:
       content.push_back(RenderWrappedLine(call.task, theme.chrome.body_text));
       if (call.tool_count > 0) {
-        content.push_back(RenderWrappedLine(
-            "Running... " + std::to_string(call.tool_count) +
-                " tool calls so far",
-            theme.chrome.dim_text));
+        content.push_back(
+            RenderWrappedLine("Running... " + std::to_string(call.tool_count) +
+                                  " tool calls so far",
+                              theme.chrome.dim_text));
       }
       break;
     case tool_data::SubAgentStatus::Complete:
@@ -882,15 +882,13 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
       {
         std::string footer = std::to_string(call.tool_count) + " tool calls";
         if (call.elapsed_ms > 0) {
-          footer += " \xc2\xb7 " +
-                    std::to_string(call.elapsed_ms / 1000) + "s";
+          footer += " \xc2\xb7 " + std::to_string(call.elapsed_ms / 1000) + "s";
         }
         content.push_back(RenderWrappedLine(footer, theme.chrome.dim_text));
       }
       break;
     case tool_data::SubAgentStatus::Error:
-      content.push_back(
-          RenderWrappedLine(call.result, colors.error_accent));
+      content.push_back(RenderWrappedLine(call.result, colors.error_accent));
       break;
     case tool_data::SubAgentStatus::Timeout:
       content.push_back(RenderWrappedLine("Timed out", colors.timeout_accent));
@@ -900,8 +898,7 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
       }
       break;
     case tool_data::SubAgentStatus::Cancelled:
-      content.push_back(
-          RenderWrappedLine("Cancelled", theme.chrome.dim_text));
+      content.push_back(RenderWrappedLine("Cancelled", theme.chrome.dim_text));
       break;
     case tool_data::SubAgentStatus::Pending:
       content.push_back(RenderWrappedLine(call.task, theme.chrome.body_text));

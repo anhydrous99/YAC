@@ -9,7 +9,6 @@ class SubAgentManager;
 namespace yac::tool_call {
 
 [[nodiscard]] ToolExecutionResult ExecuteSubAgentTool(
-    const PreparedToolCall& prepared,
-    chat::SubAgentManager* sub_agent_manager);
+    const PreparedToolCall& prepared, chat::SubAgentManager* sub_agent_manager);
 
 }  // namespace yac::tool_call

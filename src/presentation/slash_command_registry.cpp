@@ -20,7 +20,8 @@ void SlashCommandRegistry::Define(std::string id, std::string name,
 
 void SlashCommandRegistry::SetHandler(const std::string& id,
                                       std::function<void()> handler) {
-  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+  for (std::size_t i = 0; i < commands_.size();
+       ++i) {  // NOLINT(modernize-loop-convert)
     if (commands_[i].id == id) {
       commands_[i].handler = std::move(handler);
       break;
@@ -30,7 +31,8 @@ void SlashCommandRegistry::SetHandler(const std::string& id,
 
 void SlashCommandRegistry::SetArgumentsHandler(
     const std::string& id, std::function<void(std::string)> handler) {
-  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+  for (std::size_t i = 0; i < commands_.size();
+       ++i) {  // NOLINT(modernize-loop-convert)
     if (commands_[i].id == id) {
       commands_[i].arguments_handler = std::move(handler);
       break;
@@ -57,10 +59,12 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
     return false;
   }
 
-  for (std::size_t i = 0; i < commands_.size(); ++i) {  // NOLINT(modernize-loop-convert)
+  for (std::size_t i = 0; i < commands_.size();
+       ++i) {  // NOLINT(modernize-loop-convert)
     const auto& command = commands_[i];
     auto alias_match = false;
-    for (std::size_t j = 0; j < command.aliases.size(); ++j) {  // NOLINT(modernize-loop-convert)
+    for (std::size_t j = 0; j < command.aliases.size();
+         ++j) {  // NOLINT(modernize-loop-convert)
       if (command.aliases[j] == name) {
         alias_match = true;
         break;

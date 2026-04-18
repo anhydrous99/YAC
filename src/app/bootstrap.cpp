@@ -206,6 +206,28 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
   slash_registry.SetHandler(
       "cancel", [&chat_service] { chat_service.CancelActiveResponse(); });
   slash_registry.SetHandler("help", [&chat_ui] { chat_ui.ShowHelp(); });
+  slash_registry.Define("task", "task",
+                        "Spawn a background sub-agent with a task");
+  slash_registry.SetArgumentsHandler(
+      "task", [&chat_service, &chat_ui](std::string args) {
+        if (args.empty()) {
+          chat_ui.SetTransientStatus(presentation::UiNotice{
+              .severity = presentation::UiSeverity::Warning,
+              .title = "Usage: /task <description>",
+          });
+          return;
+        }
+        auto& manager = chat_service.GetSubAgentManager();
+        if (manager.IsAtCapacity()) {
+          chat_ui.SetTransientStatus(presentation::UiNotice{
+              .severity = presentation::UiSeverity::Warning,
+              .title = "Max sub-agents reached",
+              .detail = "Wait for existing sub-agents to complete.",
+          });
+          return;
+        }
+        static_cast<void>(manager.SpawnBackground(args));
+      });
   return slash_registry;
 }
 
