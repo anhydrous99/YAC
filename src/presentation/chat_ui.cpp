@@ -14,6 +14,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <variant>
 
 namespace yac::presentation {
 
@@ -650,10 +651,24 @@ void ChatUI::SyncMessageComponents() {
           auto summary = block != nullptr
                              ? ::yac::presentation::tool_call::
                                    ToolCallRenderer::BuildSummary(*block)
-                             : "";
+                             : std::string{};
+          ftxui::Element peek;
+          if (block != nullptr &&
+              messages[t].status == MessageStatus::Active) {
+            if (const auto* write =
+                    std::get_if<::yac::tool_call::FileWriteCall>(block)) {
+              summary = "writing\xe2\x80\xa6";
+              peek = tool_call::ToolCallRenderer::BuildWritePeek(
+                  *write,
+                  RenderContext{
+                      .terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+            }
+          }
           group_children.push_back(Collapsible(
               messages[t].DisplayLabel(), std::move(tool_content),
-              session_.ToolExpandedState(ti - 1), std::move(summary)));
+              session_.ToolExpandedState(ti - 1), std::move(summary),
+              std::move(peek)));
         }
 
         // Wrap the vertical container in a single CardSurface with agent_bg.
@@ -691,11 +706,22 @@ void ChatUI::SyncMessageComponents() {
           block != nullptr
               ? ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
                     *block)
-              : "";
+              : std::string{};
+      ftxui::Element peek;
+      if (block != nullptr && messages[index].status == MessageStatus::Active) {
+        if (const auto* write =
+                std::get_if<::yac::tool_call::FileWriteCall>(block)) {
+          summary = "writing\xe2\x80\xa6";
+          peek = tool_call::ToolCallRenderer::BuildWritePeek(
+              *write, RenderContext{
+                          .terminal_width = last_terminal_width_,
+                          .thinking_frame = thinking_animation_.Frame()});
+        }
+      }
       message_components_.push_back(
           Collapsible(messages[index].DisplayLabel(), std::move(content),
                       session_.ToolExpandedState(current_tool_index - 1),
-                      std::move(summary)));
+                      std::move(summary), std::move(peek)));
       messages_synced_++;
       continue;
     }

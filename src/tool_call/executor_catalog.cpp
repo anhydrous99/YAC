@@ -54,6 +54,7 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
       const auto content = RequireString(args, "content");
       auto block = FileWriteCall{.filepath = filepath,
                                  .content_preview = PreviewText(content),
+                                 .content_tail = TailLines(content, 3),
                                  .lines_added = CountLines(content)};
       return PreparedToolCall{
           .request = request,

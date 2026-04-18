@@ -22,15 +22,17 @@ constexpr auto kAnimationDuration = std::chrono::milliseconds(150);
 }  // namespace
 
 ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
-                             bool* expanded, std::string summary) {
+                             bool* expanded, std::string summary,
+                             ftxui::Element peek) {
   class Impl : public ftxui::ComponentBase {
    public:
     Impl(std::string header_text, ftxui::Component content, bool* expanded,
-         std::string summary)
+         std::string summary, ftxui::Element peek)
         : header_text_(std::move(header_text)),
           content_(std::move(content)),
           expanded_(expanded),
           summary_(std::move(summary)),
+          peek_(std::move(peek)),
           progress_(*expanded ? 1.0f : 0.0f),
           last_expanded_(*expanded) {
       Add(content_);
@@ -65,8 +67,11 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
 
       header_elem |= ftxui::reflect(header_box_);
 
-      // Fully collapsed — no content.
+      // Fully collapsed — show header + peek (if any).
       if (progress_ <= 0.0f) {
+        if (peek_) {
+          return ftxui::vbox({header_elem, peek_});
+        }
         return header_elem;
       }
 
@@ -85,6 +90,9 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
             ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, max_height);
       }
 
+      if (peek_) {
+        return ftxui::vbox({header_elem, peek_, rendered_content});
+      }
       return ftxui::vbox({
           header_elem,
           rendered_content,
@@ -136,6 +144,7 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
     ftxui::Component content_;
     bool* expanded_;
     std::string summary_;
+    ftxui::Element peek_;
     float progress_;
     bool last_expanded_;
     ftxui::Box header_box_{};
@@ -143,7 +152,7 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
   };
 
   return ftxui::Make<Impl>(std::move(header_text), std::move(content), expanded,
-                           std::move(summary));
+                           std::move(summary), std::move(peek));
 }
 
 }  // namespace yac::presentation

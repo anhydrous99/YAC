@@ -60,6 +60,7 @@ ToolExecutionResult ExecuteFileWriteTool(
 
   auto block = FileWriteCall{.filepath = workspace_filesystem.DisplayPath(path),
                              .content_preview = PreviewText(content),
+                             .content_tail = TailLines(content, 3),
                              .lines_added = lines_added,
                              .lines_removed = lines_removed};
   Json result{{"filepath", block.filepath},

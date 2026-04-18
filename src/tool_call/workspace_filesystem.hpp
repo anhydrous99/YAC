@@ -24,6 +24,7 @@ class WorkspaceFilesystem {
 
 [[nodiscard]] int CountLines(const std::string& text);
 [[nodiscard]] std::string PreviewText(const std::string& text);
+[[nodiscard]] std::string TailLines(const std::string& text, size_t max_lines);
 [[nodiscard]] size_t OffsetForLineCharacter(const std::string& text, int line,
                                             int character);
 

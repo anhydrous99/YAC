@@ -259,6 +259,52 @@ std::string ToolCallRenderer::BuildSummary(
       block);
 }
 
+ftxui::Element ToolCallRenderer::BuildWritePeek(
+    const tool_data::FileWriteCall& call, const RenderContext& context) {
+  if (call.content_tail.empty()) {
+    return ftxui::Element{};
+  }
+  const auto& theme = context.Colors();
+  const auto lines = util::SplitLines(call.content_tail);
+  if (lines.empty()) {
+    return ftxui::Element{};
+  }
+  const auto accent =
+      call.is_error ? theme.tool.edit_remove : theme.tool.edit_add;
+  const auto card_bg = theme.cards.agent_bg;
+
+  auto make_bar_row = [&](const std::string& text) {
+    return ftxui::hbox({
+        ftxui::text("  ") | ftxui::bgcolor(card_bg),
+        ftxui::text("\xe2\x94\x83") | ftxui::color(accent) | ftxui::bold |
+            ftxui::bgcolor(card_bg),
+        ftxui::text("  ") | ftxui::bgcolor(card_bg),
+        ftxui::paragraph(text) | ftxui::color(theme.chrome.dim_text) |
+            ftxui::dim | ftxui::bgcolor(card_bg) | ftxui::flex,
+        ftxui::text("  ") | ftxui::bgcolor(card_bg),
+    });
+  };
+
+  auto spacer_row = [&]() {
+    return ftxui::hbox({
+        ftxui::text("  ") | ftxui::bgcolor(card_bg),
+        ftxui::text("\xe2\x94\x83") | ftxui::color(accent) |
+            ftxui::bgcolor(card_bg),
+        ftxui::filler() | ftxui::bgcolor(card_bg),
+    });
+  };
+
+  const size_t limit = std::min(lines.size(), static_cast<size_t>(3));
+  ftxui::Elements rows;
+  rows.reserve(limit + 2);
+  rows.push_back(spacer_row());
+  for (size_t i = 0; i < limit; ++i) {
+    rows.push_back(make_bar_row(lines[i]));
+  }
+  rows.push_back(spacer_row());
+  return ftxui::vbox(std::move(rows)) | ftxui::bgcolor(card_bg);
+}
+
 std::string ToolCallRenderer::BuildLabel(
     const tool_data::ToolCallBlock& block) {
   return std::visit(

@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 namespace yac::tool_call {
 
@@ -82,6 +84,39 @@ std::string PreviewText(const std::string& text) {
     return text;
   }
   return text.substr(0, kMaxContentPreviewBytes) + "\n...";
+}
+
+std::string TailLines(const std::string& text, size_t max_lines) {
+  if (max_lines == 0 || text.empty()) {
+    return "";
+  }
+  std::vector<std::string> collected;
+  collected.reserve(max_lines);
+  size_t end = text.size();
+  while (end > 0 && collected.size() < max_lines) {
+    const size_t newline = text.rfind('\n', end - 1);
+    const size_t start = (newline == std::string::npos) ? 0 : newline + 1;
+    std::string line = text.substr(start, end - start);
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    if (!line.empty()) {
+      collected.push_back(std::move(line));
+    }
+    if (newline == std::string::npos) {
+      break;
+    }
+    end = newline;
+  }
+  std::reverse(collected.begin(), collected.end());
+  std::string result;
+  for (const auto& line : collected) {
+    if (!result.empty()) {
+      result.push_back('\n');
+    }
+    result.append(line);
+  }
+  return result;
 }
 
 size_t OffsetForLineCharacter(const std::string& text, int line,

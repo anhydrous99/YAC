@@ -84,6 +84,7 @@ struct FileReadCall {
 struct FileWriteCall {
   std::string filepath;
   std::string content_preview;
+  std::string content_tail;
   int lines_added{};
   int lines_removed{};
   bool is_error{};

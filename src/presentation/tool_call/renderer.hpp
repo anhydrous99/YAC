@@ -21,6 +21,8 @@ class ToolCallRenderer {
       const tool_data::ToolCallBlock& block);
   [[nodiscard]] static std::string BuildLabel(
       const tool_data::ToolCallBlock& block);
+  [[nodiscard]] static ftxui::Element BuildWritePeek(
+      const tool_data::FileWriteCall& call, const RenderContext& context);
 
  private:
   [[nodiscard]] static ftxui::Element RenderBash(
