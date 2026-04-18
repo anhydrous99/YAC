@@ -25,7 +25,7 @@ TEST_CASE("Tool call structs preserve field values") {
   REQUIRE(read.lines_loaded == 12);
   REQUIRE(read.excerpt == "excerpt");
 
-  FileWriteCall write{"/tmp/file.txt", "new text", 1, 2, false, ""};
+  FileWriteCall write{"/tmp/file.txt", "new text", "", 1, 2, false, ""};
   REQUIRE(write.filepath == "/tmp/file.txt");
   REQUIRE(write.lines_added == 1);
   REQUIRE(write.lines_removed == 2);
@@ -96,7 +96,7 @@ TEST_CASE("ToolCallBlock stores all tool call variants") {
   block = FileReadCall{"file", 3, "text"};
   REQUIRE(std::holds_alternative<FileReadCall>(block));
 
-  block = FileWriteCall{"file", "text", 1, 0, false, ""};
+  block = FileWriteCall{"file", "text", "", 1, 0, false, ""};
   REQUIRE(std::holds_alternative<FileWriteCall>(block));
 
   block = ListDirCall{"dir", {}, false, false, ""};

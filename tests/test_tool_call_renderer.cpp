@@ -100,7 +100,7 @@ TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders file write details") {
-  FileWriteCall call{"src/new.cpp", "int main() {}\n", 1, 0, false, ""};
+  FileWriteCall call{"src/new.cpp", "int main() {}\n", "", 1, 0, false, ""};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -267,7 +267,7 @@ TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
   RenderAndCheck(BashCall{"pwd", "", 0, false}, 80, 8);
   RenderAndCheck(FileEditCall{"file.txt", {}}, 80, 8);
   RenderAndCheck(FileReadCall{"file.txt", 1, "line"}, 80, 8);
-  RenderAndCheck(FileWriteCall{"file.txt", "line", 1, 0, false, ""}, 80, 8);
+  RenderAndCheck(FileWriteCall{"file.txt", "line", "", 1, 0, false, ""}, 80, 8);
   RenderAndCheck(ListDirCall{"src", {}, false, false, ""}, 80, 8);
   RenderAndCheck(GrepCall{"pattern", 0, {}}, 80, 8);
   RenderAndCheck(GlobCall{"*.cpp", {}}, 80, 8);
