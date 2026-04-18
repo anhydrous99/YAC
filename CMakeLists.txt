@@ -99,6 +99,8 @@ target_link_libraries(yac_service
   PUBLIC yac_core_types openai_cpp CURL::libcurl
   PRIVATE tomlplusplus::tomlplusplus)
 
+include(src/chat/CMakeLists.txt)
+
 add_library(yac_app STATIC
   src/app/bootstrap.cpp
   src/app/chat_event_bridge.cpp
