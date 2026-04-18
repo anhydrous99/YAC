@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <utility>
 
 namespace yac::presentation {
@@ -23,24 +24,49 @@ std::string ToLower(std::string value) {
   return value;
 }
 
+bool CommandsEqual(const std::vector<Command>& lhs,
+                   const std::vector<Command>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (lhs[i].id != rhs[i].id || lhs[i].name != rhs[i].name ||
+        lhs[i].description != rhs[i].description) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 ftxui::Component CommandPalette(std::vector<Command> commands,
                                 std::function<void(int)> on_select,
                                 bool* show) {
+  auto commands_store =
+      std::make_shared<std::vector<Command>>(std::move(commands));
+  return CommandPalette([commands_store] { return *commands_store; },
+                        std::move(on_select), show);
+}
+
+ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
+                                std::function<void(int)> on_select,
+                                bool* show) {
   class Impl : public ftxui::ComponentBase {
    public:
-    Impl(std::vector<Command> commands, std::function<void(int)> on_select,
-         bool* show)
-        : commands_(std::move(commands)),
+    Impl(std::function<std::vector<Command>()> commands,
+         std::function<void(int)> on_select, bool* show)
+        : commands_source_(std::move(commands)),
           on_select_(std::move(on_select)),
           show_(show) {
+      SyncCommands();
       input_ = BuildInput();
       Add(input_);
       RefreshFiltered();
     }
 
     ftxui::Element OnRender() override {
+      SyncCommands();
       ftxui::Elements children;
       children.push_back(input_->Render() |
                          ftxui::bgcolor(k_theme.dialog.input_bg) |
@@ -66,6 +92,7 @@ ftxui::Component CommandPalette(std::vector<Command> commands,
       if (show_ != nullptr && !*show_) {
         return false;
       }
+      SyncCommands();
 
       if (event == ftxui::Event::Escape) {
         if (show_ != nullptr) {
@@ -189,6 +216,19 @@ ftxui::Component CommandPalette(std::vector<Command> commands,
       selected_index_ = (selected_index_ + delta + size) % size;
     }
 
+    void SyncCommands() {
+      if (!commands_source_) {
+        return;
+      }
+      auto next = commands_source_();
+      if (CommandsEqual(commands_, next)) {
+        return;
+      }
+      commands_ = std::move(next);
+      RefreshFiltered();
+    }
+
+    std::function<std::vector<Command>()> commands_source_;
     std::vector<Command> commands_;
     std::function<void(int)> on_select_;
     bool* show_;

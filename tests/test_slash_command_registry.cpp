@@ -133,19 +133,21 @@ TEST_CASE("SlashCommandRegistry SetHandler on unknown id is a no-op",
   CHECK(registry.Commands().empty());
 }
 
-TEST_CASE("RegisterBuiltinSlashCommands defines quit and clear",
+TEST_CASE("RegisterBuiltinSlashCommands defines built-in commands",
           "[slash_command]") {
   SlashCommandRegistry registry;
   yac::presentation::RegisterBuiltinSlashCommands(registry);
 
   const auto& cmds = registry.Commands();
-  REQUIRE(cmds.size() == 2);
+  REQUIRE(cmds.size() == 4);
   CHECK(cmds[0].name == "quit");
   REQUIRE(cmds[0].aliases.size() == 1);
   CHECK(cmds[0].aliases[0] == "exit");
   CHECK(cmds[1].name == "clear");
   CHECK(cmds[1].description == "Clear the conversation");
   CHECK(cmds[1].aliases.empty());
+  CHECK(cmds[2].name == "cancel");
+  CHECK(cmds[3].name == "help");
 }
 
 TEST_CASE("RegisterBuiltinSlashCommands dispatches clear after handler set",

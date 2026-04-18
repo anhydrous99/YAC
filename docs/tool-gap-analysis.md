@@ -7,17 +7,24 @@ priorities.
 
 ---
 
-## Current YAC Tools (7 in `ToolCallBlock`)
+## Current YAC Tools (14 in `ToolCallBlock`)
 
 | Tool            | Coverage            |
 |-----------------|---------------------|
 | `BashCall`      | Shell execution     |
 | `FileEditCall`  | Diff-based editing  |
 | `FileReadCall`  | File reading        |
+| `FileWriteCall` | File creation/overwrite |
+| `ListDirCall`   | Directory listing |
 | `GrepCall`      | Content search      |
 | `GlobCall`      | File pattern match  |
 | `WebFetchCall`  | URL retrieval       |
 | `WebSearchCall` | Web search          |
+| `LspDiagnosticsCall` | Language-server diagnostics |
+| `LspReferencesCall` | Symbol reference lookup |
+| `LspGotoDefinitionCall` | Definition lookup |
+| `LspRenameCall` | Workspace rename |
+| `LspSymbolsCall` | Document symbols |
 
 This covers the baseline every major assistant agrees on. The additions below are where
 YAC can close gaps and differentiate.
@@ -26,7 +33,8 @@ YAC can close gaps and differentiate.
 
 ## Priority 1 — Expected by Every Major Assistant
 
-These are table-stakes tools present in 3+ assistants that YAC lacks.
+These are table-stakes tools present in 3+ assistants that YAC should keep
+polishing now that the initial implementations exist.
 
 | Proposed Tool        | Who Has It                                       | What It Does                                       | Suggested Fields                                                            |
 |----------------------|--------------------------------------------------|----------------------------------------------------|-----------------------------------------------------------------------------|

@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,13 +63,20 @@ class ChatUI : public ChatEventSink {
                              ::yac::tool_call::ToolCallBlock block,
                              MessageStatus status) override;
   void ShowToolApproval(std::string approval_id, std::string tool_name,
-                        std::string prompt) override;
+                        std::string prompt,
+                        std::optional<::yac::tool_call::ToolCallBlock> preview =
+                            std::nullopt) override;
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
   void SetProviderModel(std::string provider_id, std::string model) override;
   void SetLastUsage(UsageStats usage) override;
   void SetContextWindowTokens(int tokens) override;
+  void SetStartupStatus(StartupStatus status);
+  void SetQueueDepth(int queue_depth) override;
+  void SetTransientStatus(UiNotice notice) override;
+  void SetHelpText(std::string help_text);
+  void ShowHelp();
   void SetTyping(bool typing) override;
   void SetToolExpanded(size_t index, bool expanded);
   void ClearMessages() override;
@@ -87,6 +95,7 @@ class ChatUI : public ChatEventSink {
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
   [[nodiscard]] ftxui::Element RenderMessages() const;
+  [[nodiscard]] ftxui::Element RenderEmptyState() const;
   void SyncMessageComponents();
   [[nodiscard]] bool HasActiveAgentMessage() const;
   [[nodiscard]] bool HasPendingAgentMessage() const;

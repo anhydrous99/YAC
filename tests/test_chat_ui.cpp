@@ -1,4 +1,5 @@
 #include "presentation/chat_ui.hpp"
+#include "tool_call/types.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -171,6 +172,45 @@ TEST_CASE("Build returns non-null component with typing enabled") {
   REQUIRE(component != nullptr);
 }
 
+TEST_CASE("ChatUI renders startup status in empty transcript") {
+  ChatUI ui;
+  ui.SetStartupStatus(StartupStatus{
+      .provider_id = "openai",
+      .model = "gpt-4o-mini",
+      .workspace_root = "/workspace",
+      .api_key_env = "OPENAI_API_KEY",
+      .api_key_configured = false,
+      .lsp_command = "clangd",
+      .lsp_available = false,
+      .notices = {{.severity = UiSeverity::Warning,
+                   .title = "OPENAI_API_KEY is not set",
+                   .detail = "Set it before sending a request."}},
+  });
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component, 100, 30);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("YAC setup"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("OPENAI_API_KEY"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("missing"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("/workspace"));
+}
+
+TEST_CASE("ChatUI renders queue depth and transient status") {
+  ChatUI ui;
+  ui.SetQueueDepth(2);
+  ui.SetTransientStatus(UiNotice{.severity = UiSeverity::Warning,
+                                 .title = "Model discovery failed",
+                                 .detail = "using configured model"});
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component, 100, 30);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("queued 2"));
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Model discovery failed"));
+}
+
 TEST_CASE("ChatUI schedules pending thinking animation ticks") {
   ChatUI ui;
   std::mutex mutex;
@@ -283,11 +323,23 @@ TEST_CASE("HandleInputEvent Enter submits and clears content") {
   (void)ui.HandleInputEvent(ftxui::Event::Return);
   REQUIRE_FALSE(sent);
 
-  (void)ui.HandleInputEvent(MakeAltEnterCR());
-  REQUIRE(ui.HandleInputEvent(ftxui::Event::Return));
+  auto component = ui.Build();
+  TypeText(component, "hello");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
   REQUIRE(sent);
-  REQUIRE(captured == "\n");
+  REQUIRE(captured == "hello");
   REQUIRE(ui.CalculateInputHeight() == 1);
+}
+
+TEST_CASE("Whitespace-only input is not submitted") {
+  bool sent = false;
+  ChatUI ui([&](const std::string&) { sent = true; });
+  auto component = ui.Build();
+
+  TypeText(component, "   ");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  REQUIRE_FALSE(sent);
 }
 
 TEST_CASE("Slash clear command dispatches without sending a message") {
@@ -397,6 +449,26 @@ TEST_CASE("Tool approval modal renders prominent permission prompt") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Write notes.txt"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Enter/Y Approve"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("N/Esc Reject"));
+}
+
+TEST_CASE("Tool approval modal renders tool preview") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  ::yac::tool_call::ToolCallBlock preview =
+      ::yac::tool_call::FileWriteCall{.filepath = "notes.txt",
+                                      .content_preview = "hello\n",
+                                      .content_tail = "hello\n",
+                                      .lines_added = 1};
+  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt",
+                      std::move(preview));
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Permission Required"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("write"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("notes.txt"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("hello"));
 }
 
 TEST_CASE("Tool approval modal approves on uppercase Y") {

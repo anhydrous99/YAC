@@ -51,16 +51,13 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
         } else if constexpr (std::is_same_v<T, CodeBlock>) {
           return RenderCodeBlock(node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, std::shared_ptr<Blockquote>>) {
-          return RenderBlockquote(*node, context,
-                                  std::move(trailing_inline));
+          return RenderBlockquote(*node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T,
                                             std::shared_ptr<UnorderedList>>) {
           return RenderUnorderedList(*node, context,
                                      std::move(trailing_inline));
-        } else if constexpr (std::is_same_v<T,
-                                            std::shared_ptr<OrderedList>>) {
-          return RenderOrderedList(*node, context,
-                                   std::move(trailing_inline));
+        } else if constexpr (std::is_same_v<T, std::shared_ptr<OrderedList>>) {
+          return RenderOrderedList(*node, context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, HorizontalRule>) {
           return RenderHorizontalRule(context, std::move(trailing_inline));
         } else if constexpr (std::is_same_v<T, Table>) {
@@ -162,9 +159,8 @@ ftxui::Elements MarkdownRenderer::RenderInlineWords(
               n.url, ftxui::text(n.text) | ftxui::color(theme.markdown.link) |
                          ftxui::underlined)};
         } else if constexpr (std::is_same_v<T, Image>) {
-          std::string label = "[" + (n.alt.empty() ? std::string("image")
-                                                   : n.alt) +
-                              "]";
+          std::string label =
+              "[" + (n.alt.empty() ? std::string("image") : n.alt) + "]";
           return {ftxui::hyperlink(
               n.url, ftxui::text(label) | ftxui::color(theme.markdown.link) |
                          ftxui::underlined)};
@@ -280,8 +276,7 @@ ftxui::Element MarkdownRenderer::RenderBlockquote(
     body = Render(bq.children, context, std::move(trailing_inline));
   }
   return ftxui::hbox({
-             ftxui::text("\xe2\x96\x8e ") |
-                 ftxui::color(theme.chrome.dim_text),
+             ftxui::text("\xe2\x96\x8e ") | ftxui::color(theme.chrome.dim_text),
              body | ftxui::flex,
          }) |
          ftxui::bgcolor(theme.markdown.quote_bg);
@@ -297,18 +292,17 @@ ftxui::Element MarkdownRenderer::RenderUnorderedList(
     const auto& item = ul.items[i];
     ftxui::Element marker_elem;
     if (item.task) {
-      const char* glyph = item.checked ? "\xe2\x98\x91 "    // ☑
+      const char* glyph = item.checked ? "\xe2\x98\x91 "   // ☑
                                        : "\xe2\x98\x90 ";  // ☐
-      marker_elem = ftxui::text(glyph) | ftxui::bold |
-                    ftxui::color(item.checked ? theme.role.agent
-                                              : theme.chrome.dim_text);
+      marker_elem =
+          ftxui::text(glyph) | ftxui::bold |
+          ftxui::color(item.checked ? theme.role.agent : theme.chrome.dim_text);
     } else {
       marker_elem = ftxui::text("\xe2\x80\xa2 ") |
                     ftxui::color(theme.role.agent) | ftxui::bold;
     }
-    auto body =
-        Render(item.children, context,
-               is_last ? std::move(trailing_inline) : ftxui::Element{});
+    auto body = Render(item.children, context,
+                       is_last ? std::move(trailing_inline) : ftxui::Element{});
     items.push_back(ftxui::hbox({
         ftxui::text("  "),
         std::move(marker_elem),
@@ -329,9 +323,8 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(
   for (size_t i = 0; i < ol.items.size(); ++i) {
     const bool is_last = (i + 1 == ol.items.size());
     auto num = std::to_string(ol.start + static_cast<int>(i)) + ". ";
-    auto body =
-        Render(ol.items[i].children, context,
-               is_last ? std::move(trailing_inline) : ftxui::Element{});
+    auto body = Render(ol.items[i].children, context,
+                       is_last ? std::move(trailing_inline) : ftxui::Element{});
     items.push_back(ftxui::hbox({
         ftxui::text("  "),
         ftxui::text(num) | ftxui::color(theme.chrome.dim_text) | ftxui::bold,

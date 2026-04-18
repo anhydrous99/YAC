@@ -3,6 +3,7 @@
 #include "chat/env_file.hpp"
 
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <sstream>
 #include <string>
@@ -78,8 +79,13 @@ void ApplyProviderDefaults(ChatConfig& config) {
 }  // namespace
 
 ChatConfig LoadChatConfigFromEnv() {
+  return LoadChatConfigResultFromEnv().config;
+}
+
+ChatConfigResult LoadChatConfigResultFromEnv() {
   const auto env_file = LoadEnvFile();
-  ChatConfig config;
+  ChatConfigResult result;
+  auto& config = result.config;
   config.workspace_root = std::filesystem::current_path().string();
 
   if (auto val = GetEnv(env_file, "YAC_PROVIDER")) {
@@ -93,13 +99,26 @@ ChatConfig LoadChatConfigFromEnv() {
     config.base_url = std::move(*val);
   }
   if (auto val = GetEnv(env_file, "YAC_TEMPERATURE")) {
-    config.temperature = ParseTemperature(*val);
+    try {
+      config.temperature = ParseTemperature(*val);
+    } catch (const std::exception& error) {
+      result.issues.push_back({.severity = ConfigIssueSeverity::Error,
+                               .message = "Invalid YAC_TEMPERATURE",
+                               .detail = error.what()});
+    }
   }
   if (auto val = GetEnv(env_file, "YAC_API_KEY_ENV")) {
     config.api_key_env = std::move(*val);
   }
   if (auto val = GetEnv(env_file, config.api_key_env.c_str())) {
     config.api_key = std::move(*val);
+  }
+  if (config.api_key.empty()) {
+    result.issues.push_back(
+        {.severity = ConfigIssueSeverity::Warning,
+         .message = config.api_key_env + " is not set",
+         .detail = "Set " + config.api_key_env +
+                   " in your environment or .env before sending a request."});
   }
   if (auto val = GetEnv(env_file, "YAC_SYSTEM_PROMPT")) {
     config.system_prompt = std::move(*val);
@@ -114,7 +133,7 @@ ChatConfig LoadChatConfigFromEnv() {
     config.lsp_clangd_args = SplitArgs(*val);
   }
 
-  return config;
+  return result;
 }
 
 }  // namespace yac::chat

@@ -11,6 +11,7 @@
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <string>
 #include <utility>
@@ -48,6 +49,48 @@ ftxui::Color PercentColor(double percent) {
     return ftxui::Color::Yellow;
   }
   return ftxui::Color::Red;
+}
+
+bool IsWhitespaceOnly(const std::string& value) {
+  return std::all_of(value.begin(), value.end(),
+                     [](unsigned char ch) { return std::isspace(ch) != 0; });
+}
+
+std::string SeverityLabel(UiSeverity severity) {
+  switch (severity) {
+    case UiSeverity::Info:
+      return "info";
+    case UiSeverity::Warning:
+      return "warning";
+    case UiSeverity::Error:
+      return "error";
+  }
+  return "info";
+}
+
+ftxui::Color SeverityColor(UiSeverity severity) {
+  switch (severity) {
+    case UiSeverity::Info:
+      return k_theme.chrome.dim_text;
+    case UiSeverity::Warning:
+      return ftxui::Color::Yellow;
+    case UiSeverity::Error:
+      return k_theme.role.error;
+  }
+  return k_theme.chrome.dim_text;
+}
+
+std::string NoticeText(const UiNotice& notice) {
+  if (notice.detail.empty()) {
+    return notice.title;
+  }
+  return notice.title + ": " + notice.detail;
+}
+
+ftxui::Element NoticeLine(const UiNotice& notice) {
+  return ftxui::paragraph("  " + SeverityLabel(notice.severity) + ": " +
+                          NoticeText(notice)) |
+         ftxui::color(SeverityColor(notice.severity));
 }
 
 class DynamicMessageStack : public ftxui::ComponentBase {
@@ -168,6 +211,16 @@ ftxui::Component ChatUI::Build() {
                       FormatTokens(last_usage->completion_tokens)) |
           ftxui::color(k_theme.chrome.dim_text) | ftxui::dim);
     }
+    if (overlay_state_.QueueDepth() > 0) {
+      stats_left.push_back(
+          ftxui::text(" queued " +
+                      std::to_string(overlay_state_.QueueDepth())) |
+          ftxui::color(ftxui::Color::Yellow) | ftxui::bold);
+    }
+    if (const auto& notice = overlay_state_.TransientStatus()) {
+      stats_left.push_back(ftxui::text(" " + NoticeText(*notice)) |
+                           ftxui::color(SeverityColor(notice->severity)));
+    }
 
     ftxui::Elements stats_right;
     const int window = overlay_state_.ContextWindowTokens();
@@ -257,7 +310,7 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
   if (sender == Sender::Agent && status == MessageStatus::Active) {
     thinking_animation_.ResetFrame();
   }
-  scroll_state_.OnMessagesChanged();
+  scroll_state_.OnMessagesChanged(sender == Sender::User);
   SyncThinkingAnimation();
   return id;
 }
@@ -270,7 +323,7 @@ MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
   if (sender == Sender::Agent && status == MessageStatus::Active) {
     thinking_animation_.ResetFrame();
   }
-  scroll_state_.OnMessagesChanged();
+  scroll_state_.OnMessagesChanged(sender == Sender::User);
   SyncMessageComponents();
   SyncThinkingAnimation();
   return added_id;
@@ -338,10 +391,11 @@ void ChatUI::UpdateToolCallMessage(MessageId id,
   SyncMessageComponents();
 }
 
-void ChatUI::ShowToolApproval(std::string approval_id, std::string tool_name,
-                              std::string prompt) {
+void ChatUI::ShowToolApproval(
+    std::string approval_id, std::string tool_name, std::string prompt,
+    std::optional<::yac::tool_call::ToolCallBlock> preview) {
   overlay_state_.ShowToolApproval(std::move(approval_id), std::move(tool_name),
-                                  std::move(prompt));
+                                  std::move(prompt), std::move(preview));
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {
@@ -366,6 +420,26 @@ void ChatUI::SetLastUsage(UsageStats usage) {
 
 void ChatUI::SetContextWindowTokens(int tokens) {
   overlay_state_.SetContextWindowTokens(tokens);
+}
+
+void ChatUI::SetStartupStatus(StartupStatus status) {
+  overlay_state_.SetStartupStatus(std::move(status));
+}
+
+void ChatUI::SetQueueDepth(int queue_depth) {
+  overlay_state_.SetQueueDepth(queue_depth);
+}
+
+void ChatUI::SetTransientStatus(UiNotice notice) {
+  overlay_state_.SetTransientStatus(std::move(notice));
+}
+
+void ChatUI::SetHelpText(std::string help_text) {
+  overlay_state_.SetHelpText(std::move(help_text));
+}
+
+void ChatUI::ShowHelp() {
+  overlay_state_.ShowHelp();
 }
 
 void ChatUI::SetTyping(bool typing) {
@@ -406,7 +480,7 @@ std::string ChatUI::Model() const {
 }
 
 void ChatUI::SubmitMessage() {
-  if (composer_.Empty()) {
+  if (composer_.Empty() || IsWhitespaceOnly(composer_.Content())) {
     return;
   }
   std::string sent = composer_.Submit();
@@ -463,7 +537,9 @@ ftxui::Component ChatUI::BuildMessageList() {
   auto content = ftxui::Renderer(message_stack, [this, message_stack] {
     SyncMessageComponents();
     auto msg_element =
-        message_stack->Render() | ftxui::color(k_theme.chrome.dim_text);
+        session_.Empty() && !is_typing_
+            ? RenderEmptyState()
+            : message_stack->Render() | ftxui::color(k_theme.chrome.dim_text);
 
     msg_element->ComputeRequirement();
     scroll_state_.SetContentHeight(msg_element->requirement().min_y);
@@ -534,16 +610,7 @@ ftxui::Component ChatUI::BuildMessageList() {
 
 ftxui::Element ChatUI::RenderMessages() const {
   if (session_.Empty() && !is_typing_) {
-    auto hint = ftxui::vbox({
-        ftxui::text(""),
-        ftxui::text("  // No messages yet") |
-            ftxui::color(k_theme.syntax.comment),
-        ftxui::text("  // Type something below to start") |
-            ftxui::color(k_theme.syntax.comment),
-        ftxui::text(""),
-    });
-    return ftxui::center(hint | ftxui::bgcolor(k_theme.cards.agent_bg)) |
-           ftxui::flex;
+    return RenderEmptyState();
   }
 
   int current_width = ftxui::Terminal::Size().dimx;
@@ -560,6 +627,58 @@ ftxui::Element ChatUI::RenderMessages() const {
       session_.Messages(), render_cache_,
       RenderContext{.terminal_width = current_width,
                     .thinking_frame = thinking_animation_.Frame()});
+}
+
+ftxui::Element ChatUI::RenderEmptyState() const {
+  const auto& startup = overlay_state_.Startup();
+  ftxui::Elements rows;
+  rows.push_back(ftxui::text("YAC setup") | ftxui::bold |
+                 ftxui::color(k_theme.markdown.heading));
+  rows.push_back(ftxui::text(""));
+  rows.push_back(ftxui::paragraph("Provider: " + startup.provider_id + " / " +
+                                  startup.model) |
+                 ftxui::color(k_theme.chrome.body_text));
+  if (!startup.workspace_root.empty()) {
+    rows.push_back(ftxui::paragraph("Workspace: " + startup.workspace_root) |
+                   ftxui::color(k_theme.chrome.dim_text));
+  }
+  if (!startup.api_key_env.empty()) {
+    const auto key_state = startup.api_key_configured
+                               ? std::string{"configured"}
+                               : std::string{"missing"};
+    rows.push_back(
+        ftxui::paragraph("API key: " + startup.api_key_env + " " + key_state) |
+        ftxui::color(startup.api_key_configured ? k_theme.role.agent
+                                                : ftxui::Color::Yellow));
+  }
+  if (!startup.lsp_command.empty()) {
+    rows.push_back(
+        ftxui::paragraph("LSP: " + startup.lsp_command + " " +
+                         (startup.lsp_available ? "found" : "not found")) |
+        ftxui::color(startup.lsp_available ? k_theme.role.agent
+                                           : ftxui::Color::Yellow));
+  }
+
+  rows.push_back(ftxui::text(""));
+  if (startup.notices.empty()) {
+    rows.push_back(ftxui::paragraph("Type a message below to start, or press "
+                                    "Ctrl+P and choose Help.") |
+                   ftxui::color(k_theme.chrome.dim_text));
+  } else {
+    for (const auto& notice : startup.notices) {
+      rows.push_back(NoticeLine(notice));
+    }
+    rows.push_back(ftxui::text(""));
+    rows.push_back(ftxui::paragraph("Fix setup warnings when needed, then type "
+                                    "a message below.") |
+                   ftxui::color(k_theme.chrome.dim_text));
+  }
+
+  auto panel = ftxui::vbox(std::move(rows));
+  return ftxui::center(MessageRenderer::CardSurface(
+             std::move(panel), k_theme.cards.agent_bg,
+             RenderContext{.terminal_width = last_terminal_width_})) |
+         ftxui::flex;
 }
 
 void ChatUI::SyncMessageComponents() {
@@ -653,22 +772,20 @@ void ChatUI::SyncMessageComponents() {
                                    ToolCallRenderer::BuildSummary(*block)
                              : std::string{};
           ftxui::Element peek;
-          if (block != nullptr &&
-              messages[t].status == MessageStatus::Active) {
+          if (block != nullptr && messages[t].status == MessageStatus::Active) {
             if (const auto* write =
                     std::get_if<::yac::tool_call::FileWriteCall>(block)) {
               summary = "writing\xe2\x80\xa6";
               peek = tool_call::ToolCallRenderer::BuildWritePeek(
                   *write,
-                  RenderContext{
-                      .terminal_width = last_terminal_width_,
-                      .thinking_frame = thinking_animation_.Frame()});
+                  RenderContext{.terminal_width = last_terminal_width_,
+                                .thinking_frame = thinking_animation_.Frame()});
             }
           }
-          group_children.push_back(Collapsible(
-              messages[t].DisplayLabel(), std::move(tool_content),
-              session_.ToolExpandedState(ti - 1), std::move(summary),
-              std::move(peek)));
+          group_children.push_back(
+              Collapsible(messages[t].DisplayLabel(), std::move(tool_content),
+                          session_.ToolExpandedState(ti - 1),
+                          std::move(summary), std::move(peek)));
         }
 
         // Wrap the vertical container in a single CardSurface with agent_bg.
@@ -713,9 +830,9 @@ void ChatUI::SyncMessageComponents() {
                 std::get_if<::yac::tool_call::FileWriteCall>(block)) {
           summary = "writing\xe2\x80\xa6";
           peek = tool_call::ToolCallRenderer::BuildWritePeek(
-              *write, RenderContext{
-                          .terminal_width = last_terminal_width_,
-                          .thinking_frame = thinking_animation_.Frame()});
+              *write,
+              RenderContext{.terminal_width = last_terminal_width_,
+                            .thinking_frame = thinking_animation_.Frame()});
         }
       }
       message_components_.push_back(

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 #include <utility>
 
 #include <ftxui/dom/elements.hpp>
@@ -32,6 +33,39 @@ const char* ThinkingPulseGlyph(int frame) {
 int MessageCardMaxWidth(const RenderContext& context) {
   constexpr int kHorizontalBreathingRoom = 2;
   return std::max(1, context.terminal_width - kHorizontalBreathingRoom);
+}
+
+std::string StatusLabel(MessageStatus status, Sender sender) {
+  switch (status) {
+    case MessageStatus::Queued:
+      return "queued";
+    case MessageStatus::Active:
+      return sender == Sender::Agent ? "thinking" : "sending";
+    case MessageStatus::Cancelled:
+      return "cancelled";
+    case MessageStatus::Error:
+      return "error";
+    case MessageStatus::Complete:
+      return {};
+  }
+  return {};
+}
+
+ftxui::Color StatusColor(MessageStatus status, const theme::Theme& theme,
+                         Sender sender) {
+  switch (status) {
+    case MessageStatus::Queued:
+      return ftxui::Color::Yellow;
+    case MessageStatus::Active:
+      return sender == Sender::Agent ? theme.role.agent : theme.role.user;
+    case MessageStatus::Cancelled:
+      return theme.chrome.dim_text;
+    case MessageStatus::Error:
+      return theme.role.error;
+    case MessageStatus::Complete:
+      return theme.chrome.dim_text;
+  }
+  return theme.chrome.dim_text;
 }
 
 }  // namespace
@@ -191,8 +225,7 @@ ftxui::Element MessageRenderer::RenderHeader(
     util::RelativeTimeCache& cache, const RenderContext& context,
     MessageStatus status) {
   const auto& theme = context.Colors();
-  const bool is_error =
-      sender == Sender::Agent && status == MessageStatus::Error;
+  const bool is_error = status == MessageStatus::Error;
   const bool is_active =
       sender == Sender::Agent && status == MessageStatus::Active;
   const auto& icon_color = SenderSwitch(
@@ -214,12 +247,15 @@ ftxui::Element MessageRenderer::RenderHeader(
   left_parts.push_back(ftxui::text(label) | ftxui::bold |
                        ftxui::color(icon_color));
 
-  if (is_active) {
-    left_parts.push_back(ftxui::text(" \xC2\xB7 thinking ") |
-                         ftxui::color(theme.chrome.dim_text));
-    left_parts.push_back(
-        ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
-        ftxui::color(theme.role.agent) | ftxui::bold);
+  const auto status_label = StatusLabel(status, sender);
+  if (!status_label.empty()) {
+    left_parts.push_back(ftxui::text(" \xC2\xB7 " + status_label + " ") |
+                         ftxui::color(StatusColor(status, theme, sender)));
+    if (is_active) {
+      left_parts.push_back(
+          ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
+          ftxui::color(theme.role.agent) | ftxui::bold);
+    }
   }
 
   auto left = ftxui::hbox(std::move(left_parts));

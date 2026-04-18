@@ -60,8 +60,8 @@ void ChatUiScrollState::ApplyMeasuredLayout() {
   ClampScrollOffset();
 }
 
-void ChatUiScrollState::OnMessagesChanged() {
-  if (!scrollbar_dragging_) {
+void ChatUiScrollState::OnMessagesChanged(bool force_follow_tail) {
+  if (force_follow_tail) {
     follow_tail_ = true;
   }
 }

@@ -4,6 +4,7 @@
 
 namespace yac::chat {
 
+[[nodiscard]] ChatConfigResult LoadChatConfigResultFromEnv();
 [[nodiscard]] ChatConfig LoadChatConfigFromEnv();
 
 }  // namespace yac::chat

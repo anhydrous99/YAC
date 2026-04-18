@@ -121,6 +121,26 @@ TEST_CASE("ChatUI opens and closes command palette dialog") {
   REQUIRE_THAT(closed_output, !Catch::Matchers::ContainsSubstring("Open File"));
 }
 
+TEST_CASE("ChatUI opens help from command palette") {
+  ChatUI ui;
+  ui.SetHelpText("Help body with shortcuts and setup.");
+  ui.SetCommands({{"help", "Help", "Show shortcuts and setup status"}});
+  ui.SetOnCommand([&](const std::string& command) {
+    if (command == "help") {
+      ui.ShowHelp();
+    }
+  });
+  auto component = ui.Build();
+
+  REQUIRE(component->OnEvent(MakeCtrlP()));
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  auto output = RenderComponent(component);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Help"));
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Help body with shortcuts"));
+}
+
 TEST_CASE("ChatUI opens model picker from command palette") {
   ChatUI ui;
   std::optional<std::string> selected_command;

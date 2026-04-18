@@ -26,10 +26,18 @@ namespace {
 class ScopedEnvClear {
  public:
   ScopedEnvClear() {
-    static constexpr const char* kVars[] = {
-        "YAC_PROVIDER",      "YAC_MODEL",       "YAC_BASE_URL",
-        "YAC_TEMPERATURE",   "YAC_API_KEY_ENV", "YAC_SYSTEM_PROMPT",
-        "YAC_WORKSPACE_ROOT"};
+    static constexpr const char* kVars[] = {"YAC_PROVIDER",
+                                            "YAC_MODEL",
+                                            "YAC_BASE_URL",
+                                            "YAC_TEMPERATURE",
+                                            "YAC_API_KEY_ENV",
+                                            "YAC_SYSTEM_PROMPT",
+                                            "YAC_WORKSPACE_ROOT",
+                                            "OPENAI_API_KEY",
+                                            "ZAI_API_KEY",
+                                            "YAC_CUSTOM_ZAI_KEY",
+                                            "YAC_TEST_API_KEY_FROM_FILE",
+                                            "YAC_TEST_API_KEY_OVERRIDE"};
     for (const auto* name : kVars) {
       if (const char* val = std::getenv(name)) {
         saved_.emplace_back(name, val);
@@ -867,6 +875,42 @@ TEST_CASE("LoadChatConfigFromEnv returns defaults when no env vars set") {
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE_FALSE(config.system_prompt.has_value());
+}
+
+TEST_CASE("LoadChatConfigResultFromEnv warns when API key is missing") {
+  ScopedEnvClear env_guard;
+
+  auto result = LoadChatConfigResultFromEnv();
+
+  REQUIRE(result.config.api_key.empty());
+  REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Warning &&
+           issue.message.find("OPENAI_API_KEY") != std::string::npos &&
+           issue.detail.find("sk-") == std::string::npos;
+  }));
+}
+
+TEST_CASE("LoadChatConfigResultFromEnv reports invalid temperature") {
+  ScopedEnvClear env_guard;
+#ifdef _WIN32
+  _putenv_s("YAC_TEMPERATURE", "too-hot");
+#else
+  setenv("YAC_TEMPERATURE", "too-hot", 1);
+#endif
+
+  auto result = LoadChatConfigResultFromEnv();
+
+  REQUIRE(result.config.temperature == 0.7);
+  REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message == "Invalid YAC_TEMPERATURE";
+  }));
+
+#ifdef _WIN32
+  _putenv_s("YAC_TEMPERATURE", "");
+#else
+  unsetenv("YAC_TEMPERATURE");
+#endif
 }
 
 TEST_CASE("LoadChatConfigFromEnv applies Z.ai provider defaults") {

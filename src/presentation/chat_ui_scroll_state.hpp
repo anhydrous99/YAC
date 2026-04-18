@@ -18,7 +18,7 @@ class ChatUiScrollState {
 
   void SetContentHeight(int content_height);
   void ApplyMeasuredLayout();
-  void OnMessagesChanged();
+  void OnMessagesChanged(bool force_follow_tail = false);
   [[nodiscard]] int PageLines() const;
   [[nodiscard]] int ViewportHeight() const;
   [[nodiscard]] int MaxScrollOffset() const;

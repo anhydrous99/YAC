@@ -137,13 +137,9 @@ class InlineTokenizer {
     }
   }
 
-  char PrevChar() const {
-    return pos_ == 0 ? ' ' : text_[pos_ - 1];
-  }
+  char PrevChar() const { return pos_ == 0 ? ' ' : text_[pos_ - 1]; }
 
-  char CharAt(size_t i) const {
-    return i < text_.size() ? text_[i] : ' ';
-  }
+  char CharAt(size_t i) const { return i < text_.size() ? text_[i] : ' '; }
 
   bool TryEscape() {
     if (pos_ + 1 >= text_.size()) {
@@ -236,10 +232,9 @@ class InlineTokenizer {
     if (paren_end == std::string_view::npos) {
       return false;
     }
-    std::string alt(text_.substr(bracket_start + 1,
-                                 bracket_end - bracket_start - 1));
-    std::string url(text_.substr(paren_start + 1,
-                                 paren_end - paren_start - 1));
+    std::string alt(
+        text_.substr(bracket_start + 1, bracket_end - bracket_start - 1));
+    std::string url(text_.substr(paren_start + 1, paren_end - paren_start - 1));
     FlushText();
     nodes_.emplace_back(Image{std::move(alt), std::move(url)});
     pos_ = paren_end + 1;
@@ -260,8 +255,7 @@ class InlineTokenizer {
       return false;
     }
     std::string label(text_.substr(pos_ + 1, bracket_end - pos_ - 1));
-    std::string url(text_.substr(paren_start + 1,
-                                 paren_end - paren_start - 1));
+    std::string url(text_.substr(paren_start + 1, paren_end - paren_start - 1));
     FlushText();
     nodes_.emplace_back(Link{std::move(label), std::move(url)});
     pos_ = paren_end + 1;
@@ -293,8 +287,8 @@ class InlineTokenizer {
 
   bool LeftFlanking(size_t run_start, size_t run_end_exclusive) const {
     char before = run_start == 0 ? ' ' : text_[run_start - 1];
-    char after = run_end_exclusive < text_.size() ? text_[run_end_exclusive]
-                                                  : ' ';
+    char after =
+        run_end_exclusive < text_.size() ? text_[run_end_exclusive] : ' ';
     bool followed_by_ws = std::isspace(static_cast<unsigned char>(after)) != 0;
     if (followed_by_ws) {
       return false;
@@ -310,8 +304,8 @@ class InlineTokenizer {
 
   bool RightFlanking(size_t run_start, size_t run_end_exclusive) const {
     char before = run_start == 0 ? ' ' : text_[run_start - 1];
-    char after = run_end_exclusive < text_.size() ? text_[run_end_exclusive]
-                                                  : ' ';
+    char after =
+        run_end_exclusive < text_.size() ? text_[run_end_exclusive] : ' ';
     bool preceded_by_ws = std::isspace(static_cast<unsigned char>(before)) != 0;
     if (preceded_by_ws) {
       return false;
@@ -341,8 +335,8 @@ class InlineTokenizer {
       return false;
     }
     if (delim == '_' && LeftFlanking(run_start, run_end_exclusive)) {
-      char after = run_end_exclusive < text_.size() ? text_[run_end_exclusive]
-                                                    : ' ';
+      char after =
+          run_end_exclusive < text_.size() ? text_[run_end_exclusive] : ' ';
       return IsAsciiPunct(after);
     }
     return true;
@@ -414,8 +408,8 @@ class InlineTokenizer {
       }
       size_t content_start = run_end;
       size_t content_end = close_start;
-      std::string content(text_.substr(content_start,
-                                       content_end - content_start));
+      std::string content(
+          text_.substr(content_start, content_end - content_start));
       FlushText();
       if (want == 2) {
         nodes_.emplace_back(Bold{std::move(content)});
@@ -597,8 +591,7 @@ std::optional<ListItemHeader> ParseListItemHeader(const std::string& line) {
   std::string remainder = line.substr(content_start);
   if (!h.ordered && remainder.size() >= 3 && remainder[0] == '[' &&
       (remainder[1] == ' ' || remainder[1] == 'x' || remainder[1] == 'X') &&
-      remainder[2] == ']' &&
-      (remainder.size() == 3 || remainder[3] == ' ')) {
+      remainder[2] == ']' && (remainder.size() == 3 || remainder[3] == ' ')) {
     h.task = true;
     h.task_checked = (remainder[1] == 'x' || remainder[1] == 'X');
     if (remainder.size() <= 4) {
@@ -735,7 +728,7 @@ std::vector<BlockNode> MarkdownParser::Parse(std::string_view markdown) {
 }
 
 std::vector<BlockNode> MarkdownParser::Parse(std::string_view markdown,
-                                            const ParseOptions& opts) {
+                                             const ParseOptions& opts) {
   auto lines = SplitLines(markdown);
   return ParseBlocks(lines, opts);
 }
@@ -873,9 +866,8 @@ size_t MarkdownParser::TryParseParagraph(const std::vector<std::string>& lines,
     }
 
     const auto& raw = lines[i];
-    bool ends_with_two_spaces =
-        raw.size() >= 2 && raw[raw.size() - 1] == ' ' &&
-        raw[raw.size() - 2] == ' ';
+    bool ends_with_two_spaces = raw.size() >= 2 && raw[raw.size() - 1] == ' ' &&
+                                raw[raw.size() - 2] == ' ';
     std::string content = Trim(raw);
     bool ends_with_backslash = !content.empty() && content.back() == '\\';
     if (ends_with_backslash) {

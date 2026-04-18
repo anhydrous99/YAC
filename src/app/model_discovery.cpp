@@ -43,23 +43,42 @@ void EnsureModelPresent(std::vector<chat::ModelInfo>& models,
 
 }  // namespace
 
-std::vector<chat::ModelInfo> DiscoverModels(
+ModelDiscoveryResult DiscoverModelsWithStatus(
     provider::LanguageModelProvider& provider, const chat::ChatConfig& config) {
-  std::vector<chat::ModelInfo> models;
   if (!provider.SupportsModelDiscovery()) {
-    return models;
+    return {.status = ModelDiscoveryStatus::Unsupported,
+            .message = "Model discovery is not supported by this provider."};
   }
 
+  ModelDiscoveryResult result{.status = ModelDiscoveryStatus::Success};
   try {
-    models = provider.ListModels(std::chrono::seconds(5));
-  } catch (const std::exception&) {
-    models.clear();
+    result.models = provider.ListModels(std::chrono::seconds(5));
+  } catch (const std::exception& error) {
+    result.status = ModelDiscoveryStatus::Failed;
+    result.message = error.what();
+    result.models.clear();
   }
-  if (models.empty() && UsesZaiFallback(provider, config)) {
-    models = ZaiFallbackModels();
+  if (result.models.empty() && UsesZaiFallback(provider, config)) {
+    result.models = ZaiFallbackModels();
+    result.status = ModelDiscoveryStatus::Fallback;
+    if (result.message.empty()) {
+      result.message = "Using built-in Z.ai model list.";
+    } else {
+      result.message =
+          "Model discovery failed; using built-in Z.ai model list.";
+    }
   }
-  EnsureModelPresent(models, config.model);
-  return models;
+  EnsureModelPresent(result.models, config.model);
+  if (result.models.empty() && result.status == ModelDiscoveryStatus::Success) {
+    result.status = ModelDiscoveryStatus::Failed;
+    result.message = "No models were returned by the provider.";
+  }
+  return result;
+}
+
+std::vector<chat::ModelInfo> DiscoverModels(
+    provider::LanguageModelProvider& provider, const chat::ChatConfig& config) {
+  return DiscoverModelsWithStatus(provider, config).models;
 }
 
 std::vector<Command> BuildCommands(const std::vector<chat::ModelInfo>& models) {
@@ -68,6 +87,7 @@ std::vector<Command> BuildCommands(const std::vector<chat::ModelInfo>& models) {
       {"clear_messages", "Clear Messages", "Remove all messages from the view"},
       {"cancel_response", "Cancel Response",
        "Stop the current assistant response"},
+      {"help", "Help", "Show shortcuts, setup, and workspace status"},
   };
 
   if (!models.empty()) {

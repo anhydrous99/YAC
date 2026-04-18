@@ -31,14 +31,17 @@ The SVG previews show the current chat surface and command palette.
   variable, temperature, and system prompt
 - Z.ai Coding API preset with startup model discovery and command-palette model
   switching
+- First-run setup status for provider/model, workspace, API key, and clangd
+  availability
 - Rich Markdown rendering for headings, lists, blockquotes, links, inline code,
   fenced code blocks, bold, italic, and strikethrough
 - Keyword-based syntax highlighting for C++, Python, JavaScript, and Rust
-- Structured tool-call rendering for bash, file edit, file read, grep, glob,
-  web fetch, and web search blocks
+- Structured tool-call rendering for file reads/writes, directory listings, LSP
+  diagnostics/navigation/rename/symbols, and legacy bash/search-style blocks
 - Scrollable transcript with cached Markdown parsing and rendered elements for
   smoother redraws
-- Command palette plus slash command autocomplete for `/quit` and `/exit`
+- Command palette plus slash command autocomplete for help, clear, cancel, and
+  quit commands
 
 ## Quick Start
 
@@ -61,8 +64,9 @@ export OPENAI_API_KEY=sk-...
 ./build/yac
 ```
 
-If the API key is missing, the app still starts and reports the provider error
-in the chat when a request is submitted.
+If the API key is missing, the app still starts and shows the setup warning in
+the empty transcript. Requests still surface the provider error in chat if the
+key remains unset.
 
 ## Configuration
 
@@ -98,10 +102,10 @@ YAC_TEMPERATURE=0.7
 YAC_SYSTEM_PROMPT="Use concise answers."
 ```
 
-YAC shows the active provider/model in the footer. For Z.ai, it fetches models
-from the provider at startup and adds a `Switch Model` command that opens a
-model picker. If discovery fails, YAC falls back to a built-in GLM model list
-seeded with `glm-5.1`.
+YAC shows the active provider/model in the footer. It starts the UI immediately,
+then fetches models in the background and adds a `Switch Model` command when a
+model list is available. If Z.ai discovery fails, YAC falls back to a built-in
+GLM model list seeded with `glm-5.1`.
 
 ## Usage
 
@@ -110,12 +114,14 @@ The interface is keyboard-first:
 - `Enter` sends the current message
 - `Shift+Enter`, `Ctrl+Enter`, and `Alt+Enter` insert a newline in the composer
 - `Ctrl+P` opens the command palette
+- `Help` opens shortcuts, setup status, and permission guidance
 - `Switch Model` opens the model picker for future responses
 - `Escape` closes the command palette or slash command menu
 - `Up` and `Down` move through palette or slash command results
 - `Tab` moves upward through slash command results
 - `Enter` in a command menu runs the selected command
-- Typing `/` opens slash command autocomplete; `/quit` and `/exit` close YAC
+- Typing `/` opens slash command autocomplete; `/help`, `/clear`, `/cancel`,
+  `/quit`, and `/exit` are built in
 - `PageUp` and `PageDown` scroll the transcript by a page
 - `Home` jumps to the top of the chat history
 - `End` jumps to the bottom

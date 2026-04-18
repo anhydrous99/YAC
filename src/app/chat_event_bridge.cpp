@@ -64,6 +64,10 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
 
     case ChatEventType::Error:
       chat_ui.SetTyping(false);
+      chat_ui.SetTransientStatus(
+          presentation::UiNotice{.severity = presentation::UiSeverity::Error,
+                                 .title = "Provider error",
+                                 .detail = event.text});
       if (!chat_ui.HasMessage(event.message_id)) {
         chat_ui.AddMessageWithId(event.message_id, SenderForRole(event.role),
                                  "Error: " + event.text,
@@ -90,6 +94,9 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
     case ChatEventType::Cancelled:
       chat_ui.SetTyping(false);
       chat_ui.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
+      chat_ui.SetTransientStatus(
+          presentation::UiNotice{.severity = presentation::UiSeverity::Info,
+                                 .title = "Response cancelled"});
       break;
 
     case ChatEventType::MessageStatusChanged:
@@ -102,12 +109,18 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
     case ChatEventType::ConversationCleared:
       chat_ui.ClearMessages();
       chat_ui.SetTyping(false);
+      chat_ui.SetTransientStatus(
+          presentation::UiNotice{.severity = presentation::UiSeverity::Info,
+                                 .title = "Conversation cleared"});
       break;
 
     case ChatEventType::ModelChanged:
       chat_ui.SetContextWindowTokens(LookupContextWindow(event.model));
       chat_ui.SetProviderModel(std::move(event.provider_id),
                                std::move(event.model));
+      chat_ui.SetTransientStatus(
+          presentation::UiNotice{.severity = presentation::UiSeverity::Info,
+                                 .title = "Model switched"});
       break;
 
     case ChatEventType::UsageReported:
@@ -119,6 +132,7 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       break;
 
     case ChatEventType::QueueDepthChanged:
+      chat_ui.SetQueueDepth(event.queue_depth);
       break;
 
     case ChatEventType::ToolCallStarted:
@@ -136,9 +150,9 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       break;
 
     case ChatEventType::ToolApprovalRequested:
-      chat_ui.ShowToolApproval(std::move(event.approval_id),
-                               std::move(event.tool_name),
-                               std::move(event.text));
+      chat_ui.ShowToolApproval(
+          std::move(event.approval_id), std::move(event.tool_name),
+          std::move(event.text), std::move(event.tool_call));
       break;
 
     case ChatEventType::ToolCallRequested:

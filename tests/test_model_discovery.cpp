@@ -88,6 +88,17 @@ TEST_CASE("DiscoverModels returns provider models when discovery succeeds") {
   REQUIRE(provider.LastTimeout() == std::chrono::seconds(5));
 }
 
+TEST_CASE("DiscoverModelsWithStatus reports successful discovery") {
+  FakeDiscoveryProvider provider(
+      "openai", true, {{.id = "gpt-4.1", .display_name = "GPT-4.1"}});
+
+  const auto result = DiscoverModelsWithStatus(provider, MakeConfig("openai"));
+
+  REQUIRE(result.status == ModelDiscoveryStatus::Success);
+  REQUIRE(result.models.size() == 1);
+  REQUIRE(result.message.empty());
+}
+
 TEST_CASE("DiscoverModels uses Z.ai fallback models when zai returns empty") {
   FakeDiscoveryProvider provider("zai", true);
 
@@ -111,6 +122,16 @@ TEST_CASE(
   REQUIRE(models.front().id == "glm-5.1");
 }
 
+TEST_CASE("DiscoverModelsWithStatus reports Z.ai fallback") {
+  FakeDiscoveryProvider provider("zai", true, {}, true);
+
+  const auto result = DiscoverModelsWithStatus(provider, MakeConfig("zai"));
+
+  REQUIRE(result.status == ModelDiscoveryStatus::Fallback);
+  REQUIRE(result.models.size() == 6);
+  REQUIRE_FALSE(result.message.empty());
+}
+
 TEST_CASE(
     "DiscoverModels returns empty when provider does not support discovery") {
   FakeDiscoveryProvider provider(
@@ -119,6 +140,16 @@ TEST_CASE(
   const auto models = DiscoverModels(provider, MakeConfig("openai"));
 
   REQUIRE(models.empty());
+  REQUIRE(provider.ListModelsCalls() == 0);
+}
+
+TEST_CASE("DiscoverModelsWithStatus reports unsupported discovery") {
+  FakeDiscoveryProvider provider("openai", false);
+
+  const auto result = DiscoverModelsWithStatus(provider, MakeConfig("openai"));
+
+  REQUIRE(result.status == ModelDiscoveryStatus::Unsupported);
+  REQUIRE(result.models.empty());
   REQUIRE(provider.ListModelsCalls() == 0);
 }
 
@@ -167,6 +198,19 @@ TEST_CASE(
 
   REQUIRE(models.size() == 1);
   REQUIRE(models[0].id == "my-model");
+}
+
+TEST_CASE(
+    "DiscoverModelsWithStatus keeps configured model when discovery fails") {
+  FakeDiscoveryProvider provider("openai", true, {}, true);
+
+  const auto result =
+      DiscoverModelsWithStatus(provider, MakeConfig("openai", "my-model"));
+
+  REQUIRE(result.status == ModelDiscoveryStatus::Failed);
+  REQUIRE(result.models.size() == 1);
+  REQUIRE(result.models[0].id == "my-model");
+  REQUIRE_FALSE(result.message.empty());
 }
 
 TEST_CASE(

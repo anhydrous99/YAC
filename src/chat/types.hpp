@@ -112,6 +112,14 @@ struct ProviderConfig {
   std::map<std::string, std::string> options;
 };
 
+enum class ConfigIssueSeverity { Info, Warning, Error };
+
+struct ConfigIssue {
+  ConfigIssueSeverity severity = ConfigIssueSeverity::Info;
+  std::string message;
+  std::string detail;
+};
+
 struct ChatConfig {
   std::string provider_id = "openai";
   std::string model = "gpt-4o-mini";
@@ -123,6 +131,11 @@ struct ChatConfig {
   std::string lsp_clangd_command = "clangd";
   std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
+};
+
+struct ChatConfigResult {
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
 };
 
 }  // namespace yac::chat

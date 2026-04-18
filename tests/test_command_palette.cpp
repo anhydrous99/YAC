@@ -174,3 +174,20 @@ TEST_CASE("CommandPalette can select a model command by display text") {
   REQUIRE(commands[0].id == "switch_model:glm-5.1");
   REQUIRE_FALSE(show);
 }
+
+TEST_CASE("CommandPalette reflects command list updates") {
+  bool show = true;
+  std::vector<Command> commands{{"Help", "Show help"}};
+  auto component =
+      CommandPalette([&commands] { return commands; }, [](int) {}, &show);
+
+  auto first = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(first, Catch::Matchers::ContainsSubstring("Help"));
+  REQUIRE_THAT(first, !Catch::Matchers::ContainsSubstring("Switch Model"));
+
+  commands.emplace_back("switch_model", "Switch Model",
+                        "Choose the model for future responses");
+
+  auto second = RenderComponent(component, 80, 24);
+  REQUIRE_THAT(second, Catch::Matchers::ContainsSubstring("Switch Model"));
+}

@@ -16,7 +16,7 @@ class MarkdownParser {
  public:
   [[nodiscard]] static std::vector<BlockNode> Parse(std::string_view markdown);
   [[nodiscard]] static std::vector<BlockNode> Parse(std::string_view markdown,
-                                                   const ParseOptions& opts);
+                                                    const ParseOptions& opts);
 
  private:
   static constexpr int kMaxHeadingLevel = 6;
@@ -41,8 +41,7 @@ class MarkdownParser {
       const std::vector<std::string>& lines, size_t& index);
 
   static size_t TryParseParagraph(const std::vector<std::string>& lines,
-                                  size_t start,
-                                  std::vector<BlockNode>& blocks);
+                                  size_t start, std::vector<BlockNode>& blocks);
 
   [[nodiscard]] static std::vector<InlineNode> ParseInline(
       std::string_view text);

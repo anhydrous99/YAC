@@ -29,5 +29,7 @@ struct Command {
 
 ftxui::Component CommandPalette(std::vector<Command> commands,
                                 std::function<void(int)> on_select, bool* show);
+ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
+                                std::function<void(int)> on_select, bool* show);
 
 }  // namespace yac::presentation
