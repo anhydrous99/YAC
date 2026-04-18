@@ -46,14 +46,15 @@ ToolExecutionResult ExecuteSubAgentTool(
   }
 
   if (sub_agent_manager->IsAtCapacity()) {
+    const std::string capacity_result =
+        "Maximum concurrent sub-agents (" +
+        std::to_string(chat::kMaxConcurrentSubAgents) + ") reached.";
     const std::string capacity_error =
-        "Maximum concurrent sub-agents (4) reached. "
-        "Wait for existing agents to complete.";
-    auto block =
-        SubAgentCall{.task = call->task,
-                     .mode = call->mode,
-                     .status = SubAgentStatus::Error,
-                     .result = "Maximum concurrent sub-agents (4) reached."};
+        capacity_result + " Wait for existing agents to complete.";
+    SubAgentCall block{.task = call->task,
+                       .mode = call->mode,
+                       .status = SubAgentStatus::Error,
+                       .result = capacity_result};
     return ToolExecutionResult{
         .block = std::move(block),
         .result_json = Json{{"error", capacity_error}}.dump(),

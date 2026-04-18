@@ -19,10 +19,10 @@ TEST_CASE("sub_agent tool appears in definitions") {
 }
 
 TEST_CASE("Prepare sub_agent tool creates SubAgentCall preview") {
-  ToolCallRequest request{.id = "call-1",
-                          .name = "sub_agent",
-                          .arguments_json =
-                              R"({"task":"analyze the codebase"})"};
+  ToolCallRequest request{
+      .id = "call-1",
+      .name = "sub_agent",
+      .arguments_json = R"({"task":"analyze the codebase"})"};
   auto prepared = ToolExecutor::Prepare(request);
   REQUIRE(std::holds_alternative<SubAgentCall>(prepared.preview));
   const auto& call = std::get<SubAgentCall>(prepared.preview);
@@ -32,9 +32,8 @@ TEST_CASE("Prepare sub_agent tool creates SubAgentCall preview") {
 }
 
 TEST_CASE("Prepare sub_agent with missing task returns error") {
-  ToolCallRequest request{.id = "call-2",
-                          .name = "sub_agent",
-                          .arguments_json = R"({})"};
+  ToolCallRequest request{
+      .id = "call-2", .name = "sub_agent", .arguments_json = R"({})"};
   auto prepared = ToolExecutor::Prepare(request);
   REQUIRE(std::holds_alternative<BashCall>(prepared.preview));
   const auto& bash = std::get<BashCall>(prepared.preview);

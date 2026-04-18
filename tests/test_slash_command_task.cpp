@@ -7,8 +7,9 @@
 
 using yac::presentation::SlashCommandRegistry;
 
-TEST_CASE("SlashCommandRegistry arguments_handler receives text after command name",
-          "[slash_command][task]") {
+TEST_CASE(
+    "SlashCommandRegistry arguments_handler receives text after command name",
+    "[slash_command][task]") {
   SlashCommandRegistry registry;
   registry.Define("task", "task", "Test task command");
 
@@ -50,7 +51,8 @@ TEST_CASE("SlashCommandRegistry empty task dispatches with empty string",
 }
 
 TEST_CASE(
-    "SlashCommandRegistry existing commands without arguments_handler still dispatch normally",
+    "SlashCommandRegistry existing commands without arguments_handler still "
+    "dispatch normally",
     "[slash_command][task]") {
   SlashCommandRegistry registry;
   registry.Define("help", "help", "Show help");
@@ -63,7 +65,8 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "SlashCommandRegistry arguments_handler takes precedence over handler when both set",
+    "SlashCommandRegistry arguments_handler takes precedence over handler when "
+    "both set",
     "[slash_command][task]") {
   SlashCommandRegistry registry;
   registry.Define("task", "task", "Test task command");

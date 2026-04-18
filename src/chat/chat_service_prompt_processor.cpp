@@ -189,9 +189,11 @@ void ChatServicePromptProcessor::RunToolRound(
     bool approved = true;
     if (prepared.requires_approval) {
       std::unique_lock<std::mutex> gate_lock;
-      if (approval_gate_) {
+      if (approval_gate_ != nullptr) {
         gate_lock = std::unique_lock<std::mutex>(*approval_gate_);
-        if (stop_token.stop_requested()) return;
+        if (stop_token.stop_requested()) {
+          return;
+        }
       }
       auto approval_id = tool_approval_->BeginPendingApproval();
       emit_event_(ChatEvent{.type = ChatEventType::ToolApprovalRequested,

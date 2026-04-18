@@ -11,8 +11,7 @@ using namespace yac::chat;
 using namespace yac::presentation;
 using namespace yac::tool_call;
 
-TEST_CASE(
-    "Bridge handles SubAgentStarted -- creates tool call message") {
+TEST_CASE("Bridge handles SubAgentStarted -- creates tool call message") {
   ChatUI ui;
   ChatEventBridge bridge(ui);
 
@@ -69,8 +68,7 @@ TEST_CASE(
   REQUIRE(sub.elapsed_ms == 1200);
 }
 
-TEST_CASE(
-    "Bridge handles SubAgentError -- updates card with error status") {
+TEST_CASE("Bridge handles SubAgentError -- updates card with error status") {
   ChatUI ui;
   ChatEventBridge bridge(ui);
 
@@ -126,8 +124,7 @@ TEST_CASE(
   REQUIRE(sub.status == SubAgentStatus::Cancelled);
 }
 
-TEST_CASE(
-    "Bridge handles SubAgentProgress -- updates card with tool count") {
+TEST_CASE("Bridge handles SubAgentProgress -- updates card with tool count") {
   ChatUI ui;
   ChatEventBridge bridge(ui);
 

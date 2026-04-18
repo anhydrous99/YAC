@@ -19,7 +19,9 @@ RenderContext MakeContext() {
 
 }  // namespace
 
-TEST_CASE("ToolCallRenderer::BuildSummary for SubAgentCall includes task and status") {
+TEST_CASE(
+    "ToolCallRenderer::BuildSummary for SubAgentCall includes task and "
+    "status") {
   SubAgentCall call{.task = "analyze the codebase",
                     .status = SubAgentStatus::Running};
 
@@ -30,7 +32,8 @@ TEST_CASE("ToolCallRenderer::BuildSummary for SubAgentCall includes task and sta
   REQUIRE(summary.find("running") != std::string::npos);
 }
 
-TEST_CASE("ToolCallRenderer::BuildLabel for SubAgentCall returns sub-agent label") {
+TEST_CASE(
+    "ToolCallRenderer::BuildLabel for SubAgentCall returns sub-agent label") {
   SubAgentCall call{.task = "test"};
 
   const auto label = ToolCallRenderer::BuildLabel(call);
@@ -38,7 +41,8 @@ TEST_CASE("ToolCallRenderer::BuildLabel for SubAgentCall returns sub-agent label
   REQUIRE(label.find("Sub-agent") != std::string::npos);
 }
 
-TEST_CASE("ToolCallRenderer renders all SubAgentCall statuses without throwing") {
+TEST_CASE(
+    "ToolCallRenderer renders all SubAgentCall statuses without throwing") {
   const auto context = MakeContext();
 
   const std::array<SubAgentStatus, 6> statuses{

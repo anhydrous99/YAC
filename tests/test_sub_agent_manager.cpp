@@ -88,17 +88,15 @@ struct SubAgentTestContext {
       std::shared_ptr<LanguageModelProvider> prov,
       int timeout_seconds = kDefaultSubAgentTimeoutSeconds) {
     static std::atomic<int> counter{0};
-    workspace =
-        std::filesystem::temp_directory_path() /
-        ("yac_sam_test_" + std::to_string(counter.fetch_add(1)));
+    workspace = std::filesystem::temp_directory_path() /
+                ("yac_sam_test_" + std::to_string(counter.fetch_add(1)));
     std::filesystem::create_directories(workspace);
     config.provider_id = prov->Id();
     config.model = "test-model";
     registry.Register(std::move(prov));
     executor = std::make_shared<ToolExecutor>(workspace, nullptr);
     manager = std::make_unique<SubAgentManager>(
-        registry, executor, tool_approval,
-        [](ChatEvent) {},
+        registry, executor, tool_approval, [](ChatEvent) {},
         [this]() { return config; },
         [this]() -> ChatMessageId { return next_id.fetch_add(1); },
         timeout_seconds);
@@ -121,8 +119,7 @@ TEST_CASE("SubAgentManager enforces concurrency limit") {
   SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
 
   for (int i = 0; i < kMaxConcurrentSubAgents; ++i) {
-    const auto id =
-        ctx.manager->SpawnBackground("task " + std::to_string(i));
+    const auto id = ctx.manager->SpawnBackground("task " + std::to_string(i));
     REQUIRE(id.find("capacity") == std::string::npos);
   }
 
@@ -167,7 +164,9 @@ TEST_CASE("SpawnBackground returns immediately") {
 TEST_CASE("CancelAll stops all active sessions") {
   SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
 
+  // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto a = ctx.manager->SpawnBackground("task 1");
+  // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto b = ctx.manager->SpawnBackground("task 2");
 
   ctx.manager->CancelAll();
@@ -180,6 +179,7 @@ TEST_CASE("Background timeout triggers cancellation") {
   SubAgentTestContext ctx(std::make_shared<PeriodicEventMockProvider>(),
                           kTimeoutSeconds);
 
+  // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto agent =
       ctx.manager->SpawnBackground("long running task");
 
