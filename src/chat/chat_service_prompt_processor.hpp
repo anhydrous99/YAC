@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <mutex>
+#include <set>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -28,7 +29,9 @@ class ChatServicePromptProcessor {
                              EmitEventFn emit_event,
                              NextMessageIdFn next_message_id,
                              ConfigSnapshotFn config_snapshot,
-                             GenerationValueFn generation_value);
+                             GenerationValueFn generation_value,
+                             std::set<std::string> excluded_tools = {},
+                             std::mutex* approval_gate = nullptr);
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
@@ -50,6 +53,8 @@ class ChatServicePromptProcessor {
   NextMessageIdFn next_message_id_;
   ConfigSnapshotFn config_snapshot_;
   GenerationValueFn generation_value_;
+  std::set<std::string> excluded_tools_;
+  std::mutex* approval_gate_;
 };
 
 }  // namespace yac::chat::internal

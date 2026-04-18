@@ -22,7 +22,8 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
     ChatServiceToolApproval& tool_approval, std::mutex& history_mutex,
     std::vector<ChatMessage>& history, EmitEventFn emit_event,
     NextMessageIdFn next_message_id, ConfigSnapshotFn config_snapshot,
-    GenerationValueFn generation_value)
+    GenerationValueFn generation_value, std::set<std::string> excluded_tools,
+    std::mutex* approval_gate)
     : registry_(&registry),
       tool_executor_(&tool_executor),
       tool_approval_(&tool_approval),
@@ -31,7 +32,9 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
       emit_event_(std::move(emit_event)),
       next_message_id_(std::move(next_message_id)),
       config_snapshot_(std::move(config_snapshot)),
-      generation_value_(std::move(generation_value)) {}
+      generation_value_(std::move(generation_value)),
+      excluded_tools_(std::move(excluded_tools)),
+      approval_gate_(approval_gate) {}
 
 void ChatServicePromptProcessor::ProcessPrompt(
     ChatMessageId prompt_id, const std::string& prompt_content,
@@ -162,8 +165,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
 ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
     const ChatServiceRequestBuilder& request_builder) const {
   std::lock_guard lock(*history_mutex_);
-  return request_builder.BuildRequest(
-      *history_, ::yac::tool_call::ToolExecutor::Definitions());
+  auto tools = ::yac::tool_call::ToolExecutor::Definitions();
+  std::erase_if(tools, [this](const auto& t) {
+    return excluded_tools_.contains(t.name);
+  });
+  return request_builder.BuildRequest(*history_, tools);
 }
 
 void ChatServicePromptProcessor::RunToolRound(
@@ -182,6 +188,11 @@ void ChatServicePromptProcessor::RunToolRound(
 
     bool approved = true;
     if (prepared.requires_approval) {
+      std::unique_lock<std::mutex> gate_lock;
+      if (approval_gate_) {
+        gate_lock = std::unique_lock<std::mutex>(*approval_gate_);
+        if (stop_token.stop_requested()) return;
+      }
       auto approval_id = tool_approval_->BeginPendingApproval();
       emit_event_(ChatEvent{.type = ChatEventType::ToolApprovalRequested,
                             .message_id = tool_message_id,
