@@ -1,9 +1,9 @@
 #pragma once
 
 #include "command_palette.hpp"
+#include "core_types/tool_call_types.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
-#include "tool_call/types.hpp"
 #include "ui_status.hpp"
 
 #include <functional>

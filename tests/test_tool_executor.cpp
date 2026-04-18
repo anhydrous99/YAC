@@ -1,9 +1,11 @@
 #include "tool_call/executor.hpp"
+#include "tool_call/workspace_filesystem.hpp"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <stdexcept>
 #include <stop_token>
 #include <string>
 
@@ -310,4 +312,47 @@ TEST_CASE("ToolExecutor rejects file_read paths outside the workspace") {
 
   REQUIRE(result.is_error);
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("WorkspaceFilesystem::WriteFile rejects content over the size cap") {
+  auto root = TempRoot("write_cap");
+  std::string content(kMaxFileBytes + 1, 'x');
+  REQUIRE_THROWS_AS(WorkspaceFilesystem::WriteFile(root / "big.bin", content),
+                    std::runtime_error);
+  REQUIRE_FALSE(std::filesystem::exists(root / "big.bin"));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("WorkspaceFilesystem::ReadFile rejects files over the size cap") {
+  auto root = TempRoot("read_cap");
+  const auto path = root / "big.bin";
+  { std::ofstream(path, std::ios::binary).put('\0'); }
+  std::error_code ec;
+  std::filesystem::resize_file(path, kMaxFileBytes + 1, ec);
+  REQUIRE_FALSE(ec);
+  REQUIRE_THROWS_AS(WorkspaceFilesystem::ReadFile(path), std::runtime_error);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE(
+    "WorkspaceFilesystem::WriteFile surfaces an error on read-only parent") {
+  auto root = TempRoot("write_readonly");
+  const auto target_dir = root / "locked";
+  std::filesystem::create_directories(target_dir);
+  std::filesystem::permissions(
+      target_dir,
+      std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+      std::filesystem::perm_options::replace);
+
+  bool threw = false;
+  try {
+    WorkspaceFilesystem::WriteFile(target_dir / "denied.txt", "hello");
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+
+  std::filesystem::permissions(target_dir, std::filesystem::perms::owner_all,
+                               std::filesystem::perm_options::replace);
+  std::filesystem::remove_all(root);
+  REQUIRE(threw);
 }

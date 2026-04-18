@@ -6,6 +6,8 @@
 
 namespace yac::tool_call {
 
+inline constexpr size_t kMaxFileBytes = 50UL * 1024UL * 1024UL;
+
 class WorkspaceFilesystem {
  public:
   explicit WorkspaceFilesystem(std::filesystem::path workspace_root);

@@ -51,9 +51,25 @@ std::string WorkspaceFilesystem::DisplayPath(
 }
 
 std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
+    return {};
+  }
+  if (ec) {
+    throw std::runtime_error("Unable to stat file: " + path.string());
+  }
+  const auto size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    throw std::runtime_error("Unable to size file: " + path.string());
+  }
+  if (size > kMaxFileBytes) {
+    throw std::runtime_error("File exceeds " + std::to_string(kMaxFileBytes) +
+                             " byte read limit: " + path.string());
+  }
   std::ifstream file(path, std::ios::binary);
   if (!file) {
-    return {};
+    throw std::runtime_error("Unable to open file for reading: " +
+                             path.string());
   }
   std::ostringstream buffer;
   buffer << file.rdbuf();
@@ -62,6 +78,11 @@ std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
 
 void WorkspaceFilesystem::WriteFile(const std::filesystem::path& path,
                                     const std::string& content) {
+  if (content.size() > kMaxFileBytes) {
+    throw std::runtime_error("Content exceeds " +
+                             std::to_string(kMaxFileBytes) +
+                             " byte write limit: " + path.string());
+  }
   std::filesystem::create_directories(path.parent_path());
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
   if (!file) {
@@ -69,6 +90,10 @@ void WorkspaceFilesystem::WriteFile(const std::filesystem::path& path,
                              path.string());
   }
   file << content;
+  file.flush();
+  if (!file) {
+    throw std::runtime_error("Failed to write file: " + path.string());
+  }
 }
 
 int CountLines(const std::string& text) {

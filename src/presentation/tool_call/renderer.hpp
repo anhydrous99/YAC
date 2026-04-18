@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../render_context.hpp"
-#include "tool_call/types.hpp"
+#include "core_types/tool_call_types.hpp"
 
 #include <string>
 #include <vector>

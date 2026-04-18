@@ -1,7 +1,7 @@
 #pragma once
 
-#include "chat/types.hpp"
-#include "tool_call/types.hpp"
+#include "core_types/chat_ids.hpp"
+#include "core_types/tool_call_types.hpp"
 
 #include <chrono>
 #include <string>

@@ -40,6 +40,9 @@ target_include_directories(openai_cpp INTERFACE
 
 find_package(CURL REQUIRED)
 
+add_library(yac_core_types INTERFACE)
+target_include_directories(yac_core_types INTERFACE src)
+
 add_library(yac_presentation STATIC
   src/presentation/chat_session.cpp
   src/presentation/chat_ui.cpp
@@ -63,7 +66,7 @@ add_library(yac_presentation STATIC
   src/presentation/tool_call/renderer.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
-target_link_libraries(yac_presentation PUBLIC ftxui::screen ftxui::dom ftxui::component)
+target_link_libraries(yac_presentation PUBLIC yac_core_types ftxui::screen ftxui::dom ftxui::component)
 
 add_library(yac_service STATIC
   src/chat/chat_service.cpp
@@ -84,7 +87,7 @@ add_library(yac_service STATIC
   src/tool_call/workspace_filesystem.cpp
 )
 target_include_directories(yac_service PUBLIC src)
-target_link_libraries(yac_service PUBLIC openai_cpp CURL::libcurl)
+target_link_libraries(yac_service PUBLIC yac_core_types openai_cpp CURL::libcurl)
 
 add_library(yac_app STATIC
   src/app/bootstrap.cpp
