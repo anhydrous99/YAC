@@ -7,8 +7,10 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <stop_token>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace yac::chat {
 
@@ -42,7 +44,8 @@ class SubAgentManager {
   SubAgentManager(SubAgentManager&&) = delete;
   SubAgentManager& operator=(SubAgentManager&&) = delete;
 
-  [[nodiscard]] std::string SpawnForeground(const std::string& task);
+  [[nodiscard]] std::string SpawnForeground(
+      const std::string& task, std::stop_token parent_stop_token = {});
   [[nodiscard]] std::string SpawnBackground(const std::string& task);
   void Cancel(const std::string& agent_id);
   void CancelAll();
@@ -51,8 +54,24 @@ class SubAgentManager {
 
  private:
   struct SubAgentSession;
+  struct SubAgentCompletion;
 
+  [[nodiscard]] std::shared_ptr<SubAgentSession> CreateSession(
+      const std::string& task, tool_call::SubAgentMode mode);
+  [[nodiscard]] bool TryStoreSession(
+      const std::shared_ptr<SubAgentSession>& session);
+  void RemoveSession(const std::string& agent_id);
+  void MoveFinishedSessionsLocked(
+      std::vector<std::shared_ptr<SubAgentSession>>& finished_sessions);
   void CleanupFinishedSessions();
+  void AttachPromptProcessor(SubAgentSession& session);
+  [[nodiscard]] EmitEventFn MakeFilteredEmit(SubAgentSession& session);
+  void EmitSessionStarted(const SubAgentSession& session);
+  [[nodiscard]] SubAgentCompletion RunSession(
+      SubAgentSession& session, std::stop_token parent_stop_token = {});
+  void EmitSessionCompleted(const SubAgentSession& session,
+                            const SubAgentCompletion& completion);
+  static void RequestSessionStop(SubAgentSession& session, bool mark_cancelled);
 
   provider::ProviderRegistry* registry_;
   std::shared_ptr<tool_call::ToolExecutor> tool_executor_;
@@ -64,7 +83,7 @@ class SubAgentManager {
 
   std::mutex approval_gate_;
   mutable std::shared_mutex sessions_mutex_;
-  std::unordered_map<std::string, std::unique_ptr<SubAgentSession>>
+  std::unordered_map<std::string, std::shared_ptr<SubAgentSession>>
       active_sessions_;
 };
 

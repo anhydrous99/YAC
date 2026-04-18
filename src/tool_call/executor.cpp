@@ -87,7 +87,7 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
                                    workspace_filesystem_);
     }
     if (prepared.request.name == "sub_agent") {
-      return ExecuteSubAgentTool(prepared, sub_agent_manager_);
+      return ExecuteSubAgentTool(prepared, sub_agent_manager_, stop_token);
     }
     return ErrorResult(prepared.preview,
                        "Unknown tool: " + prepared.request.name);

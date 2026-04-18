@@ -34,8 +34,8 @@ namespace {
 }  // namespace
 
 ToolExecutionResult ExecuteSubAgentTool(
-    const PreparedToolCall& prepared,
-    chat::SubAgentManager* sub_agent_manager) {
+    const PreparedToolCall& prepared, chat::SubAgentManager* sub_agent_manager,
+    std::stop_token stop_token) {
   if (sub_agent_manager == nullptr) {
     return ErrorResult(prepared.preview, "Sub-agent manager not available.");
   }
@@ -77,7 +77,8 @@ ToolExecutionResult ExecuteSubAgentTool(
                            .dump()};
   }
 
-  const auto result = sub_agent_manager->SpawnForeground(call->task);
+  const auto result =
+      sub_agent_manager->SpawnForeground(call->task, stop_token);
   auto block = SubAgentCall{.task = call->task,
                             .mode = SubAgentMode::Foreground,
                             .status = SubAgentStatus::Complete,

@@ -4,13 +4,17 @@
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -75,6 +79,47 @@ class PeriodicEventMockProvider : public LanguageModelProvider {
   }
 };
 
+class ToolRequestMockProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "tool-request-mock"; }
+
+  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop) override {
+    if (stop.stop_requested()) {
+      return;
+    }
+
+    const bool has_tool_result =
+        std::any_of(request.messages.begin(), request.messages.end(),
+                    [](const ChatMessage& message) {
+                      return message.role == ChatRole::Tool;
+                    });
+    if (!has_tool_result) {
+      sink(ChatEvent{
+          .type = ChatEventType::ToolCallRequested,
+          .tool_calls = {ToolCallRequest{.id = "tool-1",
+                                         .name = "list_dir",
+                                         .arguments_json = R"({"path":"."})"}},
+      });
+      return;
+    }
+
+    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "final answer"});
+  }
+};
+
+template <typename Predicate>
+bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (predicate()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return predicate();
+}
+
 struct SubAgentTestContext {
   std::filesystem::path workspace;
   ProviderRegistry registry;
@@ -82,6 +127,8 @@ struct SubAgentTestContext {
   internal::ChatServiceToolApproval tool_approval;
   std::atomic<ChatMessageId> next_id{1};
   ChatConfig config;
+  std::mutex events_mutex;
+  std::vector<ChatEvent> events;
   std::unique_ptr<SubAgentManager> manager;
 
   explicit SubAgentTestContext(
@@ -96,7 +143,11 @@ struct SubAgentTestContext {
     registry.Register(std::move(prov));
     executor = std::make_shared<ToolExecutor>(workspace, nullptr);
     manager = std::make_unique<SubAgentManager>(
-        registry, executor, tool_approval, [](ChatEvent) {},
+        registry, executor, tool_approval,
+        [this](ChatEvent event) {
+          std::lock_guard lock(events_mutex);
+          events.push_back(std::move(event));
+        },
         [this]() { return config; },
         [this]() -> ChatMessageId { return next_id.fetch_add(1); },
         timeout_seconds);
@@ -111,6 +162,11 @@ struct SubAgentTestContext {
   SubAgentTestContext& operator=(const SubAgentTestContext&) = delete;
   SubAgentTestContext(SubAgentTestContext&&) = delete;
   SubAgentTestContext& operator=(SubAgentTestContext&&) = delete;
+
+  std::vector<ChatEvent> SnapshotEvents() {
+    std::lock_guard lock(events_mutex);
+    return events;
+  }
 };
 
 }  // namespace
@@ -186,4 +242,37 @@ TEST_CASE("Background timeout triggers cancellation") {
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
   REQUIRE_FALSE(ctx.manager->IsAtCapacity());
+}
+
+TEST_CASE("Background sub-agent reports tool progress") {
+  SubAgentTestContext ctx(std::make_shared<ToolRequestMockProvider>());
+
+  const auto agent = ctx.manager->SpawnBackground("inspect workspace");
+  REQUIRE(agent.find("capacity") == std::string::npos);
+
+  REQUIRE(WaitUntil(
+      [&ctx] {
+        const auto events = ctx.SnapshotEvents();
+        return std::any_of(
+            events.begin(), events.end(), [](const ChatEvent& event) {
+              return event.type == ChatEventType::SubAgentCompleted;
+            });
+      },
+      std::chrono::milliseconds(1000)));
+
+  const auto events = ctx.SnapshotEvents();
+  const auto progress =
+      std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
+        return event.type == ChatEventType::SubAgentProgress &&
+               event.sub_agent_tool_count == 1;
+      });
+  REQUIRE(progress != events.end());
+
+  const auto completion =
+      std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
+        return event.type == ChatEventType::SubAgentCompleted;
+      });
+  REQUIRE(completion != events.end());
+  REQUIRE(completion->sub_agent_result == "final answer");
+  REQUIRE(completion->sub_agent_tool_count == 1);
 }

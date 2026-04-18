@@ -40,6 +40,10 @@ ChatService::~ChatService() {
   tool_approval_->CancelPending();
   worker_.request_stop();
   wake_.notify_one();
+  if (worker_.joinable()) {
+    worker_.join();
+  }
+  sub_agent_manager_.reset();
 }
 
 void ChatService::SetEventCallback(ChatEventCallback callback) {
@@ -108,12 +112,12 @@ void ChatService::ResetConversation() {
     if (active_stop_source_.has_value()) {
       active_stop_source_->request_stop();
     }
-    sub_agent_manager_->CancelAll();
     history_.clear();
     pending_.clear();
     active_ = false;
     active_stop_source_.reset();
   }
+  sub_agent_manager_->CancelAll();
   tool_approval_->CancelPending();
   wake_.notify_one();
 
