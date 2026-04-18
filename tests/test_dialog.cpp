@@ -127,3 +127,12 @@ TEST_CASE("DialogModal overlays modal content when shown") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("main body"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("modal body"));
 }
+
+TEST_CASE("DialogModal forwards Escape to visible static dialog panel") {
+  bool show = true;
+  auto panel = DialogPanel("Help", StaticText("static help body"), &show);
+  auto comp = DialogModal(StaticText("main body"), panel, &show);
+
+  REQUIRE(comp->OnEvent(ftxui::Event::Escape));
+  REQUIRE_FALSE(show);
+}

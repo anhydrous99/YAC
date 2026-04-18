@@ -139,6 +139,12 @@ TEST_CASE("ChatUI opens help from command palette") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Help"));
   REQUIRE_THAT(output,
                Catch::Matchers::ContainsSubstring("Help body with shortcuts"));
+
+  REQUIRE(component->OnEvent(ftxui::Event::Escape));
+
+  auto closed_output = RenderComponent(component);
+  REQUIRE_THAT(closed_output,
+               !Catch::Matchers::ContainsSubstring("Help body with shortcuts"));
 }
 
 TEST_CASE("ChatUI opens model picker from command palette") {
