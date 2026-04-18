@@ -51,6 +51,15 @@ Theme CatppuccinMocha() {
   t.dialog.input_fg = ftxui::Color::RGB(205, 214, 244);
   t.dialog.dim_text = ftxui::Color::RGB(147, 153, 178);
 
+  t.sub_agent.pending_bg = ftxui::Color::RGB(69, 71, 90);
+  t.sub_agent.running_accent = ftxui::Color::RGB(137, 180, 250);
+  t.sub_agent.success_accent = ftxui::Color::RGB(166, 227, 161);
+  t.sub_agent.error_accent = ftxui::Color::RGB(243, 139, 168);
+  t.sub_agent.timeout_accent = ftxui::Color::RGB(250, 179, 135);
+  t.sub_agent.header_bg = ftxui::Color::RGB(41, 44, 60);
+  t.sub_agent.icon_fg = ftxui::Color::RGB(180, 190, 254);
+  t.sub_agent.progress_fg = ftxui::Color::RGB(116, 199, 236);
+
   return t;
 }
 

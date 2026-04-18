@@ -58,6 +58,17 @@ struct ToolColors {
   ftxui::Color icon_fg;
 };
 
+struct SubAgentColors {
+  ftxui::Color pending_bg;
+  ftxui::Color running_accent;
+  ftxui::Color success_accent;
+  ftxui::Color error_accent;
+  ftxui::Color timeout_accent;
+  ftxui::Color header_bg;
+  ftxui::Color icon_fg;
+  ftxui::Color progress_fg;
+};
+
 struct DialogColors {
   ftxui::Color overlay_bg;
   ftxui::Color selected_bg;
@@ -76,6 +87,7 @@ struct Theme {
   CardColors cards;
   ToolColors tool;
   DialogColors dialog;
+  SubAgentColors sub_agent;
 
   [[nodiscard]] static const Theme& Instance();
 };
