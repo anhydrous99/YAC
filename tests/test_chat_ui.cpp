@@ -232,6 +232,36 @@ TEST_CASE("ChatUI schedules pending thinking animation ticks") {
                       [&] { return !tasks.empty(); }));
 }
 
+TEST_CASE("ChatUI keeps thinking animation active after text streams") {
+  ChatUI ui;
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::vector<ChatUI::UiTask> tasks;
+
+  ui.SetUiTaskRunner([&](ChatUI::UiTask task) {
+    {
+      std::lock_guard lock(mutex);
+      tasks.push_back(std::move(task));
+    }
+    cv.notify_one();
+  });
+
+  auto id = ui.StartAgentMessage();
+
+  {
+    std::unique_lock lock(mutex);
+    REQUIRE(cv.wait_for(lock, std::chrono::seconds(2),
+                        [&] { return !tasks.empty(); }));
+    tasks.clear();
+  }
+
+  ui.AppendToAgentMessage(id, "partial");
+
+  std::unique_lock lock(mutex);
+  REQUIRE(cv.wait_for(lock, std::chrono::seconds(2),
+                      [&] { return !tasks.empty(); }));
+}
+
 TEST_CASE("CalculateInputHeight returns 1 for empty input") {
   ChatUI ui;
   REQUIRE(ui.CalculateInputHeight() == 1);

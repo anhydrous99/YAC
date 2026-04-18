@@ -98,7 +98,6 @@ class ChatUI : public ChatEventSink {
   [[nodiscard]] ftxui::Element RenderEmptyState() const;
   void SyncMessageComponents();
   [[nodiscard]] bool HasActiveAgentMessage() const;
-  [[nodiscard]] bool HasPendingAgentMessage() const;
   void SyncThinkingAnimation();
 
   ChatSession session_;

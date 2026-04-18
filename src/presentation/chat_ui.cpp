@@ -863,17 +863,8 @@ bool ChatUI::HasActiveAgentMessage() const {
                      });
 }
 
-bool ChatUI::HasPendingAgentMessage() const {
-  return std::any_of(session_.Messages().begin(), session_.Messages().end(),
-                     [](const Message& message) {
-                       return message.sender == Sender::Agent &&
-                              message.status == MessageStatus::Active &&
-                              message.Text().empty();
-                     });
-}
-
 void ChatUI::SyncThinkingAnimation() {
-  thinking_animation_.Sync([this] { return HasPendingAgentMessage(); });
+  thinking_animation_.Sync([this] { return HasActiveAgentMessage(); });
 }
 
 }  // namespace yac::presentation

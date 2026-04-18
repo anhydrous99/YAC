@@ -218,6 +218,19 @@ TEST_CASE("Render active agent message with text shows stream cursor") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
 }
 
+TEST_CASE("Render active agent message with text animates through cache") {
+  Message msg{Sender::Agent, "partial"};
+  msg.status = MessageStatus::Active;
+  msg.created_at = std::chrono::system_clock::time_point{};
+  MessageRenderCache cache;
+
+  auto frame0 = StripAnsi(RenderMessageToString(msg, cache, 80, 24, 0));
+  auto frame5 = StripAnsi(RenderMessageToString(msg, cache, 80, 24, 5));
+
+  REQUIRE_THAT(frame0, Catch::Matchers::ContainsSubstring("thinking"));
+  REQUIRE(frame0 != frame5);
+}
+
 TEST_CASE("Stream cursor stays inline with the last streamed text") {
   Message msg{Sender::Agent, "partial"};
   msg.status = MessageStatus::Active;
@@ -349,7 +362,8 @@ TEST_CASE("Render populates cached_element after first call") {
   REQUIRE(cache.terminal_width == 80);
 }
 
-TEST_CASE("Render caches active agent message once text is streaming") {
+TEST_CASE(
+    "Render keeps active agent message uncached while text is streaming") {
   Message msg{Sender::Agent, "partial"};
   msg.status = MessageStatus::Active;
   MessageRenderCache cache;
@@ -358,8 +372,8 @@ TEST_CASE("Render caches active agent message once text is streaming") {
       MessageRenderer::Render(msg, cache, RenderContext{.terminal_width = 80});
 
   REQUIRE(elem != nullptr);
-  REQUIRE(cache.element.has_value());
-  REQUIRE(cache.terminal_width == 80);
+  REQUIRE_FALSE(cache.element.has_value());
+  REQUIRE(cache.terminal_width == -1);
 }
 
 TEST_CASE("Render returns cached element on second call at same width") {
