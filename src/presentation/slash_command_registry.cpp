@@ -81,7 +81,8 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
           ++args_start;
         }
         auto args = input.substr(args_start);
-        (*command.arguments_handler)(std::move(args));
+        (*command.arguments_handler)(
+            std::move(args));  // NOLINT(bugprone-unchecked-optional-access)
         return true;
       }
       const auto& handler = command.handler;
