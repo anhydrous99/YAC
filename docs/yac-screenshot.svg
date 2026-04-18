@@ -28,7 +28,7 @@
     <text x="104" y="352" fill="#bac2de" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20">YAC queues the prompt in ChatService, sends an</text>
     <text x="104" y="382" fill="#bac2de" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20">OpenAI-compatible streaming request, then ChatEventBridge</text>
     <text x="104" y="412" fill="#bac2de" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20">applies deltas back into the terminal UI.</text>
-    <text x="130" y="456" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">- environment and .env config</text>
+    <text x="130" y="456" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">- settings.toml + YAC_* overrides</text>
     <text x="130" y="486" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">- cached Markdown parsing per message</text>
     <text x="130" y="516" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">- Ctrl+P opens app commands</text>
     <rect x="104" y="560" width="388" height="46" rx="4" fill="#1e1e2e"/>

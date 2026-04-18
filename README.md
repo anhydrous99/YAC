@@ -40,8 +40,8 @@ The SVG previews show the current chat surface and command palette.
   diagnostics/navigation/rename/symbols, and legacy bash/search-style blocks
 - Scrollable transcript with cached Markdown parsing and rendered elements for
   smoother redraws
-- Command palette plus slash command autocomplete for help, clear, cancel, and
-  quit commands
+- Command palette plus slash command autocomplete for help, clear, cancel,
+  task, and quit commands
 
 ## Quick Start
 
@@ -71,9 +71,12 @@ key remains unset.
 ## Configuration
 
 YAC reads `~/.yac/settings.toml`. On first launch the file is auto-created with
-a commented default template; edit it and restart to pick up changes. Shell
-environment variables named `YAC_*` override whatever is in the file — useful
-for CI, per-shell experiments, and quick flips.
+a commented default template; edit it and restart to pick up changes. At
+startup, shell environment variables named `YAC_*` override whatever is in the
+file, which is useful for CI, per-shell experiments, and quick flips.
+
+API keys are resolved from `provider.api_key` when set; otherwise YAC reads the
+environment variable named by `provider.api_key_env`.
 
 Example `~/.yac/settings.toml`:
 
@@ -98,7 +101,7 @@ args    = []
 | `provider.model` | `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
 | `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
 | `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
-| `provider.api_key` | — | unset | Optional inline key; prefer the env var |
+| `provider.api_key` | — | unset | Optional inline key; prefer the configured env var |
 | `temperature` | `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
 | `system_prompt` | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
 | `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
@@ -126,21 +129,23 @@ The interface is keyboard-first:
 - `Enter` sends the current message
 - `Shift+Enter`, `Ctrl+Enter`, and `Alt+Enter` insert a newline in the composer
 - `Ctrl+P` opens the command palette
-- `Help` opens shortcuts, setup status, and permission guidance
+- `Help` opens shortcuts, setup status, and workspace status
 - `Switch Model` opens the model picker for future responses
 - `Escape` closes the command palette or slash command menu
 - `Up` and `Down` move through palette or slash command results
 - `Tab` moves upward through slash command results
 - `Enter` in a command menu runs the selected command
-- Typing `/` opens slash command autocomplete; `/help`, `/clear`, `/cancel`,
-  `/quit`, and `/exit` are built in
+- Typing `/` opens slash command autocomplete; `/help`, `/?`, `/clear`,
+  `/cancel`, `/task <description>`, `/quit`, and `/exit` are built in
 - `PageUp` and `PageDown` scroll the transcript by a page
 - `Home` jumps to the top of the chat history
 - `End` jumps to the bottom
 - Mouse wheel and scrollbar dragging also work for transcript navigation
 
 The command palette filters by case-insensitive substring matching across both
-name and description.
+name and description. It includes `New Chat`, `Clear Messages`,
+`Cancel Response`, and `Help`; `Switch Model` appears when model discovery has
+at least one model.
 
 ## Tests
 
@@ -219,6 +224,6 @@ flowchart TD
 - `Catch2` is pinned to `v3.5.2`.
 - libcurl is required for the OpenAI-compatible streaming provider.
 - `build/compile_commands.json` is generated during configure and is used by
-- `.clangd`.
+  `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure
-- after adding or renaming source files.
+  after adding or renaming source files.

@@ -26,17 +26,19 @@
     <text x="76" y="682" fill="#89b4fa" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="700">&gt;</text>
     <text x="112" y="682" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20">Type a message...</text>
     <rect x="52" y="112" width="1200" height="584" rx="8" fill="#11111b" opacity="0.76"/>
-    <rect x="386" y="198" width="532" height="342" rx="8" fill="#1e1e2e"/>
-    <text x="424" y="244" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="23" font-weight="700">Command Palette</text>
-    <rect x="424" y="274" width="456" height="44" rx="4" fill="#181825"/>
-    <text x="446" y="303" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">Type to filter...</text>
-    <rect x="424" y="352" width="456" height="68" rx="0" fill="#313244"/>
-    <text x="448" y="378" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">New Chat</text>
-    <text x="448" y="406" fill="#bac2de" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Start a fresh conversation</text>
-    <text x="448" y="458" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">Clear Messages</text>
-    <text x="448" y="486" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Remove all messages from the view</text>
-    <text x="448" y="526" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">Cancel Response</text>
-    <text x="448" y="554" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Stop the current assistant response</text>
-    <text x="864" y="244" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" opacity="0.85" text-anchor="end">Esc</text>
+    <rect x="362" y="166" width="580" height="430" rx="8" fill="#1e1e2e"/>
+    <text x="400" y="212" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="23" font-weight="700">Command Palette</text>
+    <rect x="400" y="244" width="504" height="44" rx="4" fill="#181825"/>
+    <text x="422" y="273" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="19">Type to filter...</text>
+    <rect x="400" y="318" width="504" height="64" rx="0" fill="#313244"/>
+    <text x="424" y="344" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">New Chat</text>
+    <text x="424" y="372" fill="#bac2de" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Start a fresh conversation</text>
+    <text x="424" y="414" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">Clear Messages</text>
+    <text x="424" y="442" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Remove all messages from the view</text>
+    <text x="424" y="486" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">Cancel Response</text>
+    <text x="424" y="514" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Stop the current assistant response</text>
+    <text x="424" y="558" fill="#cdd6f4" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="20" font-weight="700">Help</text>
+    <text x="424" y="586" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">Show shortcuts, setup, and workspace status</text>
+    <text x="888" y="212" fill="#9399b2" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" opacity="0.85" text-anchor="end">Esc</text>
   </g>
 </svg>
