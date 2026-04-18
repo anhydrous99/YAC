@@ -50,6 +50,11 @@ enum class ChatEventType {
   ToolCallRequested,
   ToolApprovalRequested,
   UsageReported,
+  SubAgentStarted,
+  SubAgentProgress,
+  SubAgentCompleted,
+  SubAgentError,
+  SubAgentCancelled,
 };
 
 struct ChatEvent {
@@ -69,6 +74,11 @@ struct ChatEvent {
   int queue_depth = 0;
   std::chrono::system_clock::time_point created_at =
       std::chrono::system_clock::now();
+  std::string sub_agent_id = "";
+  std::string sub_agent_task = "";
+  std::string sub_agent_result = "";
+  int sub_agent_tool_count = 0;
+  int sub_agent_elapsed_ms = 0;
 };
 
 struct ProviderConfig {
