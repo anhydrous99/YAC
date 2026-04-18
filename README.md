@@ -199,22 +199,46 @@ cmake --build build --target format-check
 
 ```mermaid
 flowchart TD
-  Main[src/main.cpp] --> Config[LoadChatConfig]
-  Main --> Registry[ProviderRegistry]
-  Registry --> OpenAI[OpenAiChatProvider]
-  Main --> ChatService[ChatService]
-  Main --> ChatUI[ChatUI]
-  ChatUI -- user prompt --> ChatService
-  ChatService -- stream events --> Bridge[ChatEventBridge]
-  Bridge --> ChatUI
-  ChatUI --> Composer[Composer input]
-  ChatUI --> Palette[Command palette]
-  ChatUI --> SlashMenu[Slash command menu]
-  ChatUI --> Transcript[Message list]
-  Transcript --> Renderer[MessageRenderer]
-  Renderer --> Markdown[Markdown parser / renderer]
-  Renderer --> ToolCalls[Tool call renderer]
-  Markdown --> Highlighter[Syntax highlighter]
+  Main["src/main.cpp"] --> Bootstrap["app::RunApp<br/>startup wiring"]
+  Bootstrap --> Config["LoadChatConfigResult<br/>settings.toml + env overrides"]
+  Config --> Provider["OpenAiChatProvider<br/>OpenAI-compatible config"]
+  Bootstrap --> Registry["ProviderRegistry"]
+  Provider --> Registry
+  Bootstrap --> Service["ChatService<br/>prompt queue + history worker"]
+  Registry --> Service
+  Config --> Service
+  Bootstrap --> UI["ChatUI<br/>FTXUI surface"]
+  Bootstrap --> Bridge["ChatEventBridge"]
+  Bootstrap --> Discovery["model discovery worker"]
+  Discovery --> Provider
+  Discovery -- "model list/status" --> UI
+
+  UI -- "send / commands / tool approval" --> Service
+  Service -- "ChatEvent" --> Bridge
+  Bridge -- "presentation updates" --> UI
+
+  Service --> Processor["ChatServicePromptProcessor"]
+  Processor --> Request["ChatServiceRequestBuilder<br/>system prompt + history + tools"]
+  Request --> Registry
+  Registry --> Provider
+  Provider -- "text deltas / tool calls / usage" --> Processor
+
+  Processor -- "tool requests" --> Executor["ToolExecutor"]
+  Processor -- "approval wait" --> Approval["ChatServiceToolApproval"]
+  Approval -- "approval request event" --> Bridge
+  Executor --> Workspace["WorkspaceFilesystem<br/>file read/write/list"]
+  Executor --> Lsp["JsonRpcLspClient + clangd<br/>diagnostics/navigation/rename/symbols"]
+  Executor --> SubAgents["SubAgentManager<br/>foreground/background agents"]
+  SubAgents --> AgentProcessor["isolated prompt processor<br/>sub-agent history"]
+  AgentProcessor --> Registry
+  AgentProcessor --> Executor
+  SubAgents -- "progress/result events" --> Bridge
+
+  UI --> UiState["ChatSession + composer<br/>palette/slash menu/scroll state"]
+  UI --> Renderer["MessageRenderer"]
+  Renderer --> Markdown["Markdown parser / renderer"]
+  Renderer --> ToolCards["Tool-call renderer"]
+  Markdown --> Syntax["Syntax highlighter"]
 ```
 
 ## Notes
