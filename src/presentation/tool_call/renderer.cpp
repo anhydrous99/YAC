@@ -171,12 +171,14 @@ std::string VariantTag(const tool_data::ToolCallBlock& block) {
         } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
           return "search";
         } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall> ||
-                             std::is_same_v<T, tool_data::LspReferencesCall> ||
-                             std::is_same_v<T,
-                                            tool_data::LspGotoDefinitionCall> ||
-                             std::is_same_v<T, tool_data::LspRenameCall> ||
-                             std::is_same_v<T, tool_data::LspSymbolsCall>) {
+                              std::is_same_v<T, tool_data::LspReferencesCall> ||
+                              std::is_same_v<T,
+                                             tool_data::LspGotoDefinitionCall> ||
+                              std::is_same_v<T, tool_data::LspRenameCall> ||
+                              std::is_same_v<T, tool_data::LspSymbolsCall>) {
           return "lsp";
+        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
+          return "agent";
         } else {
           return "tool";
         }
@@ -224,6 +226,8 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
           return RenderLspRename(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
           return RenderLspSymbols(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
+          return RenderSubAgent(call, context);
         } else {
           return ftxui::text("");
         }
@@ -290,6 +294,30 @@ std::string ToolCallRenderer::BuildSummary(
             return "failed";
           }
           return std::to_string(call.symbols.size()) + " symbols";
+        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
+          std::string status_str;
+          switch (call.status) {
+            case tool_data::SubAgentStatus::Running:
+              status_str = "running";
+              break;
+            case tool_data::SubAgentStatus::Complete:
+              status_str = "done";
+              break;
+            case tool_data::SubAgentStatus::Error:
+              status_str = "error";
+              break;
+            case tool_data::SubAgentStatus::Timeout:
+              status_str = "timeout";
+              break;
+            case tool_data::SubAgentStatus::Cancelled:
+              status_str = "cancelled";
+              break;
+            case tool_data::SubAgentStatus::Pending:
+              status_str = "pending";
+              break;
+          }
+          return "Sub-agent: " + TruncateString(call.task, 40) + " - " +
+                 status_str;
         } else {
           return "";
         }
@@ -433,6 +461,8 @@ std::string ToolCallRenderer::BuildLabel(
           return "Rename symbol";
         } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
           return "List symbols";
+        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
+          return "[>] Sub-agent";
         } else {
           return "Tool";
         }
@@ -796,6 +826,91 @@ ftxui::Element ToolCallRenderer::RenderLspSymbols(
   const auto accent =
       call.is_error ? theme.tool.edit_remove : theme.tool.glob_accent;
   return RenderContainer("◇", "symbols", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderSubAgent(
+    const tool_data::SubAgentCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  const auto& colors = theme.sub_agent;
+
+  std::string icon;
+  ftxui::Color accent;
+  switch (call.status) {
+    case tool_data::SubAgentStatus::Running:
+      icon = ">";
+      accent = colors.running_accent;
+      break;
+    case tool_data::SubAgentStatus::Complete:
+      icon = "v";
+      accent = colors.success_accent;
+      break;
+    case tool_data::SubAgentStatus::Error:
+      icon = "x";
+      accent = colors.error_accent;
+      break;
+    case tool_data::SubAgentStatus::Timeout:
+      icon = "~";
+      accent = colors.timeout_accent;
+      break;
+    case tool_data::SubAgentStatus::Cancelled:
+      icon = "-";
+      accent = colors.running_accent;
+      break;
+    case tool_data::SubAgentStatus::Pending:
+      icon = ".";
+      accent = colors.pending_bg;
+      break;
+  }
+
+  ftxui::Elements content;
+
+  switch (call.status) {
+    case tool_data::SubAgentStatus::Running:
+      content.push_back(RenderWrappedLine(call.task, theme.chrome.body_text));
+      if (call.tool_count > 0) {
+        content.push_back(RenderWrappedLine(
+            "Running... " + std::to_string(call.tool_count) +
+                " tool calls so far",
+            theme.chrome.dim_text));
+      }
+      break;
+    case tool_data::SubAgentStatus::Complete:
+      if (!call.result.empty()) {
+        content.push_back(
+            RenderWrappedLine(call.result, theme.chrome.body_text));
+      }
+      {
+        std::string footer = std::to_string(call.tool_count) + " tool calls";
+        if (call.elapsed_ms > 0) {
+          footer += " \xc2\xb7 " +
+                    std::to_string(call.elapsed_ms / 1000) + "s";
+        }
+        content.push_back(RenderWrappedLine(footer, theme.chrome.dim_text));
+      }
+      break;
+    case tool_data::SubAgentStatus::Error:
+      content.push_back(
+          RenderWrappedLine(call.result, colors.error_accent));
+      break;
+    case tool_data::SubAgentStatus::Timeout:
+      content.push_back(RenderWrappedLine("Timed out", colors.timeout_accent));
+      if (!call.result.empty()) {
+        content.push_back(
+            RenderWrappedLine(call.result, theme.chrome.body_text));
+      }
+      break;
+    case tool_data::SubAgentStatus::Cancelled:
+      content.push_back(
+          RenderWrappedLine("Cancelled", theme.chrome.dim_text));
+      break;
+    case tool_data::SubAgentStatus::Pending:
+      content.push_back(RenderWrappedLine(call.task, theme.chrome.body_text));
+      content.push_back(
+          RenderWrappedLine("Waiting to start...", theme.chrome.dim_text));
+      break;
+  }
+
+  return RenderContainer(icon, "Sub-agent", accent, std::move(content), theme);
 }
 
 }  // namespace yac::presentation::tool_call

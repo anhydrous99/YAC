@@ -36,6 +36,7 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
   using yac::chat::ChatMessageStatus;
   using yac::presentation::MessageStatus;
   using yac::presentation::Sender;
+  namespace tool_data = ::yac::tool_call;
 
   auto& chat_ui = chat_ui_.get();
 
@@ -157,6 +158,75 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
 
     case ChatEventType::ToolCallRequested:
       break;
+
+    case ChatEventType::SubAgentStarted: {
+      tool_data::SubAgentCall block{
+          .task = event.sub_agent_task,
+          .mode = tool_data::SubAgentMode::Background,
+          .status = tool_data::SubAgentStatus::Running,
+          .agent_id = event.sub_agent_id,
+      };
+      chat_ui.AddToolCallMessageWithId(event.message_id, std::move(block),
+                                       MessageStatus::Active);
+      break;
+    }
+
+    case ChatEventType::SubAgentProgress: {
+      tool_data::SubAgentCall block{
+          .task = event.sub_agent_task,
+          .status = tool_data::SubAgentStatus::Running,
+          .agent_id = event.sub_agent_id,
+          .tool_count = event.sub_agent_tool_count,
+      };
+      chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
+                                    MessageStatus::Active);
+      break;
+    }
+
+    case ChatEventType::SubAgentCompleted: {
+      tool_data::SubAgentCall block{
+          .task = event.sub_agent_task,
+          .status = tool_data::SubAgentStatus::Complete,
+          .agent_id = event.sub_agent_id,
+          .result = event.sub_agent_result,
+          .tool_count = event.sub_agent_tool_count,
+          .elapsed_ms = event.sub_agent_elapsed_ms,
+      };
+      chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
+                                    MessageStatus::Complete);
+      auto task_short = event.sub_agent_task.substr(0, 40);
+      chat_ui.SetTransientStatus(presentation::UiNotice{
+          .severity = presentation::UiSeverity::Info,
+          .title = "Sub-agent completed",
+          .detail = task_short,
+      });
+      break;
+    }
+
+    case ChatEventType::SubAgentError: {
+      tool_data::SubAgentCall block{
+          .task = event.sub_agent_task,
+          .status = tool_data::SubAgentStatus::Error,
+          .agent_id = event.sub_agent_id,
+          .result = event.sub_agent_result,
+          .tool_count = event.sub_agent_tool_count,
+          .elapsed_ms = event.sub_agent_elapsed_ms,
+      };
+      chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
+                                    MessageStatus::Error);
+      break;
+    }
+
+    case ChatEventType::SubAgentCancelled: {
+      tool_data::SubAgentCall block{
+          .task = event.sub_agent_task,
+          .status = tool_data::SubAgentStatus::Cancelled,
+          .agent_id = event.sub_agent_id,
+      };
+      chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
+                                    MessageStatus::Cancelled);
+      break;
+    }
   }
 }
 
