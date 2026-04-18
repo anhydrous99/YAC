@@ -10,6 +10,12 @@
 #include <string>
 #include <vector>
 
+namespace yac::chat {
+
+class SubAgentManager;
+
+}  // namespace yac::chat
+
 namespace yac::tool_call {
 
 struct PreparedToolCall {
@@ -35,10 +41,12 @@ class ToolExecutor {
       const chat::ToolCallRequest& request);
   [[nodiscard]] ToolExecutionResult Execute(const PreparedToolCall& prepared,
                                             std::stop_token stop_token) const;
+  void SetSubAgentManager(chat::SubAgentManager* sub_agent_manager);
 
  private:
   WorkspaceFilesystem workspace_filesystem_;
   std::shared_ptr<ILspClient> lsp_client_;
+  chat::SubAgentManager* sub_agent_manager_ = nullptr;
 };
 
 }  // namespace yac::tool_call

@@ -88,4 +88,8 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
   }
 }
 
+void ToolExecutor::SetSubAgentManager(chat::SubAgentManager* sub_agent_manager) {
+  sub_agent_manager_ = sub_agent_manager;
+}
+
 }  // namespace yac::tool_call

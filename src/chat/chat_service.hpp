@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chat/sub_agent_manager.hpp"
 #include "chat/types.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
@@ -44,6 +45,7 @@ class ChatService {
   void CancelActiveResponse();
   void ResolveToolApproval(std::string approval_id, bool approved);
   void ResetConversation();
+  SubAgentManager& GetSubAgentManager() { return *sub_agent_manager_; }
 
   [[nodiscard]] std::vector<ChatMessage> History() const;
   [[nodiscard]] bool IsBusy() const;
@@ -65,6 +67,7 @@ class ChatService {
   ChatConfig config_;
   std::shared_ptr<::yac::tool_call::ToolExecutor> tool_executor_;
   std::unique_ptr<internal::ChatServiceToolApproval> tool_approval_;
+  std::unique_ptr<SubAgentManager> sub_agent_manager_;
   std::unique_ptr<internal::ChatServicePromptProcessor> prompt_processor_;
 
   mutable std::mutex mutex_;

@@ -14,12 +14,19 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
       config_(std::move(config)),
       tool_executor_(internal::MakeChatToolExecutor(config_)),
       tool_approval_(std::make_unique<internal::ChatServiceToolApproval>()),
+      sub_agent_manager_(std::make_unique<SubAgentManager>(
+          registry_, tool_executor_, *tool_approval_,
+          [this](ChatEvent event) { EmitEvent(std::move(event)); },
+          [this] { return ConfigSnapshot(); },
+          [this] { return NextMessageId(); })),
       prompt_processor_(std::make_unique<internal::ChatServicePromptProcessor>(
           registry_, *tool_executor_, *tool_approval_, mutex_, history_,
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
           [this] { return NextMessageId(); },
           [this] { return ConfigSnapshot(); },
-          [this] { return generation_.load(); })) {
+          [this] { return generation_.load(); }, std::set<std::string>{},
+          sub_agent_manager_->GetApprovalGate())) {
+  tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   worker_ = std::jthread([this](std::stop_token st) { WorkerLoop(st); });
 }
 
@@ -101,6 +108,7 @@ void ChatService::ResetConversation() {
     if (active_stop_source_.has_value()) {
       active_stop_source_->request_stop();
     }
+    sub_agent_manager_->CancelAll();
     history_.clear();
     pending_.clear();
     active_ = false;
