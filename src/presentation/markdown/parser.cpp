@@ -137,9 +137,13 @@ class InlineTokenizer {
     }
   }
 
-  char PrevChar() const { return pos_ == 0 ? ' ' : text_[pos_ - 1]; }
+  [[nodiscard]] char PrevChar() const {
+    return pos_ == 0 ? ' ' : text_[pos_ - 1];
+  }
 
-  char CharAt(size_t i) const { return i < text_.size() ? text_[i] : ' '; }
+  [[nodiscard]] char CharAt(size_t i) const {
+    return i < text_.size() ? text_[i] : ' ';
+  }
 
   bool TryEscape() {
     if (pos_ + 1 >= text_.size()) {
@@ -262,7 +266,7 @@ class InlineTokenizer {
     return true;
   }
 
-  size_t ScanBalanced(size_t start, char open, char close) const {
+  [[nodiscard]] size_t ScanBalanced(size_t start, char open, char close) const {
     if (start >= text_.size() || text_[start] != open) {
       return std::string_view::npos;
     }
@@ -285,7 +289,8 @@ class InlineTokenizer {
     return std::string_view::npos;
   }
 
-  bool LeftFlanking(size_t run_start, size_t run_end_exclusive) const {
+  [[nodiscard]] bool LeftFlanking(size_t run_start,
+                                  size_t run_end_exclusive) const {
     char before = run_start == 0 ? ' ' : text_[run_start - 1];
     char after =
         run_end_exclusive < text_.size() ? text_[run_end_exclusive] : ' ';
@@ -302,7 +307,8 @@ class InlineTokenizer {
     return preceded_by_ws || preceded_by_punct;
   }
 
-  bool RightFlanking(size_t run_start, size_t run_end_exclusive) const {
+  [[nodiscard]] bool RightFlanking(size_t run_start,
+                                   size_t run_end_exclusive) const {
     char before = run_start == 0 ? ' ' : text_[run_start - 1];
     char after =
         run_end_exclusive < text_.size() ? text_[run_end_exclusive] : ' ';
@@ -319,7 +325,8 @@ class InlineTokenizer {
     return followed_by_ws || followed_by_punct;
   }
 
-  bool CanOpen(char delim, size_t run_start, size_t run_end_exclusive) const {
+  [[nodiscard]] bool CanOpen(char delim, size_t run_start,
+                             size_t run_end_exclusive) const {
     if (!LeftFlanking(run_start, run_end_exclusive)) {
       return false;
     }
@@ -330,7 +337,8 @@ class InlineTokenizer {
     return true;
   }
 
-  bool CanClose(char delim, size_t run_start, size_t run_end_exclusive) const {
+  [[nodiscard]] bool CanClose(char delim, size_t run_start,
+                              size_t run_end_exclusive) const {
     if (!RightFlanking(run_start, run_end_exclusive)) {
       return false;
     }
@@ -825,17 +833,12 @@ std::vector<BlockNode> MarkdownParser::ParseBlocks(
 size_t MarkdownParser::TryParseParagraph(const std::vector<std::string>& lines,
                                          size_t start,
                                          std::vector<BlockNode>& blocks) {
-  auto IsSetextUnderline = [](const std::string& line, char marker) {
+  auto is_setext_underline = [](const std::string& line, char marker) {
     auto t = Trim(line);
-    if (t.size() < 1) {
+    if (t.empty()) {
       return false;
     }
-    for (char c : t) {
-      if (c != marker) {
-        return false;
-      }
-    }
-    return true;
+    return std::ranges::all_of(t, [marker](char c) { return c == marker; });
   };
 
   Paragraph para;
@@ -848,9 +851,9 @@ size_t MarkdownParser::TryParseParagraph(const std::vector<std::string>& lines,
     }
     // Setext heading: a non-first line of `=` (h1) or `-` (h2) terminates and
     // upgrades the paragraph.
-    if (!first_line && (IsSetextUnderline(lines[i], '=') ||
-                        IsSetextUnderline(lines[i], '-'))) {
-      int level = IsSetextUnderline(lines[i], '=') ? 1 : 2;
+    if (!first_line && (is_setext_underline(lines[i], '=') ||
+                        is_setext_underline(lines[i], '-'))) {
+      int level = is_setext_underline(lines[i], '=') ? 1 : 2;
       Heading h;
       h.level = level;
       h.children = std::move(para.children);
@@ -1022,11 +1025,12 @@ std::optional<BlockNode> MarkdownParser::TryParseList(
         header->ordered != ordered) {
       break;
     }
+    const auto header_value = *header;
 
     std::vector<std::string> body;
-    body.push_back(header->first_line_content);
+    body.push_back(header_value.first_line_content);
     ++index;
-    size_t content_col = header->content_col;
+    size_t content_col = header_value.content_col;
 
     while (index < lines.size()) {
       const auto& line = lines[index];
@@ -1066,8 +1070,8 @@ std::optional<BlockNode> MarkdownParser::TryParseList(
     } else {
       UnorderedList::Item item;
       item.children = std::move(children);
-      item.task = header->task;
-      item.checked = header->task_checked;
+      item.task = header_value.task;
+      item.checked = header_value.task_checked;
       ul.items.push_back(std::move(item));
     }
   }

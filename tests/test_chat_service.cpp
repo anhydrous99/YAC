@@ -3,6 +3,7 @@
 #include "provider/language_model_provider.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -26,18 +27,18 @@ namespace {
 class ScopedEnvClear {
  public:
   ScopedEnvClear() {
-    static constexpr const char* kVars[] = {"YAC_PROVIDER",
-                                            "YAC_MODEL",
-                                            "YAC_BASE_URL",
-                                            "YAC_TEMPERATURE",
-                                            "YAC_API_KEY_ENV",
-                                            "YAC_SYSTEM_PROMPT",
-                                            "YAC_WORKSPACE_ROOT",
-                                            "OPENAI_API_KEY",
-                                            "ZAI_API_KEY",
-                                            "YAC_CUSTOM_ZAI_KEY",
-                                            "YAC_TEST_API_KEY_FROM_FILE",
-                                            "YAC_TEST_API_KEY_OVERRIDE"};
+    static constexpr std::array kVars = {"YAC_PROVIDER",
+                                         "YAC_MODEL",
+                                         "YAC_BASE_URL",
+                                         "YAC_TEMPERATURE",
+                                         "YAC_API_KEY_ENV",
+                                         "YAC_SYSTEM_PROMPT",
+                                         "YAC_WORKSPACE_ROOT",
+                                         "OPENAI_API_KEY",
+                                         "ZAI_API_KEY",
+                                         "YAC_CUSTOM_ZAI_KEY",
+                                         "YAC_TEST_API_KEY_FROM_FILE",
+                                         "YAC_TEST_API_KEY_OVERRIDE"};
     for (const auto* name : kVars) {
       if (const char* val = std::getenv(name)) {
         saved_.emplace_back(name, val);
@@ -52,6 +53,8 @@ class ScopedEnvClear {
   }
   ScopedEnvClear(const ScopedEnvClear&) = delete;
   ScopedEnvClear& operator=(const ScopedEnvClear&) = delete;
+  ScopedEnvClear(ScopedEnvClear&&) = delete;
+  ScopedEnvClear& operator=(ScopedEnvClear&&) = delete;
 
  private:
   std::vector<std::pair<std::string, std::string>> saved_;

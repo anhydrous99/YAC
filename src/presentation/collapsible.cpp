@@ -33,7 +33,7 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
           expanded_(expanded),
           summary_(std::move(summary)),
           peek_(std::move(peek)),
-          progress_(*expanded ? 1.0f : 0.0f),
+          progress_(*expanded ? 1.0F : 0.0F),
           last_expanded_(*expanded) {
       Add(content_);
     }
@@ -68,7 +68,7 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
       header_elem |= ftxui::reflect(header_box_);
 
       // Fully collapsed — show header + peek (if any).
-      if (progress_ <= 0.0f) {
+      if (progress_ <= 0.0F) {
         if (peek_) {
           return ftxui::vbox({header_elem, peek_});
         }
@@ -79,12 +79,12 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
           content_->Render() | ftxui::color(k_theme.chrome.body_text);
 
       // Animating — clip content height.
-      if (progress_ < 1.0f) {
+      if (progress_ < 1.0F) {
         // Interpolate visible height. We use a generous upper bound since
         // FTXUI's LESS_THAN only constrains, never expands. Content shorter
         // than max_height renders at its natural size.
         int max_height =
-            std::max(1, static_cast<int>(std::ceil(progress_ * 50.0f)));
+            std::max(1, static_cast<int>(std::ceil(progress_ * 50.0F)));
         rendered_content =
             rendered_content |
             ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, max_height);
@@ -121,8 +121,8 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
       if (animator_) {
         animator_->OnAnimation(params);
         // Keep requesting frames while animating.
-        float target = *expanded_ ? 1.0f : 0.0f;
-        if (std::abs(progress_ - target) > 0.001f) {
+        float target = *expanded_ ? 1.0F : 0.0F;
+        if (std::abs(progress_ - target) > 0.001F) {
           ftxui::animation::RequestAnimationFrame();
         } else {
           animator_.reset();
@@ -133,7 +133,7 @@ ftxui::Component Collapsible(std::string header_text, ftxui::Component content,
 
    private:
     void StartAnimation() {
-      float target = *expanded_ ? 1.0f : 0.0f;
+      float target = *expanded_ ? 1.0F : 0.0F;
       animator_ = std::make_unique<ftxui::animation::Animator>(
           &progress_, target, kAnimationDuration,
           ftxui::animation::easing::QuadraticInOut);
