@@ -165,10 +165,32 @@ struct LspSymbolsCall {
   std::string error;
 };
 
+enum class SubAgentMode { Foreground, Background };
+
+enum class SubAgentStatus {
+  Pending,
+  Running,
+  Complete,
+  Error,
+  Cancelled,
+  Timeout,
+};
+
+struct SubAgentCall {
+  std::string task;
+  SubAgentMode mode = SubAgentMode::Foreground;
+  SubAgentStatus status = SubAgentStatus::Pending;
+  std::string agent_id;
+  std::string result;
+  std::string result_summary;
+  int tool_count{};
+  int elapsed_ms{};
+};
+
 using ToolCallBlock =
     std::variant<BashCall, FileEditCall, FileReadCall, FileWriteCall,
                  ListDirCall, GrepCall, GlobCall, WebFetchCall, WebSearchCall,
                  LspDiagnosticsCall, LspReferencesCall, LspGotoDefinitionCall,
-                 LspRenameCall, LspSymbolsCall>;
+                 LspRenameCall, LspSymbolsCall, SubAgentCall>;
 
 }  // namespace yac::tool_call
