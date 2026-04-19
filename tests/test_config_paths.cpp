@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+using yac::chat::GetPromptsDir;
 using yac::chat::GetSettingsPath;
 using yac::chat::GetYacConfigDir;
 using yac::chat::ResolveHomeDir;
@@ -74,8 +75,19 @@ TEST_CASE("GetSettingsPath composes ~/.yac/settings.toml") {
   REQUIRE(GetSettingsPath(home) == home / ".yac" / "settings.toml");
 }
 
+TEST_CASE("GetPromptsDir composes ~/.yac/prompts") {
+  const std::filesystem::path home = "/tmp/fake-home";
+  REQUIRE(GetPromptsDir(home) == home / ".yac" / "prompts");
+}
+
 TEST_CASE("GetSettingsPath() uses the resolved home directory") {
   ScopedHome guard("/tmp/fake-home");
   REQUIRE(GetSettingsPath() ==
           std::filesystem::path{"/tmp/fake-home"} / ".yac" / "settings.toml");
+}
+
+TEST_CASE("GetPromptsDir() uses the resolved home directory") {
+  ScopedHome guard("/tmp/fake-home");
+  REQUIRE(GetPromptsDir() ==
+          std::filesystem::path{"/tmp/fake-home"} / ".yac" / "prompts");
 }

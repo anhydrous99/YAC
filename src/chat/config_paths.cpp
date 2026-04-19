@@ -14,6 +14,7 @@ namespace {
 
 constexpr const char* kConfigDirName = ".yac";
 constexpr const char* kSettingsFileName = "settings.toml";
+constexpr const char* kPromptsDirName = "prompts";
 
 }  // namespace
 
@@ -47,6 +48,10 @@ std::filesystem::path GetSettingsPath(const std::filesystem::path& home) {
   return GetYacConfigDir(home) / kSettingsFileName;
 }
 
+std::filesystem::path GetPromptsDir(const std::filesystem::path& home) {
+  return GetYacConfigDir(home) / kPromptsDirName;
+}
+
 std::filesystem::path GetYacConfigDir() {
   auto home = ResolveHomeDir();
   if (!home) {
@@ -61,6 +66,14 @@ std::filesystem::path GetSettingsPath() {
     throw std::runtime_error("Cannot determine home directory for YAC config");
   }
   return GetSettingsPath(*home);
+}
+
+std::filesystem::path GetPromptsDir() {
+  auto home = ResolveHomeDir();
+  if (!home) {
+    throw std::runtime_error("Cannot determine home directory for YAC config");
+  }
+  return GetPromptsDir(*home);
 }
 
 }  // namespace yac::chat

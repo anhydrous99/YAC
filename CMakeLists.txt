@@ -83,6 +83,7 @@ add_library(yac_service STATIC
   src/chat/chat_service_tool_approval.cpp
   src/chat/config.cpp
   src/chat/config_paths.cpp
+  src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp
   src/provider/openai_chat_provider.cpp
   src/provider/provider_registry.cpp
@@ -107,6 +108,7 @@ add_library(yac_app STATIC
   src/app/chat_event_bridge.cpp
   src/app/model_context_windows.cpp
   src/app/model_discovery.cpp
+  src/app/prompt_slash_commands.cpp
 )
 target_include_directories(yac_app PUBLIC src)
 target_link_libraries(yac_app PUBLIC yac_presentation yac_service)

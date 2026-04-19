@@ -3,8 +3,10 @@
 #include "app/chat_event_bridge.hpp"
 #include "app/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
+#include "app/prompt_slash_commands.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
+#include "chat/prompt_library.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
 #include "provider/openai_chat_provider.hpp"
@@ -79,7 +81,8 @@ bool IsExecutableAvailable(const std::string& command) {
 }
 
 presentation::StartupStatus BuildStartupStatus(
-    const chat::ChatConfigResult& config_result) {
+    const chat::ChatConfigResult& config_result,
+    const std::vector<chat::ConfigIssue>& extra_issues) {
   const auto& config = config_result.config;
   presentation::StartupStatus status{
       .provider_id = config.provider_id,
@@ -91,6 +94,13 @@ presentation::StartupStatus BuildStartupStatus(
       .lsp_available = IsExecutableAvailable(config.lsp_clangd_command),
   };
   for (const auto& issue : config_result.issues) {
+    status.notices.push_back(presentation::UiNotice{
+        .severity = SeverityFor(issue.severity),
+        .title = issue.message,
+        .detail = issue.detail,
+    });
+  }
+  for (const auto& issue : extra_issues) {
     status.notices.push_back(presentation::UiNotice{
         .severity = SeverityFor(issue.severity),
         .title = issue.message,
@@ -115,7 +125,13 @@ std::string BuildHelpText(const presentation::StartupStatus& startup) {
          "Ctrl+P opens commands. PageUp/PageDown scroll. Home/End jumps.\n\n"
          "Slash commands\n"
          "/help opens this panel. /clear starts fresh. /cancel stops the "
-         "active response. /quit exits.\n\n"
+         "active response. /task <description> starts a background sub-agent. "
+         "/init and /review run predefined prompts from ~/.yac/prompts. "
+         "/quit exits.\n\n"
+         "Predefined prompts\n"
+         "Each ~/.yac/prompts/*.toml file becomes /<filename>. Prompt files "
+         "use description = \"...\" and prompt = \"\"\"...\"\"\". Command "
+         "arguments replace $ARGUMENTS in the prompt body.\n\n"
          "Current session\n"
          "Provider/model: " +
          startup.provider_id + " / " + startup.model +
@@ -197,7 +213,9 @@ void ConfigureChatUiCallbacks(const std::vector<chat::ModelInfo>& models,
 
 presentation::SlashCommandRegistry BuildSlashCommandRegistry(
     std::function<void()> exit_loop, chat::ChatService& chat_service,
-    presentation::ChatUI& chat_ui) {
+    presentation::ChatUI& chat_ui,
+    const std::vector<chat::PromptDefinition>& prompts,
+    std::vector<chat::ConfigIssue>& startup_issues) {
   presentation::SlashCommandRegistry slash_registry;
   presentation::RegisterBuiltinSlashCommands(slash_registry);
   slash_registry.SetHandler("quit", std::move(exit_loop));
@@ -228,6 +246,12 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
         }
         static_cast<void>(chat_service.SpawnBackgroundSubAgent(args));
       });
+  RegisterPromptSlashCommands(
+      slash_registry, prompts,
+      [&chat_service](std::string prompt) {
+        chat_service.SubmitUserMessage(std::move(prompt));
+      },
+      startup_issues);
   return slash_registry;
 }
 
@@ -236,14 +260,13 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 int RunApp() {
   auto config_result = chat::LoadChatConfigResult();
   auto config = config_result.config;
+  auto prompt_result = chat::LoadPromptLibrary(/*seed_defaults=*/true);
+  auto startup_issues = prompt_result.issues;
   auto provider = BuildProvider(config);
 
   auto screen = ftxui::App::Fullscreen();
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
-  auto startup_status = BuildStartupStatus(config_result);
-  chat_ui.SetStartupStatus(startup_status);
-  chat_ui.SetHelpText(BuildHelpText(startup_status));
   chat_ui.SetContextWindowTokens(LookupContextWindow(config.model));
   chat_ui.SetProviderModel(config.provider_id, config.model);
 
@@ -256,8 +279,13 @@ int RunApp() {
   ConfigureServiceEventCallback(screen, bridge, chat_service);
   ConfigureChatUiCallbacks({}, chat_service, chat_ui);
 
-  chat_ui.SetSlashCommands(BuildSlashCommandRegistry(screen.ExitLoopClosure(),
-                                                     chat_service, chat_ui));
+  chat_ui.SetSlashCommands(
+      BuildSlashCommandRegistry(screen.ExitLoopClosure(), chat_service, chat_ui,
+                                prompt_result.prompts, startup_issues));
+
+  auto startup_status = BuildStartupStatus(config_result, startup_issues);
+  chat_ui.SetStartupStatus(startup_status);
+  chat_ui.SetHelpText(BuildHelpText(startup_status));
 
   std::jthread model_discovery_worker(
       [provider, config, &screen, &chat_ui](std::stop_token stop_token) {

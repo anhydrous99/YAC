@@ -19,9 +19,14 @@ namespace yac::chat {
 [[nodiscard]] std::filesystem::path GetSettingsPath(
     const std::filesystem::path& home);
 
+// ~/.yac/prompts — user-defined predefined prompt files.
+[[nodiscard]] std::filesystem::path GetPromptsDir(
+    const std::filesystem::path& home);
+
 // Convenience overloads that call ResolveHomeDir() internally. Throw
 // std::runtime_error if the home directory cannot be resolved.
 [[nodiscard]] std::filesystem::path GetYacConfigDir();
 [[nodiscard]] std::filesystem::path GetSettingsPath();
+[[nodiscard]] std::filesystem::path GetPromptsDir();
 
 }  // namespace yac::chat

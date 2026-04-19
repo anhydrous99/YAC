@@ -42,6 +42,8 @@ The SVG previews show the current chat surface and command palette.
   smoother redraws
 - Command palette plus slash command autocomplete for help, clear, cancel,
   task, and quit commands
+- User-defined predefined prompt commands loaded from `~/.yac/prompts/*.toml`,
+  with seeded `/init` and `/review` prompts
 
 ## Quick Start
 
@@ -74,6 +76,13 @@ YAC reads `~/.yac/settings.toml`. On first launch the file is auto-created with
 a commented default template; edit it and restart to pick up changes. At
 startup, shell environment variables named `YAC_*` override whatever is in the
 file, which is useful for CI, per-shell experiments, and quick flips.
+
+YAC also reads predefined prompts from `~/.yac/prompts/*.toml` at startup. The
+directory is auto-created, and missing `init.toml` and `review.toml` files are
+seeded from pinned OpenCode prompt templates. Each TOML file becomes a slash
+command named from the file stem, such as `~/.yac/prompts/review.toml` becoming
+`/review`. Built-in slash commands keep priority if a prompt file name
+collides.
 
 API keys are resolved from `provider.api_key` when set; otherwise YAC reads the
 environment variable named by `provider.api_key_env`.
@@ -117,6 +126,20 @@ API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell over
 placing `api_key` in the TOML file. Plaintext secrets in `$HOME` are harder to
 rotate safely and don't travel well across shells or CI.
 
+Example `~/.yac/prompts/review.toml`:
+
+```toml
+description = "Review current changes"
+prompt = """
+Review the requested target:
+$ARGUMENTS
+"""
+```
+
+Command arguments replace every literal `$ARGUMENTS` token in the prompt body.
+For example, `/review main` sends the rendered prompt with `main` substituted.
+Prompt files are loaded on startup, so restart YAC after editing them.
+
 YAC shows the active provider/model in the footer. It starts the UI immediately,
 then fetches models in the background and adds a `Switch Model` command when a
 model list is available. If Z.ai discovery fails, YAC falls back to a built-in
@@ -137,6 +160,8 @@ The interface is keyboard-first:
 - `Enter` in a command menu runs the selected command
 - Typing `/` opens slash command autocomplete; `/help`, `/?`, `/clear`,
   `/cancel`, `/task <description>`, `/quit`, and `/exit` are built in
+- `/init` and `/review` are seeded predefined prompts; add more by placing
+  TOML files in `~/.yac/prompts`
 - `PageUp` and `PageDown` scroll the transcript by a page
 - `Home` jumps to the top of the chat history
 - `End` jumps to the bottom
@@ -181,7 +206,8 @@ cmake --build build --target format-check
 - `src/app/chat_event_bridge.*` translates service events into presentation
   updates
 - `src/chat/` contains chat config loading (`~/.yac/settings.toml` + env var
-  overrides), queueing, history, cancellation, and stream event flow
+  overrides), predefined prompt loading (`~/.yac/prompts/*.toml`), queueing,
+  history, cancellation, and stream event flow
 - `src/provider/` contains the provider interface, registry, and OpenAI
   chat-completions implementation
 - `src/presentation/chat_ui.*` owns messages, input handling, scrolling, command
