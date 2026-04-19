@@ -21,6 +21,7 @@ struct PreparedToolCall {
   ToolCallBlock preview;
   bool requires_approval = false;
   std::string approval_prompt;
+  chat::ChatMessageId card_message_id = 0;
 };
 
 struct ToolExecutionResult {

@@ -17,8 +17,7 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
       sub_agent_manager_(std::make_unique<SubAgentManager>(
           registry_, tool_executor_, *tool_approval_,
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
-          [this] { return ConfigSnapshot(); },
-          [this] { return NextMessageId(); })),
+          [this] { return ConfigSnapshot(); })),
       prompt_processor_(std::make_unique<internal::ChatServicePromptProcessor>(
           registry_, *tool_executor_, *tool_approval_, mutex_, history_,
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
@@ -27,6 +26,12 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
           [this] { return generation_.load(); }, std::set<std::string>{},
           sub_agent_manager_->GetApprovalGate())) {
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
+  sub_agent_manager_->SetBackgroundResultCallback(
+      [this](std::string tool_call_id, std::string task, std::string result,
+             bool is_error) {
+        HandleBackgroundSubAgentResult(std::move(tool_call_id), std::move(task),
+                                       std::move(result), is_error);
+      });
   worker_ = std::jthread([this](std::stop_token st) { WorkerLoop(st); });
 }
 
@@ -207,6 +212,57 @@ ChatMessageId ChatService::NextMessageId() {
 ChatConfig ChatService::ConfigSnapshot() const {
   std::lock_guard lock(mutex_);
   return config_;
+}
+
+std::string ChatService::SpawnBackgroundSubAgent(std::string task) {
+  auto card_id = NextMessageId();
+  std::string synthetic_tool_call_id = "user-task-" + std::to_string(card_id);
+
+  // Seed the UI card via a synthetic ToolCallStarted event. Subsequent
+  // SubAgentProgress/Completed events target the same card id.
+  ::yac::tool_call::SubAgentCall preview{
+      .task = task,
+      .mode = ::yac::tool_call::SubAgentMode::Background,
+      .status = ::yac::tool_call::SubAgentStatus::Running};
+  EmitEvent(ChatEvent{.type = ChatEventType::ToolCallStarted,
+                      .message_id = card_id,
+                      .role = ChatRole::Tool,
+                      .tool_call_id = synthetic_tool_call_id,
+                      .tool_name = "sub_agent",
+                      .tool_call = preview,
+                      .status = ChatMessageStatus::Active});
+
+  return sub_agent_manager_->SpawnBackground(task, card_id,
+                                             std::move(synthetic_tool_call_id));
+}
+
+void ChatService::HandleBackgroundSubAgentResult(std::string tool_call_id,
+                                                 std::string task,
+                                                 std::string result,
+                                                 bool is_error) {
+  (void)tool_call_id;
+  std::string header = is_error ? "[Background sub-agent failed]"
+                                : "[Background sub-agent completed]";
+  std::string body = header + " Task: " + task + "\n\nResult:\n" + result;
+
+  bool busy = false;
+  {
+    std::lock_guard lock(mutex_);
+    busy = active_ || !pending_.empty();
+  }
+
+  if (busy) {
+    std::lock_guard lock(mutex_);
+    ChatMessage message;
+    message.id = NextMessageId();
+    message.role = ChatRole::User;
+    message.status = ChatMessageStatus::Complete;
+    message.content = std::move(body);
+    history_.push_back(std::move(message));
+    return;
+  }
+
+  SubmitUserMessage(std::move(body));
 }
 
 }  // namespace yac::chat

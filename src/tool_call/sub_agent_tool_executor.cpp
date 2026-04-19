@@ -62,7 +62,8 @@ ToolExecutionResult ExecuteSubAgentTool(
   }
 
   if (call->mode == SubAgentMode::Background) {
-    const auto agent_id = sub_agent_manager->SpawnBackground(call->task);
+    const auto agent_id = sub_agent_manager->SpawnBackground(
+        call->task, prepared.card_message_id, prepared.request.id);
     auto block = SubAgentCall{.task = call->task,
                               .mode = SubAgentMode::Background,
                               .status = SubAgentStatus::Running,
@@ -73,12 +74,12 @@ ToolExecutionResult ExecuteSubAgentTool(
                             {"agent_id", agent_id},
                             {"message",
                              "Sub-agent spawned in background. "
-                             "Results will appear when complete."}}
+                             "Results will be delivered when complete."}}
                            .dump()};
   }
 
-  const auto result =
-      sub_agent_manager->SpawnForeground(call->task, stop_token);
+  const auto result = sub_agent_manager->SpawnForeground(
+      call->task, prepared.card_message_id, prepared.request.id, stop_token);
   auto block = SubAgentCall{.task = call->task,
                             .mode = SubAgentMode::Foreground,
                             .status = SubAgentStatus::Complete,

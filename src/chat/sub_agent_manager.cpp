@@ -73,6 +73,7 @@ struct SubAgentManager::SubAgentSession {
 
   std::string agent_id;
   std::string task;
+  std::string tool_call_id;
   tool_call::SubAgentMode mode = tool_call::SubAgentMode::Foreground;
   ChatMessageId card_message_id = 0;
   std::stop_source stop_source;
@@ -101,28 +102,34 @@ SubAgentManager::SubAgentManager(
     provider::ProviderRegistry& registry,
     std::shared_ptr<tool_call::ToolExecutor> tool_executor,
     internal::ChatServiceToolApproval& tool_approval, EmitEventFn parent_emit,
-    ConfigSnapshotFn parent_config_snapshot,
-    NextMessageIdFn parent_next_message_id, int timeout_seconds)
+    ConfigSnapshotFn parent_config_snapshot, int timeout_seconds)
     : registry_(&registry),
       tool_executor_(std::move(tool_executor)),
       tool_approval_(&tool_approval),
       parent_emit_(std::move(parent_emit)),
       parent_config_snapshot_(std::move(parent_config_snapshot)),
-      parent_next_message_id_(std::move(parent_next_message_id)),
       timeout_seconds_(timeout_seconds) {}
 
 SubAgentManager::~SubAgentManager() {
   CancelAll();
 }
 
+void SubAgentManager::SetBackgroundResultCallback(BackgroundResultFn callback) {
+  std::lock_guard lock(background_result_mutex_);
+  background_result_ = std::move(callback);
+}
+
 std::shared_ptr<SubAgentManager::SubAgentSession>
 SubAgentManager::CreateSession(const std::string& task,
-                               tool_call::SubAgentMode mode) {
+                               tool_call::SubAgentMode mode,
+                               ChatMessageId card_message_id,
+                               std::string tool_call_id) {
   auto session = std::make_shared<SubAgentSession>();
   session->agent_id = MakeAgentId();
   session->task = task;
+  session->tool_call_id = std::move(tool_call_id);
   session->mode = mode;
-  session->card_message_id = parent_next_message_id_();
+  session->card_message_id = card_message_id;
   const auto now = std::chrono::steady_clock::now();
   session->deadline = now + std::chrono::seconds(timeout_seconds_);
   session->started_at = now;
@@ -210,15 +217,6 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
   };
 }
 
-void SubAgentManager::EmitSessionStarted(const SubAgentSession& session) {
-  parent_emit_(ChatEvent{.type = ChatEventType::SubAgentStarted,
-                         .message_id = session.card_message_id,
-                         .role = ChatRole::Assistant,
-                         .status = ChatMessageStatus::Active,
-                         .sub_agent_id = session.agent_id,
-                         .sub_agent_task = session.task});
-}
-
 SubAgentManager::SubAgentCompletion SubAgentManager::RunSession(
     SubAgentSession& session, std::stop_token parent_stop_token) {
   auto request_parent_stop = [this, &session] {
@@ -277,6 +275,21 @@ void SubAgentManager::EmitSessionCompleted(
                          .sub_agent_elapsed_ms = elapsed_ms});
 }
 
+void SubAgentManager::DeliverBackgroundResult(
+    const SubAgentSession& session, const SubAgentCompletion& completion) {
+  BackgroundResultFn callback;
+  {
+    std::lock_guard lock(background_result_mutex_);
+    callback = background_result_;
+  }
+  if (!callback) {
+    return;
+  }
+  const bool is_error = completion.status == ChatMessageStatus::Error ||
+                        completion.status == ChatMessageStatus::Cancelled;
+  callback(session.tool_call_id, session.task, completion.result, is_error);
+}
+
 void SubAgentManager::RequestSessionStop(SubAgentSession& session,
                                          bool mark_cancelled) {
   if (mark_cancelled) {
@@ -289,31 +302,34 @@ void SubAgentManager::RequestSessionStop(SubAgentSession& session,
 }
 
 std::string SubAgentManager::SpawnForeground(
-    const std::string& task, std::stop_token parent_stop_token) {
-  auto session = CreateSession(task, tool_call::SubAgentMode::Foreground);
+    const std::string& task, ChatMessageId card_message_id,
+    std::string tool_call_id, std::stop_token parent_stop_token) {
+  auto session = CreateSession(task, tool_call::SubAgentMode::Foreground,
+                               card_message_id, std::move(tool_call_id));
   if (!TryStoreSession(session)) {
     return CapacityError();
   }
 
-  EmitSessionStarted(*session);
   const auto completion = RunSession(*session, parent_stop_token);
   EmitSessionCompleted(*session, completion);
   RemoveSession(session->agent_id);
   return completion.result;
 }
 
-std::string SubAgentManager::SpawnBackground(const std::string& task) {
-  auto session = CreateSession(task, tool_call::SubAgentMode::Background);
+std::string SubAgentManager::SpawnBackground(const std::string& task,
+                                             ChatMessageId card_message_id,
+                                             std::string tool_call_id) {
+  auto session = CreateSession(task, tool_call::SubAgentMode::Background,
+                               card_message_id, std::move(tool_call_id));
   if (!TryStoreSession(session)) {
     return CapacityError();
   }
-
-  EmitSessionStarted(*session);
 
   SubAgentSession* session_ptr = session.get();
   session_ptr->worker = std::jthread([this, session_ptr](std::stop_token) {
     const auto completion = RunSession(*session_ptr);
     EmitSessionCompleted(*session_ptr, completion);
+    DeliverBackgroundResult(*session_ptr, completion);
     session_ptr->finished = true;
   });
 

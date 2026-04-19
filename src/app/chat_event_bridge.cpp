@@ -159,18 +159,6 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
     case ChatEventType::ToolCallRequested:
       break;
 
-    case ChatEventType::SubAgentStarted: {
-      tool_data::SubAgentCall block{
-          .task = event.sub_agent_task,
-          .mode = tool_data::SubAgentMode::Background,
-          .status = tool_data::SubAgentStatus::Running,
-          .agent_id = event.sub_agent_id,
-      };
-      chat_ui.AddToolCallMessageWithId(event.message_id, std::move(block),
-                                       MessageStatus::Active);
-      break;
-    }
-
     case ChatEventType::SubAgentProgress: {
       tool_data::SubAgentCall block{
           .task = event.sub_agent_task,

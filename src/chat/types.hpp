@@ -50,7 +50,6 @@ enum class ChatEventType {
   ToolCallRequested,
   ToolApprovalRequested,
   UsageReported,
-  SubAgentStarted,
   SubAgentProgress,
   SubAgentCompleted,
   SubAgentError,

@@ -46,6 +46,11 @@ class ChatService {
   void ResolveToolApproval(std::string approval_id, bool approved);
   void ResetConversation();
   SubAgentManager& GetSubAgentManager() { return *sub_agent_manager_; }
+  // Spawns a background sub-agent initiated by the user (e.g., /task).
+  // Creates the UI card via a synthetic ToolCallStarted event and returns
+  // the agent id. On completion the result is delivered via
+  // HandleBackgroundSubAgentResult (same path as model-initiated spawns).
+  std::string SpawnBackgroundSubAgent(std::string task);
 
   [[nodiscard]] std::vector<ChatMessage> History() const;
   [[nodiscard]] bool IsBusy() const;
@@ -62,6 +67,9 @@ class ChatService {
   void EmitQueueDepth();
   [[nodiscard]] ChatMessageId NextMessageId();
   [[nodiscard]] ChatConfig ConfigSnapshot() const;
+  void HandleBackgroundSubAgentResult(std::string tool_call_id,
+                                      std::string task, std::string result,
+                                      bool is_error);
 
   provider::ProviderRegistry registry_;
   ChatConfig config_;

@@ -148,9 +148,12 @@ struct SubAgentTestContext {
           std::lock_guard lock(events_mutex);
           events.push_back(std::move(event));
         },
-        [this]() { return config; },
-        [this]() -> ChatMessageId { return next_id.fetch_add(1); },
-        timeout_seconds);
+        [this]() { return config; }, timeout_seconds);
+  }
+
+  std::string Spawn(const std::string& task) {
+    const auto id = next_id.fetch_add(1);
+    return manager->SpawnBackground(task, id, "tc-" + std::to_string(id));
   }
 
   ~SubAgentTestContext() {
@@ -175,11 +178,11 @@ TEST_CASE("SubAgentManager enforces concurrency limit") {
   SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
 
   for (int i = 0; i < kMaxConcurrentSubAgents; ++i) {
-    const auto id = ctx.manager->SpawnBackground("task " + std::to_string(i));
+    const auto id = ctx.Spawn("task " + std::to_string(i));
     REQUIRE(id.find("capacity") == std::string::npos);
   }
 
-  const auto overflow = ctx.manager->SpawnBackground("overflow task");
+  const auto overflow = ctx.Spawn("overflow task");
   REQUIRE((overflow.find("capacity") != std::string::npos ||
            overflow.find("reached") != std::string::npos));
 
@@ -189,9 +192,9 @@ TEST_CASE("SubAgentManager enforces concurrency limit") {
 TEST_CASE("SubAgentManager generates unique agent IDs") {
   SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
 
-  const auto id1 = ctx.manager->SpawnBackground("task 1");
-  const auto id2 = ctx.manager->SpawnBackground("task 2");
-  const auto id3 = ctx.manager->SpawnBackground("task 3");
+  const auto id1 = ctx.Spawn("task 1");
+  const auto id2 = ctx.Spawn("task 2");
+  const auto id3 = ctx.Spawn("task 3");
 
   REQUIRE(id1 != id2);
   REQUIRE(id2 != id3);
@@ -204,7 +207,7 @@ TEST_CASE("SpawnBackground returns immediately") {
   SubAgentTestContext ctx(std::make_shared<SleepingMockProvider>());
 
   const auto before = std::chrono::steady_clock::now();
-  const auto id = ctx.manager->SpawnBackground("sleeping task");
+  const auto id = ctx.Spawn("sleeping task");
   const auto after = std::chrono::steady_clock::now();
 
   const auto elapsed_ms =
@@ -221,9 +224,9 @@ TEST_CASE("CancelAll stops all active sessions") {
   SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
 
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
-  [[maybe_unused]] const auto a = ctx.manager->SpawnBackground("task 1");
+  [[maybe_unused]] const auto a = ctx.Spawn("task 1");
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
-  [[maybe_unused]] const auto b = ctx.manager->SpawnBackground("task 2");
+  [[maybe_unused]] const auto b = ctx.Spawn("task 2");
 
   ctx.manager->CancelAll();
 
@@ -236,8 +239,7 @@ TEST_CASE("Background timeout triggers cancellation") {
                           kTimeoutSeconds);
 
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
-  [[maybe_unused]] const auto agent =
-      ctx.manager->SpawnBackground("long running task");
+  [[maybe_unused]] const auto agent = ctx.Spawn("long running task");
 
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
@@ -247,7 +249,7 @@ TEST_CASE("Background timeout triggers cancellation") {
 TEST_CASE("Background sub-agent reports tool progress") {
   SubAgentTestContext ctx(std::make_shared<ToolRequestMockProvider>());
 
-  const auto agent = ctx.manager->SpawnBackground("inspect workspace");
+  const auto agent = ctx.Spawn("inspect workspace");
   REQUIRE(agent.find("capacity") == std::string::npos);
 
   REQUIRE(WaitUntil(

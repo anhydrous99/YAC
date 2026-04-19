@@ -27,15 +27,16 @@ inline constexpr size_t kMaxResultChars = 4096;
 class SubAgentManager {
  public:
   using EmitEventFn = std::function<void(ChatEvent)>;
-  using NextMessageIdFn = std::function<ChatMessageId()>;
   using ConfigSnapshotFn = std::function<ChatConfig()>;
+  using BackgroundResultFn =
+      std::function<void(std::string tool_call_id, std::string task,
+                         std::string result, bool is_error)>;
 
   SubAgentManager(provider::ProviderRegistry& registry,
                   std::shared_ptr<tool_call::ToolExecutor> tool_executor,
                   internal::ChatServiceToolApproval& tool_approval,
                   EmitEventFn parent_emit,
                   ConfigSnapshotFn parent_config_snapshot,
-                  NextMessageIdFn parent_next_message_id,
                   int timeout_seconds = kDefaultSubAgentTimeoutSeconds);
   ~SubAgentManager();
 
@@ -44,9 +45,14 @@ class SubAgentManager {
   SubAgentManager(SubAgentManager&&) = delete;
   SubAgentManager& operator=(SubAgentManager&&) = delete;
 
+  void SetBackgroundResultCallback(BackgroundResultFn callback);
+
   [[nodiscard]] std::string SpawnForeground(
-      const std::string& task, std::stop_token parent_stop_token = {});
-  [[nodiscard]] std::string SpawnBackground(const std::string& task);
+      const std::string& task, ChatMessageId card_message_id,
+      std::string tool_call_id, std::stop_token parent_stop_token = {});
+  [[nodiscard]] std::string SpawnBackground(const std::string& task,
+                                            ChatMessageId card_message_id,
+                                            std::string tool_call_id);
   void Cancel(const std::string& agent_id);
   void CancelAll();
   [[nodiscard]] bool IsAtCapacity();
@@ -57,7 +63,8 @@ class SubAgentManager {
   struct SubAgentCompletion;
 
   [[nodiscard]] std::shared_ptr<SubAgentSession> CreateSession(
-      const std::string& task, tool_call::SubAgentMode mode);
+      const std::string& task, tool_call::SubAgentMode mode,
+      ChatMessageId card_message_id, std::string tool_call_id);
   [[nodiscard]] bool TryStoreSession(
       const std::shared_ptr<SubAgentSession>& session);
   void RemoveSession(const std::string& agent_id);
@@ -66,11 +73,12 @@ class SubAgentManager {
   void CleanupFinishedSessions();
   void AttachPromptProcessor(SubAgentSession& session);
   [[nodiscard]] EmitEventFn MakeFilteredEmit(SubAgentSession& session);
-  void EmitSessionStarted(const SubAgentSession& session);
   [[nodiscard]] SubAgentCompletion RunSession(
       SubAgentSession& session, std::stop_token parent_stop_token = {});
   void EmitSessionCompleted(const SubAgentSession& session,
                             const SubAgentCompletion& completion);
+  void DeliverBackgroundResult(const SubAgentSession& session,
+                               const SubAgentCompletion& completion);
   static void RequestSessionStop(SubAgentSession& session, bool mark_cancelled);
 
   provider::ProviderRegistry* registry_;
@@ -78,13 +86,15 @@ class SubAgentManager {
   internal::ChatServiceToolApproval* tool_approval_;
   EmitEventFn parent_emit_;
   ConfigSnapshotFn parent_config_snapshot_;
-  NextMessageIdFn parent_next_message_id_;
   int timeout_seconds_;
 
   std::mutex approval_gate_;
   mutable std::shared_mutex sessions_mutex_;
   std::unordered_map<std::string, std::shared_ptr<SubAgentSession>>
       active_sessions_;
+
+  mutable std::mutex background_result_mutex_;
+  BackgroundResultFn background_result_;
 };
 
 }  // namespace yac::chat

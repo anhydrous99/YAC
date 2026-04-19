@@ -226,7 +226,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
           });
           return;
         }
-        static_cast<void>(manager.SpawnBackground(args));
+        static_cast<void>(chat_service.SpawnBackgroundSubAgent(args));
       });
   return slash_registry;
 }

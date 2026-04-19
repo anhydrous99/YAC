@@ -386,11 +386,10 @@ void ChatUI::UpdateToolCallMessage(MessageId id,
                                    MessageStatus status) {
   session_.SetToolCallMessage(id, std::move(block), status);
   render_cache_.ResetContent(id);
-  // Force a full component rebuild so Collapsible headers/summaries refresh
-  // with the updated tool data (labels and summaries are captured by value).
-  message_components_.clear();
-  messages_synced_ = 0;
-  SyncMessageComponents();
+  // Do NOT rebuild message_components_ here. Collapsible now reads its
+  // label and summary through providers that re-query the session each
+  // frame, so the existing component tree picks up the update without
+  // losing FTXUI focus on the card the user may have expanded.
 }
 
 void ChatUI::ShowToolApproval(
@@ -769,25 +768,44 @@ void ChatUI::SyncMessageComponents() {
           if (messages[t].status == MessageStatus::Active) {
             any_tool_active = true;
           }
-          auto summary = block != nullptr
-                             ? ::yac::presentation::tool_call::
-                                   ToolCallRenderer::BuildSummary(*block)
-                             : std::string{};
           ftxui::Element peek;
           if (block != nullptr && messages[t].status == MessageStatus::Active) {
             if (const auto* write =
                     std::get_if<::yac::tool_call::FileWriteCall>(block)) {
-              summary = "writing\xe2\x80\xa6";
               peek = tool_call::ToolCallRenderer::BuildWritePeek(
                   *write,
                   RenderContext{.terminal_width = last_terminal_width_,
                                 .thinking_frame = thinking_animation_.Frame()});
             }
           }
+          auto label_provider = [this, t_idx]() -> std::string {
+            const auto& msgs = session_.Messages();
+            if (t_idx >= msgs.size()) {
+              return {};
+            }
+            return msgs[t_idx].DisplayLabel();
+          };
+          auto summary_provider = [this, t_idx]() -> std::string {
+            const auto& msgs = session_.Messages();
+            if (t_idx >= msgs.size()) {
+              return {};
+            }
+            const auto* block_ptr = msgs[t_idx].ToolCall();
+            if (block_ptr == nullptr) {
+              return {};
+            }
+            if (msgs[t_idx].status == MessageStatus::Active &&
+                std::get_if<::yac::tool_call::FileWriteCall>(block_ptr) !=
+                    nullptr) {
+              return "writing\xe2\x80\xa6";
+            }
+            return ::yac::presentation::tool_call::ToolCallRenderer::
+                BuildSummary(*block_ptr);
+          };
           tool_children.push_back(
-              Collapsible(messages[t].DisplayLabel(), std::move(tool_content),
+              Collapsible(std::move(label_provider), std::move(tool_content),
                           session_.ToolExpandedState(ti - 1),
-                          std::move(summary), std::move(peek)));
+                          std::move(summary_provider), std::move(peek)));
         }
 
         ftxui::Component tools_component;
@@ -800,15 +818,34 @@ void ChatUI::SyncMessageComponents() {
             }
           }
           group_ordinal = group_ordinal > 0 ? group_ordinal - 1 : 0;
-          auto group_label = std::string{"Tool calls ("} +
-                             std::to_string(tool_children.size()) + ")";
-          auto group_summary = ::yac::presentation::tool_call::
-              ToolCallRenderer::BuildGroupSummary(tool_blocks);
+          const size_t child_count = tool_children.size();
+          const size_t agent_idx = agent_index;
+          const size_t end_idx = index;
+          auto label_provider = [child_count]() -> std::string {
+            return std::string{"Tool calls ("} + std::to_string(child_count) +
+                   ")";
+          };
+          auto summary_provider = [this, agent_idx, end_idx]() -> std::string {
+            const auto& msgs = session_.Messages();
+            std::vector<const ::yac::tool_call::ToolCallBlock*> blocks;
+            for (size_t t = agent_idx + 1; t <= end_idx && t < msgs.size();
+                 ++t) {
+              if (msgs[t].sender != Sender::Tool) {
+                continue;
+              }
+              const auto* b = msgs[t].ToolCall();
+              if (b != nullptr) {
+                blocks.push_back(b);
+              }
+            }
+            return ::yac::presentation::tool_call::ToolCallRenderer::
+                BuildGroupSummary(blocks);
+          };
           bool* group_expanded =
               session_.GroupExpandedState(group_ordinal, any_tool_active);
-          tools_component =
-              Collapsible(std::move(group_label), tools_stack, group_expanded,
-                          std::move(group_summary), ftxui::Element{});
+          tools_component = Collapsible(
+              std::move(label_provider), tools_stack, group_expanded,
+              std::move(summary_provider), ftxui::Element{});
         } else {
           tools_component = ftxui::Container::Vertical(tool_children);
         }
@@ -845,26 +882,44 @@ void ChatUI::SyncMessageComponents() {
                           .thinking_frame = thinking_animation_.Frame()});
       });
       const auto* block = messages[index].ToolCall();
-      auto summary =
-          block != nullptr
-              ? ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
-                    *block)
-              : std::string{};
       ftxui::Element peek;
       if (block != nullptr && messages[index].status == MessageStatus::Active) {
         if (const auto* write =
                 std::get_if<::yac::tool_call::FileWriteCall>(block)) {
-          summary = "writing\xe2\x80\xa6";
           peek = tool_call::ToolCallRenderer::BuildWritePeek(
               *write,
               RenderContext{.terminal_width = last_terminal_width_,
                             .thinking_frame = thinking_animation_.Frame()});
         }
       }
+      auto label_provider = [this, index]() -> std::string {
+        const auto& msgs = session_.Messages();
+        if (index >= msgs.size()) {
+          return {};
+        }
+        return msgs[index].DisplayLabel();
+      };
+      auto summary_provider = [this, index]() -> std::string {
+        const auto& msgs = session_.Messages();
+        if (index >= msgs.size()) {
+          return {};
+        }
+        const auto* block_ptr = msgs[index].ToolCall();
+        if (block_ptr == nullptr) {
+          return {};
+        }
+        if (msgs[index].status == MessageStatus::Active &&
+            std::get_if<::yac::tool_call::FileWriteCall>(block_ptr) !=
+                nullptr) {
+          return "writing\xe2\x80\xa6";
+        }
+        return ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
+            *block_ptr);
+      };
       message_components_.push_back(
-          Collapsible(messages[index].DisplayLabel(), std::move(content),
+          Collapsible(std::move(label_provider), std::move(content),
                       session_.ToolExpandedState(current_tool_index - 1),
-                      std::move(summary), std::move(peek)));
+                      std::move(summary_provider), std::move(peek)));
       messages_synced_++;
       continue;
     }

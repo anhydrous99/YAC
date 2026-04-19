@@ -178,6 +178,7 @@ void ChatServicePromptProcessor::RunToolRound(
   for (const auto& tool_request : requested_tools) {
     auto tool_message_id = next_message_id_();
     auto prepared = ::yac::tool_call::ToolExecutor::Prepare(tool_request);
+    prepared.card_message_id = tool_message_id;
     emit_event_(ChatEvent{.type = ChatEventType::ToolCallStarted,
                           .message_id = tool_message_id,
                           .role = ChatRole::Tool,
@@ -212,15 +213,26 @@ void ChatServicePromptProcessor::RunToolRound(
         approved ? tool_executor_->Execute(prepared, stop_token)
                  : MakeRejectedToolResult(prepared);
 
+    // For a background sub_agent call, the tool itself has "completed" (the
+    // spawn succeeded) but the sub-agent session is still running. Keep the
+    // card Active so the spinner stays until SubAgentCompleted fires.
+    ChatMessageStatus done_status = result.is_error
+                                        ? ChatMessageStatus::Error
+                                        : ChatMessageStatus::Complete;
+    if (const auto* sub =
+            std::get_if<::yac::tool_call::SubAgentCall>(&result.block);
+        sub != nullptr && !result.is_error &&
+        sub->status == ::yac::tool_call::SubAgentStatus::Running) {
+      done_status = ChatMessageStatus::Active;
+    }
+
     emit_event_(ChatEvent{.type = ChatEventType::ToolCallDone,
                           .message_id = tool_message_id,
                           .role = ChatRole::Tool,
                           .tool_call_id = tool_request.id,
                           .tool_name = tool_request.name,
                           .tool_call = result.block,
-                          .status = result.is_error
-                                        ? ChatMessageStatus::Error
-                                        : ChatMessageStatus::Complete});
+                          .status = done_status});
     {
       std::lock_guard lock(*history_mutex_);
       ChatServiceHistory(*history_).AppendToolResult(tool_message_id,
