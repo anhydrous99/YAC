@@ -81,8 +81,8 @@ class FakeProvider : public LanguageModelProvider {
     if (stop_token.stop_requested()) {
       return;
     }
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "hi"});
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = " there"});
+    sink(ChatEvent{TextDeltaEvent{.text = "hi"}});
+    sink(ChatEvent{TextDeltaEvent{.text = " there"}});
   }
 
   [[nodiscard]] ChatRequest LastRequest() const {
@@ -115,11 +115,11 @@ class ToolRoundProvider : public LanguageModelProvider {
 
     if (call_index == 1) {
       REQUIRE_FALSE(request.tools.empty());
-      sink(ChatEvent{.type = ChatEventType::ToolCallRequested,
-                     .tool_calls = {ToolCallRequest{
-                         .id = "tool_1",
-                         .name = "list_dir",
-                         .arguments_json = R"({"path":"."})"}}});
+      sink(ChatEvent{
+          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                     .id = "tool_1",
+                                     .name = "list_dir",
+                                     .arguments_json = R"({"path":"."})"}}}});
       return;
     }
 
@@ -128,7 +128,7 @@ class ToolRoundProvider : public LanguageModelProvider {
                           return message.role == ChatRole::Tool &&
                                  message.tool_call_id == "tool_1";
                         }));
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "listed"});
+    sink(ChatEvent{TextDeltaEvent{.text = "listed"}});
   }
 
   [[nodiscard]] size_t RequestCount() const {
@@ -155,7 +155,7 @@ class BlockingFakeProvider : public LanguageModelProvider {
       cv_.notify_one();
       cv_.wait(lock, [&] { return release_; });
     }
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "done"});
+    sink(ChatEvent{TextDeltaEvent{.text = "done"}});
   }
 
   void WaitUntilStarted() {
@@ -228,7 +228,7 @@ class ErrorFakeProvider : public LanguageModelProvider {
   void CompleteStream([[maybe_unused]] const ChatRequest& request,
                       ChatEventSink sink,
                       [[maybe_unused]] std::stop_token stop_token) override {
-    sink(ChatEvent{.type = ChatEventType::Error, .text = "stream failed"});
+    sink(ChatEvent{ErrorEvent{.text = "stream failed"}});
   }
 };
 
@@ -239,9 +239,9 @@ class EmptyDeltaProvider : public LanguageModelProvider {
   void CompleteStream([[maybe_unused]] const ChatRequest& request,
                       ChatEventSink sink,
                       [[maybe_unused]] std::stop_token stop_token) override {
-    sink(ChatEvent{.type = ChatEventType::TextDelta});
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "ok"});
-    sink(ChatEvent{.type = ChatEventType::TextDelta});
+    sink(ChatEvent{TextDeltaEvent{}});
+    sink(ChatEvent{TextDeltaEvent{.text = "ok"}});
+    sink(ChatEvent{TextDeltaEvent{}});
   }
 };
 
@@ -257,13 +257,12 @@ class ApprovalRejectionProvider : public LanguageModelProvider {
 
     ++request_count_;
     if (request_count_ == 1) {
-      sink(ChatEvent{
-          .type = ChatEventType::ToolCallRequested,
+      sink(ChatEvent{ToolCallRequestedEvent{
           .tool_calls = {ToolCallRequest{
               .id = "tool_1",
               .name = "file_write",
               .arguments_json =
-                  R"({"filepath":"notes.txt","content":"denied\n"})"}}});
+                  R"({"filepath":"notes.txt","content":"denied\n"})"}}}});
       return;
     }
 
@@ -275,8 +274,7 @@ class ApprovalRejectionProvider : public LanguageModelProvider {
                              message.content ==
                                  R"({"error":"User rejected tool execution."})";
                     }));
-    sink(ChatEvent{.type = ChatEventType::TextDelta,
-                   .text = "continued after rejection"});
+    sink(ChatEvent{TextDeltaEvent{.text = "continued after rejection"}});
   }
 
  private:
@@ -295,11 +293,11 @@ class ToolErrorProvider : public LanguageModelProvider {
 
     ++request_count_;
     if (request_count_ == 1) {
-      sink(ChatEvent{.type = ChatEventType::ToolCallRequested,
-                     .tool_calls = {ToolCallRequest{
-                         .id = "tool_1",
-                         .name = "list_dir",
-                         .arguments_json = R"({"path":"../"})"}}});
+      sink(ChatEvent{
+          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                     .id = "tool_1",
+                                     .name = "list_dir",
+                                     .arguments_json = R"({"path":"../"})"}}}});
       return;
     }
 
@@ -311,7 +309,7 @@ class ToolErrorProvider : public LanguageModelProvider {
                                      "Path is outside the workspace") !=
                                      std::string::npos;
                         }));
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "recovered"});
+    sink(ChatEvent{TextDeltaEvent{.text = "recovered"}});
   }
 
  private:
@@ -332,8 +330,7 @@ class SequentialApprovalProvider : public LanguageModelProvider {
 
     ++request_count_;
     if (request_count_ == 1) {
-      sink(ChatEvent{
-          .type = ChatEventType::ToolCallRequested,
+      sink(ChatEvent{ToolCallRequestedEvent{
           .tool_calls = {
               ToolCallRequest{
                   .id = "tool_1",
@@ -345,7 +342,7 @@ class SequentialApprovalProvider : public LanguageModelProvider {
                   .name = "file_write",
                   .arguments_json =
                       R"({"filepath":"second.txt","content":"two\n"})"},
-          }});
+          }}});
       return;
     }
 
@@ -353,8 +350,7 @@ class SequentialApprovalProvider : public LanguageModelProvider {
                           [](const ChatMessage& message) {
                             return message.role == ChatRole::Tool;
                           }) == 2);
-    sink(ChatEvent{.type = ChatEventType::TextDelta,
-                   .text = "all approvals resolved"});
+    sink(ChatEvent{TextDeltaEvent{.text = "all approvals resolved"}});
   }
 
  private:
@@ -370,7 +366,7 @@ std::vector<ChatEvent> CollectEvents(ChatService& service,
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mutex);
     events.push_back(std::move(event));
-    if (events.back().type == ChatEventType::Finished) {
+    if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
       condition.notify_one();
     }
@@ -402,13 +398,13 @@ ChatService MakeService(
 
 bool HasEvent(const std::vector<ChatEvent>& events, ChatEventType type) {
   return std::any_of(events.begin(), events.end(),
-                     [type](const auto& e) { return e.type == type; });
+                     [type](const auto& e) { return e.Type() == type; });
 }
 
 const ChatEvent& FindEvent(const std::vector<ChatEvent>& events,
                            ChatEventType type) {
   auto it = std::find_if(events.begin(), events.end(),
-                         [type](const auto& e) { return e.type == type; });
+                         [type](const auto& e) { return e.Type() == type; });
   REQUIRE(it != events.end());
   return *it;
 }
@@ -426,10 +422,12 @@ TEST_CASE("ChatService streams provider events and records history") {
 
   const auto& queued = FindEvent(events, ChatEventType::UserMessageQueued);
   const auto& started = FindEvent(events, ChatEventType::Started);
-  REQUIRE(queued.role == ChatRole::User);
-  REQUIRE(queued.text == "hello");
-  REQUIRE(started.role == ChatRole::Assistant);
-  REQUIRE(started.message_id != queued.message_id);
+  const auto& queued_event = queued.Get<UserMessageQueuedEvent>();
+  const auto& started_event = started.Get<StartedEvent>();
+  REQUIRE(queued_event.role == ChatRole::User);
+  REQUIRE(queued_event.text == "hello");
+  REQUIRE(started_event.role == ChatRole::Assistant);
+  REQUIRE(started_event.message_id != queued_event.message_id);
 
   const auto history = service.History();
   REQUIRE(history.size() == 2);
@@ -437,7 +435,7 @@ TEST_CASE("ChatService streams provider events and records history") {
   REQUIRE(history[0].content == "hello");
   REQUIRE(history[1].role == ChatRole::Assistant);
   REQUIRE(history[1].content == "hi there");
-  REQUIRE(history[1].id == started.message_id);
+  REQUIRE(history[1].id == started_event.message_id);
 }
 
 TEST_CASE("ChatService executes a non-mutating tool round") {
@@ -493,12 +491,12 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
 
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mutex);
-    if (event.type == ChatEventType::ToolApprovalRequested) {
-      approval_id = event.approval_id;
+    if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
+      approval_id = approval->approval_id;
       approval_requested = true;
       cv.notify_all();
     }
-    if (event.type == ChatEventType::Finished) {
+    if (event.Type() == ChatEventType::Finished) {
       finished = true;
       cv.notify_all();
     }
@@ -521,7 +519,8 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
 
   REQUIRE_FALSE(std::filesystem::exists(root / "notes.txt"));
   const auto& tool_done = FindEvent(events, ChatEventType::ToolCallDone);
-  REQUIRE(tool_done.status == ChatMessageStatus::Error);
+  REQUIRE(tool_done.Get<ToolCallDoneEvent>().status ==
+          ChatMessageStatus::Error);
   REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
   REQUIRE(service.History().back().content == "continued after rejection");
   std::filesystem::remove_all(root);
@@ -548,11 +547,11 @@ TEST_CASE("ChatService sequences approval requests one tool at a time") {
 
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mutex);
-    if (event.type == ChatEventType::ToolApprovalRequested) {
-      approval_ids.push_back(event.approval_id);
+    if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
+      approval_ids.push_back(approval->approval_id);
       cv.notify_all();
     }
-    if (event.type == ChatEventType::Finished) {
+    if (event.Type() == ChatEventType::Finished) {
       finished = true;
       cv.notify_all();
     }
@@ -604,7 +603,8 @@ TEST_CASE(
   const auto events = CollectEvents(service, "list parent");
 
   const auto& tool_done = FindEvent(events, ChatEventType::ToolCallDone);
-  REQUIRE(tool_done.status == ChatMessageStatus::Error);
+  REQUIRE(tool_done.Get<ToolCallDoneEvent>().status ==
+          ChatMessageStatus::Error);
   REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
   REQUIRE(service.History().back().content == "recovered");
   std::filesystem::remove_all(root);
@@ -616,12 +616,12 @@ TEST_CASE("ChatService drops empty streaming deltas") {
 
   const auto text_delta_count =
       std::count_if(events.begin(), events.end(), [](const ChatEvent& event) {
-        return event.type == ChatEventType::TextDelta;
+        return event.Type() == ChatEventType::TextDelta;
       });
 
   REQUIRE(text_delta_count == 1);
   const auto& delta = FindEvent(events, ChatEventType::TextDelta);
-  REQUIRE(delta.text == "ok");
+  REQUIRE(delta.Get<TextDeltaEvent>().text == "ok");
   REQUIRE(service.History().back().content == "ok");
 }
 
@@ -640,7 +640,7 @@ TEST_CASE("ChatService emits error for missing provider") {
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mtx);
     events.push_back(event);
-    if (event.type == ChatEventType::Finished) {
+    if (event.Type() == ChatEventType::Finished) {
       done = true;
       cv.notify_one();
     }
@@ -655,8 +655,9 @@ TEST_CASE("ChatService emits error for missing provider") {
   REQUIRE(HasEvent(events, ChatEventType::Finished));
   const auto& error = FindEvent(events, ChatEventType::Error);
   const auto& queued = FindEvent(events, ChatEventType::UserMessageQueued);
-  REQUIRE(error.role == ChatRole::Assistant);
-  REQUIRE(error.message_id != queued.message_id);
+  REQUIRE(error.Get<ErrorEvent>().role == ChatRole::Assistant);
+  REQUIRE(error.Get<ErrorEvent>().message_id !=
+          queued.Get<UserMessageQueuedEvent>().message_id);
 }
 
 TEST_CASE("ChatService preserves provider stream error status") {
@@ -667,8 +668,8 @@ TEST_CASE("ChatService preserves provider stream error status") {
   REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
 
   const auto& error = FindEvent(events, ChatEventType::Error);
-  REQUIRE(error.role == ChatRole::Assistant);
-  REQUIRE(error.status == ChatMessageStatus::Error);
+  REQUIRE(error.Get<ErrorEvent>().role == ChatRole::Assistant);
+  REQUIRE(error.Get<ErrorEvent>().status == ChatMessageStatus::Error);
 
   const auto history = service.History();
   REQUIRE(history.size() == 1);
@@ -708,7 +709,7 @@ TEST_CASE("ChatService SetModel updates future requests and emits event") {
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mtx);
     events.push_back(std::move(event));
-    if (events.back().type == ChatEventType::Finished) {
+    if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
       cv.notify_one();
     }
@@ -723,8 +724,8 @@ TEST_CASE("ChatService SetModel updates future requests and emits event") {
   const auto request = provider->LastRequest();
   REQUIRE(request.model == "glm-5.1");
   const auto& event = FindEvent(events, ChatEventType::ModelChanged);
-  REQUIRE(event.provider_id == "fake");
-  REQUIRE(event.model == "glm-5.1");
+  REQUIRE(event.Get<ModelChangedEvent>().provider_id == "fake");
+  REQUIRE(event.Get<ModelChangedEvent>().model == "glm-5.1");
 }
 
 TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
@@ -742,7 +743,7 @@ TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mtx);
     events.push_back(std::move(event));
-    if (events.back().type == ChatEventType::Finished) {
+    if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
       cv.notify_one();
     }
@@ -759,7 +760,7 @@ TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
   cv.wait(lock, [&] { return finished; });
 
   const auto& event = FindEvent(events, ChatEventType::ModelChanged);
-  REQUIRE(event.model == "second-model");
+  REQUIRE(event.Get<ModelChangedEvent>().model == "second-model");
 }
 
 TEST_CASE("ChatService cancellation requests provider stop token") {
@@ -774,8 +775,8 @@ TEST_CASE("ChatService cancellation requests provider stop token") {
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mtx);
     events.push_back(std::move(event));
-    if (events.back().type == ChatEventType::MessageStatusChanged &&
-        events.back().status == ChatMessageStatus::Cancelled) {
+    const auto* status = events.back().As<MessageStatusChangedEvent>();
+    if (status != nullptr && status->status == ChatMessageStatus::Cancelled) {
       cancelled = true;
       cv.notify_one();
     }
@@ -816,7 +817,7 @@ TEST_CASE("ChatService queues prompts while active") {
   std::lock_guard lock(mtx);
   bool has_queued =
       std::any_of(events.begin(), events.end(), [](const ChatEvent& e) {
-        return e.type == ChatEventType::UserMessageQueued;
+        return e.Type() == ChatEventType::UserMessageQueued;
       });
   REQUIRE(has_queued);
 }
@@ -853,10 +854,10 @@ TEST_CASE("ChatService assigns unique message IDs") {
 
   service.SetEventCallback([&](ChatEvent event) {
     std::lock_guard lock(mtx);
-    if (event.type == ChatEventType::UserMessageQueued) {
-      ids.push_back(event.message_id);
+    if (const auto* queued = event.As<UserMessageQueuedEvent>()) {
+      ids.push_back(queued->message_id);
     }
-    if (event.type == ChatEventType::Finished) {
+    if (event.Type() == ChatEventType::Finished) {
       ++finished_count;
       cv.notify_one();
     }

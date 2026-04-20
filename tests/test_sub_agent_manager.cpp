@@ -31,7 +31,7 @@ class InstantMockProvider : public LanguageModelProvider {
   void CompleteStream([[maybe_unused]] const ChatRequest& request,
                       ChatEventSink sink,
                       [[maybe_unused]] std::stop_token stop) override {
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "done"});
+    sink(ChatEvent{TextDeltaEvent{.text = "done"}});
   }
 };
 
@@ -74,7 +74,7 @@ class PeriodicEventMockProvider : public LanguageModelProvider {
       if (stop.stop_requested()) {
         break;
       }
-      sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "tick"});
+      sink(ChatEvent{TextDeltaEvent{.text = "tick"}});
     }
   }
 };
@@ -96,15 +96,14 @@ class ToolRequestMockProvider : public LanguageModelProvider {
                     });
     if (!has_tool_result) {
       sink(ChatEvent{
-          .type = ChatEventType::ToolCallRequested,
-          .tool_calls = {ToolCallRequest{.id = "tool-1",
-                                         .name = "list_dir",
-                                         .arguments_json = R"({"path":"."})"}},
-      });
+          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                     .id = "tool-1",
+                                     .name = std::string(kListDirToolName),
+                                     .arguments_json = R"({"path":"."})"}}}});
       return;
     }
 
-    sink(ChatEvent{.type = ChatEventType::TextDelta, .text = "final answer"});
+    sink(ChatEvent{TextDeltaEvent{.text = "final answer"}});
   }
 };
 
@@ -257,7 +256,7 @@ TEST_CASE("Background sub-agent reports tool progress") {
         const auto events = ctx.SnapshotEvents();
         return std::any_of(
             events.begin(), events.end(), [](const ChatEvent& event) {
-              return event.type == ChatEventType::SubAgentCompleted;
+              return event.Type() == ChatEventType::SubAgentCompleted;
             });
       },
       std::chrono::milliseconds(1000)));
@@ -265,16 +264,17 @@ TEST_CASE("Background sub-agent reports tool progress") {
   const auto events = ctx.SnapshotEvents();
   const auto progress =
       std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
-        return event.type == ChatEventType::SubAgentProgress &&
-               event.sub_agent_tool_count == 1;
+        const auto* progress = event.As<SubAgentProgressEvent>();
+        return progress != nullptr && progress->sub_agent_tool_count == 1;
       });
   REQUIRE(progress != events.end());
 
   const auto completion =
       std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
-        return event.type == ChatEventType::SubAgentCompleted;
+        return event.Type() == ChatEventType::SubAgentCompleted;
       });
   REQUIRE(completion != events.end());
-  REQUIRE(completion->sub_agent_result == "final answer");
-  REQUIRE(completion->sub_agent_tool_count == 1);
+  const auto& completed = completion->Get<SubAgentCompletedEvent>();
+  REQUIRE(completed.sub_agent_result == "final answer");
+  REQUIRE(completed.sub_agent_tool_count == 1);
 }

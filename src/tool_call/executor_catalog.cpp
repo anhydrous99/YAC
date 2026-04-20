@@ -11,39 +11,39 @@ namespace yac::tool_call {
 
 std::vector<chat::ToolDefinition> ToolDefinitions() {
   return {
-      {.name = "file_read",
+      {.name = std::string(kFileReadToolName),
        .description = "Read the contents of a workspace file.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"}},"required":["filepath"]})"},
-      {.name = "file_write",
+      {.name = std::string(kFileWriteToolName),
        .description = "Create or fully overwrite a workspace file.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"},"content":{"type":"string"}},"required":["filepath","content"]})"},
-      {.name = "list_dir",
+      {.name = std::string(kListDirToolName),
        .description = "List direct entries in a workspace directory.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"}},"required":["path"]})"},
-      {.name = "lsp_diagnostics",
+      {.name = std::string(kLspDiagnosticsToolName),
        .description = "Return language-server diagnostics for a file.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
-      {.name = "lsp_references",
+      {.name = std::string(kLspReferencesToolName),
        .description = "Find references to the symbol at a file position.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
-      {.name = "lsp_goto_definition",
+      {.name = std::string(kLspGotoDefinitionToolName),
        .description = "Find definitions for the symbol at a file position.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
-      {.name = "lsp_rename",
+      {.name = std::string(kLspRenameToolName),
        .description = "Rename a symbol across the workspace.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"old_name":{"type":"string"},"new_name":{"type":"string"}},"required":["file_path","line","character","new_name"]})"},
-      {.name = "lsp_symbols",
+      {.name = std::string(kLspSymbolsToolName),
        .description = "Return document symbols for a file.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
-      {.name = "sub_agent",
+      {.name = std::string(kSubAgentToolName),
        .description =
            "Spawn a sub-agent to perform a task in an isolated "
            "conversation. Use for tasks that benefit from context isolation "
@@ -57,7 +57,7 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
 PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
   try {
     const auto args = ParseArguments(request);
-    if (request.name == "file_write") {
+    if (request.name == kFileWriteToolName) {
       const auto filepath = RequireString(args, "filepath");
       const auto content = RequireString(args, "content");
       auto block = FileWriteCall{.filepath = filepath,
@@ -71,30 +71,30 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
           .approval_prompt = "Write " + filepath + " (" +
                              std::to_string(CountLines(content)) + " lines)."};
     }
-    if (request.name == "file_read") {
+    if (request.name == kFileReadToolName) {
       const auto filepath = RequireString(args, "filepath");
       return PreparedToolCall{.request = request,
                               .preview = FileReadCall{.filepath = filepath}};
     }
-    if (request.name == "list_dir") {
+    if (request.name == kListDirToolName) {
       const auto path = RequireString(args, "path");
       return PreparedToolCall{.request = request,
                               .preview = ListDirCall{.path = path}};
     }
-    if (request.name == "lsp_diagnostics") {
+    if (request.name == kLspDiagnosticsToolName) {
       const auto file_path = RequireString(args, "file_path");
       return PreparedToolCall{
           .request = request,
           .preview = LspDiagnosticsCall{.file_path = file_path}};
     }
-    if (request.name == "lsp_references") {
+    if (request.name == kLspReferencesToolName) {
       const auto file_path = RequireString(args, "file_path");
       return PreparedToolCall{
           .request = request,
           .preview = LspReferencesCall{.symbol = OptionalString(args, "symbol"),
                                        .file_path = file_path}};
     }
-    if (request.name == "lsp_goto_definition") {
+    if (request.name == kLspGotoDefinitionToolName) {
       const auto file_path = RequireString(args, "file_path");
       return PreparedToolCall{.request = request,
                               .preview = LspGotoDefinitionCall{
@@ -103,7 +103,7 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
                                   .line = RequireInt(args, "line"),
                                   .character = RequireInt(args, "character")}};
     }
-    if (request.name == "lsp_rename") {
+    if (request.name == kLspRenameToolName) {
       const auto file_path = RequireString(args, "file_path");
       const auto new_name = RequireString(args, "new_name");
       return PreparedToolCall{
@@ -117,13 +117,13 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
           .approval_prompt =
               "Rename symbol in " + file_path + " to '" + new_name + "'."};
     }
-    if (request.name == "lsp_symbols") {
+    if (request.name == kLspSymbolsToolName) {
       const auto file_path = RequireString(args, "file_path");
       return PreparedToolCall{
           .request = request,
           .preview = LspSymbolsCall{.file_path = file_path}};
     }
-    if (request.name == "sub_agent") {
+    if (request.name == kSubAgentToolName) {
       const auto task = RequireString(args, "task");
       const auto mode_str = OptionalString(args, "mode");
       const auto mode = (mode_str == "background") ? SubAgentMode::Background

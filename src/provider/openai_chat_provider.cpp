@@ -174,8 +174,8 @@ void DispatchSseData(const std::string& data, StreamState& state) {
   try {
     const auto json = Json::parse(data);
     if (json.contains("error")) {
-      (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::Error,
-                                    .text = json["error"].dump()});
+      (*state.sink)(
+          chat::ChatEvent{chat::ErrorEvent{.text = json["error"].dump()}});
       return;
     }
     if (json.contains("usage") && json["usage"].is_object()) {
@@ -192,8 +192,8 @@ void DispatchSseData(const std::string& data, StreamState& state) {
       if (delta.contains("content") && delta["content"].is_string()) {
         auto text = delta["content"].get<std::string>();
         if (!text.empty()) {
-          (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::TextDelta,
-                                        .text = std::move(text)});
+          (*state.sink)(
+              chat::ChatEvent{chat::TextDeltaEvent{.text = std::move(text)}});
         }
       }
       if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
@@ -208,15 +208,13 @@ void DispatchSseData(const std::string& data, StreamState& state) {
         choice["finish_reason"].get<std::string>() == "tool_calls") {
       auto calls = PendingToolCalls(state);
       if (!calls.empty()) {
-        (*state.sink)(
-            chat::ChatEvent{.type = chat::ChatEventType::ToolCallRequested,
-                            .tool_calls = std::move(calls)});
+        (*state.sink)(chat::ChatEvent{
+            chat::ToolCallRequestedEvent{.tool_calls = std::move(calls)}});
       }
       state.pending_tool_calls.clear();
     }
   } catch (const std::exception& error) {
-    (*state.sink)(chat::ChatEvent{.type = chat::ChatEventType::Error,
-                                  .text = error.what()});
+    (*state.sink)(chat::ChatEvent{chat::ErrorEvent{.text = error.what()}});
   }
 }
 
@@ -396,10 +394,9 @@ void OpenAiChatProvider::CompleteStream(const chat::ChatRequest& request,
     }
     CompleteBuffered(request, sink);
   } catch (const std::exception& error) {
-    sink(chat::ChatEvent{.type = chat::ChatEventType::Error,
-                         .text = error.what(),
-                         .provider_id = config_.id,
-                         .model = request.model});
+    sink(chat::ChatEvent{chat::ErrorEvent{.text = error.what(),
+                                          .provider_id = config_.id,
+                                          .model = request.model}});
   }
 }
 
@@ -457,22 +454,19 @@ chat::ChatEvent OpenAiChatProvider::ParseStreamData(const std::string& data) {
   try {
     const auto json = Json::parse(data);
     if (json.contains("error")) {
-      return chat::ChatEvent{.type = chat::ChatEventType::Error,
-                             .text = json["error"].dump()};
+      return chat::ChatEvent{chat::ErrorEvent{.text = json["error"].dump()}};
     }
     if (!json.contains("choices") || json["choices"].empty()) {
-      return chat::ChatEvent{.type = chat::ChatEventType::TextDelta};
+      return chat::ChatEvent{chat::TextDeltaEvent{}};
     }
     const auto& choice = json["choices"][0];
     if (!choice.contains("delta") || !choice["delta"].contains("content")) {
-      return chat::ChatEvent{.type = chat::ChatEventType::TextDelta};
+      return chat::ChatEvent{chat::TextDeltaEvent{}};
     }
-    return chat::ChatEvent{
-        .type = chat::ChatEventType::TextDelta,
-        .text = choice["delta"]["content"].get<std::string>()};
+    return chat::ChatEvent{chat::TextDeltaEvent{
+        .text = choice["delta"]["content"].get<std::string>()}};
   } catch (const std::exception& error) {
-    return chat::ChatEvent{.type = chat::ChatEventType::Error,
-                           .text = error.what()};
+    return chat::ChatEvent{chat::ErrorEvent{.text = error.what()}};
   }
 }
 
@@ -496,23 +490,18 @@ void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
       client.chat.create(BuildChatPayload(request, false, config_));
   const auto text = ExtractBufferedText(response);
   if (!text.empty()) {
-    sink(chat::ChatEvent{.type = chat::ChatEventType::TextDelta,
-                         .text = text,
-                         .provider_id = config_.id,
-                         .model = request.model});
+    sink(chat::ChatEvent{chat::TextDeltaEvent{
+        .text = text, .provider_id = config_.id, .model = request.model}});
   }
   auto tool_calls = ExtractBufferedToolCalls(response);
   if (!tool_calls.empty()) {
-    sink(chat::ChatEvent{.type = chat::ChatEventType::ToolCallRequested,
-                         .provider_id = config_.id,
-                         .model = request.model,
-                         .tool_calls = std::move(tool_calls)});
+    sink(chat::ChatEvent{
+        chat::ToolCallRequestedEvent{.tool_calls = std::move(tool_calls)}});
   }
   if (auto usage = ExtractBufferedUsage(response)) {
-    sink(chat::ChatEvent{.type = chat::ChatEventType::UsageReported,
-                         .provider_id = config_.id,
-                         .model = request.model,
-                         .usage = std::move(usage)});
+    sink(chat::ChatEvent{chat::UsageReportedEvent{.provider_id = config_.id,
+                                                  .model = request.model,
+                                                  .usage = std::move(*usage)}});
   }
 }
 
@@ -577,10 +566,10 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
   }
 
   if (stream_state.pending_usage.has_value()) {
-    sink(chat::ChatEvent{.type = chat::ChatEventType::UsageReported,
-                         .provider_id = config_.id,
-                         .model = request.model,
-                         .usage = std::move(stream_state.pending_usage)});
+    sink(chat::ChatEvent{chat::UsageReportedEvent{
+        .provider_id = config_.id,
+        .model = request.model,
+        .usage = std::move(*stream_state.pending_usage)}});
   }
 }
 

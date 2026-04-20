@@ -57,36 +57,36 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
     return ErrorResult(prepared.preview, "Tool execution cancelled.");
   }
   try {
-    if (prepared.request.name == "file_read") {
+    if (prepared.request.name == kFileReadToolName) {
       return ExecuteFileReadTool(prepared.request, workspace_filesystem_);
     }
-    if (prepared.request.name == "file_write") {
+    if (prepared.request.name == kFileWriteToolName) {
       return ExecuteFileWriteTool(prepared.request, workspace_filesystem_);
     }
-    if (prepared.request.name == "list_dir") {
+    if (prepared.request.name == kListDirToolName) {
       return ExecuteListDirTool(prepared.request, workspace_filesystem_);
     }
-    if (prepared.request.name == "lsp_diagnostics") {
+    if (prepared.request.name == kLspDiagnosticsToolName) {
       return ExecuteLspDiagnosticsTool(prepared.request, *lsp_client_,
                                        workspace_filesystem_);
     }
-    if (prepared.request.name == "lsp_references") {
+    if (prepared.request.name == kLspReferencesToolName) {
       return ExecuteLspReferencesTool(prepared.request, *lsp_client_,
                                       workspace_filesystem_);
     }
-    if (prepared.request.name == "lsp_goto_definition") {
+    if (prepared.request.name == kLspGotoDefinitionToolName) {
       return ExecuteLspGotoDefinitionTool(prepared.request, *lsp_client_,
                                           workspace_filesystem_);
     }
-    if (prepared.request.name == "lsp_rename") {
+    if (prepared.request.name == kLspRenameToolName) {
       return ExecuteLspRenameTool(prepared.request, *lsp_client_,
                                   workspace_filesystem_);
     }
-    if (prepared.request.name == "lsp_symbols") {
+    if (prepared.request.name == kLspSymbolsToolName) {
       return ExecuteLspSymbolsTool(prepared.request, *lsp_client_,
                                    workspace_filesystem_);
     }
-    if (prepared.request.name == "sub_agent") {
+    if (prepared.request.name == kSubAgentToolName) {
       return ExecuteSubAgentTool(prepared, sub_agent_manager_, stop_token);
     }
     return ErrorResult(prepared.preview,

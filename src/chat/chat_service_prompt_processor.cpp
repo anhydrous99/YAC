@@ -43,18 +43,17 @@ void ChatServicePromptProcessor::ProcessPrompt(
   const ChatServiceRequestBuilder request_builder(config_snapshot_());
   auto provider = registry_->Resolve(request_builder.Config().provider_id);
   if (provider == nullptr) {
-    emit_event_(ChatEvent{.type = ChatEventType::MessageStatusChanged,
-                          .message_id = prompt_id,
-                          .role = ChatRole::User,
-                          .status = ChatMessageStatus::Complete});
-    emit_event_(ChatEvent{.type = ChatEventType::Error,
-                          .message_id = assistant_id,
-                          .role = ChatRole::Assistant,
-                          .text = "No provider registered for '" +
-                                  request_builder.Config().provider_id + "'.",
-                          .status = ChatMessageStatus::Error});
-    emit_event_(
-        ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
+    emit_event_(ChatEvent{
+        MessageStatusChangedEvent{.message_id = prompt_id,
+                                  .role = ChatRole::User,
+                                  .status = ChatMessageStatus::Complete}});
+    emit_event_(ChatEvent{
+        ErrorEvent{.message_id = assistant_id,
+                   .role = ChatRole::Assistant,
+                   .text = "No provider registered for '" +
+                           request_builder.Config().provider_id + "'.",
+                   .status = ChatMessageStatus::Error}});
+    emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
     return;
   }
 
@@ -64,16 +63,16 @@ void ChatServicePromptProcessor::ProcessPrompt(
                                                           prompt_content);
   }
 
-  emit_event_(ChatEvent{.type = ChatEventType::MessageStatusChanged,
-                        .message_id = prompt_id,
-                        .role = ChatRole::User,
-                        .status = ChatMessageStatus::Complete});
-  emit_event_(ChatEvent{.type = ChatEventType::Started,
-                        .message_id = assistant_id,
-                        .role = ChatRole::Assistant,
-                        .provider_id = request_builder.Config().provider_id,
-                        .model = request_builder.Config().model,
-                        .status = ChatMessageStatus::Active});
+  emit_event_(ChatEvent{
+      MessageStatusChangedEvent{.message_id = prompt_id,
+                                .role = ChatRole::User,
+                                .status = ChatMessageStatus::Complete}});
+  emit_event_(ChatEvent{
+      StartedEvent{.message_id = assistant_id,
+                   .role = ChatRole::Assistant,
+                   .provider_id = request_builder.Config().provider_id,
+                   .model = request_builder.Config().model,
+                   .status = ChatMessageStatus::Active}});
 
   std::string visible_assistant_text;
   bool assistant_error = false;
@@ -87,20 +86,33 @@ void ChatServicePromptProcessor::ProcessPrompt(
       if (generation_value_() != generation) {
         return;
       }
-      if (event.type == ChatEventType::ToolCallRequested) {
-        requested_tools = std::move(event.tool_calls);
+      if (auto* tool_requested = event.As<ToolCallRequestedEvent>()) {
+        requested_tools = std::move(tool_requested->tool_calls);
         return;
       }
-      event.message_id = assistant_id;
-      event.role = ChatRole::Assistant;
-      if (event.type == ChatEventType::TextDelta) {
-        if (event.text.empty()) {
+      if (auto* delta = event.As<TextDeltaEvent>()) {
+        if (delta->text.empty()) {
           return;
         }
-        round_text += event.text;
-      } else if (event.type == ChatEventType::Error) {
+        round_text += delta->text;
+        emit_event_(ChatEvent{
+            TextDeltaEvent{.message_id = assistant_id,
+                           .role = ChatRole::Assistant,
+                           .text = std::move(delta->text),
+                           .provider_id = std::move(delta->provider_id),
+                           .model = std::move(delta->model)}});
+        return;
+      }
+      if (auto* error = event.As<ErrorEvent>()) {
         assistant_error = true;
-        event.status = ChatMessageStatus::Error;
+        emit_event_(
+            ChatEvent{ErrorEvent{.message_id = assistant_id,
+                                 .role = ChatRole::Assistant,
+                                 .text = std::move(error->text),
+                                 .provider_id = std::move(error->provider_id),
+                                 .model = std::move(error->model),
+                                 .status = ChatMessageStatus::Error}});
+        return;
       }
       emit_event_(std::move(event));
     };
@@ -108,18 +120,16 @@ void ChatServicePromptProcessor::ProcessPrompt(
     provider->CompleteStream(request, std::move(sink), stop_token);
 
     if (generation_value_() != generation) {
-      emit_event_(ChatEvent{.type = ChatEventType::MessageStatusChanged,
-                            .message_id = assistant_id,
-                            .role = ChatRole::Assistant,
-                            .status = ChatMessageStatus::Cancelled});
-      emit_event_(ChatEvent{.type = ChatEventType::Finished,
-                            .message_id = assistant_id});
+      emit_event_(ChatEvent{
+          MessageStatusChangedEvent{.message_id = assistant_id,
+                                    .role = ChatRole::Assistant,
+                                    .status = ChatMessageStatus::Cancelled}});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
       return;
     }
 
     if (assistant_error) {
-      emit_event_(ChatEvent{.type = ChatEventType::Finished,
-                            .message_id = assistant_id});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
       return;
     }
 
@@ -138,13 +148,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
     RunToolRound(requested_tools, stop_token);
 
     if (round == kMaxToolRounds) {
-      emit_event_(ChatEvent{.type = ChatEventType::Error,
-                            .message_id = assistant_id,
-                            .role = ChatRole::Assistant,
-                            .text = "Tool round limit reached.",
-                            .status = ChatMessageStatus::Error});
-      emit_event_(ChatEvent{.type = ChatEventType::Finished,
-                            .message_id = assistant_id});
+      emit_event_(ChatEvent{ErrorEvent{.message_id = assistant_id,
+                                       .role = ChatRole::Assistant,
+                                       .text = "Tool round limit reached.",
+                                       .status = ChatMessageStatus::Error}});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
       return;
     }
   }
@@ -154,12 +162,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
     ChatServiceHistory(*history_).AppendFinalAssistantMessage(
         assistant_id, visible_assistant_text);
   }
-  emit_event_(ChatEvent{.type = ChatEventType::AssistantMessageDone,
-                        .message_id = assistant_id,
-                        .role = ChatRole::Assistant,
-                        .status = ChatMessageStatus::Complete});
-  emit_event_(
-      ChatEvent{.type = ChatEventType::Finished, .message_id = assistant_id});
+  emit_event_(ChatEvent{
+      AssistantMessageDoneEvent{.message_id = assistant_id,
+                                .role = ChatRole::Assistant,
+                                .status = ChatMessageStatus::Complete}});
+  emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
 }
 
 ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
@@ -179,13 +186,13 @@ void ChatServicePromptProcessor::RunToolRound(
     auto tool_message_id = next_message_id_();
     auto prepared = ::yac::tool_call::ToolExecutor::Prepare(tool_request);
     prepared.card_message_id = tool_message_id;
-    emit_event_(ChatEvent{.type = ChatEventType::ToolCallStarted,
-                          .message_id = tool_message_id,
-                          .role = ChatRole::Tool,
-                          .tool_call_id = tool_request.id,
-                          .tool_name = tool_request.name,
-                          .tool_call = prepared.preview,
-                          .status = ChatMessageStatus::Active});
+    emit_event_(
+        ChatEvent{ToolCallStartedEvent{.message_id = tool_message_id,
+                                       .role = ChatRole::Tool,
+                                       .tool_call_id = tool_request.id,
+                                       .tool_name = tool_request.name,
+                                       .tool_call = prepared.preview,
+                                       .status = ChatMessageStatus::Active}});
 
     bool approved = true;
     if (prepared.requires_approval) {
@@ -197,15 +204,15 @@ void ChatServicePromptProcessor::RunToolRound(
         }
       }
       auto approval_id = tool_approval_->BeginPendingApproval();
-      emit_event_(ChatEvent{.type = ChatEventType::ToolApprovalRequested,
-                            .message_id = tool_message_id,
-                            .role = ChatRole::Tool,
-                            .text = prepared.approval_prompt,
-                            .tool_call_id = tool_request.id,
-                            .tool_name = tool_request.name,
-                            .approval_id = approval_id,
-                            .tool_call = prepared.preview,
-                            .status = ChatMessageStatus::Queued});
+      emit_event_(ChatEvent{
+          ToolApprovalRequestedEvent{.message_id = tool_message_id,
+                                     .role = ChatRole::Tool,
+                                     .text = prepared.approval_prompt,
+                                     .tool_call_id = tool_request.id,
+                                     .tool_name = tool_request.name,
+                                     .approval_id = approval_id,
+                                     .tool_call = prepared.preview,
+                                     .status = ChatMessageStatus::Queued}});
       approved = tool_approval_->WaitForResolution(approval_id, stop_token);
     }
 
@@ -226,13 +233,12 @@ void ChatServicePromptProcessor::RunToolRound(
       done_status = ChatMessageStatus::Active;
     }
 
-    emit_event_(ChatEvent{.type = ChatEventType::ToolCallDone,
-                          .message_id = tool_message_id,
-                          .role = ChatRole::Tool,
-                          .tool_call_id = tool_request.id,
-                          .tool_name = tool_request.name,
-                          .tool_call = result.block,
-                          .status = done_status});
+    emit_event_(ChatEvent{ToolCallDoneEvent{.message_id = tool_message_id,
+                                            .role = ChatRole::Tool,
+                                            .tool_call_id = tool_request.id,
+                                            .tool_name = tool_request.name,
+                                            .tool_call = result.block,
+                                            .status = done_status}});
     {
       std::lock_guard lock(*history_mutex_);
       ChatServiceHistory(*history_).AppendToolResult(tool_message_id,

@@ -65,11 +65,11 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   }
   wake_.notify_one();
 
-  EmitEvent(ChatEvent{.type = ChatEventType::UserMessageQueued,
-                      .message_id = id,
-                      .role = ChatRole::User,
-                      .text = std::move(queued_content),
-                      .status = ChatMessageStatus::Queued});
+  EmitEvent(
+      ChatEvent{UserMessageQueuedEvent{.message_id = id,
+                                       .role = ChatRole::User,
+                                       .text = std::move(queued_content),
+                                       .status = ChatMessageStatus::Queued}});
   EmitQueueDepth();
   return id;
 }
@@ -87,9 +87,8 @@ void ChatService::SetModel(std::string model) {
     new_model = config_.model;
   }
 
-  EmitEvent(ChatEvent{.type = ChatEventType::ModelChanged,
-                      .provider_id = std::move(provider_id),
-                      .model = std::move(new_model)});
+  EmitEvent(ChatEvent{ModelChangedEvent{.provider_id = std::move(provider_id),
+                                        .model = std::move(new_model)}});
 }
 
 void ChatService::CancelActiveResponse() {
@@ -126,7 +125,7 @@ void ChatService::ResetConversation() {
   tool_approval_->CancelPending();
   wake_.notify_one();
 
-  EmitEvent(ChatEvent{.type = ChatEventType::ConversationCleared});
+  EmitEvent(ChatEvent{ConversationClearedEvent{}});
 }
 
 std::vector<ChatMessage> ChatService::History() const {
@@ -166,10 +165,10 @@ void ChatService::WorkerLoop(std::stop_token stop_token) {
       active_stop_source_ = request_stop_source;
     }
 
-    EmitEvent(ChatEvent{.type = ChatEventType::UserMessageActive,
-                        .message_id = prompt.id,
-                        .role = ChatRole::User,
-                        .status = ChatMessageStatus::Active});
+    EmitEvent(
+        ChatEvent{UserMessageActiveEvent{.message_id = prompt.id,
+                                         .role = ChatRole::User,
+                                         .status = ChatMessageStatus::Active}});
     EmitQueueDepth();
 
     prompt_processor_->ProcessPrompt(prompt.id, prompt.content,
@@ -201,8 +200,7 @@ void ChatService::EmitQueueDepth() {
     std::lock_guard lock(mutex_);
     depth = static_cast<int>(pending_.size());
   }
-  EmitEvent(ChatEvent{.type = ChatEventType::QueueDepthChanged,
-                      .queue_depth = depth});
+  EmitEvent(ChatEvent{QueueDepthChangedEvent{.queue_depth = depth}});
 }
 
 ChatMessageId ChatService::NextMessageId() {
@@ -224,13 +222,13 @@ std::string ChatService::SpawnBackgroundSubAgent(std::string task) {
       .task = task,
       .mode = ::yac::tool_call::SubAgentMode::Background,
       .status = ::yac::tool_call::SubAgentStatus::Running};
-  EmitEvent(ChatEvent{.type = ChatEventType::ToolCallStarted,
-                      .message_id = card_id,
-                      .role = ChatRole::Tool,
-                      .tool_call_id = synthetic_tool_call_id,
-                      .tool_name = "sub_agent",
-                      .tool_call = preview,
-                      .status = ChatMessageStatus::Active});
+  EmitEvent(ChatEvent{ToolCallStartedEvent{
+      .message_id = card_id,
+      .role = ChatRole::Tool,
+      .tool_call_id = synthetic_tool_call_id,
+      .tool_name = std::string(::yac::tool_call::kSubAgentToolName),
+      .tool_call = preview,
+      .status = ChatMessageStatus::Active}});
 
   return sub_agent_manager_->SpawnBackground(task, card_id,
                                              std::move(synthetic_tool_call_id));
@@ -271,12 +269,12 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
     }
   }
 
-  EmitEvent(ChatEvent{.type = ChatEventType::UserMessageQueued,
-                      .message_id = id,
-                      .role = ChatRole::User,
-                      .text = std::move(queued_text),
-                      .status = ChatMessageStatus::Complete,
-                      .role_label = kSubAgentRoleLabel});
+  EmitEvent(
+      ChatEvent{UserMessageQueuedEvent{.message_id = id,
+                                       .role = ChatRole::User,
+                                       .text = std::move(queued_text),
+                                       .status = ChatMessageStatus::Complete,
+                                       .role_label = kSubAgentRoleLabel}});
 
   if (was_idle) {
     wake_.notify_one();

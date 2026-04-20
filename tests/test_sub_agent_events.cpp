@@ -23,17 +23,14 @@ namespace {
 
 ChatEvent MakeToolStartedEvent(ChatMessageId id, std::string agent_id,
                                std::string task) {
-  return ChatEvent{
-      .type = ChatEventType::ToolCallStarted,
+  return ChatEvent{ToolCallStartedEvent{
       .message_id = id,
       .role = ChatRole::Tool,
-      .tool_name = "sub_agent",
+      .tool_name = std::string(kSubAgentToolName),
       .tool_call = SubAgentCall{.task = task,
                                 .status = SubAgentStatus::Running,
                                 .agent_id = std::move(agent_id)},
-      .status = ChatMessageStatus::Active,
-      .sub_agent_task = std::move(task),
-  };
+      .status = ChatMessageStatus::Active}};
 }
 
 std::string RenderComponent(const ftxui::Component& component, int width = 100,
@@ -89,21 +86,20 @@ ftxui::Event MakeMouseLeftPress(int x, int y) {
 void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
                            std::string agent_id) {
   const auto task = "inspect workspace";
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentProgress,
+  bridge.HandleEvent(ChatEvent{SubAgentProgressEvent{
       .message_id = id,
-      .tool_call_id = "tool-1",
-      .tool_name = "list_dir",
-      .tool_call = ListDirCall{"src",
-                               {{"main.cpp", DirectoryEntryType::File, 10}},
-                               false,
-                               false,
-                               ""},
-      .status = ChatMessageStatus::Complete,
       .sub_agent_id = std::move(agent_id),
       .sub_agent_task = task,
       .sub_agent_tool_count = 1,
-  });
+      .child_tool = SubAgentChildToolEvent{
+          .tool_call_id = "tool-1",
+          .tool_name = std::string(kListDirToolName),
+          .tool_call = ListDirCall{"src",
+                                   {{"main.cpp", DirectoryEntryType::File, 10}},
+                                   false,
+                                   false,
+                                   ""},
+          .status = ChatMessageStatus::Complete}}});
 }
 
 void SeedSubAgentWithChildTool(ChatEventBridge& bridge, ChatMessageId id,
@@ -142,15 +138,14 @@ TEST_CASE(
 
   bridge.HandleEvent(MakeToolStartedEvent(51, "agent-2", "run all tests"));
 
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentCompleted,
+  bridge.HandleEvent(ChatEvent{SubAgentCompletedEvent{
       .message_id = 51,
       .sub_agent_id = "agent-2",
       .sub_agent_task = "run all tests",
       .sub_agent_result = "all 42 tests passed",
       .sub_agent_tool_count = 5,
       .sub_agent_elapsed_ms = 1200,
-  });
+  }});
 
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Complete);
@@ -169,13 +164,12 @@ TEST_CASE("Bridge handles SubAgentError -- updates card with error status") {
 
   bridge.HandleEvent(MakeToolStartedEvent(52, "agent-3", "fetch remote data"));
 
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentError,
+  bridge.HandleEvent(ChatEvent{SubAgentErrorEvent{
       .message_id = 52,
       .sub_agent_id = "agent-3",
       .sub_agent_task = "fetch remote data",
       .sub_agent_result = "connection refused",
-  });
+  }});
 
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Error);
@@ -194,12 +188,11 @@ TEST_CASE(
 
   bridge.HandleEvent(MakeToolStartedEvent(53, "agent-4", "long running task"));
 
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentCancelled,
+  bridge.HandleEvent(ChatEvent{SubAgentCancelledEvent{
       .message_id = 53,
       .sub_agent_id = "agent-4",
       .sub_agent_task = "long running task",
-  });
+  }});
 
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Cancelled);
@@ -215,13 +208,12 @@ TEST_CASE("Bridge handles SubAgentProgress -- updates card with tool count") {
 
   bridge.HandleEvent(MakeToolStartedEvent(54, "agent-5", "progressive task"));
 
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentProgress,
+  bridge.HandleEvent(ChatEvent{SubAgentProgressEvent{
       .message_id = 54,
       .sub_agent_id = "agent-5",
       .sub_agent_task = "progressive task",
       .sub_agent_tool_count = 3,
-  });
+  }});
 
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Active);
@@ -276,14 +268,13 @@ TEST_CASE("Completed sub-agent and nested tool boxes remain mouse toggleable") {
   REQUIRE(component->OnEvent(MakeMouseLeftPress(nested_tool_position->first,
                                                 nested_tool_position->second)));
 
-  bridge.HandleEvent(ChatEvent{
-      .type = ChatEventType::SubAgentCompleted,
+  bridge.HandleEvent(ChatEvent{SubAgentCompletedEvent{
       .message_id = 56,
       .sub_agent_id = "agent-7",
       .sub_agent_task = "inspect workspace",
       .sub_agent_result = "done",
       .sub_agent_tool_count = 1,
-  });
+  }});
 
   output = RenderComponent(component);
   auto sub_agent_position = FindTextPosition(output, "[>] Sub-agent");

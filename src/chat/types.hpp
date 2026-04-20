@@ -8,6 +8,8 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -56,29 +58,247 @@ enum class ChatEventType {
   SubAgentCancelled,
 };
 
-struct ChatEvent {
-  ChatEventType type = ChatEventType::Started;
+struct StartedEvent {
+  static constexpr ChatEventType kType = ChatEventType::Started;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
+  std::string provider_id;
+  std::string model;
+  ChatMessageStatus status = ChatMessageStatus::Active;
+};
+
+struct TextDeltaEvent {
+  static constexpr ChatEventType kType = ChatEventType::TextDelta;
+
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Assistant;
   std::string text;
   std::string provider_id;
   std::string model;
+};
+
+struct AssistantMessageDoneEvent {
+  static constexpr ChatEventType kType = ChatEventType::AssistantMessageDone;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
+  std::string provider_id;
+  std::string model;
+  ChatMessageStatus status = ChatMessageStatus::Complete;
+};
+
+struct ToolCallStartedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ToolCallStarted;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Tool;
+  std::string tool_call_id;
+  std::string tool_name;
+  ::yac::tool_call::ToolCallBlock tool_call;
+  ChatMessageStatus status = ChatMessageStatus::Active;
+};
+
+struct ToolCallDoneEvent {
+  static constexpr ChatEventType kType = ChatEventType::ToolCallDone;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Tool;
+  std::string tool_call_id;
+  std::string tool_name;
+  ::yac::tool_call::ToolCallBlock tool_call;
+  ChatMessageStatus status = ChatMessageStatus::Complete;
+};
+
+struct ErrorEvent {
+  static constexpr ChatEventType kType = ChatEventType::Error;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
+  std::string text;
+  std::string provider_id;
+  std::string model;
+  ChatMessageStatus status = ChatMessageStatus::Error;
+};
+
+struct FinishedEvent {
+  static constexpr ChatEventType kType = ChatEventType::Finished;
+
+  ChatMessageId message_id = 0;
+};
+
+struct CancelledEvent {
+  static constexpr ChatEventType kType = ChatEventType::Cancelled;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
+  ChatMessageStatus status = ChatMessageStatus::Cancelled;
+};
+
+struct UserMessageQueuedEvent {
+  static constexpr ChatEventType kType = ChatEventType::UserMessageQueued;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::User;
+  std::string text;
+  ChatMessageStatus status = ChatMessageStatus::Queued;
+  std::string role_label;
+};
+
+struct UserMessageActiveEvent {
+  static constexpr ChatEventType kType = ChatEventType::UserMessageActive;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::User;
+  ChatMessageStatus status = ChatMessageStatus::Active;
+};
+
+struct MessageStatusChangedEvent {
+  static constexpr ChatEventType kType = ChatEventType::MessageStatusChanged;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Assistant;
+  ChatMessageStatus status = ChatMessageStatus::Complete;
+};
+
+struct QueueDepthChangedEvent {
+  static constexpr ChatEventType kType = ChatEventType::QueueDepthChanged;
+
+  int queue_depth = 0;
+};
+
+struct ConversationClearedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ConversationCleared;
+};
+
+struct ModelChangedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ModelChanged;
+
+  std::string provider_id;
+  std::string model;
+};
+
+struct ToolCallRequestedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ToolCallRequested;
+
+  std::vector<ToolCallRequest> tool_calls;
+};
+
+struct ToolApprovalRequestedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ToolApprovalRequested;
+
+  ChatMessageId message_id = 0;
+  ChatRole role = ChatRole::Tool;
+  std::string text;
   std::string tool_call_id;
   std::string tool_name;
   std::string approval_id;
-  std::vector<ToolCallRequest> tool_calls;
-  std::optional<::yac::tool_call::ToolCallBlock> tool_call;
-  std::optional<TokenUsage> usage;
+  ::yac::tool_call::ToolCallBlock tool_call;
+  ChatMessageStatus status = ChatMessageStatus::Queued;
+};
+
+struct UsageReportedEvent {
+  static constexpr ChatEventType kType = ChatEventType::UsageReported;
+
+  std::string provider_id;
+  std::string model;
+  TokenUsage usage;
+};
+
+struct SubAgentChildToolEvent {
+  std::string tool_call_id;
+  std::string tool_name;
+  ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Complete;
-  int queue_depth = 0;
-  std::chrono::system_clock::time_point created_at =
-      std::chrono::system_clock::now();
-  std::string sub_agent_id = "";
-  std::string sub_agent_task = "";
-  std::string sub_agent_result = "";
+};
+
+struct SubAgentProgressEvent {
+  static constexpr ChatEventType kType = ChatEventType::SubAgentProgress;
+
+  ChatMessageId message_id = 0;
+  std::string sub_agent_id;
+  std::string sub_agent_task;
+  int sub_agent_tool_count = 0;
+  ChatMessageStatus status = ChatMessageStatus::Active;
+  std::optional<SubAgentChildToolEvent> child_tool;
+};
+
+struct SubAgentCompletedEvent {
+  static constexpr ChatEventType kType = ChatEventType::SubAgentCompleted;
+
+  ChatMessageId message_id = 0;
+  std::string sub_agent_id;
+  std::string sub_agent_task;
+  std::string sub_agent_result;
   int sub_agent_tool_count = 0;
   int sub_agent_elapsed_ms = 0;
-  std::string role_label;
+};
+
+struct SubAgentErrorEvent {
+  static constexpr ChatEventType kType = ChatEventType::SubAgentError;
+
+  ChatMessageId message_id = 0;
+  std::string sub_agent_id;
+  std::string sub_agent_task;
+  std::string sub_agent_result;
+  int sub_agent_tool_count = 0;
+  int sub_agent_elapsed_ms = 0;
+};
+
+struct SubAgentCancelledEvent {
+  static constexpr ChatEventType kType = ChatEventType::SubAgentCancelled;
+
+  ChatMessageId message_id = 0;
+  std::string sub_agent_id;
+  std::string sub_agent_task;
+};
+
+struct ChatEvent {
+  using Payload = std::variant<
+      StartedEvent, TextDeltaEvent, AssistantMessageDoneEvent,
+      ToolCallStartedEvent, ToolCallDoneEvent, ErrorEvent, FinishedEvent,
+      CancelledEvent, UserMessageQueuedEvent, UserMessageActiveEvent,
+      MessageStatusChangedEvent, QueueDepthChangedEvent,
+      ConversationClearedEvent, ModelChangedEvent, ToolCallRequestedEvent,
+      ToolApprovalRequestedEvent, UsageReportedEvent, SubAgentProgressEvent,
+      SubAgentCompletedEvent, SubAgentErrorEvent, SubAgentCancelledEvent>;
+
+  ChatEvent() = default;
+
+  template <typename Event, typename = std::enable_if_t<!std::is_same_v<
+                                std::decay_t<Event>, ChatEvent>>>
+  ChatEvent(Event&& event) : payload(std::forward<Event>(event)) {}
+
+  [[nodiscard]] ChatEventType Type() const {
+    return std::visit(
+        [](const auto& event) {
+          using Event = std::decay_t<decltype(event)>;
+          return Event::kType;
+        },
+        payload);
+  }
+
+  template <typename Event>
+  [[nodiscard]] Event* As() {
+    return std::get_if<Event>(&payload);
+  }
+
+  template <typename Event>
+  [[nodiscard]] const Event* As() const {
+    return std::get_if<Event>(&payload);
+  }
+
+  template <typename Event>
+  [[nodiscard]] Event& Get() {
+    return std::get<Event>(payload);
+  }
+
+  template <typename Event>
+  [[nodiscard]] const Event& Get() const {
+    return std::get<Event>(payload);
+  }
+
+  Payload payload;
 };
 
 struct ProviderConfig {

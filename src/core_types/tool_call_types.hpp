@@ -2,10 +2,22 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 namespace yac::tool_call {
+
+inline constexpr std::string_view kFileReadToolName = "file_read";
+inline constexpr std::string_view kFileWriteToolName = "file_write";
+inline constexpr std::string_view kListDirToolName = "list_dir";
+inline constexpr std::string_view kLspDiagnosticsToolName = "lsp_diagnostics";
+inline constexpr std::string_view kLspReferencesToolName = "lsp_references";
+inline constexpr std::string_view kLspGotoDefinitionToolName =
+    "lsp_goto_definition";
+inline constexpr std::string_view kLspRenameToolName = "lsp_rename";
+inline constexpr std::string_view kLspSymbolsToolName = "lsp_symbols";
+inline constexpr std::string_view kSubAgentToolName = "sub_agent";
 
 struct DiffLine {
   enum Type { Add, Remove, Context };

@@ -41,31 +41,31 @@ TEST_CASE("OpenAiChatProvider parses streaming content delta") {
   const auto event = OpenAiChatProvider::ParseStreamData(
       R"({"choices":[{"delta":{"content":"hello"}}]})");
 
-  REQUIRE(event.type == ChatEventType::TextDelta);
-  REQUIRE(event.text == "hello");
+  REQUIRE(event.Type() == ChatEventType::TextDelta);
+  REQUIRE(event.Get<TextDeltaEvent>().text == "hello");
 }
 
 TEST_CASE("OpenAiChatProvider treats non-content chunks as empty deltas") {
   const auto event = OpenAiChatProvider::ParseStreamData(
       R"({"choices":[{"delta":{"role":"assistant"}}]})");
 
-  REQUIRE(event.type == ChatEventType::TextDelta);
-  REQUIRE(event.text.empty());
+  REQUIRE(event.Type() == ChatEventType::TextDelta);
+  REQUIRE(event.Get<TextDeltaEvent>().text.empty());
 }
 
 TEST_CASE("OpenAiChatProvider treats reasoning chunks as empty deltas") {
   const auto event = OpenAiChatProvider::ParseStreamData(
       R"({"choices":[{"delta":{"reasoning_content":"thinking"}}]})");
 
-  REQUIRE(event.type == ChatEventType::TextDelta);
-  REQUIRE(event.text.empty());
+  REQUIRE(event.Type() == ChatEventType::TextDelta);
+  REQUIRE(event.Get<TextDeltaEvent>().text.empty());
 }
 
 TEST_CASE("OpenAiChatProvider returns error event for malformed JSON") {
   const auto event = OpenAiChatProvider::ParseStreamData("{");
 
-  REQUIRE(event.type == ChatEventType::Error);
-  REQUIRE_FALSE(event.text.empty());
+  REQUIRE(event.Type() == ChatEventType::Error);
+  REQUIRE_FALSE(event.Get<ErrorEvent>().text.empty());
 }
 
 TEST_CASE("OpenAiChatProvider parses OpenAI-compatible model list") {
