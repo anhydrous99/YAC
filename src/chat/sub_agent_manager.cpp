@@ -192,6 +192,8 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
       RequestSessionStop(session, false);
     }
 
+    // Preserve the sub-agent's local tool message id before rewriting the
+    // event to target the parent card; fallback tool_call_id depends on it.
     const auto child_message_id = event.message_id;
     event.message_id = session.card_message_id;
     event.sub_agent_id = session.agent_id;
