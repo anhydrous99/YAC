@@ -243,26 +243,45 @@ void ChatService::HandleBackgroundSubAgentResult(std::string tool_call_id,
   (void)tool_call_id;
   std::string header = is_error ? "[Background sub-agent failed]"
                                 : "[Background sub-agent completed]";
-  std::string body = header + " Task: " + task + "\n\nResult:\n" + result;
+  InjectSubAgentContinuation(header + " Task: " + task + "\n\nResult:\n" +
+                             result);
+}
 
-  bool busy = false;
+void ChatService::InjectSubAgentContinuation(std::string body) {
+  auto id = NextMessageId();
+  auto emitted_text = body;
+
+  bool was_idle = false;
   {
     std::lock_guard lock(mutex_);
-    busy = active_ || !pending_.empty();
+    was_idle = !active_ && pending_.empty();
+    if (was_idle) {
+      // Worker will append to history via AppendActiveUserMessage when it
+      // picks the prompt up; don't push to history here to avoid duplicating.
+      pending_.push_back({id, std::move(body)});
+    } else {
+      // Worker is busy on another turn; append directly to history so the
+      // next request includes this continuation in context.
+      ChatMessage message;
+      message.id = id;
+      message.role = ChatRole::User;
+      message.status = ChatMessageStatus::Complete;
+      message.content = std::move(body);
+      history_.push_back(std::move(message));
+    }
   }
 
-  if (busy) {
-    std::lock_guard lock(mutex_);
-    ChatMessage message;
-    message.id = NextMessageId();
-    message.role = ChatRole::User;
-    message.status = ChatMessageStatus::Complete;
-    message.content = std::move(body);
-    history_.push_back(std::move(message));
-    return;
-  }
+  EmitEvent(ChatEvent{.type = ChatEventType::UserMessageQueued,
+                      .message_id = id,
+                      .role = ChatRole::User,
+                      .text = std::move(emitted_text),
+                      .status = ChatMessageStatus::Complete,
+                      .role_label = kSubAgentRoleLabel});
 
-  SubmitUserMessage(std::move(body));
+  if (was_idle) {
+    wake_.notify_one();
+    EmitQueueDepth();
+  }
 }
 
 }  // namespace yac::chat

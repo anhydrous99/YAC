@@ -48,9 +48,9 @@ class ChatUI : public ChatEventSink {
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
-  MessageId AddMessageWithId(
-      MessageId id, Sender sender, std::string content,
-      MessageStatus status = MessageStatus::Complete) override;
+  MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
+                             MessageStatus status = MessageStatus::Complete,
+                             std::string role_label = "") override;
   MessageId StartAgentMessage();
   MessageId StartAgentMessage(MessageId id) override;
   void AppendToAgentMessage(MessageId id, std::string delta) override;

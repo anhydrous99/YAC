@@ -43,7 +43,8 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
   switch (event.type) {
     case ChatEventType::UserMessageQueued:
       chat_ui.AddMessageWithId(event.message_id, Sender::User,
-                               std::move(event.text), event.status);
+                               std::move(event.text), event.status,
+                               std::move(event.role_label));
       break;
 
     case ChatEventType::UserMessageActive:

@@ -68,3 +68,14 @@ TEST_CASE("ChatSession inserts explicit message IDs") {
   REQUIRE(session.HasMessage(42));
   REQUIRE(session.Messages()[0].id == 42);
 }
+
+TEST_CASE("ChatSession honors role_label override for user messages") {
+  ChatSession session;
+
+  session.AddMessageWithId(7, Sender::User, "continuation body",
+                           MessageStatus::Complete, "Sub-agent");
+
+  REQUIRE(session.MessageCount() == 1);
+  REQUIRE(session.Messages()[0].sender == Sender::User);
+  REQUIRE(session.Messages()[0].DisplayLabel() == "Sub-agent");
+}

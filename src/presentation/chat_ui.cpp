@@ -318,9 +318,10 @@ MessageId ChatUI::AddMessage(Sender sender, std::string content,
 }
 
 MessageId ChatUI::AddMessageWithId(MessageId id, Sender sender,
-                                   std::string content, MessageStatus status) {
-  auto added_id =
-      session_.AddMessageWithId(id, sender, std::move(content), status);
+                                   std::string content, MessageStatus status,
+                                   std::string role_label) {
+  auto added_id = session_.AddMessageWithId(id, sender, std::move(content),
+                                            status, std::move(role_label));
   render_cache_.ResetContent(added_id);
   if (sender == Sender::Agent && status == MessageStatus::Active) {
     thinking_animation_.ResetFrame();

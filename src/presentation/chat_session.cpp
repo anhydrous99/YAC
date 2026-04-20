@@ -23,11 +23,12 @@ MessageId ChatSession::AddMessage(Sender sender, std::string content,
 
 MessageId ChatSession::AddMessageWithId(MessageId id, Sender sender,
                                         std::string content,
-                                        MessageStatus status) {
+                                        MessageStatus status,
+                                        std::string role_label) {
   if (id >= next_id_) {
     next_id_ = id + 1;
   }
-  Message message{sender, std::move(content)};
+  Message message{sender, std::move(content), std::move(role_label)};
   message.id = id;
   message.status = status;
   messages_.push_back(std::move(message));

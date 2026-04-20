@@ -70,6 +70,9 @@ class ChatService {
   void HandleBackgroundSubAgentResult(std::string tool_call_id,
                                       std::string task, std::string result,
                                       bool is_error);
+  void InjectSubAgentContinuation(std::string body);
+
+  static constexpr const char* kSubAgentRoleLabel = "Sub-agent";
 
   provider::ProviderRegistry registry_;
   ChatConfig config_;

@@ -32,7 +32,8 @@ class ChatSession {
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
   MessageId AddMessageWithId(MessageId id, Sender sender, std::string content,
-                             MessageStatus status = MessageStatus::Complete);
+                             MessageStatus status = MessageStatus::Complete,
+                             std::string role_label = "");
   MessageId AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
   MessageId AddToolCallMessageWithId(MessageId id,
                                      ::yac::tool_call::ToolCallBlock block,

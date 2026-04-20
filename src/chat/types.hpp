@@ -78,6 +78,7 @@ struct ChatEvent {
   std::string sub_agent_result = "";
   int sub_agent_tool_count = 0;
   int sub_agent_elapsed_ms = 0;
+  std::string role_label;
 };
 
 struct ProviderConfig {

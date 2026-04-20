@@ -20,8 +20,8 @@ class ChatEventSink {
   ChatEventSink& operator=(ChatEventSink&&) = default;
 
   virtual MessageId AddMessageWithId(MessageId id, Sender sender,
-                                     std::string content,
-                                     MessageStatus status) = 0;
+                                     std::string content, MessageStatus status,
+                                     std::string role_label = "") = 0;
   virtual MessageId StartAgentMessage(MessageId id) = 0;
   virtual void AppendToAgentMessage(MessageId id, std::string delta) = 0;
   virtual void SetMessageStatus(MessageId id, MessageStatus status) = 0;
