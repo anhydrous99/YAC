@@ -249,7 +249,7 @@ void ChatService::HandleBackgroundSubAgentResult(std::string tool_call_id,
 
 void ChatService::InjectSubAgentContinuation(std::string body) {
   auto id = NextMessageId();
-  auto emitted_text = body;
+  auto queued_text = body;
 
   bool was_idle = false;
   {
@@ -274,7 +274,7 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
   EmitEvent(ChatEvent{.type = ChatEventType::UserMessageQueued,
                       .message_id = id,
                       .role = ChatRole::User,
-                      .text = std::move(emitted_text),
+                      .text = std::move(queued_text),
                       .status = ChatMessageStatus::Complete,
                       .role_label = kSubAgentRoleLabel});
 
