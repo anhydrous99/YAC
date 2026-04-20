@@ -2,9 +2,17 @@
 #include "presentation/chat_ui.hpp"
 #include "tool_call/types.hpp"
 
+#include <optional>
+#include <regex>
+#include <string>
+#include <utility>
 #include <variant>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+#include <ftxui/component/event.hpp>
+#include <ftxui/component/mouse.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using namespace yac::app;
 using namespace yac::chat;
@@ -26,6 +34,83 @@ ChatEvent MakeToolStartedEvent(ChatMessageId id, std::string agent_id,
       .status = ChatMessageStatus::Active,
       .sub_agent_task = std::move(task),
   };
+}
+
+std::string RenderComponent(const ftxui::Component& component, int width = 100,
+                            int height = 40) {
+  auto screen = ftxui::Screen(width, height);
+  ftxui::Render(screen, component->Render());
+  return screen.ToString();
+}
+
+std::string StripAnsi(const std::string& value) {
+  static const std::regex ansi("\x1b\\[[^A-Za-z]*[A-Za-z]");
+  return std::regex_replace(value, ansi, "");
+}
+
+std::vector<std::string> Lines(const std::string& value) {
+  std::vector<std::string> lines;
+  size_t start = 0;
+  while (start <= value.size()) {
+    auto pos = value.find('\n', start);
+    if (pos == std::string::npos) {
+      pos = value.size();
+    }
+    lines.push_back(value.substr(start, pos - start));
+    if (pos == value.size()) {
+      break;
+    }
+    start = pos + 1;
+  }
+  return lines;
+}
+
+std::optional<std::pair<int, int>> FindTextPosition(const std::string& rendered,
+                                                    const std::string& needle) {
+  const auto lines = Lines(StripAnsi(rendered));
+  for (size_t y = 0; y < lines.size(); ++y) {
+    const auto x = lines[y].find(needle);
+    if (x != std::string::npos) {
+      return std::pair{static_cast<int>(x), static_cast<int>(y)};
+    }
+  }
+  return std::nullopt;
+}
+
+ftxui::Event MakeMouseLeftPress(int x, int y) {
+  ftxui::Mouse mouse;
+  mouse.button = ftxui::Mouse::Left;
+  mouse.motion = ftxui::Mouse::Pressed;
+  mouse.x = x;
+  mouse.y = y;
+  return ftxui::Event::Mouse("", mouse);
+}
+
+void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
+                           std::string agent_id) {
+  const auto task = "inspect workspace";
+  bridge.HandleEvent(ChatEvent{
+      .type = ChatEventType::SubAgentProgress,
+      .message_id = id,
+      .tool_call_id = "tool-1",
+      .tool_name = "list_dir",
+      .tool_call = ListDirCall{"src",
+                               {{"main.cpp", DirectoryEntryType::File, 10}},
+                               false,
+                               false,
+                               ""},
+      .status = ChatMessageStatus::Complete,
+      .sub_agent_id = std::move(agent_id),
+      .sub_agent_task = task,
+      .sub_agent_tool_count = 1,
+  });
+}
+
+void SeedSubAgentWithChildTool(ChatEventBridge& bridge, ChatMessageId id,
+                               const std::string& agent_id) {
+  const auto task = "inspect workspace";
+  bridge.HandleEvent(MakeToolStartedEvent(id, agent_id, task));
+  EmitSubAgentChildTool(bridge, id, agent_id);
 }
 
 }  // namespace
@@ -145,4 +230,64 @@ TEST_CASE("Bridge handles SubAgentProgress -- updates card with tool count") {
   const auto& sub = std::get<SubAgentCall>(*call);
   REQUIRE(sub.status == SubAgentStatus::Running);
   REQUIRE(sub.tool_count == 3);
+}
+
+TEST_CASE("Sub-agent tool calls render inside the sub-agent dropdown") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  SeedSubAgentWithChildTool(bridge, 55, "agent-6");
+
+  auto component = ui.Build();
+  auto collapsed = RenderComponent(component);
+  REQUIRE(ui.GetMessages().size() == 1);
+  REQUIRE_THAT(collapsed,
+               !Catch::Matchers::ContainsSubstring("Sub-agent tool calls"));
+
+  ChatUI expanded_ui;
+  ChatEventBridge expanded_bridge(expanded_ui);
+  expanded_bridge.HandleEvent(
+      MakeToolStartedEvent(55, "agent-6", "inspect workspace"));
+  expanded_ui.SetToolExpanded(0, true);
+  EmitSubAgentChildTool(expanded_bridge, 55, "agent-6");
+
+  auto expanded_component = expanded_ui.Build();
+  auto expanded = RenderComponent(expanded_component);
+  REQUIRE_THAT(expanded,
+               Catch::Matchers::ContainsSubstring("Sub-agent tool calls (1)"));
+  REQUIRE_THAT(expanded, Catch::Matchers::ContainsSubstring("List directory"));
+  REQUIRE_THAT(expanded, !Catch::Matchers::ContainsSubstring("main.cpp"));
+}
+
+TEST_CASE("Completed sub-agent and nested tool boxes remain mouse toggleable") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(MakeToolStartedEvent(56, "agent-7", "inspect workspace"));
+  ui.SetToolExpanded(0, true);
+  EmitSubAgentChildTool(bridge, 56, "agent-7");
+
+  auto component = ui.Build();
+  auto output = RenderComponent(component);
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Sub-agent tool calls (1)"));
+  auto nested_tool_position = FindTextPosition(output, "List directory");
+  REQUIRE(nested_tool_position.has_value());
+  REQUIRE(component->OnEvent(MakeMouseLeftPress(nested_tool_position->first,
+                                                nested_tool_position->second)));
+
+  bridge.HandleEvent(ChatEvent{
+      .type = ChatEventType::SubAgentCompleted,
+      .message_id = 56,
+      .sub_agent_id = "agent-7",
+      .sub_agent_task = "inspect workspace",
+      .sub_agent_result = "done",
+      .sub_agent_tool_count = 1,
+  });
+
+  output = RenderComponent(component);
+  auto sub_agent_position = FindTextPosition(output, "[>] Sub-agent");
+  REQUIRE(sub_agent_position.has_value());
+  REQUIRE(component->OnEvent(MakeMouseLeftPress(sub_agent_position->first,
+                                                sub_agent_position->second)));
 }

@@ -160,6 +160,12 @@ void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
       break;
 
     case ChatEventType::SubAgentProgress: {
+      if (event.tool_call.has_value()) {
+        chat_ui.UpdateSubAgentToolCallMessage(
+            event.message_id, std::move(event.tool_call_id),
+            std::move(event.tool_name), std::move(*event.tool_call),
+            event.status);
+      }
       tool_data::SubAgentCall block{
           .task = event.sub_agent_task,
           .status = tool_data::SubAgentStatus::Running,

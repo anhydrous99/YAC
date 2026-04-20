@@ -31,6 +31,9 @@ class ChatEventSink {
   virtual void UpdateToolCallMessage(MessageId id,
                                      ::yac::tool_call::ToolCallBlock block,
                                      MessageStatus status) = 0;
+  virtual void UpdateSubAgentToolCallMessage(
+      MessageId parent_id, std::string tool_call_id, std::string tool_name,
+      ::yac::tool_call::ToolCallBlock block, MessageStatus status) = 0;
   virtual void ShowToolApproval(
       std::string approval_id, std::string tool_name, std::string prompt,
       std::optional<::yac::tool_call::ToolCallBlock> preview) = 0;
