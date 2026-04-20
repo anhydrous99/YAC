@@ -192,6 +192,9 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
       RequestSessionStop(session, false);
     }
 
+    // Preserve the sub-agent's local tool message id before rewriting the
+    // event to target the parent card; fallback tool_call_id depends on it.
+    const auto child_message_id = event.message_id;
     event.message_id = session.card_message_id;
     event.sub_agent_id = session.agent_id;
     event.sub_agent_task = session.task;
@@ -205,6 +208,10 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
 
     if (event.type == ChatEventType::ToolCallStarted ||
         event.type == ChatEventType::ToolCallDone) {
+      if (event.tool_call_id.empty()) {
+        event.tool_call_id =
+            session.agent_id + ":" + std::to_string(child_message_id);
+      }
       if (event.type == ChatEventType::ToolCallDone) {
         event.sub_agent_tool_count =
             session.completed_tool_count.fetch_add(1) + 1;

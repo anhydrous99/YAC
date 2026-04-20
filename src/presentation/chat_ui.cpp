@@ -392,6 +392,19 @@ void ChatUI::UpdateToolCallMessage(MessageId id,
   // losing FTXUI focus on the card the user may have expanded.
 }
 
+void ChatUI::UpdateSubAgentToolCallMessage(
+    MessageId parent_id, std::string tool_call_id, std::string tool_name,
+    ::yac::tool_call::ToolCallBlock block, MessageStatus status) {
+  const bool inserted = session_.UpsertSubAgentToolCall(
+      parent_id, std::move(tool_call_id), std::move(tool_name),
+      std::move(block), status);
+  render_cache_.ResetContent(parent_id);
+  scroll_state_.OnMessagesChanged();
+  if (inserted) {
+    RebuildMessageComponents();
+  }
+}
+
 void ChatUI::ShowToolApproval(
     std::string approval_id, std::string tool_name, std::string prompt,
     std::optional<::yac::tool_call::ToolCallBlock> preview) {
@@ -609,6 +622,155 @@ ftxui::Component ChatUI::BuildMessageList() {
   });
 }
 
+ftxui::Element ChatUI::BuildToolPeek(
+    const ::yac::tool_call::ToolCallBlock* block, MessageStatus status) const {
+  if (block == nullptr || status != MessageStatus::Active) {
+    return {};
+  }
+
+  if (const auto* write = std::get_if<::yac::tool_call::FileWriteCall>(block)) {
+    return tool_call::ToolCallRenderer::BuildWritePeek(
+        *write, RenderContext{.terminal_width = last_terminal_width_,
+                              .thinking_frame = thinking_animation_.Frame()});
+  }
+
+  return {};
+}
+
+ftxui::Component ChatUI::BuildSubAgentToolCollapsible(MessageId parent_id,
+                                                      size_t child_index) {
+  bool* expanded = session_.SubAgentToolExpandedState(parent_id, child_index);
+  if (expanded == nullptr) {
+    return ftxui::Renderer([] { return ftxui::text("Tool call unavailable"); });
+  }
+
+  auto content = ftxui::Renderer([this, parent_id, child_index] {
+    const auto* child = session_.SubAgentToolCall(parent_id, child_index);
+    if (child == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    return tool_call::ToolCallRenderer::Render(
+        child->block,
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
+
+  auto label_provider = [this, parent_id, child_index]() -> std::string {
+    const auto* child = session_.SubAgentToolCall(parent_id, child_index);
+    if (child == nullptr) {
+      return {};
+    }
+    return tool_call::ToolCallRenderer::BuildLabel(child->block);
+  };
+  auto summary_provider = [this, parent_id, child_index]() -> std::string {
+    const auto* child = session_.SubAgentToolCall(parent_id, child_index);
+    if (child == nullptr) {
+      return {};
+    }
+    if (child->status == MessageStatus::Active &&
+        std::get_if<::yac::tool_call::FileWriteCall>(&child->block) !=
+            nullptr) {
+      return "writing\xe2\x80\xa6";
+    }
+    return tool_call::ToolCallRenderer::BuildSummary(child->block);
+  };
+
+  const auto* child = session_.SubAgentToolCall(parent_id, child_index);
+  ftxui::Element peek = child == nullptr
+                            ? ftxui::Element{}
+                            : BuildToolPeek(&child->block, child->status);
+  return Collapsible(std::move(label_provider), std::move(content), expanded,
+                     std::move(summary_provider), std::move(peek));
+}
+
+ftxui::Component ChatUI::BuildToolContentComponent(size_t message_index) {
+  const auto& messages = session_.Messages();
+  if (message_index >= messages.size()) {
+    return ftxui::Renderer([] { return ftxui::text("Tool call unavailable"); });
+  }
+
+  const MessageId parent_id = messages[message_index].id;
+  const bool is_sub_agent = messages[message_index].ToolCall() != nullptr &&
+                            std::get_if<::yac::tool_call::SubAgentCall>(
+                                messages[message_index].ToolCall()) != nullptr;
+
+  auto tool_renderer = ftxui::Renderer([this, message_index] {
+    const auto& msgs = session_.Messages();
+    if (message_index >= msgs.size()) {
+      return ftxui::text("Tool call unavailable");
+    }
+    const auto* tool_call = msgs[message_index].ToolCall();
+    if (tool_call == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    return tool_call::ToolCallRenderer::Render(
+        *tool_call,
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
+
+  if (!is_sub_agent) {
+    return tool_renderer;
+  }
+
+  ftxui::Components rows{tool_renderer};
+  const auto& child_tools = session_.SubAgentToolCalls(parent_id);
+  if (!child_tools.empty()) {
+    rows.push_back(ftxui::Renderer([] { return ftxui::text(""); }));
+    rows.push_back(ftxui::Renderer([this, parent_id] {
+      const auto count = session_.SubAgentToolCalls(parent_id).size();
+      return ftxui::text("Sub-agent tool calls (" + std::to_string(count) +
+                         ")") |
+             ftxui::color(k_theme.chrome.dim_text) | ftxui::dim;
+    }));
+    for (size_t child_index = 0; child_index < child_tools.size();
+         ++child_index) {
+      rows.push_back(BuildSubAgentToolCollapsible(parent_id, child_index));
+    }
+  }
+
+  return ftxui::Container::Vertical(std::move(rows));
+}
+
+ftxui::Component ChatUI::BuildToolCollapsible(size_t message_index,
+                                              size_t tool_state_index) {
+  auto content = BuildToolContentComponent(message_index);
+  auto label_provider = [this, message_index]() -> std::string {
+    const auto& msgs = session_.Messages();
+    if (message_index >= msgs.size()) {
+      return {};
+    }
+    return msgs[message_index].DisplayLabel();
+  };
+  auto summary_provider = [this, message_index]() -> std::string {
+    const auto& msgs = session_.Messages();
+    if (message_index >= msgs.size()) {
+      return {};
+    }
+    const auto* block_ptr = msgs[message_index].ToolCall();
+    if (block_ptr == nullptr) {
+      return {};
+    }
+    if (msgs[message_index].status == MessageStatus::Active &&
+        std::get_if<::yac::tool_call::FileWriteCall>(block_ptr) != nullptr) {
+      return "writing\xe2\x80\xa6";
+    }
+    return ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
+        *block_ptr);
+  };
+
+  const auto& messages = session_.Messages();
+  const auto* block = message_index < messages.size()
+                          ? messages[message_index].ToolCall()
+                          : nullptr;
+  const auto status = message_index < messages.size()
+                          ? messages[message_index].status
+                          : MessageStatus::Complete;
+  return Collapsible(std::move(label_provider), std::move(content),
+                     session_.ToolExpandedState(tool_state_index),
+                     std::move(summary_provider), BuildToolPeek(block, status));
+}
+
 ftxui::Element ChatUI::RenderMessages() const {
   if (session_.Empty() && !is_typing_) {
     return RenderEmptyState();
@@ -682,6 +844,12 @@ ftxui::Element ChatUI::RenderEmptyState() const {
          ftxui::flex;
 }
 
+void ChatUI::RebuildMessageComponents() {
+  message_components_.clear();
+  messages_synced_ = 0;
+  SyncMessageComponents();
+}
+
 void ChatUI::SyncMessageComponents() {
   int current_width = ftxui::Terminal::Size().dimx;
   if (current_width != last_terminal_width_) {
@@ -752,60 +920,12 @@ void ChatUI::SyncMessageComponents() {
               ti++;
             }
           }
-          auto t_idx = t;
-          auto tool_content = ftxui::Renderer([this, t_idx] {
-            const auto* tool_call = session_.Messages()[t_idx].ToolCall();
-            if (tool_call == nullptr) {
-              return ftxui::text("Tool call unavailable");
-            }
-            return tool_call::ToolCallRenderer::Render(
-                *tool_call,
-                RenderContext{.terminal_width = last_terminal_width_,
-                              .thinking_frame = thinking_animation_.Frame()});
-          });
           const auto* block = messages[t].ToolCall();
           tool_blocks.push_back(block);
           if (messages[t].status == MessageStatus::Active) {
             any_tool_active = true;
           }
-          ftxui::Element peek;
-          if (block != nullptr && messages[t].status == MessageStatus::Active) {
-            if (const auto* write =
-                    std::get_if<::yac::tool_call::FileWriteCall>(block)) {
-              peek = tool_call::ToolCallRenderer::BuildWritePeek(
-                  *write,
-                  RenderContext{.terminal_width = last_terminal_width_,
-                                .thinking_frame = thinking_animation_.Frame()});
-            }
-          }
-          auto label_provider = [this, t_idx]() -> std::string {
-            const auto& msgs = session_.Messages();
-            if (t_idx >= msgs.size()) {
-              return {};
-            }
-            return msgs[t_idx].DisplayLabel();
-          };
-          auto summary_provider = [this, t_idx]() -> std::string {
-            const auto& msgs = session_.Messages();
-            if (t_idx >= msgs.size()) {
-              return {};
-            }
-            const auto* block_ptr = msgs[t_idx].ToolCall();
-            if (block_ptr == nullptr) {
-              return {};
-            }
-            if (msgs[t_idx].status == MessageStatus::Active &&
-                std::get_if<::yac::tool_call::FileWriteCall>(block_ptr) !=
-                    nullptr) {
-              return "writing\xe2\x80\xa6";
-            }
-            return ::yac::presentation::tool_call::ToolCallRenderer::
-                BuildSummary(*block_ptr);
-          };
-          tool_children.push_back(
-              Collapsible(std::move(label_provider), std::move(tool_content),
-                          session_.ToolExpandedState(ti - 1),
-                          std::move(summary_provider), std::move(peek)));
+          tool_children.push_back(BuildToolCollapsible(t, ti - 1));
         }
 
         ftxui::Component tools_component;
@@ -871,55 +991,8 @@ void ChatUI::SyncMessageComponents() {
       }
 
       // Standalone tool message (no preceding agent) — render as before.
-      auto content = ftxui::Renderer([this, index] {
-        const auto* tool_call = session_.Messages()[index].ToolCall();
-        if (tool_call == nullptr) {
-          return ftxui::text("Tool call unavailable");
-        }
-        return tool_call::ToolCallRenderer::Render(
-            *tool_call,
-            RenderContext{.terminal_width = last_terminal_width_,
-                          .thinking_frame = thinking_animation_.Frame()});
-      });
-      const auto* block = messages[index].ToolCall();
-      ftxui::Element peek;
-      if (block != nullptr && messages[index].status == MessageStatus::Active) {
-        if (const auto* write =
-                std::get_if<::yac::tool_call::FileWriteCall>(block)) {
-          peek = tool_call::ToolCallRenderer::BuildWritePeek(
-              *write,
-              RenderContext{.terminal_width = last_terminal_width_,
-                            .thinking_frame = thinking_animation_.Frame()});
-        }
-      }
-      auto label_provider = [this, index]() -> std::string {
-        const auto& msgs = session_.Messages();
-        if (index >= msgs.size()) {
-          return {};
-        }
-        return msgs[index].DisplayLabel();
-      };
-      auto summary_provider = [this, index]() -> std::string {
-        const auto& msgs = session_.Messages();
-        if (index >= msgs.size()) {
-          return {};
-        }
-        const auto* block_ptr = msgs[index].ToolCall();
-        if (block_ptr == nullptr) {
-          return {};
-        }
-        if (msgs[index].status == MessageStatus::Active &&
-            std::get_if<::yac::tool_call::FileWriteCall>(block_ptr) !=
-                nullptr) {
-          return "writing\xe2\x80\xa6";
-        }
-        return ::yac::presentation::tool_call::ToolCallRenderer::BuildSummary(
-            *block_ptr);
-      };
       message_components_.push_back(
-          Collapsible(std::move(label_provider), std::move(content),
-                      session_.ToolExpandedState(current_tool_index - 1),
-                      std::move(summary_provider), std::move(peek)));
+          BuildToolCollapsible(index, current_tool_index - 1));
       messages_synced_++;
       continue;
     }

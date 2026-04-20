@@ -62,6 +62,11 @@ class ChatUI : public ChatEventSink {
   void UpdateToolCallMessage(MessageId id,
                              ::yac::tool_call::ToolCallBlock block,
                              MessageStatus status) override;
+  void UpdateSubAgentToolCallMessage(MessageId parent_id,
+                                     std::string tool_call_id,
+                                     std::string tool_name,
+                                     ::yac::tool_call::ToolCallBlock block,
+                                     MessageStatus status) override;
   void ShowToolApproval(std::string approval_id, std::string tool_name,
                         std::string prompt,
                         std::optional<::yac::tool_call::ToolCallBlock> preview =
@@ -94,8 +99,17 @@ class ChatUI : public ChatEventSink {
   void InsertNewline();
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
+  [[nodiscard]] ftxui::Component BuildToolContentComponent(
+      size_t message_index);
+  [[nodiscard]] ftxui::Component BuildToolCollapsible(size_t message_index,
+                                                      size_t tool_state_index);
+  [[nodiscard]] ftxui::Component BuildSubAgentToolCollapsible(
+      MessageId parent_id, size_t child_index);
+  [[nodiscard]] ftxui::Element BuildToolPeek(
+      const ::yac::tool_call::ToolCallBlock* block, MessageStatus status) const;
   [[nodiscard]] ftxui::Element RenderMessages() const;
   [[nodiscard]] ftxui::Element RenderEmptyState() const;
+  void RebuildMessageComponents();
   void SyncMessageComponents();
   [[nodiscard]] bool HasActiveAgentMessage() const;
   void SyncThinkingAnimation();
