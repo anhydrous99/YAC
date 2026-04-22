@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 
+#include "descriptor.hpp"
 #include "../theme.hpp"
 #include "../util/string_util.hpp"
 
@@ -90,18 +91,6 @@ void AddOmittedRows(ftxui::Elements& content, size_t total,
       theme.chrome.dim_text));
 }
 
-std::string TruncateString(const std::string& s, size_t max_len) {
-  if (s.size() <= max_len) {
-    return s;
-  }
-  return s.substr(0, max_len) + "...";
-}
-
-std::string Basename(const std::string& path) {
-  auto pos = path.find_last_of('/');
-  return pos == std::string::npos ? path : path.substr(pos + 1);
-}
-
 std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
   switch (type) {
     case tool_data::DirectoryEntryType::File:
@@ -146,44 +135,6 @@ ftxui::Color DiagnosticSeverityColor(tool_data::DiagnosticSeverity severity,
 ftxui::Element RenderError(const std::string& error,
                            const theme::Theme& theme) {
   return RenderWrappedLine("Error: " + error, theme.tool.edit_remove);
-}
-
-std::string VariantTag(const tool_data::ToolCallBlock& block) {
-  return std::visit(
-      [](const auto& call) -> std::string {
-        using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
-          return "bash";
-        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
-          return "edit";
-        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
-          return "read";
-        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
-          return "write";
-        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
-          return "list";
-        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
-          return "grep";
-        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
-          return "glob";
-        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
-          return "fetch";
-        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
-          return "search";
-        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall> ||
-                             std::is_same_v<T, tool_data::LspReferencesCall> ||
-                             std::is_same_v<T,
-                                            tool_data::LspGotoDefinitionCall> ||
-                             std::is_same_v<T, tool_data::LspRenameCall> ||
-                             std::is_same_v<T, tool_data::LspSymbolsCall>) {
-          return "lsp";
-        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
-          return "agent";
-        } else {
-          return "tool";
-        }
-      },
-      block);
 }
 
 }  // namespace
@@ -237,92 +188,7 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
 
 std::string ToolCallRenderer::BuildSummary(
     const tool_data::ToolCallBlock& block) {
-  return std::visit(
-      [](const auto& call) -> std::string {
-        using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
-          if (call.exit_code != 0) {
-            return "exit " + std::to_string(call.exit_code);
-          }
-          return "exit 0";
-        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
-          return std::to_string(call.diff.size()) + " lines";
-        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
-          return std::to_string(call.lines_loaded) + " lines";
-        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return "+" + std::to_string(call.lines_added) + " -" +
-                 std::to_string(call.lines_removed);
-        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.entries.size()) + " entries";
-        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
-          return std::to_string(call.match_count) + " matches";
-        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
-          return std::to_string(call.matched_files.size()) + " files";
-        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
-          return call.title.empty() ? std::string{"fetched"} : call.title;
-        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
-          return std::to_string(call.results.size()) + " results";
-        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.diagnostics.size()) + " diagnostics";
-        } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.references.size()) + " references";
-        } else if constexpr (std::is_same_v<T,
-                                            tool_data::LspGotoDefinitionCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.definitions.size()) + " definitions";
-        } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.changes_count) + " changes";
-        } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
-          if (call.is_error) {
-            return "failed";
-          }
-          return std::to_string(call.symbols.size()) + " symbols";
-        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
-          std::string status_str;
-          switch (call.status) {
-            case tool_data::SubAgentStatus::Running:
-              status_str = "running";
-              break;
-            case tool_data::SubAgentStatus::Complete:
-              status_str = "done";
-              break;
-            case tool_data::SubAgentStatus::Error:
-              status_str = "error";
-              break;
-            case tool_data::SubAgentStatus::Timeout:
-              status_str = "timeout";
-              break;
-            case tool_data::SubAgentStatus::Cancelled:
-              status_str = "cancelled";
-              break;
-            case tool_data::SubAgentStatus::Pending:
-              status_str = "pending";
-              break;
-          }
-          return "Sub-agent: " + TruncateString(call.task, 40) + " - " +
-                 status_str;
-        } else {
-          return "";
-        }
-      },
-      block);
+  return DescribeToolCall(block).summary;
 }
 
 std::string ToolCallRenderer::BuildGroupSummary(
@@ -341,7 +207,7 @@ std::string ToolCallRenderer::BuildGroupSummary(
     if (block == nullptr) {
       continue;
     }
-    auto tag = VariantTag(*block);
+    auto tag = DescribeToolCall(*block).tag;
     auto it = std::find_if(tallies.begin(), tallies.end(),
                            [&tag](const Tally& t) { return t.tag == tag; });
     if (it == tallies.end()) {
@@ -429,45 +295,7 @@ ftxui::Element ToolCallRenderer::BuildWritePeek(
 
 std::string ToolCallRenderer::BuildLabel(
     const tool_data::ToolCallBlock& block) {
-  return std::visit(
-      [](const auto& call) -> std::string {
-        using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
-          return "Run command";
-        } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
-          return "Edit " + TruncateString(Basename(call.filepath), 30);
-        } else if constexpr (std::is_same_v<T, tool_data::FileReadCall>) {
-          return "Read " + TruncateString(Basename(call.filepath), 30);
-        } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
-          return "Write " + TruncateString(Basename(call.filepath), 30);
-        } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
-          return "List directory";
-        } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
-          return "Search for \"" + TruncateString(call.pattern, 20) + "\"";
-        } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
-          return "Find files";
-        } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
-          return "Fetch URL";
-        } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
-          return "Web search";
-        } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
-          return "Get diagnostics";
-        } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
-          return "Find references";
-        } else if constexpr (std::is_same_v<T,
-                                            tool_data::LspGotoDefinitionCall>) {
-          return "Go to definition";
-        } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
-          return "Rename symbol";
-        } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
-          return "List symbols";
-        } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
-          return "[>] Sub-agent";
-        } else {
-          return "Tool";
-        }
-      },
-      block);
+  return DescribeToolCall(block).label;
 }
 
 ftxui::Element ToolCallRenderer::RenderBash(const tool_data::BashCall& call,

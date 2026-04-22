@@ -55,6 +55,7 @@ add_library(yac_presentation STATIC
   src/presentation/chat_ui.cpp
   src/presentation/chat_ui_input_controller.cpp
   src/presentation/chat_ui_overlay_state.cpp
+  src/presentation/chat_ui_render_plan.cpp
   src/presentation/chat_ui_scroll_state.cpp
   src/presentation/chat_ui_thinking_animation.cpp
   src/presentation/composer_state.cpp
@@ -64,12 +65,15 @@ add_library(yac_presentation STATIC
   src/presentation/message.cpp
   src/presentation/message_render_cache.cpp
   src/presentation/message_renderer.cpp
+  src/presentation/markdown/block_parser.cpp
+  src/presentation/markdown/inline_tokenizer.cpp
   src/presentation/markdown/parser.cpp
   src/presentation/markdown/renderer.cpp
   src/presentation/slash_command_menu.cpp
   src/presentation/slash_command_registry.cpp
   src/presentation/syntax/highlighter.cpp
   src/presentation/theme.cpp
+  src/presentation/tool_call/descriptor.cpp
   src/presentation/tool_call/renderer.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
@@ -85,7 +89,9 @@ add_library(yac_service STATIC
   src/chat/config_paths.cpp
   src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp
+  src/chat/sub_agent_event_adapter.cpp
   src/provider/openai_chat_provider.cpp
+  src/provider/openai_chat_protocol.cpp
   src/provider/provider_registry.cpp
   src/tool_call/executor_arguments.cpp
   src/tool_call/executor_catalog.cpp

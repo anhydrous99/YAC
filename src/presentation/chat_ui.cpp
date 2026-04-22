@@ -468,8 +468,8 @@ void ChatUI::SetToolExpanded(size_t index, bool expanded) {
 void ChatUI::ClearMessages() {
   session_.ClearMessages();
   render_cache_.Clear();
+  render_plan_.clear();
   message_components_.clear();
-  messages_synced_ = 0;
   scroll_state_.Clear();
   SyncThinkingAnimation();
 }
@@ -772,6 +772,81 @@ ftxui::Component ChatUI::BuildToolCollapsible(size_t message_index,
                      std::move(summary_provider), BuildToolPeek(block, status));
 }
 
+ftxui::Component ChatUI::BuildStandaloneMessageComponent(size_t message_index) {
+  return ftxui::Renderer([this, message_index] {
+    const auto& message = session_.Messages()[message_index];
+    return MessageRenderer::Render(
+        message, render_cache_.For(message.id),
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
+}
+
+ftxui::Component ChatUI::BuildAgentGroupComponent(const MessageRenderItem& item) {
+  const size_t agent_index = item.message_index;
+  auto agent_renderer = ftxui::Renderer([this, agent_index] {
+    const auto& agent_message = session_.Messages()[agent_index];
+    return MessageRenderer::RenderAgentMessageContent(
+        agent_message, render_cache_.For(agent_message.id),
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
+
+  ftxui::Components tool_children;
+  tool_children.reserve(item.tools.size());
+  for (const auto& tool : item.tools) {
+    tool_children.push_back(
+        BuildToolCollapsible(tool.message_index, tool.tool_state_index));
+  }
+
+  ftxui::Component tools_component;
+  if (tool_children.size() >= kToolGroupThreshold) {
+    auto tools_stack = ftxui::Container::Vertical(tool_children);
+    const auto child_count = item.tools.size();
+    const auto group_ordinal = item.group_ordinal;
+    const auto any_tool_active = item.any_tool_active;
+    const auto tool_refs = item.tools;
+    auto label_provider = [child_count]() -> std::string {
+      return std::string{"Tool calls ("} + std::to_string(child_count) + ")";
+    };
+    auto summary_provider = [this, tool_refs]() -> std::string {
+      std::vector<const ::yac::tool_call::ToolCallBlock*> blocks;
+      blocks.reserve(tool_refs.size());
+      const auto& messages = session_.Messages();
+      for (const auto& tool : tool_refs) {
+        if (tool.message_index >= messages.size()) {
+          continue;
+        }
+        if (const auto* block = messages[tool.message_index].ToolCall()) {
+          blocks.push_back(block);
+        }
+      }
+      return ::yac::presentation::tool_call::ToolCallRenderer::BuildGroupSummary(
+          blocks);
+    };
+    tools_component = Collapsible(
+        std::move(label_provider), tools_stack,
+        session_.GroupExpandedState(group_ordinal, any_tool_active),
+        std::move(summary_provider), ftxui::Element{});
+  } else {
+    tools_component = ftxui::Container::Vertical(tool_children);
+  }
+
+  ftxui::Components group_children{std::move(agent_renderer),
+                                   std::move(tools_component)};
+  auto group_container = ftxui::Container::Vertical(group_children);
+  return ftxui::Renderer(group_container, [this, group_container] {
+    auto context = RenderContext{.terminal_width = last_terminal_width_,
+                                 .thinking_frame = thinking_animation_.Frame()};
+    const auto& theme_ref = context.Colors();
+    auto inner = group_container->Render();
+    auto styled_card =
+        MessageRenderer::CardSurface(std::move(inner), theme_ref.cards.agent_bg,
+                                     context);
+    return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
+  });
+}
+
 ftxui::Element ChatUI::RenderMessages() const {
   if (session_.Empty() && !is_typing_) {
     return RenderEmptyState();
@@ -846,8 +921,8 @@ ftxui::Element ChatUI::RenderEmptyState() const {
 }
 
 void ChatUI::RebuildMessageComponents() {
+  render_plan_.clear();
   message_components_.clear();
-  messages_synced_ = 0;
   SyncMessageComponents();
 }
 
@@ -862,151 +937,28 @@ void ChatUI::SyncMessageComponents() {
     last_terminal_width_ = current_width;
   }
 
-  const auto& messages = session_.Messages();
-  while (messages_synced_ < messages.size()) {
-    const auto index = messages_synced_;
-    const auto& msg = messages[index];
+  auto next_plan = BuildMessageRenderPlan(session_.Messages());
+  if (next_plan == render_plan_) {
+    return;
+  }
 
-    if (msg.sender == Sender::Tool) {
-      // Count tool index for expanded state tracking.
-      size_t current_tool_index = 0;
-      for (size_t i = 0; i <= index; ++i) {
-        if (messages[i].sender == Sender::Tool) {
-          current_tool_index = current_tool_index + 1;
-        }
-      }
-
-      // Check if the preceding message was an Agent — if so, we need to group
-      // this tool call into the agent's card.
-      bool has_preceding_agent =
-          index > 0 && messages[index - 1].sender != Sender::User;
-      // Walk back to find the agent that starts this group.
-      size_t group_start = index;
-      if (has_preceding_agent) {
-        // Find the agent message that starts this group by walking back past
-        // any preceding tool messages.
-        group_start = index - 1;
-        while (group_start > 0 &&
-               messages[group_start].sender == Sender::Tool) {
-          group_start--;
-        }
-        has_preceding_agent = messages[group_start].sender == Sender::Agent;
-      }
-
-      if (has_preceding_agent) {
-        // Pop the existing group/agent component — we'll rebuild it with the
-        // new tool message included.
-        message_components_.pop_back();
-
-        const size_t agent_index = group_start;
-
-        auto agent_renderer = ftxui::Renderer([this, agent_index] {
-          const auto& agent_msg = session_.Messages()[agent_index];
-          return MessageRenderer::RenderAgentMessageContent(
-              agent_msg, render_cache_.For(agent_msg.id),
-              RenderContext{.terminal_width = last_terminal_width_,
-                            .thinking_frame = thinking_animation_.Frame()});
-        });
-
-        ftxui::Components tool_children;
-        std::vector<const ::yac::tool_call::ToolCallBlock*> tool_blocks;
-        bool any_tool_active = false;
-        for (size_t t = agent_index + 1; t <= index; ++t) {
-          if (messages[t].sender != Sender::Tool) {
-            continue;
-          }
-          size_t ti = 0;
-          for (size_t i = 0; i <= t; ++i) {
-            if (messages[i].sender == Sender::Tool) {
-              ti++;
-            }
-          }
-          const auto* block = messages[t].ToolCall();
-          tool_blocks.push_back(block);
-          if (messages[t].status == MessageStatus::Active) {
-            any_tool_active = true;
-          }
-          tool_children.push_back(BuildToolCollapsible(t, ti - 1));
-        }
-
-        ftxui::Component tools_component;
-        if (tool_children.size() >= kToolGroupThreshold) {
-          auto tools_stack = ftxui::Container::Vertical(tool_children);
-          size_t group_ordinal = 0;
-          for (size_t i = 0; i <= agent_index; ++i) {
-            if (messages[i].sender == Sender::Agent) {
-              group_ordinal++;
-            }
-          }
-          group_ordinal = group_ordinal > 0 ? group_ordinal - 1 : 0;
-          const size_t child_count = tool_children.size();
-          const size_t agent_idx = agent_index;
-          const size_t end_idx = index;
-          auto label_provider = [child_count]() -> std::string {
-            return std::string{"Tool calls ("} + std::to_string(child_count) +
-                   ")";
-          };
-          auto summary_provider = [this, agent_idx, end_idx]() -> std::string {
-            const auto& msgs = session_.Messages();
-            std::vector<const ::yac::tool_call::ToolCallBlock*> blocks;
-            for (size_t t = agent_idx + 1; t <= end_idx && t < msgs.size();
-                 ++t) {
-              if (msgs[t].sender != Sender::Tool) {
-                continue;
-              }
-              const auto* b = msgs[t].ToolCall();
-              if (b != nullptr) {
-                blocks.push_back(b);
-              }
-            }
-            return ::yac::presentation::tool_call::ToolCallRenderer::
-                BuildGroupSummary(blocks);
-          };
-          bool* group_expanded =
-              session_.GroupExpandedState(group_ordinal, any_tool_active);
-          tools_component = Collapsible(
-              std::move(label_provider), tools_stack, group_expanded,
-              std::move(summary_provider), ftxui::Element{});
-        } else {
-          tools_component = ftxui::Container::Vertical(tool_children);
-        }
-
-        ftxui::Components group_children{std::move(agent_renderer),
-                                         std::move(tools_component)};
-        auto group_container = ftxui::Container::Vertical(group_children);
+  render_plan_ = std::move(next_plan);
+  message_components_.clear();
+  message_components_.reserve(render_plan_.size());
+  for (const auto& item : render_plan_) {
+    switch (item.kind) {
+      case MessageRenderItem::Kind::StandaloneMessage:
         message_components_.push_back(
-            ftxui::Renderer(group_container, [this, group_container] {
-              auto ctx =
-                  RenderContext{.terminal_width = last_terminal_width_,
-                                .thinking_frame = thinking_animation_.Frame()};
-              const auto& theme_ref = ctx.Colors();
-              auto inner = group_container->Render();
-              auto styled_card = MessageRenderer::CardSurface(
-                  std::move(inner), theme_ref.cards.agent_bg, ctx);
-              return ftxui::hbox(
-                  {styled_card | ftxui::xflex_shrink, ftxui::filler()});
-            }));
-
-        messages_synced_++;
-        continue;
-      }
-
-      // Standalone tool message (no preceding agent) — render as before.
-      message_components_.push_back(
-          BuildToolCollapsible(index, current_tool_index - 1));
-      messages_synced_++;
-      continue;
+            BuildStandaloneMessageComponent(item.message_index));
+        break;
+      case MessageRenderItem::Kind::StandaloneTool:
+        message_components_.push_back(
+            BuildToolCollapsible(item.message_index, item.tool_state_index));
+        break;
+      case MessageRenderItem::Kind::AgentGroup:
+        message_components_.push_back(BuildAgentGroupComponent(item));
+        break;
     }
-
-    // Non-tool message (User or Agent) — render with full CardSurface.
-    message_components_.push_back(ftxui::Renderer([this, index] {
-      const auto& message = session_.Messages()[index];
-      return MessageRenderer::Render(
-          message, render_cache_.For(message.id),
-          RenderContext{.terminal_width = last_terminal_width_,
-                        .thinking_frame = thinking_animation_.Frame()});
-    }));
-    messages_synced_++;
   }
 }
 

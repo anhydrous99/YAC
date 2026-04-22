@@ -4,6 +4,7 @@
 #include "chat_session.hpp"
 #include "chat_ui_input_controller.hpp"
 #include "chat_ui_overlay_state.hpp"
+#include "chat_ui_render_plan.hpp"
 #include "chat_ui_scroll_state.hpp"
 #include "chat_ui_thinking_animation.hpp"
 #include "command_palette.hpp"
@@ -99,6 +100,10 @@ class ChatUI : public ChatEventSink {
   void InsertNewline();
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
+  [[nodiscard]] ftxui::Component BuildStandaloneMessageComponent(
+      size_t message_index);
+  [[nodiscard]] ftxui::Component BuildAgentGroupComponent(
+      const MessageRenderItem& item);
   [[nodiscard]] ftxui::Component BuildToolContentComponent(
       size_t message_index);
   [[nodiscard]] ftxui::Component BuildToolCollapsible(size_t message_index,
@@ -116,10 +121,8 @@ class ChatUI : public ChatEventSink {
 
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;
+  std::vector<MessageRenderItem> render_plan_;
   std::vector<ftxui::Component> message_components_;
-  size_t messages_synced_ = 0;  // Tracks how many messages have been processed
-                                // into components (may differ from
-                                // message_components_.size() due to grouping).
   ComposerState composer_;
   ChatUiInputController input_controller_;
   ChatUiOverlayState overlay_state_;

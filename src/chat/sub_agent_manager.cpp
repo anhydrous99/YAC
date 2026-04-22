@@ -1,6 +1,7 @@
 #include "chat/sub_agent_manager.hpp"
 
 #include "chat/chat_service_prompt_processor.hpp"
+#include "chat/sub_agent_event_adapter.hpp"
 #include "chat/chat_service_tool_approval.hpp"
 
 #include <atomic>
@@ -193,49 +194,12 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
       RequestSessionStop(session, false);
     }
 
-    if (auto* approval = event.As<ToolApprovalRequestedEvent>()) {
-      approval->message_id = session.card_message_id;
-      approval->text = "[Sub-agent: " + TruncateWithEllipsis(session.task, 48) +
-                       "] " + approval->text;
-      parent_emit_(std::move(event));
-      return;
-    }
-
-    if (auto* started = event.As<ToolCallStartedEvent>()) {
-      auto tool_call_id =
-          started->tool_call_id.empty()
-              ? session.agent_id + ":" + std::to_string(started->message_id)
-              : std::move(started->tool_call_id);
-      parent_emit_(ChatEvent{SubAgentProgressEvent{
-          .message_id = session.card_message_id,
-          .sub_agent_id = session.agent_id,
-          .sub_agent_task = session.task,
-          .sub_agent_tool_count = session.completed_tool_count.load(),
-          .status = ChatMessageStatus::Active,
-          .child_tool =
-              SubAgentChildToolEvent{.tool_call_id = std::move(tool_call_id),
-                                     .tool_name = std::move(started->tool_name),
-                                     .tool_call = std::move(started->tool_call),
-                                     .status = started->status}}});
-      return;
-    }
-
-    if (auto* done = event.As<ToolCallDoneEvent>()) {
-      auto tool_call_id =
-          done->tool_call_id.empty()
-              ? session.agent_id + ":" + std::to_string(done->message_id)
-              : std::move(done->tool_call_id);
-      parent_emit_(ChatEvent{SubAgentProgressEvent{
-          .message_id = session.card_message_id,
-          .sub_agent_id = session.agent_id,
-          .sub_agent_task = session.task,
-          .sub_agent_tool_count = session.completed_tool_count.fetch_add(1) + 1,
-          .status = ChatMessageStatus::Active,
-          .child_tool =
-              SubAgentChildToolEvent{.tool_call_id = std::move(tool_call_id),
-                                     .tool_name = std::move(done->tool_name),
-                                     .tool_call = std::move(done->tool_call),
-                                     .status = done->status}}});
+    if (auto adapted = AdaptSubAgentPromptEvent(
+            SubAgentEventContext{.card_message_id = session.card_message_id,
+                                 .agent_id = session.agent_id,
+                                 .task = session.task},
+            std::move(event), session.completed_tool_count)) {
+      parent_emit_(std::move(*adapted));
     }
   };
 }
@@ -287,29 +251,35 @@ void SubAgentManager::EmitSessionCompleted(
           std::chrono::steady_clock::now() - session.started_at)
           .count());
   if (completion.type == ChatEventType::SubAgentCancelled) {
-    parent_emit_(
-        ChatEvent{SubAgentCancelledEvent{.message_id = session.card_message_id,
-                                         .sub_agent_id = session.agent_id,
-                                         .sub_agent_task = session.task}});
+    parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
+        .type = ChatEventType::SubAgentCancelled,
+        .message_id = session.card_message_id,
+        .sub_agent_id = session.agent_id,
+        .sub_agent_task = session.task,
+    }));
     return;
   }
   if (completion.type == ChatEventType::SubAgentError) {
-    parent_emit_(ChatEvent{
-        SubAgentErrorEvent{.message_id = session.card_message_id,
-                           .sub_agent_id = session.agent_id,
-                           .sub_agent_task = session.task,
-                           .sub_agent_result = completion.result,
-                           .sub_agent_tool_count = completion.tool_count,
-                           .sub_agent_elapsed_ms = elapsed_ms}});
+    parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
+        .type = ChatEventType::SubAgentError,
+        .message_id = session.card_message_id,
+        .sub_agent_id = session.agent_id,
+        .sub_agent_task = session.task,
+        .sub_agent_result = completion.result,
+        .sub_agent_tool_count = completion.tool_count,
+        .sub_agent_elapsed_ms = elapsed_ms,
+    }));
     return;
   }
-  parent_emit_(ChatEvent{
-      SubAgentCompletedEvent{.message_id = session.card_message_id,
-                             .sub_agent_id = session.agent_id,
-                             .sub_agent_task = session.task,
-                             .sub_agent_result = completion.result,
-                             .sub_agent_tool_count = completion.tool_count,
-                             .sub_agent_elapsed_ms = elapsed_ms}});
+  parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
+      .type = ChatEventType::SubAgentCompleted,
+      .message_id = session.card_message_id,
+      .sub_agent_id = session.agent_id,
+      .sub_agent_task = session.task,
+      .sub_agent_result = completion.result,
+      .sub_agent_tool_count = completion.tool_count,
+      .sub_agent_elapsed_ms = elapsed_ms,
+  }));
 }
 
 void SubAgentManager::DeliverBackgroundResult(
