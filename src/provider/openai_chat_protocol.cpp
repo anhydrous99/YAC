@@ -61,17 +61,17 @@ std::vector<chat::ToolCallRequest> PendingToolCalls(const StreamState& state) {
     if (call.id.empty() || call.name.empty()) {
       continue;
     }
-    calls.push_back(chat::ToolCallRequest{.id = call.id,
-                                          .name = call.name,
-                                          .arguments_json =
-                                              call.arguments_json});
+    calls.push_back(
+        chat::ToolCallRequest{.id = call.id,
+                              .name = call.name,
+                              .arguments_json = call.arguments_json});
   }
   return calls;
 }
 
-void AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
+int AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
   if (!tool_call.contains("index")) {
-    return;
+    return -1;
   }
 
   const auto index = tool_call["index"].get<int>();
@@ -80,7 +80,7 @@ void AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
     pending.id = tool_call["id"].get<std::string>();
   }
   if (!tool_call.contains("function")) {
-    return;
+    return index;
   }
 
   const auto& function = tool_call["function"];
@@ -90,14 +90,15 @@ void AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
   if (function.contains("arguments") && function["arguments"].is_string()) {
     pending.arguments_json += function["arguments"].get<std::string>();
   }
+  return index;
 }
 
 void DispatchSseData(const std::string& data, StreamState& state) {
   try {
     const auto json = Json::parse(data);
     if (json.contains("error")) {
-      (*state.sink)(chat::ChatEvent{
-          chat::ErrorEvent{.text = json["error"].dump()}});
+      (*state.sink)(
+          chat::ChatEvent{chat::ErrorEvent{.text = json["error"].dump()}});
       return;
     }
     if (json.contains("usage") && json["usage"].is_object()) {
@@ -119,9 +120,22 @@ void DispatchSseData(const std::string& data, StreamState& state) {
               chat::ChatEvent{chat::TextDeltaEvent{.text = std::move(text)}});
         }
       }
+
       if (delta.contains("tool_calls") && delta["tool_calls"].is_array()) {
         for (const auto& tool_call : delta["tool_calls"]) {
-          AccumulateToolCallDelta(tool_call, state);
+          const auto index = AccumulateToolCallDelta(tool_call, state);
+          if (index < 0) {
+            continue;
+          }
+          const auto& pending = state.pending_tool_calls[index];
+          if (pending.id.empty()) {
+            continue;
+          }
+          (*state.sink)(chat::ChatEvent{chat::ToolCallArgumentDeltaEvent{
+              .tool_call_id = pending.id,
+              .tool_name = pending.name,
+              .arguments_json = pending.arguments_json,
+          }});
         }
       }
     }
@@ -315,7 +329,8 @@ std::vector<chat::ToolCallRequest> ExtractBufferedToolCalls(
     return calls;
   }
   const auto& choice = response["choices"][0];
-  if (!choice.contains("message") || !choice["message"].contains("tool_calls")) {
+  if (!choice.contains("message") ||
+      !choice["message"].contains("tool_calls")) {
     return calls;
   }
   const auto& tool_calls = choice["message"]["tool_calls"];

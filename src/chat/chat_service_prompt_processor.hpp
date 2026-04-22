@@ -10,6 +10,7 @@
 #include <set>
 #include <stop_token>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace yac::chat::internal {
@@ -39,8 +40,10 @@ class ChatServicePromptProcessor {
  private:
   [[nodiscard]] ChatRequest BuildRoundRequest(
       const ChatServiceRequestBuilder& request_builder) const;
-  void RunToolRound(const std::vector<ToolCallRequest>& requested_tools,
-                    std::stop_token stop_token);
+  void RunToolRound(
+      const std::vector<ToolCallRequest>& requested_tools,
+      const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
+      std::stop_token stop_token);
   [[nodiscard]] static ::yac::tool_call::ToolExecutionResult
   MakeRejectedToolResult(const ::yac::tool_call::PreparedToolCall& prepared);
 

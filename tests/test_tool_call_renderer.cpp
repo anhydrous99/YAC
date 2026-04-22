@@ -100,7 +100,9 @@ TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders file write details") {
-  FileWriteCall call{"src/new.cpp", "int main() {}\n", "", 1, 0, false, ""};
+  FileWriteCall call{.filepath = "src/new.cpp",
+                     .content_preview = "int main() {}\n",
+                     .lines_added = 1};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -326,7 +328,7 @@ TEST_CASE(
   blocks.emplace_back(BashCall{"c", "", 0, false});
   blocks.emplace_back(FileReadCall{"r", 1, ""});
   blocks.emplace_back(FileEditCall{"e", {}});
-  blocks.emplace_back(FileWriteCall{"w", "", "", 0, 0, false, ""});
+  blocks.emplace_back(FileWriteCall{.filepath = "w"});
   blocks.emplace_back(GrepCall{"g", 0, {}});
   blocks.emplace_back(GlobCall{"*", {}});
   std::vector<const ToolCallBlock*> ptrs;
@@ -347,7 +349,10 @@ TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
   RenderAndCheck(BashCall{"pwd", "", 0, false}, 80, 8);
   RenderAndCheck(FileEditCall{"file.txt", {}}, 80, 8);
   RenderAndCheck(FileReadCall{"file.txt", 1, "line"}, 80, 8);
-  RenderAndCheck(FileWriteCall{"file.txt", "line", "", 1, 0, false, ""}, 80, 8);
+  RenderAndCheck(
+      FileWriteCall{
+          .filepath = "file.txt", .content_preview = "line", .lines_added = 1},
+      80, 8);
   RenderAndCheck(ListDirCall{"src", {}, false, false, ""}, 80, 8);
   RenderAndCheck(GrepCall{"pattern", 0, {}}, 80, 8);
   RenderAndCheck(GlobCall{"*.cpp", {}}, 80, 8);

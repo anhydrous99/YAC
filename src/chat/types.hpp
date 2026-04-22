@@ -50,6 +50,7 @@ enum class ChatEventType {
   ConversationCleared,
   ModelChanged,
   ToolCallRequested,
+  ToolCallArgumentDelta,
   ToolApprovalRequested,
   UsageReported,
   SubAgentProgress,
@@ -184,6 +185,16 @@ struct ToolCallRequestedEvent {
   std::vector<ToolCallRequest> tool_calls;
 };
 
+struct ToolCallArgumentDeltaEvent {
+  static constexpr ChatEventType kType = ChatEventType::ToolCallArgumentDelta;
+
+  ChatMessageId message_id = 0;
+  ChatMessageId card_message_id = 0;
+  std::string tool_call_id;
+  std::string tool_name;
+  std::string arguments_json;
+};
+
 struct ToolApprovalRequestedEvent {
   static constexpr ChatEventType kType = ChatEventType::ToolApprovalRequested;
 
@@ -260,8 +271,9 @@ struct ChatEvent {
       CancelledEvent, UserMessageQueuedEvent, UserMessageActiveEvent,
       MessageStatusChangedEvent, QueueDepthChangedEvent,
       ConversationClearedEvent, ModelChangedEvent, ToolCallRequestedEvent,
-      ToolApprovalRequestedEvent, UsageReportedEvent, SubAgentProgressEvent,
-      SubAgentCompletedEvent, SubAgentErrorEvent, SubAgentCancelledEvent>;
+      ToolCallArgumentDeltaEvent, ToolApprovalRequestedEvent,
+      UsageReportedEvent, SubAgentProgressEvent, SubAgentCompletedEvent,
+      SubAgentErrorEvent, SubAgentCancelledEvent>;
 
   ChatEvent() = default;
 

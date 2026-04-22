@@ -1,8 +1,8 @@
 #include "chat/sub_agent_manager.hpp"
 
 #include "chat/chat_service_prompt_processor.hpp"
-#include "chat/sub_agent_event_adapter.hpp"
 #include "chat/chat_service_tool_approval.hpp"
+#include "chat/sub_agent_event_adapter.hpp"
 
 #include <atomic>
 #include <chrono>

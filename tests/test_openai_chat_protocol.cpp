@@ -34,8 +34,7 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
   ProviderConfig config;
   config.options["include_stream_usage"] = "false";
 
-  const auto payload =
-      openai_protocol::BuildChatPayload(request, true, config);
+  const auto payload = openai_protocol::BuildChatPayload(request, true, config);
 
   REQUIRE(payload["model"].get<std::string>() == "gpt-4.1");
   REQUIRE(payload["stream"].get<bool>());
@@ -72,7 +71,8 @@ TEST_CASE("Buffered response helpers extract content, usage, and tool calls") {
   REQUIRE(calls[0].arguments_json == R"({"path":"README.md"})");
 }
 
-TEST_CASE("ConsumeSseChunk buffers partial lines and emits accumulated tool calls") {
+TEST_CASE(
+    "ConsumeSseChunk buffers partial lines and emits accumulated tool calls") {
   std::vector<ChatEvent> events;
   ChatEventSink sink = [&events](ChatEvent event) {
     events.push_back(std::move(event));
@@ -107,9 +107,18 @@ TEST_CASE("ConsumeSseChunk buffers partial lines and emits accumulated tool call
 )JSON",
       state);
 
-  REQUIRE(events.size() == 2);
-  REQUIRE(events[1].Type() == ChatEventType::ToolCallRequested);
-  const auto& requested = events[1].Get<ToolCallRequestedEvent>();
+  REQUIRE(events.size() == 4);
+  REQUIRE(events[1].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE(events[2].Type() == ChatEventType::ToolCallArgumentDelta);
+  const auto& first_delta = events[1].Get<ToolCallArgumentDeltaEvent>();
+  REQUIRE(first_delta.tool_call_id == "call-3");
+  REQUIRE(first_delta.tool_name == "list_dir");
+  REQUIRE(first_delta.arguments_json == R"({"path":")");
+  const auto& second_delta = events[2].Get<ToolCallArgumentDeltaEvent>();
+  REQUIRE(second_delta.arguments_json == R"({"path":"src"})");
+
+  REQUIRE(events[3].Type() == ChatEventType::ToolCallRequested);
+  const auto& requested = events[3].Get<ToolCallRequestedEvent>();
   REQUIRE(requested.tool_calls.size() == 1);
   REQUIRE(requested.tool_calls[0].id == "call-3");
   REQUIRE(requested.tool_calls[0].name == "list_dir");
@@ -119,4 +128,32 @@ TEST_CASE("ConsumeSseChunk buffers partial lines and emits accumulated tool call
   REQUIRE(state.pending_usage->prompt_tokens == 2);
   REQUIRE(state.pending_usage->completion_tokens == 3);
   REQUIRE(state.pending_usage->total_tokens == 5);
+}
+
+TEST_CASE(
+    "ConsumeSseChunk suppresses argument deltas before tool id is known") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file_write","arguments":"{\"filep"}}]}}]}
+)JSON",
+      state);
+  REQUIRE(events.empty());
+
+  openai_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-4","function":{"arguments":"ath\":\"foo.txt\",\"content\":\"hi\"}"}}]}}]}
+)JSON",
+      state);
+  REQUIRE(events.size() == 1);
+  REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
+  const auto& delta = events[0].Get<ToolCallArgumentDeltaEvent>();
+  REQUIRE(delta.tool_call_id == "call-4");
+  REQUIRE(delta.tool_name == "file_write");
+  REQUIRE(delta.arguments_json == R"({"filepath":"foo.txt","content":"hi"})");
 }

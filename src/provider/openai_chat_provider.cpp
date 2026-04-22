@@ -1,4 +1,5 @@
 #include "provider/openai_chat_provider.hpp"
+
 #include "provider/openai_chat_protocol.hpp"
 
 #include <cstdlib>
@@ -149,8 +150,8 @@ std::optional<chat::TokenUsage> OpenAiChatProvider::ParseUsageJson(
 void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
                                           ChatEventSink sink) {
   openai::OpenAI client(ResolveApiKey(), "", true, config_.base_url);
-  const auto response =
-      client.chat.create(openai_protocol::BuildChatPayload(request, false, config_));
+  const auto response = client.chat.create(
+      openai_protocol::BuildChatPayload(request, false, config_));
   const auto text = openai_protocol::ExtractBufferedText(response);
   if (!text.empty()) {
     sink(chat::ChatEvent{chat::TextDeltaEvent{
@@ -184,7 +185,8 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
   const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
 
-  auto payload = openai_protocol::BuildChatPayload(request, true, config_).dump();
+  auto payload =
+      openai_protocol::BuildChatPayload(request, true, config_).dump();
   openai_protocol::StreamState stream_state{.sink = &sink};
   ProgressState progress_state{.stop_token = &stop_token};
 

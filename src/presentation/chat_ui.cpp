@@ -782,7 +782,8 @@ ftxui::Component ChatUI::BuildStandaloneMessageComponent(size_t message_index) {
   });
 }
 
-ftxui::Component ChatUI::BuildAgentGroupComponent(const MessageRenderItem& item) {
+ftxui::Component ChatUI::BuildAgentGroupComponent(
+    const MessageRenderItem& item) {
   const size_t agent_index = item.message_index;
   auto agent_renderer = ftxui::Renderer([this, agent_index] {
     const auto& agent_message = session_.Messages()[agent_index];
@@ -821,13 +822,13 @@ ftxui::Component ChatUI::BuildAgentGroupComponent(const MessageRenderItem& item)
           blocks.push_back(block);
         }
       }
-      return ::yac::presentation::tool_call::ToolCallRenderer::BuildGroupSummary(
-          blocks);
+      return ::yac::presentation::tool_call::ToolCallRenderer::
+          BuildGroupSummary(blocks);
     };
-    tools_component = Collapsible(
-        std::move(label_provider), tools_stack,
-        session_.GroupExpandedState(group_ordinal, any_tool_active),
-        std::move(summary_provider), ftxui::Element{});
+    tools_component =
+        Collapsible(std::move(label_provider), tools_stack,
+                    session_.GroupExpandedState(group_ordinal, any_tool_active),
+                    std::move(summary_provider), ftxui::Element{});
   } else {
     tools_component = ftxui::Container::Vertical(tool_children);
   }
@@ -840,9 +841,8 @@ ftxui::Component ChatUI::BuildAgentGroupComponent(const MessageRenderItem& item)
                                  .thinking_frame = thinking_animation_.Frame()};
     const auto& theme_ref = context.Colors();
     auto inner = group_container->Render();
-    auto styled_card =
-        MessageRenderer::CardSurface(std::move(inner), theme_ref.cards.agent_bg,
-                                     context);
+    auto styled_card = MessageRenderer::CardSurface(
+        std::move(inner), theme_ref.cards.agent_bg, context);
     return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
   });
 }

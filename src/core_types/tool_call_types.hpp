@@ -100,6 +100,7 @@ struct FileWriteCall {
   int lines_added{};
   int lines_removed{};
   bool is_error{};
+  bool is_streaming{};
   std::string error;
 };
 

@@ -29,6 +29,7 @@ class ChatEventBridge {
   void Handle(chat::ConversationClearedEvent event);
   void Handle(chat::ModelChangedEvent event);
   void Handle(chat::ToolCallRequestedEvent event);
+  void Handle(chat::ToolCallArgumentDeltaEvent event);
   void Handle(chat::ToolApprovalRequestedEvent event);
   void Handle(chat::UsageReportedEvent event);
   void Handle(chat::SubAgentProgressEvent event);

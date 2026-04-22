@@ -54,7 +54,8 @@ std::vector<MessageRenderItem> BuildMessageRenderPlan(
     if (message.sender == Sender::Agent) {
       std::vector<ToolRenderRef> tools;
       size_t cursor = index + 1;
-      while (cursor < messages.size() && messages[cursor].sender == Sender::Tool) {
+      while (cursor < messages.size() &&
+             messages[cursor].sender == Sender::Tool) {
         tools.push_back(ToolRenderRef{
             .message_index = cursor,
             .tool_state_index = next_tool_state_index++,

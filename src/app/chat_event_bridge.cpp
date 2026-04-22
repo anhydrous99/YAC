@@ -1,9 +1,12 @@
 #include "app/chat_event_bridge.hpp"
 
 #include "app/model_context_windows.hpp"
+#include "chat/tool_call_argument_parser.hpp"
+#include "core_types/tool_call_types.hpp"
 #include "presentation/chat_ui_overlay_state.hpp"
 #include "presentation/util/terminal.hpp"
 
+#include <algorithm>
 #include <utility>
 #include <variant>
 
@@ -142,13 +145,57 @@ void ChatEventBridge::Handle(chat::QueueDepthChangedEvent event) {
 }
 
 void ChatEventBridge::Handle(chat::ToolCallStartedEvent event) {
-  chat_ui_.get().AddToolCallMessageWithId(
-      event.message_id, std::move(event.tool_call), event.status);
+  auto& chat_ui = chat_ui_.get();
+  if (chat_ui.HasMessage(event.message_id)) {
+    chat_ui.UpdateToolCallMessage(event.message_id, std::move(event.tool_call),
+                                  event.status);
+  } else {
+    chat_ui.AddToolCallMessageWithId(event.message_id,
+                                     std::move(event.tool_call), event.status);
+  }
 }
 
 void ChatEventBridge::Handle(chat::ToolCallDoneEvent event) {
   chat_ui_.get().UpdateToolCallMessage(
       event.message_id, std::move(event.tool_call), event.status);
+}
+
+void ChatEventBridge::Handle(chat::ToolCallArgumentDeltaEvent event) {
+  namespace tool_data = ::yac::tool_call;
+
+  if (event.card_message_id == 0 || event.tool_call_id.empty()) {
+    return;
+  }
+  if (!event.tool_name.empty() &&
+      event.tool_name != tool_data::kFileWriteToolName) {
+    return;
+  }
+
+  const auto filepath =
+      chat::ExtractStringFieldPartial(event.arguments_json, "filepath")
+          .value_or(std::string{});
+  const auto content =
+      chat::ExtractStringFieldPartial(event.arguments_json, "content")
+          .value_or(std::string{});
+  const auto line_count =
+      static_cast<int>(std::count(content.begin(), content.end(), '\n') +
+                       (content.empty() ? 0 : 1));
+
+  tool_data::FileWriteCall block{
+      .filepath = filepath,
+      .content_preview = content,
+      .lines_added = line_count,
+      .is_streaming = true,
+  };
+
+  auto& chat_ui = chat_ui_.get();
+  if (chat_ui.HasMessage(event.card_message_id)) {
+    chat_ui.UpdateToolCallMessage(event.card_message_id, std::move(block),
+                                  yac::presentation::MessageStatus::Active);
+  } else {
+    chat_ui.AddToolCallMessageWithId(event.card_message_id, std::move(block),
+                                     yac::presentation::MessageStatus::Active);
+  }
 }
 
 void ChatEventBridge::Handle(chat::ToolApprovalRequestedEvent event) {

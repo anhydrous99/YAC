@@ -39,13 +39,11 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
         .sub_agent_task = context.task,
         .sub_agent_tool_count = completed_tool_count.load(),
         .status = ChatMessageStatus::Active,
-        .child_tool = SubAgentChildToolEvent{.tool_call_id =
-                                                 std::move(tool_call_id),
-                                             .tool_name =
-                                                 std::move(started->tool_name),
-                                             .tool_call =
-                                                 std::move(started->tool_call),
-                                             .status = started->status}}};
+        .child_tool =
+            SubAgentChildToolEvent{.tool_call_id = std::move(tool_call_id),
+                                   .tool_name = std::move(started->tool_name),
+                                   .tool_call = std::move(started->tool_call),
+                                   .status = started->status}}};
   }
 
   if (auto* done = event.As<ToolCallDoneEvent>()) {
@@ -59,13 +57,11 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
         .sub_agent_task = context.task,
         .sub_agent_tool_count = completed_tool_count.fetch_add(1) + 1,
         .status = ChatMessageStatus::Active,
-        .child_tool = SubAgentChildToolEvent{.tool_call_id =
-                                                 std::move(tool_call_id),
-                                             .tool_name =
-                                                 std::move(done->tool_name),
-                                             .tool_call =
-                                                 std::move(done->tool_call),
-                                             .status = done->status}}};
+        .child_tool =
+            SubAgentChildToolEvent{.tool_call_id = std::move(tool_call_id),
+                                   .tool_name = std::move(done->tool_name),
+                                   .tool_call = std::move(done->tool_call),
+                                   .status = done->status}}};
   }
 
   return std::nullopt;
@@ -74,10 +70,10 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
 ChatEvent MakeSubAgentCompletionEvent(const SubAgentCompletionEventData& data) {
   switch (data.type) {
     case ChatEventType::SubAgentCancelled:
-      return ChatEvent{SubAgentCancelledEvent{
-          .message_id = data.message_id,
-          .sub_agent_id = data.sub_agent_id,
-          .sub_agent_task = data.sub_agent_task}};
+      return ChatEvent{
+          SubAgentCancelledEvent{.message_id = data.message_id,
+                                 .sub_agent_id = data.sub_agent_id,
+                                 .sub_agent_task = data.sub_agent_task}};
     case ChatEventType::SubAgentError:
       return ChatEvent{SubAgentErrorEvent{
           .message_id = data.message_id,

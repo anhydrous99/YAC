@@ -263,12 +263,11 @@ size_t TryParseParagraph(const std::vector<std::string>& lines, size_t start,
     }
 
     const auto& raw = lines[index];
-    const bool ends_with_two_spaces =
-        raw.size() >= 2 && raw[raw.size() - 1] == ' ' &&
-        raw[raw.size() - 2] == ' ';
+    const bool ends_with_two_spaces = raw.size() >= 2 &&
+                                      raw[raw.size() - 1] == ' ' &&
+                                      raw[raw.size() - 2] == ' ';
     std::string content = Trim(raw);
-    const bool ends_with_backslash =
-        !content.empty() && content.back() == '\\';
+    const bool ends_with_backslash = !content.empty() && content.back() == '\\';
     if (ends_with_backslash) {
       content.pop_back();
     }
@@ -308,9 +307,9 @@ std::optional<Heading> TryParseHeading(const std::string& line) {
   return heading;
 }
 
-std::optional<CodeBlock> TryParseCodeBlock(const std::vector<std::string>& lines,
-                                           size_t& index,
-                                           const ParseOptions& opts) {
+std::optional<CodeBlock> TryParseCodeBlock(
+    const std::vector<std::string>& lines, size_t& index,
+    const ParseOptions& opts) {
   if (index >= lines.size()) {
     return std::nullopt;
   }
@@ -377,8 +376,7 @@ std::optional<Blockquote> TryParseBlockquote(
 }
 
 std::optional<BlockNode> TryParseList(const std::vector<std::string>& lines,
-                                      size_t& index,
-                                      const ParseOptions& opts) {
+                                      size_t& index, const ParseOptions& opts) {
   if (index >= lines.size()) {
     return std::nullopt;
   }

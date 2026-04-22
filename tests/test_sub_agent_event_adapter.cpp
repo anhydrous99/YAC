@@ -9,7 +9,8 @@
 using namespace yac::chat;
 using namespace yac::tool_call;
 
-TEST_CASE("AdaptSubAgentPromptEvent rewrites approval prompts for the parent card") {
+TEST_CASE(
+    "AdaptSubAgentPromptEvent rewrites approval prompts for the parent card") {
   const SubAgentEventContext context{
       .card_message_id = 99,
       .agent_id = "agent-1",
@@ -38,7 +39,8 @@ TEST_CASE("AdaptSubAgentPromptEvent rewrites approval prompts for the parent car
                                   "Allow reading the workspace?"));
 }
 
-TEST_CASE("AdaptSubAgentPromptEvent maps child tool lifecycle into progress events") {
+TEST_CASE(
+    "AdaptSubAgentPromptEvent maps child tool lifecycle into progress events") {
   const SubAgentEventContext context{
       .card_message_id = 50,
       .agent_id = "agent-2",
@@ -92,7 +94,8 @@ TEST_CASE("AdaptSubAgentPromptEvent maps child tool lifecycle into progress even
   }
 }
 
-TEST_CASE("MakeSubAgentCompletionEvent emits the requested terminal event type") {
+TEST_CASE(
+    "MakeSubAgentCompletionEvent emits the requested terminal event type") {
   SECTION("completed") {
     const auto event = MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentCompleted,

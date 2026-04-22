@@ -2,6 +2,7 @@
 
 #include "chat/chat_service_history.hpp"
 
+#include <unordered_map>
 #include <utility>
 
 namespace yac::chat::internal {
@@ -79,10 +80,12 @@ void ChatServicePromptProcessor::ProcessPrompt(
   for (int round = 0; round <= kMaxToolRounds; ++round) {
     std::string round_text;
     std::vector<ToolCallRequest> requested_tools;
+    std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
     const ChatRequest request = BuildRoundRequest(request_builder);
 
     auto sink = [this, &round_text, assistant_id, generation, &assistant_error,
-                 &requested_tools](ChatEvent event) mutable {
+                 &requested_tools,
+                 &streaming_card_ids](ChatEvent event) mutable {
       if (generation_value_() != generation) {
         return;
       }
@@ -101,6 +104,17 @@ void ChatServicePromptProcessor::ProcessPrompt(
                            .text = std::move(delta->text),
                            .provider_id = std::move(delta->provider_id),
                            .model = std::move(delta->model)}});
+        return;
+      }
+      if (auto* arg_delta = event.As<ToolCallArgumentDeltaEvent>()) {
+        auto [it, inserted] = streaming_card_ids.try_emplace(
+            arg_delta->tool_call_id, ChatMessageId{0});
+        if (inserted) {
+          it->second = next_message_id_();
+        }
+        arg_delta->message_id = assistant_id;
+        arg_delta->card_message_id = it->second;
+        emit_event_(std::move(event));
         return;
       }
       if (auto* error = event.As<ErrorEvent>()) {
@@ -145,7 +159,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
           assistant_id, round_text, requested_tools);
     }
 
-    RunToolRound(requested_tools, stop_token);
+    RunToolRound(requested_tools, streaming_card_ids, stop_token);
 
     if (round == kMaxToolRounds) {
       emit_event_(ChatEvent{ErrorEvent{.message_id = assistant_id,
@@ -181,9 +195,16 @@ ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
 
 void ChatServicePromptProcessor::RunToolRound(
     const std::vector<ToolCallRequest>& requested_tools,
+    const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
     std::stop_token stop_token) {
   for (const auto& tool_request : requested_tools) {
-    auto tool_message_id = next_message_id_();
+    ChatMessageId tool_message_id = 0;
+    if (auto it = streaming_card_ids.find(tool_request.id);
+        it != streaming_card_ids.end()) {
+      tool_message_id = it->second;
+    } else {
+      tool_message_id = next_message_id_();
+    }
     auto prepared = ::yac::tool_call::ToolExecutor::Prepare(tool_request);
     prepared.card_message_id = tool_message_id;
     emit_event_(

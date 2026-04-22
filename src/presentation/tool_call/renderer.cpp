@@ -1,8 +1,8 @@
 #include "renderer.hpp"
 
-#include "descriptor.hpp"
 #include "../theme.hpp"
 #include "../util/string_util.hpp"
+#include "descriptor.hpp"
 
 #include <algorithm>
 #include <array>
@@ -371,6 +371,8 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
   content.push_back(RenderLabelValue("File: ", call.filepath, theme));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
+  } else if (call.is_streaming) {
+    content.push_back(RenderWrappedLine("Streaming…", theme.tool.edit_add));
   } else {
     content.push_back(RenderWrappedLine(
         "Added " + std::to_string(call.lines_added) + " lines, removed " +
@@ -380,12 +382,24 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
   if (!call.content_preview.empty()) {
     content.push_back(RenderLabelValue("Preview: ", "", theme));
     const auto lines = util::SplitLines(call.content_preview);
-    const auto limit = std::min(lines.size(), kMaxPreviewRows);
-    for (size_t index = 0; index < limit; ++index) {
+    if (call.is_streaming && lines.size() > kMaxPreviewRows) {
+      const auto omitted = lines.size() - kMaxPreviewRows;
       content.push_back(
-          RenderWrappedLine(lines[index], theme.chrome.body_text));
+          ftxui::text("… " + std::to_string(omitted) + " earlier lines") |
+          ftxui::color(theme.chrome.dim_text));
+      for (auto index = lines.size() - kMaxPreviewRows; index < lines.size();
+           ++index) {
+        content.push_back(
+            RenderWrappedLine(lines[index], theme.chrome.body_text));
+      }
+    } else {
+      const auto limit = std::min(lines.size(), kMaxPreviewRows);
+      for (size_t index = 0; index < limit; ++index) {
+        content.push_back(
+            RenderWrappedLine(lines[index], theme.chrome.body_text));
+      }
+      AddOmittedRows(content, lines.size(), theme);
     }
-    AddOmittedRows(content, lines.size(), theme);
   }
 
   const auto accent =

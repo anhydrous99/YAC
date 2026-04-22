@@ -49,9 +49,9 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "bash",
               .label = "Run command",
-              .summary = call.exit_code != 0 ? "exit " +
-                                                   std::to_string(call.exit_code)
-                                             : "exit 0",
+              .summary = call.exit_code != 0
+                             ? "exit " + std::to_string(call.exit_code)
+                             : "exit 0",
           };
         } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
           return ToolCallDescriptor{
@@ -66,26 +66,33 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = std::to_string(call.lines_loaded) + " lines",
           };
         } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
+          std::string summary;
+          if (call.is_error) {
+            summary = "failed";
+          } else if (call.is_streaming) {
+            summary = "streaming…";
+          } else {
+            summary = "+" + std::to_string(call.lines_added) + " -" +
+                      std::to_string(call.lines_removed);
+          }
           return ToolCallDescriptor{
               .tag = "write",
               .label = "Write " + TruncateString(Basename(call.filepath), 30),
-              .summary = call.is_error
-                             ? "failed"
-                             : "+" + std::to_string(call.lines_added) + " -" +
-                                   std::to_string(call.lines_removed),
+              .summary = std::move(summary),
           };
         } else if constexpr (std::is_same_v<T, tool_data::ListDirCall>) {
           return ToolCallDescriptor{
               .tag = "list",
               .label = "List directory",
-              .summary = call.is_error ? "failed"
-                                       : std::to_string(call.entries.size()) +
-                                             " entries",
+              .summary = call.is_error
+                             ? "failed"
+                             : std::to_string(call.entries.size()) + " entries",
           };
         } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
           return ToolCallDescriptor{
               .tag = "grep",
-              .label = "Search for \"" + TruncateString(call.pattern, 20) + "\"",
+              .label =
+                  "Search for \"" + TruncateString(call.pattern, 20) + "\"",
               .summary = std::to_string(call.match_count) + " matches",
           };
         } else if constexpr (std::is_same_v<T, tool_data::GlobCall>) {
@@ -98,7 +105,8 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "fetch",
               .label = "Fetch URL",
-              .summary = call.title.empty() ? std::string{"fetched"} : call.title,
+              .summary =
+                  call.title.empty() ? std::string{"fetched"} : call.title,
           };
         } else if constexpr (std::is_same_v<T, tool_data::WebSearchCall>) {
           return ToolCallDescriptor{
@@ -119,10 +127,10 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "lsp",
               .label = "Find references",
-              .summary = call.is_error
-                             ? "failed"
-                             : std::to_string(call.references.size()) +
-                                   " references",
+              .summary =
+                  call.is_error
+                      ? "failed"
+                      : std::to_string(call.references.size()) + " references",
           };
         } else if constexpr (std::is_same_v<T,
                                             tool_data::LspGotoDefinitionCall>) {

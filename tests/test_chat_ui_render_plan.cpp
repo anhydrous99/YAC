@@ -36,9 +36,8 @@ TEST_CASE(
   std::vector<Message> messages;
   messages.push_back(AgentMessage("first answer"));
   messages.push_back(ToolMessage(BashCall{"ls", "", 0, false}));
-  messages.push_back(
-      ToolMessage(FileReadCall{"README.md", 8, "preview"},
-                  MessageStatus::Active));
+  messages.push_back(ToolMessage(FileReadCall{"README.md", 8, "preview"},
+                                 MessageStatus::Active));
   messages.push_back(UserMessage("thanks"));
   messages.push_back(ToolMessage(BashCall{"pwd", "", 0, false}));
 
@@ -62,7 +61,8 @@ TEST_CASE(
   REQUIRE(plan[2].tool_state_index == 2);
 }
 
-TEST_CASE("BuildMessageRenderPlan increments group ordinals across agent runs") {
+TEST_CASE(
+    "BuildMessageRenderPlan increments group ordinals across agent runs") {
   std::vector<Message> messages;
   messages.push_back(AgentMessage("first answer"));
   messages.push_back(ToolMessage(BashCall{"git status", "", 0, false}));
