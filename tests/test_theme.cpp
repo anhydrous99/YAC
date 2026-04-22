@@ -42,9 +42,17 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
   REQUIRE_FALSE(ColorsEqual(t.chrome.dim_text, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.body_text, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.chrome.prompt, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.chrome.canvas_bg, ftxui::Color()));
 
   REQUIRE_FALSE(ColorsEqual(t.cards.user_bg, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_bg, ftxui::Color()));
+}
+
+TEST_CASE("CatppuccinMocha canvas_bg matches exported RGB constants") {
+  auto t = CatppuccinMocha();
+  auto expected =
+      ftxui::Color::RGB(kCanvasBgRed, kCanvasBgGreen, kCanvasBgBlue);
+  REQUIRE(ColorsEqual(t.chrome.canvas_bg, expected));
 }
 
 TEST_CASE("Theme Instance returns consistent reference") {

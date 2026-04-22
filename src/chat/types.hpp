@@ -342,6 +342,7 @@ struct ChatConfig {
   std::string lsp_clangd_command = "clangd";
   std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
+  bool sync_terminal_background = true;
 };
 
 struct ChatConfigResult {

@@ -9,6 +9,8 @@
 #include "chat/prompt_library.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
+#include "presentation/theme.hpp"
+#include "presentation/util/terminal.hpp"
 #include "provider/openai_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
@@ -16,6 +18,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -265,6 +268,14 @@ int RunApp() {
   auto provider = BuildProvider(config);
 
   auto screen = ftxui::App::Fullscreen();
+
+  std::optional<presentation::terminal::BackgroundGuard> terminal_bg_guard;
+  if (config.sync_terminal_background) {
+    terminal_bg_guard.emplace(presentation::theme::kCanvasBgRed,
+                              presentation::theme::kCanvasBgGreen,
+                              presentation::theme::kCanvasBgBlue);
+  }
+
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
   chat_ui.SetContextWindowTokens(LookupContextWindow(config.model));

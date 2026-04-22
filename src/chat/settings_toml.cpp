@@ -70,6 +70,21 @@ bool ApplyTemperature(const toml::node_view<toml::node>& node, double& target,
   return true;
 }
 
+bool ApplyBoolField(const toml::node_view<toml::node>& node,
+                    const std::string& key, bool& target,
+                    std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  if (auto* value = node.as_boolean()) {
+    target = value->get();
+    return true;
+  }
+  AddError(issues, "Invalid type for " + key + " in settings.toml",
+           "Expected a boolean (true or false).");
+  return false;
+}
+
 bool ApplyStringArray(const toml::node_view<toml::node>& node,
                       const std::string& key, std::vector<std::string>& target,
                       std::vector<ConfigIssue>& issues) {
@@ -164,6 +179,16 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
       AddError(issues, "Invalid type for [lsp] in settings.toml",
                "Expected a table.");
     }
+  }
+
+  const auto theme_section = table["theme"];
+  if (theme_section.is_table()) {
+    ApplyBoolField(theme_section["sync_terminal_background"],
+                   "theme.sync_terminal_background",
+                   config.sync_terminal_background, issues);
+  } else if (table.contains("theme")) {
+    AddError(issues, "Invalid type for [theme] in settings.toml",
+             "Expected a table.");
   }
 
   return fields;

@@ -3,6 +3,8 @@
 #include "chat/config_paths.hpp"
 #include "chat/settings_toml.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -128,6 +130,14 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   if (auto val = GetEnv("YAC_LSP_CLANGD_ARGS")) {
     config.lsp_clangd_args = SplitArgs(*val);
     fields.lsp_clangd_args = true;
+  }
+  if (auto val = GetEnv("YAC_SYNC_TERMINAL_BACKGROUND")) {
+    std::string normalized = *val;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                   [](unsigned char ch) { return std::tolower(ch); });
+    config.sync_terminal_background =
+        !(normalized == "0" || normalized == "false" || normalized == "no" ||
+          normalized == "off");
   }
 }
 

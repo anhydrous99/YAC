@@ -1,8 +1,14 @@
 #pragma once
 
+#include <cstdint>
+
 #include <ftxui/screen/color.hpp>
 
 namespace yac::presentation::theme {
+
+inline constexpr std::uint8_t kCanvasBgRed = 17;
+inline constexpr std::uint8_t kCanvasBgGreen = 17;
+inline constexpr std::uint8_t kCanvasBgBlue = 27;
 
 struct RoleColors {
   ftxui::Color user;
@@ -38,6 +44,7 @@ struct ChromeColors {
   ftxui::Color dim_text;
   ftxui::Color body_text;
   ftxui::Color prompt;
+  ftxui::Color canvas_bg;
 };
 
 struct CardColors {

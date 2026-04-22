@@ -35,6 +35,13 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 [lsp.clangd]
 command = "clangd"
 args    = []
+
+[theme]
+# Paint the terminal background to match YAC's Catppuccin Mocha canvas on
+# startup (via OSC 11) and restore the terminal default on exit. The in-app
+# chat canvas always paints regardless of this setting; this toggle only
+# controls whether YAC touches terminal-global state.
+sync_terminal_background = true
 )";
 
 }  // namespace yac::chat

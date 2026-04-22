@@ -99,6 +99,43 @@ TEST_CASE("LoadSettingsFromToml keeps defaults for absent fields") {
   REQUIRE(config.model == "gpt-4o-mini");
 }
 
+TEST_CASE("LoadSettingsFromToml defaults sync_terminal_background to true") {
+  TempFile file("yac_test_settings_theme_default.toml");
+  WriteFile(file.Path(), "temperature = 0.5\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(issues.empty());
+  REQUIRE(config.sync_terminal_background);
+}
+
+TEST_CASE("LoadSettingsFromToml overlays [theme] sync_terminal_background") {
+  TempFile file("yac_test_settings_theme_off.toml");
+  WriteFile(file.Path(),
+            "[theme]\n"
+            "sync_terminal_background = false\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(issues.empty());
+  REQUIRE_FALSE(config.sync_terminal_background);
+}
+
+TEST_CASE("LoadSettingsFromToml reports invalid [theme] type") {
+  TempFile file("yac_test_settings_theme_bad_field.toml");
+  WriteFile(file.Path(),
+            "[theme]\n"
+            "sync_terminal_background = \"yes\"\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("sync_terminal_background") != std::string::npos;
+  }));
+  REQUIRE(config.sync_terminal_background);
+}
+
 TEST_CASE("LoadSettingsFromToml reports parse errors without throwing") {
   TempFile file("yac_test_settings_bad.toml");
   WriteFile(file.Path(), "garbage garbage garbage\n");

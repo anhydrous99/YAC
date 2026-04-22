@@ -288,7 +288,8 @@ ftxui::Component ChatUI::Build() {
     auto footer_with_hints = ftxui::vbox(footer_rows);
 
     ftxui::Elements main_parts;
-    main_parts.push_back(message_list->Render() | ftxui::flex);
+    main_parts.push_back(message_list->Render() | ftxui::flex |
+                         ftxui::bgcolor(k_theme.chrome.canvas_bg));
     main_parts.push_back(footer_with_hints |
                          ftxui::bgcolor(k_theme.cards.agent_bg));
     if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {

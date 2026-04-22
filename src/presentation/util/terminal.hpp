@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <cstdio>
 #include <string_view>
 
@@ -15,5 +16,34 @@ inline void SendNotification(std::string_view summary) {
               summary.data());
   std::fflush(stdout);
 }
+
+// OSC 11 — ask the terminal to paint its background in the given 24-bit RGB
+// color. Terminals that don't recognize the sequence silently ignore it.
+inline void SetBackgroundColor(std::uint8_t red, std::uint8_t green,
+                               std::uint8_t blue) {
+  std::printf("\033]11;rgb:%02x/%02x/%02x\007", red, green, blue);
+  std::fflush(stdout);
+}
+
+// OSC 111 — restore the terminal's default background color.
+inline void ResetBackgroundColor() {
+  std::printf("\033]111\007");
+  std::fflush(stdout);
+}
+
+// RAII wrapper: emits OSC 11 on construction and OSC 111 on destruction so
+// the terminal's theme is restored when the app exits its scope.
+class BackgroundGuard {
+ public:
+  BackgroundGuard(std::uint8_t red, std::uint8_t green, std::uint8_t blue) {
+    SetBackgroundColor(red, green, blue);
+  }
+  ~BackgroundGuard() { ResetBackgroundColor(); }
+
+  BackgroundGuard(const BackgroundGuard&) = delete;
+  BackgroundGuard& operator=(const BackgroundGuard&) = delete;
+  BackgroundGuard(BackgroundGuard&&) = delete;
+  BackgroundGuard& operator=(BackgroundGuard&&) = delete;
+};
 
 }  // namespace yac::presentation::terminal
