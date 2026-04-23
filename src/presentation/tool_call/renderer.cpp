@@ -56,10 +56,11 @@ ftxui::Element RenderContainer(const std::string& icon,
               ftxui::color(theme.semantic.text_body) |
               ftxui::bgcolor(theme.semantic.surface_raised);
 
+  const int indent =
+      theme.density == theme::ThemeDensity::Compact ? 1 : layout::kCardPadX;
   return ftxui::vbox({
       header,
-      ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
-                   body | ftxui::flex}),
+      ftxui::hbox({ftxui::text(std::string(indent, ' ')), body | ftxui::flex}),
   });
 }
 

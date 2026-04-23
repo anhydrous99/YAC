@@ -149,7 +149,11 @@ ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
   ftxui::Elements elements;
   for (const auto& message : messages) {
     if (!elements.empty()) {
-      for (int i = 0; i < layout::kSectionGap; ++i) {
+      const int gap =
+          (theme::CurrentTheme().density == theme::ThemeDensity::Compact)
+              ? 1
+              : layout::kSectionGap;
+      for (int i = 0; i < gap; ++i) {
         elements.push_back(ftxui::text(""));
       }
     }
@@ -170,7 +174,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(
   auto content = ftxui::vbox({
       RenderHeader(Sender::User, message.DisplayLabel(), message.created_at,
                    cache.relative_time, context, message.status),
-      ftxui::text(""),
+      theme.density == theme::ThemeDensity::Compact ? ftxui::emptyElement()
+                                                    : ftxui::text(""),
       ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
                    ftxui::paragraph(message.Text()) |
                        ftxui::color(theme.role.user) | ftxui::flex}),
@@ -178,9 +183,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(
 
   auto accent_rail =
       ftxui::text("▌") | ftxui::color(theme.semantic.accent_secondary);
-  return ftxui::hbox({accent_rail,
-                      std::move(content) | ftxui::flex |
-                          ftxui::bgcolor(theme.cards.user_bg)}) |
+  return ftxui::hbox({accent_rail, std::move(content) | ftxui::flex |
+                                       ftxui::bgcolor(theme.cards.user_bg)}) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
                      MessageCardMaxWidth(context));
 }
@@ -200,7 +204,9 @@ ftxui::Element MessageRenderer::RenderAgentMessageContent(
   rows.push_back(RenderHeader(Sender::Agent, message.DisplayLabel(),
                               message.created_at, cache.relative_time, context,
                               message.status));
-  rows.push_back(ftxui::text(""));
+  if (theme.density != theme::ThemeDensity::Compact) {
+    rows.push_back(ftxui::text(""));
+  }
 
   ftxui::Element stream_cursor;
   if (is_active && !message.Text().empty()) {
