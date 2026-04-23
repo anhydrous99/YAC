@@ -38,6 +38,10 @@ args    = []
 # disables OSC 11 background sync.
 name = "opencode"
 
+# Theme density: "comfortable" (default, normal spacing) or "compact"
+# (tighter layout).
+# density = "comfortable"
+
 # Paint the terminal background to match the active theme's canvas
 # color (via OSC 11) and restore the terminal default on exit. Has
 # no effect when name = "system".

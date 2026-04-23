@@ -119,6 +119,7 @@ args    = []
 | `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
 | `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
 | `theme.name` | `YAC_THEME_NAME` | `"opencode"` | Active theme preset (`opencode`, `catppuccin`, `system`) |
+| `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
 
 Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
 preset. When only `id` is set, the preset fills in `glm-5.1`,
