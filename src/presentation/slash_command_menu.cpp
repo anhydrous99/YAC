@@ -7,8 +7,6 @@
 namespace yac::presentation {
 
 namespace {
-
-inline const auto& k_theme = theme::Theme::Instance();
 constexpr int kMenuMaxWidth = 50;
 constexpr int kMenuMaxVisible = 8;
 
@@ -23,15 +21,16 @@ ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
   auto desc = ftxui::text(command.description) | ftxui::flex;
 
   if (selected) {
-    indicator = indicator | ftxui::color(k_theme.dialog.selected_fg);
-    name = name | ftxui::color(k_theme.dialog.selected_fg);
-    desc = desc | ftxui::color(k_theme.dialog.selected_fg);
+    indicator = indicator | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
+    name = name | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
+    desc = desc | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
     return ftxui::hbox({indicator, name, desc}) |
-           ftxui::bgcolor(k_theme.dialog.selected_bg);
+           ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
   }
-  indicator = indicator | ftxui::color(k_theme.dialog.dim_text);
-  name = name | ftxui::color(k_theme.dialog.input_fg);
-  desc = desc | ftxui::color(k_theme.dialog.dim_text) | ftxui::dim;
+  indicator = indicator | ftxui::color(theme::CurrentTheme().dialog.dim_text);
+  name = name | ftxui::color(theme::CurrentTheme().dialog.input_fg);
+  desc = desc | ftxui::color(theme::CurrentTheme().dialog.dim_text) |
+         ftxui::dim;
   return ftxui::hbox({indicator, name, desc});
 }
 
@@ -42,8 +41,8 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
                                       int selected_index, int max_width) {
   if (filtered_indices.empty()) {
     return ftxui::text("  No matching commands") |
-           ftxui::color(k_theme.dialog.dim_text) | ftxui::dim |
-           ftxui::bgcolor(k_theme.dialog.input_bg) |
+           ftxui::color(theme::CurrentTheme().dialog.dim_text) | ftxui::dim |
+           ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
            ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, max_width);
   }
 
@@ -57,7 +56,8 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
 
   auto content = ftxui::vbox(std::move(rows));
   int width = std::min(max_width, kMenuMaxWidth);
-  return content | ftxui::border | ftxui::bgcolor(k_theme.dialog.input_bg) |
+  return content | ftxui::border |
+         ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, width);
 }
 
