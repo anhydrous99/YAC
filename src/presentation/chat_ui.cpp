@@ -892,54 +892,40 @@ ftxui::Element ChatUI::RenderMessages() const {
 }
 
 ftxui::Element ChatUI::RenderEmptyState() const {
+  const auto& colors = render_context_.Colors();
   const auto& startup = overlay_state_.Startup();
+  const auto& model = overlay_state_.Model();
+
   ftxui::Elements rows;
-  rows.push_back(ftxui::text("YAC setup") | ftxui::bold |
-                 ftxui::color(render_context_.Colors().markdown.heading));
-  rows.push_back(ftxui::text(""));
-  rows.push_back(ftxui::paragraph("Provider: " + startup.provider_id + " / " +
-                                  startup.model) |
-                 ftxui::color(render_context_.Colors().chrome.body_text));
-  if (!startup.workspace_root.empty()) {
-    rows.push_back(ftxui::paragraph("Workspace: " + startup.workspace_root) |
-                   ftxui::color(render_context_.Colors().chrome.dim_text));
-  }
-  if (!startup.api_key_env.empty()) {
-    const auto key_state = startup.api_key_configured
-                               ? std::string{"configured"}
-                               : std::string{"missing"};
-    rows.push_back(
-        ftxui::paragraph("API key: " + startup.api_key_env + " " + key_state) |
-        ftxui::color(startup.api_key_configured
-                         ? render_context_.Colors().role.agent
-                         : ftxui::Color::Yellow));
-  }
-  if (!startup.lsp_command.empty()) {
-    rows.push_back(
-        ftxui::paragraph("LSP: " + startup.lsp_command + " " +
-                         (startup.lsp_available ? "found" : "not found")) |
-        ftxui::color(startup.lsp_available ? render_context_.Colors().role.agent
-                                           : ftxui::Color::Yellow));
+
+  rows.push_back(ftxui::text("Ready") | ftxui::bold |
+                 ftxui::color(colors.semantic.text_strong));
+  if (!model.empty()) {
+    rows.push_back(ftxui::text(""));
+    rows.push_back(ftxui::hbox({
+        ftxui::text("Model  ") | ftxui::color(colors.semantic.text_weak),
+        ftxui::text(model) | ftxui::color(colors.semantic.text_strong) |
+            ftxui::bold,
+    }));
   }
 
-  rows.push_back(ftxui::text(""));
-  if (startup.notices.empty()) {
-    rows.push_back(ftxui::paragraph("Type a message below to start, or press "
-                                    "Ctrl+P and choose Help.") |
-                   ftxui::color(render_context_.Colors().chrome.dim_text));
-  } else {
+  if (!startup.notices.empty()) {
+    rows.push_back(ftxui::text(""));
     for (const auto& notice : startup.notices) {
       rows.push_back(NoticeLine(notice));
     }
-    rows.push_back(ftxui::text(""));
-    rows.push_back(ftxui::paragraph("Fix setup warnings when needed, then type "
-                                    "a message below.") |
-                   ftxui::color(render_context_.Colors().chrome.dim_text));
   }
+
+  rows.push_back(ftxui::text(""));
+  rows.push_back(ftxui::hbox({
+      ftxui::text("Type a message to start.  ") |
+          ftxui::color(colors.semantic.text_weak),
+      ftxui::text("[? help]") | ftxui::color(colors.semantic.text_muted),
+  }));
 
   auto panel = ftxui::vbox(std::move(rows));
   return ftxui::center(MessageRenderer::CardSurface(
-             std::move(panel), render_context_.Colors().cards.agent_bg,
+             std::move(panel), colors.cards.agent_bg,
              RenderContext{.terminal_width = last_terminal_width_})) |
          ftxui::flex;
 }

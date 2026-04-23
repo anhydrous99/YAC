@@ -142,7 +142,7 @@ TEST_CASE("ChatUI renders active provider and model in footer") {
 
   auto output = RenderComponent(component);
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("zai / glm-5.1"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("glm-5.1"));
 }
 
 TEST_CASE("GetMessages returns const reference to internal state") {
@@ -190,10 +190,9 @@ TEST_CASE("ChatUI renders startup status in empty transcript") {
 
   auto output = RenderComponent(component, 100, 30);
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("YAC setup"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Ready"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("OPENAI_API_KEY"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("missing"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("/workspace"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[? help]"));
 }
 
 TEST_CASE("ChatUI renders queue depth and transient status") {
