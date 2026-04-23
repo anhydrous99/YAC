@@ -142,12 +142,6 @@ struct Theme {
   ToolColors tool;
   DialogColors dialog;
   SubAgentColors sub_agent;
-
-  [[deprecated(
-      "use RenderContext or CurrentTheme()")]] [[nodiscard]] static const Theme&
-  Instance() {
-    return CurrentTheme();
-  }
 };
 
 [[nodiscard]] Theme CatppuccinPreset();

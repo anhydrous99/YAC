@@ -10,23 +10,22 @@ namespace yac::presentation {
 
 namespace {
 
-inline const auto& k_theme = theme::Theme::Instance();
-
 ftxui::Element ApprovalToolLabel(const std::string& tool_name) {
   return ftxui::hbox({
-      ftxui::text("Tool: ") | ftxui::color(k_theme.dialog.dim_text),
+      ftxui::text("Tool: ") |
+          ftxui::color(theme::CurrentTheme().dialog.dim_text),
       ftxui::text(tool_name) | ftxui::bold |
-          ftxui::color(k_theme.dialog.input_fg),
+          ftxui::color(theme::CurrentTheme().dialog.input_fg),
   });
 }
 
 ftxui::Element ApprovalActions() {
   return ftxui::hbox({
       ftxui::text(" Enter/Y Approve ") | ftxui::bold |
-          ftxui::color(k_theme.role.agent),
+          ftxui::color(theme::CurrentTheme().role.agent),
       ftxui::text("  "),
       ftxui::text(" N/Esc Reject ") | ftxui::bold |
-          ftxui::color(k_theme.role.error),
+          ftxui::color(theme::CurrentTheme().role.error),
   });
 }
 
@@ -115,7 +114,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
     return ftxui::paragraph(help_text_.empty()
                                 ? std::string{"No help available."}
                                 : help_text_) |
-           ftxui::color(k_theme.chrome.body_text);
+           ftxui::color(theme::CurrentTheme().chrome.body_text);
   });
   auto help_panel = DialogPanel("Help", help_content, &show_help_);
   auto main_with_help =
@@ -126,7 +125,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
         ApprovalToolLabel(approval_tool_name_),
         ftxui::text(""),
         ftxui::paragraph(approval_prompt_) |
-            ftxui::color(k_theme.chrome.body_text),
+            ftxui::color(theme::CurrentTheme().chrome.body_text),
         ftxui::text(""),
     };
     if (approval_preview_.has_value()) {
