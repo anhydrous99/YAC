@@ -20,8 +20,8 @@ void RequireColorEq(const ftxui::Color& actual, const ftxui::Color& expected) {
 
 }  // namespace
 
-TEST_CASE("CatppuccinMocha populates tool and dialog color groups") {
-  auto t = CatppuccinMocha();
+TEST_CASE("CatppuccinPreset populates tool and dialog color groups") {
+  auto t = CatppuccinPreset();
 
   RequireColorEq(t.tool.header_bg, ftxui::Color::RGB(49, 50, 68));
   RequireColorEq(t.tool.bash_accent, ftxui::Color::RGB(250, 179, 135));

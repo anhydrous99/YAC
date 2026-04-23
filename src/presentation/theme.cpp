@@ -20,9 +20,9 @@ static void RegisterBuiltinThemes() {
   }
   registered = true;
 
-  g_theme_registry["catppuccin"] = CatppuccinMocha;
-  g_theme_registry["opencode"] = CatppuccinMocha;
-  g_theme_registry["system"] = CatppuccinMocha;
+  g_theme_registry["catppuccin"] = CatppuccinPreset;
+  g_theme_registry["opencode"] = CatppuccinPreset;
+  g_theme_registry["system"] = CatppuccinPreset;
 }
 
 void InitializeTheme(Theme value) {
@@ -40,7 +40,7 @@ void InitializeTheme(Theme value) {
 
 const Theme& CurrentTheme() {
   if (!g_active_theme.has_value()) {
-    g_active_theme = CatppuccinMocha();
+    g_active_theme = CatppuccinPreset();
   }
   return *g_active_theme;
 }
@@ -76,9 +76,23 @@ std::vector<std::string> ListThemes() {
   return names;
 }
 
-Theme CatppuccinMocha() {
+Theme CatppuccinPreset() {
   Theme t;
-  t.name = "catppuccin-mocha";
+  t.name = "catppuccin";
+  t.density = ThemeDensity::Comfortable;
+  t.semantic.text_strong = ftxui::Color::RGB(205, 214, 244);
+  t.semantic.text_body = ftxui::Color::RGB(186, 194, 222);
+  t.semantic.text_weak = ftxui::Color::RGB(147, 153, 178);
+  t.semantic.text_muted = ftxui::Color::RGB(147, 153, 178);
+  t.semantic.accent_primary = ftxui::Color::RGB(137, 180, 250);
+  t.semantic.accent_secondary = ftxui::Color::RGB(116, 199, 236);
+  t.semantic.surface_canvas = ftxui::Color::RGB(24, 24, 37);
+  t.semantic.surface_panel = ftxui::Color::RGB(30, 30, 46);
+  t.semantic.surface_raised = ftxui::Color::RGB(49, 50, 68);
+  t.semantic.border_subtle = ftxui::Color::RGB(49, 50, 68);
+  t.semantic.border_strong = ftxui::Color::RGB(69, 71, 90);
+  t.semantic.focus_ring = ftxui::Color::RGB(137, 180, 250);
+  t.semantic.selection_bg = ftxui::Color::RGB(49, 50, 68);
   t.role.user = ftxui::Color::RGB(137, 180, 250);
   t.role.agent = ftxui::Color::RGB(166, 227, 161);
   t.role.error = ftxui::Color::RGB(243, 139, 168);

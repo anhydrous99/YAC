@@ -58,7 +58,7 @@ TEST_CASE("RegisterTheme adds a custom factory") {
   ResetThemeState();
 
   yac::presentation::theme::RegisterTheme("custom-test", []() {
-    return yac::presentation::theme::CatppuccinMocha();
+    return yac::presentation::theme::CatppuccinPreset();
   });
   const auto t = yac::presentation::theme::GetTheme("custom-test");
   REQUIRE_FALSE(t.name.empty());

@@ -23,7 +23,7 @@ struct Theme;
 // throws std::logic_error if called with a different name after init.
 void InitializeTheme(Theme value);
 
-// Returns the active theme. Lazily initializes to CatppuccinMocha()
+// Returns the active theme. Lazily initializes to CatppuccinPreset()
 // if InitializeTheme has not been called yet.
 [[nodiscard]] const Theme& CurrentTheme();
 
@@ -150,6 +150,6 @@ struct Theme {
   }
 };
 
-[[nodiscard]] Theme CatppuccinMocha();
+[[nodiscard]] Theme CatppuccinPreset();
 
 }  // namespace yac::presentation::theme
