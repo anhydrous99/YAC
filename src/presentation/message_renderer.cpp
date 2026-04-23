@@ -148,6 +148,9 @@ ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
                                           const RenderContext& context) {
   ftxui::Elements elements;
   for (const auto& message : messages) {
+    if (!elements.empty()) {
+      elements.push_back(ftxui::text(""));
+    }
     if (message.id == 0) {
       MessageRenderCache cache;
       elements.push_back(Render(message, cache, context));
