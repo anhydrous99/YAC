@@ -232,8 +232,6 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
     }));
   }
 
-  inner.push_back(ftxui::text(""));
-
   auto even_bg = theme.code.bg;
   auto odd_bg = theme.code.alt_bg;
 
@@ -260,12 +258,7 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
     inner.push_back(ftxui::hbox(std::move(row_children)));
   }
 
-  return ftxui::vbox({
-             ftxui::text(std::string(layout::kCardPadY, ' ')),
-             ftxui::vbox(inner),
-             ftxui::text(std::string(layout::kCardPadY, ' ')),
-         }) |
-         ftxui::bgcolor(theme.code.bg);
+  return ftxui::vbox(inner) | ftxui::bgcolor(theme.code.bg);
 }
 
 ftxui::Element MarkdownRenderer::RenderBlockquote(
