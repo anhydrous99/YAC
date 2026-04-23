@@ -15,8 +15,6 @@ namespace yac::presentation {
 
 namespace {
 
-inline const auto& k_theme = theme::Theme::Instance();
-
 std::string ToLower(std::string value) {
   std::transform(
       value.begin(), value.end(), value.begin(),
@@ -69,13 +67,14 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       SyncCommands();
       ftxui::Elements children;
       children.push_back(input_->Render() |
-                         ftxui::bgcolor(k_theme.dialog.input_bg) |
-                         ftxui::color(k_theme.dialog.input_fg));
+                         ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
+                         ftxui::color(theme::CurrentTheme().dialog.input_fg));
       children.push_back(ftxui::text(""));
 
       if (filtered_indices_.empty()) {
         children.push_back(ftxui::text("No commands found") |
-                           ftxui::color(k_theme.dialog.dim_text) | ftxui::dim);
+                           ftxui::color(theme::CurrentTheme().dialog.dim_text) |
+                           ftxui::dim);
       } else {
         ftxui::Elements rows;
         rows.reserve(filtered_indices_.size());
@@ -136,10 +135,13 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       option.placeholder = "Type to filter...";
       option.cursor_position = &filter_cursor_;
       option.transform = [](ftxui::InputState state) {
-        state.element |= ftxui::color(k_theme.dialog.input_fg) |
-                         ftxui::bgcolor(k_theme.dialog.input_bg);
+        state.element |=
+            ftxui::color(theme::CurrentTheme().dialog.input_fg) |
+            ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg);
         if (state.is_placeholder) {
-          state.element |= ftxui::color(k_theme.dialog.dim_text) | ftxui::dim;
+          state.element |=
+              ftxui::color(theme::CurrentTheme().dialog.dim_text) |
+              ftxui::dim;
         }
         if (state.focused) {
           state.element |= ftxui::focusCursorBarBlinking;
@@ -164,11 +166,12 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
                  ftxui::xflex;
 
       if (selected) {
-        row |= ftxui::color(k_theme.dialog.selected_fg) |
-               ftxui::bgcolor(k_theme.dialog.selected_bg);
+        row |= ftxui::color(theme::CurrentTheme().dialog.selected_fg) |
+               ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
       } else {
-        name |= ftxui::color(k_theme.dialog.input_fg);
-        description |= ftxui::color(k_theme.dialog.dim_text) | ftxui::dim;
+        name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
+        description |= ftxui::color(theme::CurrentTheme().dialog.dim_text) |
+                       ftxui::dim;
         row = ftxui::vbox({name, description}) | ftxui::xflex;
       }
 
