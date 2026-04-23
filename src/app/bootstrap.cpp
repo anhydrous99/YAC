@@ -267,12 +267,25 @@ int RunApp() {
   auto startup_issues = prompt_result.issues;
   auto provider = BuildProvider(config);
 
+  {
+    const auto theme = presentation::theme::GetTheme(config.theme_name);
+    if (theme.name != config.theme_name && !config.theme_name.empty()) {
+      config_result.issues.push_back(
+          {.severity = chat::ConfigIssueSeverity::Warning,
+           .message = "Unknown theme: '" + config.theme_name + "'",
+           .detail = "Falling back to default theme 'opencode'."});
+    }
+    presentation::theme::InitializeTheme(theme);
+  }
+
   auto screen = ftxui::App::Fullscreen();
 
   std::optional<presentation::terminal::BackgroundGuard> terminal_bg_guard;
-  if (config.sync_terminal_background) {
+  if (config.sync_terminal_background && config.theme_name != "system") {
     const auto rgb = presentation::theme::CurrentCanvasRgb();
-    terminal_bg_guard.emplace(rgb.r, rgb.g, rgb.b);
+    if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
+      terminal_bg_guard.emplace(rgb.r, rgb.g, rgb.b);
+    }
   }
 
   presentation::ChatUI chat_ui;

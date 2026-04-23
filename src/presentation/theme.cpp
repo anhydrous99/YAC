@@ -22,7 +22,7 @@ static void RegisterBuiltinThemes() {
 
   g_theme_registry["catppuccin"] = CatppuccinPreset;
   g_theme_registry["opencode"] = OpenCodePreset;
-  g_theme_registry["system"] = CatppuccinPreset;
+  g_theme_registry["system"] = SystemPreset;
 }
 
 void InitializeTheme(Theme value) {
@@ -232,6 +232,86 @@ Theme OpenCodePreset() {
   t.semantic.border_strong = ftxui::Color::RGB(40, 38, 33);
   t.semantic.focus_ring = ftxui::Color::RGB(207, 142, 60);
   t.semantic.selection_bg = ftxui::Color::RGB(40, 38, 33);
+
+  return t;
+}
+
+Theme SystemPreset() {
+  Theme t;
+  t.name = "system";
+  t.density = ThemeDensity::Comfortable;
+
+  t.role.user = ftxui::Color::Blue;
+  t.role.agent = ftxui::Color::Default;
+  t.role.error = ftxui::Color::Red;
+
+  t.markdown.heading = ftxui::Color::Default;
+  t.markdown.link = ftxui::Color::Blue;
+  t.markdown.quote_bg = ftxui::Color::Default;
+
+  t.code.bg = ftxui::Color::Default;
+  t.code.alt_bg = ftxui::Color::Default;
+  t.code.fg = ftxui::Color::Default;
+  t.code.inline_bg = ftxui::Color::Default;
+  t.code.inline_fg = ftxui::Color::Yellow;
+  t.code.border = ftxui::Color::Default;
+
+  t.syntax.keyword = ftxui::Color::Magenta;
+  t.syntax.string = ftxui::Color::Green;
+  t.syntax.comment = ftxui::Color::GrayDark;
+  t.syntax.number = ftxui::Color::Yellow;
+  t.syntax.type = ftxui::Color::Cyan;
+  t.syntax.function = ftxui::Color::Blue;
+
+  t.chrome.dim_text = ftxui::Color::GrayDark;
+  t.chrome.body_text = ftxui::Color::Default;
+  t.chrome.prompt = ftxui::Color::Blue;
+  t.chrome.canvas_bg = ftxui::Color::Default;
+  t.chrome.canvas_bg_rgb = {0, 0, 0};  // Sentinel: skip OSC 11
+
+  t.cards.user_bg = ftxui::Color::Default;
+  t.cards.agent_bg = ftxui::Color::Default;
+
+  t.tool.header_bg = ftxui::Color::Default;
+  t.tool.bash_accent = ftxui::Color::Yellow;
+  t.tool.edit_add = ftxui::Color::Green;
+  t.tool.edit_remove = ftxui::Color::Red;
+  t.tool.edit_context = ftxui::Color::GrayDark;
+  t.tool.read_accent = ftxui::Color::Blue;
+  t.tool.grep_accent = ftxui::Color::Magenta;
+  t.tool.glob_accent = ftxui::Color::Cyan;
+  t.tool.web_accent = ftxui::Color::Blue;
+  t.tool.icon_fg = ftxui::Color::Default;
+
+  t.dialog.overlay_bg = ftxui::Color::Default;
+  t.dialog.selected_bg = ftxui::Color::Blue;
+  t.dialog.selected_fg = ftxui::Color::Default;
+  t.dialog.input_bg = ftxui::Color::Default;
+  t.dialog.input_fg = ftxui::Color::Default;
+  t.dialog.dim_text = ftxui::Color::GrayDark;
+
+  t.sub_agent.pending_bg = ftxui::Color::Default;
+  t.sub_agent.running_accent = ftxui::Color::Blue;
+  t.sub_agent.success_accent = ftxui::Color::Green;
+  t.sub_agent.error_accent = ftxui::Color::Red;
+  t.sub_agent.timeout_accent = ftxui::Color::Yellow;
+  t.sub_agent.header_bg = ftxui::Color::Default;
+  t.sub_agent.icon_fg = ftxui::Color::Default;
+  t.sub_agent.progress_fg = ftxui::Color::Blue;
+
+  t.semantic.text_strong = ftxui::Color::Default;
+  t.semantic.text_body = ftxui::Color::Default;
+  t.semantic.text_weak = ftxui::Color::GrayDark;
+  t.semantic.text_muted = ftxui::Color::GrayDark;
+  t.semantic.accent_primary = ftxui::Color::Blue;
+  t.semantic.accent_secondary = ftxui::Color::Cyan;
+  t.semantic.surface_canvas = ftxui::Color::Default;
+  t.semantic.surface_panel = ftxui::Color::Default;
+  t.semantic.surface_raised = ftxui::Color::Default;
+  t.semantic.border_subtle = ftxui::Color::GrayDark;
+  t.semantic.border_strong = ftxui::Color::Default;
+  t.semantic.focus_ring = ftxui::Color::Blue;
+  t.semantic.selection_bg = ftxui::Color::Blue;
 
   return t;
 }
