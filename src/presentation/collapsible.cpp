@@ -15,8 +15,6 @@ namespace yac::presentation {
 
 namespace {
 
-inline const auto& k_theme = theme::Theme::Instance();
-
 constexpr auto kAnimationDuration = std::chrono::milliseconds(150);
 
 class CollapsibleImpl : public ftxui::ComponentBase {
@@ -43,7 +41,7 @@ class CollapsibleImpl : public ftxui::ComponentBase {
 
     auto indicator =
         *expanded_ ? ftxui::text("\xe2\x96\xbc") : ftxui::text("\xe2\x96\xb6");
-    indicator |= ftxui::color(k_theme.tool.icon_fg);
+    indicator |= ftxui::color(theme::CurrentTheme().tool.icon_fg);
 
     const std::string header_text =
         header_provider_ ? header_provider_() : std::string{};
@@ -54,17 +52,17 @@ class CollapsibleImpl : public ftxui::ComponentBase {
     header_parts.push_back(indicator);
     header_parts.push_back(ftxui::text(" "));
     header_parts.push_back(ftxui::text(header_text) | ftxui::bold |
-                           ftxui::color(k_theme.chrome.body_text));
+                           ftxui::color(theme::CurrentTheme().chrome.body_text));
     if (!summary.empty()) {
       header_parts.push_back(ftxui::filler());
       header_parts.push_back(ftxui::text(" ") |
-                             ftxui::color(k_theme.chrome.dim_text));
+                             ftxui::color(theme::CurrentTheme().chrome.dim_text));
       header_parts.push_back(ftxui::text(summary) |
-                             ftxui::color(k_theme.chrome.dim_text) |
+                             ftxui::color(theme::CurrentTheme().chrome.dim_text) |
                              ftxui::dim);
     }
     auto header_elem = ftxui::hbox(std::move(header_parts)) |
-                       ftxui::bgcolor(k_theme.tool.header_bg);
+                       ftxui::bgcolor(theme::CurrentTheme().tool.header_bg);
 
     header_elem |= ftxui::reflect(header_box_);
 
@@ -76,7 +74,7 @@ class CollapsibleImpl : public ftxui::ComponentBase {
     }
 
     auto rendered_content =
-        content_->Render() | ftxui::color(k_theme.chrome.body_text);
+        content_->Render() | ftxui::color(theme::CurrentTheme().chrome.body_text);
 
     if (progress_ < 1.0F) {
       int max_height =
