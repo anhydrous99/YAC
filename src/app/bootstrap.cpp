@@ -122,31 +122,46 @@ presentation::StartupStatus BuildStartupStatus(
 }
 
 std::string BuildHelpText(const presentation::StartupStatus& startup) {
-  return "Shortcuts\n"
-         "Enter sends. Shift+Enter, Ctrl+Enter, and Alt+Enter insert a "
-         "newline.\n"
-         "Ctrl+P opens commands. PageUp/PageDown scroll. Home/End jumps.\n\n"
+  return "Navigation\n"
+         "  Ctrl+P        Command palette\n"
+         "  /             Slash command menu\n"
+         "  Esc           Close palette or menu\n"
+         "  Up / Down     Move selection\n\n"
+         "Composer\n"
+         "  Enter         Send message\n"
+         "  Shift+Enter   Insert newline\n"
+         "  Ctrl+Enter    Insert newline\n"
+         "  Alt+Enter     Insert newline\n\n"
+         "Scroll\n"
+         "  PageUp        Scroll transcript up\n"
+         "  PageDown      Scroll transcript down\n"
+         "  Home          Jump to top of history\n"
+         "  End           Jump to bottom\n\n"
          "Slash commands\n"
-         "/help opens this panel. /clear starts fresh. /cancel stops the "
-         "active response. /task <description> starts a background sub-agent. "
-         "/init and /review run predefined prompts from ~/.yac/prompts. "
-         "/quit exits.\n\n"
+         "  /help         This panel\n"
+         "  /clear        Start fresh\n"
+         "  /cancel       Stop active response\n"
+         "  /task <desc>  Start background sub-agent\n"
+         "  /init         Run init prompt\n"
+         "  /review       Run review prompt\n"
+         "  /quit         Exit\n\n"
          "Predefined prompts\n"
-         "Each ~/.yac/prompts/*.toml file becomes /<filename>. Prompt files "
-         "use description = \"...\" and prompt = \"\"\"...\"\"\". Command "
-         "arguments replace $ARGUMENTS in the prompt body.\n\n"
+         "  Each ~/.yac/prompts/*.toml file becomes /<filename>.\n"
+         "  Use description = \"...\" and prompt = \"\"\"...\"\"\".\n"
+         "  Command arguments replace $ARGUMENTS.\n\n"
          "Current session\n"
-         "Provider/model: " +
+         "  Provider/model: " +
          startup.provider_id + " / " + startup.model +
-         "\nWorkspace: " + startup.workspace_root +
-         "\nAPI key env: " + startup.api_key_env + " (" +
+         "\n  Workspace: " + startup.workspace_root +
+         "\n  API key env: " + startup.api_key_env + " (" +
          (startup.api_key_configured ? "configured" : "missing") + ")" +
-         "\nLSP: " + startup.lsp_command + " (" +
+         "\n  LSP: " + startup.lsp_command + " (" +
          (startup.lsp_available ? "found" : "not found") +
          ")\n\n"
          "Tool permissions\n"
-         "Writes and renames ask before changing the workspace. Review the "
-         "target and preview, then approve with Enter/Y or reject with N/Esc.";
+         "  Writes and renames ask before changing the workspace.\n"
+         "  Review the target and preview, then approve with Enter/Y\n"
+         "  or reject with N/Esc.";
 }
 
 void ApplyModelDiscoveryResult(const ModelDiscoveryResult& result,
