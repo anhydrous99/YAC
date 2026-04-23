@@ -156,7 +156,7 @@ ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
               ? 1
               : layout::kSectionGap;
       for (int i = 0; i < gap; ++i) {
-        elements.push_back(ftxui::text(""));
+        elements.push_back(ftxui::text(" "));
       }
     }
     if (message.id == 0) {

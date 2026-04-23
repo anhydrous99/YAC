@@ -105,6 +105,9 @@ class DynamicMessageStack : public ftxui::ComponentBase {
 
     ftxui::Elements elements;
     for (const auto& child : children_) {
+      if (!elements.empty()) {
+        elements.push_back(ftxui::text(" "));
+      }
       elements.push_back(child->Render());
     }
     return ftxui::vbox(std::move(elements));
