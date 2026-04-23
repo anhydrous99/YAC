@@ -37,10 +37,14 @@ command = "clangd"
 args    = []
 
 [theme]
-# Paint the terminal background to match YAC's Catppuccin Mocha canvas on
-# startup (via OSC 11) and restore the terminal default on exit. The in-app
-# chat canvas always paints regardless of this setting; this toggle only
-# controls whether YAC touches terminal-global state.
+# Active theme preset. Built-in: "opencode" (default), "catppuccin",
+# "system". The "system" theme uses terminal default colors and
+# disables OSC 11 background sync.
+name = "opencode"
+
+# Paint the terminal background to match the active theme's canvas
+# color (via OSC 11) and restore the terminal default on exit. Has
+# no effect when name = "system".
 sync_terminal_background = true
 )";
 

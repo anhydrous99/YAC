@@ -31,3 +31,14 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 [lsp.clangd]
 command = "clangd"
 args    = []
+
+[theme]
+# Active theme preset. Built-in: "opencode" (default), "catppuccin",
+# "system". The "system" theme uses terminal default colors and
+# disables OSC 11 background sync.
+name = "opencode"
+
+# Paint the terminal background to match the active theme's canvas
+# color (via OSC 11) and restore the terminal default on exit. Has
+# no effect when name = "system".
+sync_terminal_background = true
