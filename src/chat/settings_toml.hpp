@@ -21,6 +21,7 @@ struct ChatConfigFieldSet {
   bool lsp_clangd_command = false;
   bool lsp_clangd_args = false;
   bool theme_name = false;
+  bool theme_density = false;
 };
 
 // Parses settings.toml at the given path and overlays values onto `config`.

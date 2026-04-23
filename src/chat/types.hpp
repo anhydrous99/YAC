@@ -344,6 +344,7 @@ struct ChatConfig {
   std::optional<std::string> system_prompt;
   bool sync_terminal_background = true;
   std::string theme_name = "opencode";
+  std::string theme_density = "comfortable";
 };
 
 struct ChatConfigResult {

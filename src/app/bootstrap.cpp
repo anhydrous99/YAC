@@ -283,12 +283,15 @@ int RunApp() {
   auto provider = BuildProvider(config);
 
   {
-    const auto theme = presentation::theme::GetTheme(config.theme_name);
+    auto theme = presentation::theme::GetTheme(config.theme_name);
     if (theme.name != config.theme_name && !config.theme_name.empty()) {
       config_result.issues.push_back(
           {.severity = chat::ConfigIssueSeverity::Warning,
            .message = "Unknown theme: '" + config.theme_name + "'",
            .detail = "Falling back to default theme 'opencode'."});
+    }
+    if (config.theme_density == "compact") {
+      theme.density = presentation::theme::ThemeDensity::Compact;
     }
     presentation::theme::InitializeTheme(theme);
   }

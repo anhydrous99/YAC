@@ -196,6 +196,16 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
         fields.theme_name = false;
       }
     }
+    if (ApplyStringField(theme_section["density"], "theme.density",
+                         config.theme_density, issues)) {
+      fields.theme_density = true;
+      if (config.theme_density != "compact" &&
+          config.theme_density != "comfortable") {
+        AddWarning(issues, "Unknown theme.density in settings.toml",
+                   "Falling back to default theme density 'comfortable'.");
+        config.theme_density = "comfortable";
+      }
+    }
   } else if (table.contains("theme")) {
     AddError(issues, "Invalid type for [theme] in settings.toml",
              "Expected a table.");
