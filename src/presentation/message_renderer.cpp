@@ -149,7 +149,9 @@ ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
   ftxui::Elements elements;
   for (const auto& message : messages) {
     if (!elements.empty()) {
-      elements.push_back(ftxui::text(""));
+      for (int i = 0; i < layout::kSectionGap; ++i) {
+        elements.push_back(ftxui::text(""));
+      }
     }
     if (message.id == 0) {
       MessageRenderCache cache;

@@ -8,6 +8,7 @@
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
 #include "theme.hpp"
+#include "ui_spacing.hpp"
 #include "util/scroll_math.hpp"
 
 #include <algorithm>
@@ -287,14 +288,26 @@ ftxui::Component ChatUI::Build() {
 
     // ── Composer surface ─────────────────────────────────────────
     const int line_count = composer_.CalculateHeight(kMaxInputLines);
-    auto composer_surface = ftxui::hbox({
+    auto composer_content = ftxui::hbox({
+        ftxui::text(std::string(layout::kComposerPadX, ' ')),
         ftxui::text(" \xe2\x9d\xaf ") |
             ftxui::color(colors.semantic.accent_primary) | ftxui::bold,
         input->Render() | ftxui::flex,
         ftxui::text(" " + std::to_string(line_count) + "/" +
                     std::to_string(kMaxInputLines) + " ") |
             ftxui::color(colors.semantic.text_muted),
+        ftxui::text(std::string(layout::kComposerPadX, ' ')),
     });
+
+    ftxui::Elements composer_surface_rows;
+    for (int i = 0; i < layout::kComposerPadY; ++i) {
+      composer_surface_rows.push_back(ftxui::text(""));
+    }
+    composer_surface_rows.push_back(std::move(composer_content));
+    for (int i = 0; i < layout::kComposerPadY; ++i) {
+      composer_surface_rows.push_back(ftxui::text(""));
+    }
+    auto composer_surface = ftxui::vbox(std::move(composer_surface_rows));
 
     // ── Assembly ─────────────────────────────────────────────────
     ftxui::Elements main_parts;
@@ -314,7 +327,8 @@ ftxui::Component ChatUI::Build() {
 
     main_parts.push_back(
         composer_surface | ftxui::bgcolor(colors.semantic.surface_panel) |
-        ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, kMaxInputLines));
+        ftxui::size(ftxui::HEIGHT, ftxui::EQUAL,
+                    kMaxInputLines + (2 * layout::kComposerPadY)));
 
     return ftxui::vbox(std::move(main_parts));
   });
