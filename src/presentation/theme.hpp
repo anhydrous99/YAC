@@ -9,11 +9,13 @@
 
 namespace yac::presentation::theme {
 
-inline constexpr std::uint8_t kCanvasBgRed = 17;
-inline constexpr std::uint8_t kCanvasBgGreen = 17;
-inline constexpr std::uint8_t kCanvasBgBlue = 27;
-
 enum class ThemeDensity { Compact, Comfortable };
+
+struct CanvasRgb {
+  std::uint8_t r;
+  std::uint8_t g;
+  std::uint8_t b;
+};
 
 struct Theme;
 
@@ -24,6 +26,8 @@ void InitializeTheme(Theme value);
 // Returns the active theme. Lazily initializes to CatppuccinMocha()
 // if InitializeTheme has not been called yet.
 [[nodiscard]] const Theme& CurrentTheme();
+
+[[nodiscard]] CanvasRgb CurrentCanvasRgb();
 
 using ThemeFactory = std::function<Theme()>;
 
@@ -84,6 +88,7 @@ struct ChromeColors {
   ftxui::Color body_text;
   ftxui::Color prompt;
   ftxui::Color canvas_bg;
+  CanvasRgb canvas_bg_rgb;
 };
 
 struct CardColors {

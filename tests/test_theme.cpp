@@ -48,10 +48,14 @@ TEST_CASE("CatppuccinMocha returns fully populated Theme") {
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_bg, ftxui::Color()));
 }
 
-TEST_CASE("CatppuccinMocha canvas_bg matches exported RGB constants") {
+TEST_CASE("CatppuccinMocha canvas_bg matches stored RGB tuple") {
   auto t = CatppuccinMocha();
   auto expected =
-      ftxui::Color::RGB(kCanvasBgRed, kCanvasBgGreen, kCanvasBgBlue);
+      ftxui::Color::RGB(t.chrome.canvas_bg_rgb.r, t.chrome.canvas_bg_rgb.g,
+                        t.chrome.canvas_bg_rgb.b);
+  REQUIRE(t.chrome.canvas_bg_rgb.r == 17);
+  REQUIRE(t.chrome.canvas_bg_rgb.g == 17);
+  REQUIRE(t.chrome.canvas_bg_rgb.b == 27);
   REQUIRE(ColorsEqual(t.chrome.canvas_bg, expected));
 }
 

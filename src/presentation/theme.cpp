@@ -45,6 +45,10 @@ const Theme& CurrentTheme() {
   return *g_active_theme;
 }
 
+CanvasRgb CurrentCanvasRgb() {
+  return CurrentTheme().chrome.canvas_bg_rgb;
+}
+
 void RegisterTheme(std::string name, ThemeFactory factory) {
   RegisterBuiltinThemes();
   g_theme_registry[std::move(name)] = std::move(factory);
@@ -100,8 +104,8 @@ Theme CatppuccinMocha() {
   t.chrome.dim_text = ftxui::Color::RGB(147, 153, 178);
   t.chrome.body_text = ftxui::Color::RGB(186, 194, 222);
   t.chrome.prompt = ftxui::Color::RGB(137, 180, 250);
-  t.chrome.canvas_bg =
-      ftxui::Color::RGB(kCanvasBgRed, kCanvasBgGreen, kCanvasBgBlue);
+  t.chrome.canvas_bg = ftxui::Color::RGB(17, 17, 27);
+  t.chrome.canvas_bg_rgb = {17, 17, 27};
 
   t.cards.user_bg = ftxui::Color::RGB(30, 30, 46);
   t.cards.agent_bg = ftxui::Color::RGB(24, 24, 37);

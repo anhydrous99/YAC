@@ -271,9 +271,8 @@ int RunApp() {
 
   std::optional<presentation::terminal::BackgroundGuard> terminal_bg_guard;
   if (config.sync_terminal_background) {
-    terminal_bg_guard.emplace(presentation::theme::kCanvasBgRed,
-                              presentation::theme::kCanvasBgGreen,
-                              presentation::theme::kCanvasBgBlue);
+    const auto rgb = presentation::theme::CurrentCanvasRgb();
+    terminal_bg_guard.emplace(rgb.r, rgb.g, rgb.b);
   }
 
   presentation::ChatUI chat_ui;
