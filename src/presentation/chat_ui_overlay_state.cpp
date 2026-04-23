@@ -3,7 +3,9 @@
 #include "dialog.hpp"
 #include "theme.hpp"
 #include "tool_call/renderer.hpp"
+#include "ui_spacing.hpp"
 
+#include <string>
 #include <utility>
 
 namespace yac::presentation {
@@ -19,8 +21,11 @@ ftxui::Element ApprovalToolLabel(const std::string& tool_name) {
 
 ftxui::Element ApprovalArgumentsBlock(const std::string& prompt) {
   return ftxui::vbox({
-             ftxui::paragraph(prompt) |
-                 ftxui::color(theme::CurrentTheme().code.fg),
+             ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
+                          ftxui::paragraph(prompt) |
+                              ftxui::color(theme::CurrentTheme().code.fg) |
+                              ftxui::flex,
+                          ftxui::text(std::string(layout::kCardPadX, ' '))}),
          }) |
          ftxui::bgcolor(theme::CurrentTheme().code.bg) |
          ftxui::color(theme::CurrentTheme().code.fg);
@@ -30,7 +35,7 @@ ftxui::Element ApprovalActions() {
   return ftxui::hbox({
       ftxui::text(" \xe2\x86\xb5 Enter/Y Approve ") | ftxui::bold |
           ftxui::color(theme::CurrentTheme().role.agent),
-      ftxui::text("  "),
+      ftxui::text(std::string(layout::kRowGap, ' ')),
       ftxui::text(" N/Esc Reject ") | ftxui::bold |
           ftxui::color(theme::CurrentTheme().role.error),
   });

@@ -5,10 +5,12 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "theme.hpp"
+#include "ui_spacing.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace yac::presentation {
@@ -156,7 +158,8 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       bool selected = filtered_index == selected_index_;
 
       auto name = ftxui::text(command.name) | ftxui::bold;
-      auto desc = ftxui::text("  " + command.description);
+      auto desc = ftxui::text(std::string(layout::kCardPadX, ' ') +
+                              command.description);
 
       if (selected) {
         auto bar =
@@ -164,12 +167,14 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
             ftxui::bgcolor(theme::CurrentTheme().semantic.accent_primary);
         name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
         desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
-        return ftxui::hbox({bar, ftxui::text(" "), name, desc | ftxui::flex});
+        return ftxui::hbox({bar, ftxui::text(std::string(layout::kRowGap, ' ')),
+                            name, desc | ftxui::flex});
       }
 
       name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
       desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
-      return ftxui::hbox({ftxui::text("  "), name, desc | ftxui::flex});
+      return ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
+                          name, desc | ftxui::flex});
     }
 
     void RefreshFiltered() {

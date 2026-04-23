@@ -3,6 +3,9 @@
 #include "ftxui/dom/elements.hpp"
 #include "slash_command_registry.hpp"
 #include "theme.hpp"
+#include "ui_spacing.hpp"
+
+#include <string>
 
 namespace yac::presentation {
 
@@ -24,11 +27,13 @@ ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
                ftxui::bgcolor(theme::CurrentTheme().semantic.accent_primary);
     name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
     desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
-    return ftxui::hbox({bar, ftxui::text(" "), name, desc});
+    return ftxui::hbox(
+        {bar, ftxui::text(std::string(layout::kRowGap, ' ')), name, desc});
   }
   name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
   desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak) | ftxui::dim;
-  return ftxui::hbox({ftxui::text("  "), name, desc});
+  return ftxui::hbox(
+      {ftxui::text(std::string(layout::kCardPadX, ' ')), name, desc});
 }
 
 }  // namespace
@@ -37,7 +42,8 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
                                       const std::vector<int>& filtered_indices,
                                       int selected_index, int max_width) {
   if (filtered_indices.empty()) {
-    return ftxui::text("  No matching commands") |
+    return ftxui::text(std::string(layout::kCardPadX, ' ') +
+                       "No matching commands") |
            ftxui::color(theme::CurrentTheme().dialog.dim_text) | ftxui::dim |
            ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
            ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, max_width);

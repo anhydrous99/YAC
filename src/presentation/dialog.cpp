@@ -4,7 +4,9 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "theme.hpp"
+#include "ui_spacing.hpp"
 
+#include <string>
 #include <utility>
 
 namespace yac::presentation {
@@ -83,9 +85,9 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
       auto inner = ftxui::vbox({
           DialogTitle(title_),
           ftxui::text(""),
-          ftxui::hbox({ftxui::text("  "),
+          ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
                        inner_content_->Render() | ftxui::flex,
-                       ftxui::text("  ")}),
+                       ftxui::text(std::string(layout::kCardPadX, ' '))}),
           ftxui::text(""),
       });
 
