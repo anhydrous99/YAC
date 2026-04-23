@@ -44,6 +44,8 @@ The SVG previews show the current chat surface and command palette.
   task, and quit commands
 - User-defined predefined prompt commands loaded from `~/.yac/prompts/*.toml`,
   with seeded `/init` and `/review` prompts
+- Selectable theme presets (`opencode`, `catppuccin`, `system`) with a calm,
+  focused visual language built around semantic color roles
 
 ## Quick Start
 
