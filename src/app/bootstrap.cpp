@@ -201,14 +201,21 @@ void ConfigureServiceEventCallback(ftxui::App& screen, ChatEventBridge& bridge,
   });
 }
 
-void ConfigureChatUiCallbacks(const std::vector<chat::ModelInfo>& models,
-                              chat::ChatService& chat_service,
-                              presentation::ChatUI& chat_ui) {
+void ConfigureChatUiCallbacks(
+    const std::vector<chat::ModelInfo>& models,
+    const chat::ChatConfig& config,
+    const std::shared_ptr<
+        std::optional<presentation::terminal::BackgroundGuard>>&
+        terminal_bg_guard,
+    ftxui::App& screen,
+    chat::ChatService& chat_service,
+    presentation::ChatUI& chat_ui) {
   chat_ui.SetOnSend([&chat_service](const std::string& message) {
     chat_service.SubmitUserMessage(message);
   });
 
-  chat_ui.SetOnCommand([&chat_service, &chat_ui](const std::string& command) {
+  chat_ui.SetOnCommand([&chat_service, &chat_ui, &config, terminal_bg_guard,
+                        &screen](const std::string& command) {
     if (command == "new_chat" || command == "clear_messages") {
       chat_service.ResetConversation();
     } else if (command == "cancel_response") {
@@ -221,8 +228,23 @@ void ConfigureChatUiCallbacks(const std::vector<chat::ModelInfo>& models,
     } else if (command.starts_with(presentation::kSwitchThemePrefix)) {
       auto theme_name =
           command.substr(std::string(presentation::kSwitchThemePrefix).size());
-      presentation::theme::ReinitializeTheme(
-          presentation::theme::GetTheme(theme_name));
+      auto theme = presentation::theme::GetTheme(theme_name);
+      if (config.theme_density == "compact") {
+        theme.density = presentation::theme::ThemeDensity::Compact;
+      }
+      presentation::theme::ReinitializeTheme(std::move(theme));
+      if (config.sync_terminal_background) {
+        if (theme_name == "system") {
+          terminal_bg_guard->reset();
+        } else {
+          const auto rgb = presentation::theme::CurrentCanvasRgb();
+          terminal_bg_guard->reset();
+          if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
+            terminal_bg_guard->emplace(rgb.r, rgb.g, rgb.b);
+          }
+        }
+      }
+      screen.PostEvent(ftxui::Event::Custom);
     }
   });
   chat_ui.SetOnToolApproval(
@@ -304,11 +326,12 @@ int RunApp() {
 
   auto screen = ftxui::App::Fullscreen();
 
-  std::optional<presentation::terminal::BackgroundGuard> terminal_bg_guard;
+  auto terminal_bg_guard =
+      std::make_shared<std::optional<presentation::terminal::BackgroundGuard>>();
   if (config.sync_terminal_background && config.theme_name != "system") {
     const auto rgb = presentation::theme::CurrentCanvasRgb();
     if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
-      terminal_bg_guard.emplace(rgb.r, rgb.g, rgb.b);
+      terminal_bg_guard->emplace(rgb.r, rgb.g, rgb.b);
     }
   }
 
@@ -324,7 +347,8 @@ int RunApp() {
   chat::ChatService chat_service(std::move(registry), config);
 
   ConfigureServiceEventCallback(screen, bridge, chat_service);
-  ConfigureChatUiCallbacks({}, chat_service, chat_ui);
+  ConfigureChatUiCallbacks({}, config, terminal_bg_guard, screen, chat_service,
+                           chat_ui);
 
   chat_ui.SetSlashCommands(
       BuildSlashCommandRegistry(screen.ExitLoopClosure(), chat_service, chat_ui,
