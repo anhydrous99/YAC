@@ -127,7 +127,7 @@ TEST_CASE("Render agent message surface hugs short content") {
 
   auto [left_edge, right_edge] =
       ContentColumns(RenderMessageToString(msg, 60, 8));
-  REQUIRE(left_edge == 2);
+  REQUIRE(left_edge == 0);
   REQUIRE(right_edge < 59);
 }
 
@@ -215,7 +215,7 @@ TEST_CASE("Render active agent message with text shows stream cursor") {
 
   auto output = StripAnsi(RenderMessageToString(msg));
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("\xe2\x96\x8d"));
 }
 
 TEST_CASE("Render active agent message with text animates through cache") {
@@ -247,7 +247,7 @@ TEST_CASE("Stream cursor stays inline with the last streamed text") {
 
   REQUIRE(text_line != std::string::npos);
   REQUIRE_THAT(lines[text_line],
-               Catch::Matchers::ContainsSubstring("\xe2\x96\x8e"));
+               Catch::Matchers::ContainsSubstring("\xe2\x96\x8d"));
 }
 
 TEST_CASE("Render error agent message hides active indicator") {

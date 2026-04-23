@@ -51,21 +51,29 @@ std::string StatusLabel(MessageStatus status, Sender sender) {
   return {};
 }
 
-ftxui::Color StatusColor(MessageStatus status, const theme::Theme& theme,
-                         Sender sender) {
+ftxui::Element RenderStatusLabel(MessageStatus status, Sender sender,
+                                 const theme::Theme& theme) {
+  const auto label = StatusLabel(status, sender);
+  if (label.empty()) return ftxui::emptyElement();
+
+  ftxui::Color color;
   switch (status) {
     case MessageStatus::Queued:
-      return ftxui::Color::Yellow;
+      color = theme.semantic.text_muted;
+      break;
     case MessageStatus::Active:
-      return sender == Sender::Agent ? theme.role.agent : theme.role.user;
+      color = theme.semantic.accent_primary;
+      break;
     case MessageStatus::Cancelled:
-      return theme.chrome.dim_text;
+      color = theme.semantic.text_weak;
+      break;
     case MessageStatus::Error:
-      return theme.role.error;
-    case MessageStatus::Complete:
-      return theme.chrome.dim_text;
+      color = theme.role.error;
+      break;
+    default:
+      return ftxui::emptyElement();
   }
-  return theme.chrome.dim_text;
+  return ftxui::text(" \xC2\xB7 " + label + " ") | ftxui::color(color);
 }
 
 }  // namespace
@@ -161,10 +169,11 @@ ftxui::Element MessageRenderer::RenderUserMessage(
                                           ftxui::flex}),
   });
 
-  auto styled_card = MessageRenderer::CardSurface(std::move(content),
-                                                  theme.cards.user_bg, context);
-
-  return ftxui::hbox({ftxui::filler(), styled_card | ftxui::xflex_shrink});
+  auto accent_rail =
+      ftxui::text("▌") | ftxui::color(theme.semantic.accent_secondary);
+  return ftxui::hbox({accent_rail, std::move(content) | ftxui::flex}) |
+         ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
+                     MessageCardMaxWidth(context));
 }
 
 ftxui::Element MessageRenderer::RenderAgentMessageContent(
@@ -186,8 +195,8 @@ ftxui::Element MessageRenderer::RenderAgentMessageContent(
 
   ftxui::Element stream_cursor;
   if (is_active && !message.Text().empty()) {
-    stream_cursor = ftxui::text(" \xe2\x96\x8e") |
-                    ftxui::color(theme.role.agent) | ftxui::dim;
+    stream_cursor = ftxui::text(" \xe2\x96\x8d") |
+                    ftxui::color(theme.semantic.accent_primary);
   }
   rows.push_back(markdown::MarkdownRenderer::Render(blocks, context,
                                                     std::move(stream_cursor)));
@@ -198,14 +207,9 @@ ftxui::Element MessageRenderer::RenderAgentMessageContent(
 ftxui::Element MessageRenderer::RenderAgentMessage(
     const Message& message, MessageRenderCache& cache,
     const RenderContext& context) {
-  const auto& theme = context.Colors();
-
-  auto content = RenderAgentMessageContent(message, cache, context);
-
-  auto styled_card = MessageRenderer::CardSurface(
-      std::move(content), theme.cards.agent_bg, context);
-
-  return ftxui::hbox({styled_card | ftxui::xflex_shrink, ftxui::filler()});
+  return RenderAgentMessageContent(message, cache, context) |
+         ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
+                     MessageCardMaxWidth(context));
 }
 
 ftxui::Element MessageRenderer::RenderToolCallMessage(
@@ -227,12 +231,13 @@ ftxui::Element MessageRenderer::RenderHeader(
   const bool is_error = status == MessageStatus::Error;
   const bool is_active =
       sender == Sender::Agent && status == MessageStatus::Active;
+
   const auto& icon_color = SenderSwitch(
       sender, [&]() -> const auto& { return theme.role.user; },
       [&]() -> const auto& {
         return is_error ? theme.role.error : theme.role.agent;
       },
-      [&]() -> const auto& { return theme.tool.icon_fg; });
+      [&]() -> const auto& { return theme.sub_agent.icon_fg; });
 
   const char* avatar = SenderSwitch(
       sender, [&]() -> const char* { return "\xe2\x97\x8f"; },
@@ -240,21 +245,16 @@ ftxui::Element MessageRenderer::RenderHeader(
       [&]() -> const char* { return "\xe2\x97\x8b"; });
 
   ftxui::Elements left_parts;
-  left_parts.push_back(ftxui::text(avatar) | ftxui::bold |
-                       ftxui::color(icon_color));
+  left_parts.push_back(ftxui::text(avatar) | ftxui::color(icon_color));
   left_parts.push_back(ftxui::text(" "));
-  left_parts.push_back(ftxui::text(label) | ftxui::bold |
-                       ftxui::color(icon_color));
+  left_parts.push_back(ftxui::text(label) |
+                       ftxui::color(theme.semantic.text_weak));
+  left_parts.push_back(RenderStatusLabel(status, sender, theme));
 
-  const auto status_label = StatusLabel(status, sender);
-  if (!status_label.empty()) {
-    left_parts.push_back(ftxui::text(" \xC2\xB7 " + status_label + " ") |
-                         ftxui::color(StatusColor(status, theme, sender)));
-    if (is_active) {
-      left_parts.push_back(
-          ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
-          ftxui::color(theme.role.agent) | ftxui::bold);
-    }
+  if (is_active) {
+    left_parts.push_back(
+        ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
+        ftxui::color(theme.semantic.accent_primary) | ftxui::bold);
   }
 
   auto left = ftxui::hbox(std::move(left_parts));
@@ -262,7 +262,8 @@ ftxui::Element MessageRenderer::RenderHeader(
   ftxui::Element right = ftxui::emptyElement();
   if (created_at != std::chrono::system_clock::time_point{}) {
     auto rel_time = util::FormatRelativeTime(created_at, cache);
-    right = ftxui::text(" " + rel_time) | ftxui::color(theme.chrome.dim_text);
+    right = ftxui::text(" \xC2\xB7 " + rel_time) |
+            ftxui::color(theme.semantic.text_muted);
   }
 
   return ftxui::hbox({left | ftxui::flex, right});
