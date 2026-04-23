@@ -1,5 +1,7 @@
 #include "presentation/theme.hpp"
+#include "presentation/theme_testing.hpp"
 
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::presentation::theme;
@@ -16,8 +18,16 @@ bool ColorsEqual(const ftxui::Color& a, const ftxui::Color& b) {
 
 }  // namespace
 
-TEST_CASE("CatppuccinPreset returns fully populated Theme") {
-  auto t = CatppuccinPreset();
+TEST_CASE("GetTheme returns fully populated Theme") {
+  const std::string name = GENERATE("opencode", "catppuccin", "system");
+  const auto t = GetTheme(name);
+
+  REQUIRE(t.name == name);
+  REQUIRE(t.density == ThemeDensity::Comfortable);
+
+  if (name == "system") {
+    return;
+  }
 
   REQUIRE_FALSE(ColorsEqual(t.role.user, ftxui::Color()));
   REQUIRE_FALSE(ColorsEqual(t.role.agent, ftxui::Color()));
@@ -59,6 +69,31 @@ TEST_CASE("CatppuccinPreset canvas_bg matches stored RGB tuple") {
   REQUIRE(ColorsEqual(t.chrome.canvas_bg, expected));
 }
 
+TEST_CASE("InitializeTheme + CurrentTheme round-trip") {
+  testing::ResetThemeForTesting();
+
+  InitializeTheme(GetTheme("opencode"));
+  REQUIRE(CurrentTheme().name == "opencode");
+
+  REQUIRE_NOTHROW(InitializeTheme(GetTheme("opencode")));
+  REQUIRE(CurrentTheme().name == "opencode");
+}
+
+TEST_CASE("CurrentTheme lazy default before InitializeTheme") {
+  testing::ResetThemeForTesting();
+
+  const auto& t = CurrentTheme();
+  REQUIRE_FALSE(t.name.empty());
+}
+
+TEST_CASE("InitializeTheme rejects different theme after init") {
+  testing::ResetThemeForTesting();
+
+  InitializeTheme(GetTheme("opencode"));
+  REQUIRE_THROWS_AS(InitializeTheme(GetTheme("catppuccin")),
+                    std::logic_error);
+}
+
 TEST_CASE("Theme Instance returns consistent reference") {
   const auto& a = CurrentTheme();
   const auto& b = CurrentTheme();
@@ -66,16 +101,24 @@ TEST_CASE("Theme Instance returns consistent reference") {
 }
 
 TEST_CASE("Theme Instance matches CatppuccinPreset values") {
+  testing::ResetThemeForTesting();
+
   const auto& instance = CurrentTheme();
-  auto preset = CatppuccinPreset();
+  auto preset = GetTheme("catppuccin");
 
   REQUIRE(ColorsEqual(instance.role.user, preset.role.user));
   REQUIRE(ColorsEqual(instance.role.agent, preset.role.agent));
   REQUIRE(ColorsEqual(instance.role.error, preset.role.error));
 }
 
-TEST_CASE("CatppuccinPreset role colors are distinct") {
-  auto t = CatppuccinPreset();
+TEST_CASE("GetTheme role colors are distinct") {
+  const std::string name = GENERATE("opencode", "catppuccin", "system");
+  auto t = GetTheme(name);
+
+  if (name == "system") {
+    return;
+  }
+
   REQUIRE_FALSE(ColorsEqual(t.role.user, t.role.agent));
   REQUIRE_FALSE(ColorsEqual(t.role.user, t.role.error));
   REQUIRE_FALSE(ColorsEqual(t.role.agent, t.role.error));

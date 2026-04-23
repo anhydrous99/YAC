@@ -1,5 +1,6 @@
 #include "presentation/theme.hpp"
 
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::presentation::theme;
@@ -20,24 +21,50 @@ void RequireColorEq(const ftxui::Color& actual, const ftxui::Color& expected) {
 
 }  // namespace
 
-TEST_CASE("CatppuccinPreset populates tool and dialog color groups") {
-  auto t = CatppuccinPreset();
+TEST_CASE("GetTheme populates tool and dialog color groups") {
+  const std::string name = GENERATE("opencode", "catppuccin");
+  const auto t = GetTheme(name);
 
-  RequireColorEq(t.tool.header_bg, ftxui::Color::RGB(49, 50, 68));
-  RequireColorEq(t.tool.bash_accent, ftxui::Color::RGB(250, 179, 135));
-  RequireColorEq(t.tool.edit_add, ftxui::Color::RGB(166, 227, 161));
-  RequireColorEq(t.tool.edit_remove, ftxui::Color::RGB(243, 139, 168));
-  RequireColorEq(t.tool.edit_context, ftxui::Color::RGB(205, 214, 244));
-  RequireColorEq(t.tool.read_accent, ftxui::Color::RGB(137, 180, 250));
-  RequireColorEq(t.tool.grep_accent, ftxui::Color::RGB(203, 166, 247));
-  RequireColorEq(t.tool.glob_accent, ftxui::Color::RGB(148, 226, 213));
-  RequireColorEq(t.tool.web_accent, ftxui::Color::RGB(137, 180, 250));
-  RequireColorEq(t.tool.icon_fg, ftxui::Color::RGB(205, 214, 244));
+  if (name == "catppuccin") {
+    RequireColorEq(t.tool.header_bg, ftxui::Color::RGB(49, 50, 68));
+    RequireColorEq(t.tool.bash_accent, ftxui::Color::RGB(250, 179, 135));
+    RequireColorEq(t.tool.edit_add, ftxui::Color::RGB(166, 227, 161));
+    RequireColorEq(t.tool.edit_remove, ftxui::Color::RGB(243, 139, 168));
+    RequireColorEq(t.tool.edit_context, ftxui::Color::RGB(205, 214, 244));
+    RequireColorEq(t.tool.read_accent, ftxui::Color::RGB(137, 180, 250));
+    RequireColorEq(t.tool.grep_accent, ftxui::Color::RGB(203, 166, 247));
+    RequireColorEq(t.tool.glob_accent, ftxui::Color::RGB(148, 226, 213));
+    RequireColorEq(t.tool.web_accent, ftxui::Color::RGB(137, 180, 250));
+    RequireColorEq(t.tool.icon_fg, ftxui::Color::RGB(205, 214, 244));
 
-  RequireColorEq(t.dialog.overlay_bg, ftxui::Color::RGB(17, 17, 27));
-  RequireColorEq(t.dialog.selected_bg, ftxui::Color::RGB(49, 50, 68));
-  RequireColorEq(t.dialog.selected_fg, ftxui::Color::RGB(205, 214, 244));
-  RequireColorEq(t.dialog.input_bg, ftxui::Color::RGB(30, 30, 46));
-  RequireColorEq(t.dialog.input_fg, ftxui::Color::RGB(205, 214, 244));
-  RequireColorEq(t.dialog.dim_text, ftxui::Color::RGB(147, 153, 178));
+    RequireColorEq(t.dialog.overlay_bg, ftxui::Color::RGB(17, 17, 27));
+    RequireColorEq(t.dialog.selected_bg, ftxui::Color::RGB(49, 50, 68));
+    RequireColorEq(t.dialog.selected_fg, ftxui::Color::RGB(205, 214, 244));
+    RequireColorEq(t.dialog.input_bg, ftxui::Color::RGB(30, 30, 46));
+    RequireColorEq(t.dialog.input_fg, ftxui::Color::RGB(205, 214, 244));
+    RequireColorEq(t.dialog.dim_text, ftxui::Color::RGB(147, 153, 178));
+    return;
+  }
+
+  REQUIRE_FALSE(ColorsEqual(t.tool.header_bg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.bash_accent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.edit_add, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.edit_remove, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.edit_context, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.read_accent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.grep_accent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.glob_accent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.web_accent, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.tool.icon_fg, ftxui::Color()));
+
+  REQUIRE_FALSE(ColorsEqual(t.tool.bash_accent, t.tool.edit_add));
+  REQUIRE_FALSE(ColorsEqual(t.tool.edit_add, t.tool.edit_remove));
+  REQUIRE_FALSE(ColorsEqual(t.tool.read_accent, t.tool.grep_accent));
+
+  REQUIRE_FALSE(ColorsEqual(t.dialog.overlay_bg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.dialog.selected_bg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.dialog.selected_fg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.dialog.input_bg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.dialog.input_fg, ftxui::Color()));
+  REQUIRE_FALSE(ColorsEqual(t.dialog.dim_text, ftxui::Color()));
 }
