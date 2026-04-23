@@ -178,7 +178,9 @@ ftxui::Element MessageRenderer::RenderUserMessage(
 
   auto accent_rail =
       ftxui::text("▌") | ftxui::color(theme.semantic.accent_secondary);
-  return ftxui::hbox({accent_rail, std::move(content) | ftxui::flex}) |
+  return ftxui::hbox({accent_rail,
+                      std::move(content) | ftxui::flex |
+                          ftxui::bgcolor(theme.cards.user_bg)}) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
                      MessageCardMaxWidth(context));
 }
