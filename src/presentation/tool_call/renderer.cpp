@@ -52,8 +52,9 @@ ftxui::Element RenderContainer(const std::string& icon,
       ftxui::filler(),
   });
 
-  auto body =
-      ftxui::vbox(std::move(content)) | ftxui::color(theme.semantic.text_body);
+  auto body = ftxui::vbox(std::move(content)) |
+              ftxui::color(theme.semantic.text_body) |
+              ftxui::bgcolor(theme.semantic.surface_raised);
 
   return ftxui::vbox({
       header,

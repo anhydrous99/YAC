@@ -27,8 +27,9 @@ ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
                ftxui::bgcolor(theme::CurrentTheme().semantic.accent_primary);
     name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
     desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
-    return ftxui::hbox(
-        {bar, ftxui::text(std::string(layout::kRowGap, ' ')), name, desc});
+    return ftxui::hbox({bar, ftxui::text(std::string(layout::kRowGap, ' ')),
+                        name, desc}) |
+           ftxui::bgcolor(theme::CurrentTheme().semantic.selection_bg);
   }
   name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
   desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak) | ftxui::dim;

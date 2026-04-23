@@ -68,8 +68,11 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
     ftxui::Element OnRender() override {
       SyncCommands();
       ftxui::Elements children;
-      children.push_back(input_->Render() |
-                         ftxui::color(theme::CurrentTheme().dialog.input_fg));
+      children.push_back(
+          input_->Render() |
+          ftxui::color(theme::CurrentTheme().dialog.input_fg) |
+          ftxui::borderStyled(ftxui::LIGHT,
+                              theme::CurrentTheme().semantic.focus_ring));
       children.push_back(
           ftxui::text("") |
           ftxui::color(theme::CurrentTheme().semantic.border_subtle));
@@ -168,7 +171,8 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
         name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
         desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
         return ftxui::hbox({bar, ftxui::text(std::string(layout::kRowGap, ' ')),
-                            name, desc | ftxui::flex});
+                            name, desc | ftxui::flex}) |
+               ftxui::bgcolor(theme::CurrentTheme().semantic.selection_bg);
       }
 
       name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);

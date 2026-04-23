@@ -314,9 +314,9 @@ ftxui::Component ChatUI::Build() {
     main_parts.push_back(message_list->Render() | ftxui::flex |
                          ftxui::bgcolor(colors.chrome.canvas_bg));
 
-    // Separator: subtle border between transcript and chrome
+    // Separator: strong border between transcript and chrome
     main_parts.push_back(ftxui::separator() |
-                         ftxui::color(colors.semantic.border_subtle));
+                         ftxui::color(colors.semantic.border_strong));
 
     main_parts.push_back(ftxui::hbox(std::move(status_rail)) |
                          ftxui::bgcolor(colors.semantic.surface_panel));
