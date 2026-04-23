@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 #include <ftxui/screen/color.hpp>
 
@@ -9,6 +10,24 @@ namespace yac::presentation::theme {
 inline constexpr std::uint8_t kCanvasBgRed = 17;
 inline constexpr std::uint8_t kCanvasBgGreen = 17;
 inline constexpr std::uint8_t kCanvasBgBlue = 27;
+
+enum class ThemeDensity { Compact, Comfortable };
+
+struct SemanticRoles {
+  ftxui::Color text_strong;
+  ftxui::Color text_body;
+  ftxui::Color text_weak;
+  ftxui::Color text_muted;
+  ftxui::Color accent_primary;
+  ftxui::Color accent_secondary;
+  ftxui::Color surface_canvas;
+  ftxui::Color surface_panel;
+  ftxui::Color surface_raised;
+  ftxui::Color border_subtle;
+  ftxui::Color border_strong;
+  ftxui::Color focus_ring;
+  ftxui::Color selection_bg;
+};
 
 struct RoleColors {
   ftxui::Color user;
@@ -86,6 +105,9 @@ struct DialogColors {
 };
 
 struct Theme {
+  std::string name;
+  ThemeDensity density = ThemeDensity::Comfortable;
+  SemanticRoles semantic;
   RoleColors role;
   MarkdownColors markdown;
   CodeColors code;
