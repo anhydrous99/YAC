@@ -186,6 +186,16 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
     ApplyBoolField(theme_section["sync_terminal_background"],
                    "theme.sync_terminal_background",
                    config.sync_terminal_background, issues);
+    if (ApplyStringField(theme_section["name"], "theme.name",
+                         config.theme_name, issues)) {
+      fields.theme_name = true;
+      if (config.theme_name.empty()) {
+        AddWarning(issues, "theme.name is empty in settings.toml",
+                   "Falling back to default theme 'opencode'.");
+        config.theme_name = "opencode";
+        fields.theme_name = false;
+      }
+    }
   } else if (table.contains("theme")) {
     AddError(issues, "Invalid type for [theme] in settings.toml",
              "Expected a table.");

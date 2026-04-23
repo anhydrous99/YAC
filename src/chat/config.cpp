@@ -139,6 +139,10 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
         !(normalized == "0" || normalized == "false" || normalized == "no" ||
           normalized == "off");
   }
+  if (auto val = GetEnv("YAC_THEME_NAME")) {
+    config.theme_name = std::move(*val);
+    fields.theme_name = true;
+  }
 }
 
 void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,

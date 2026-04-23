@@ -343,6 +343,7 @@ struct ChatConfig {
   std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
   bool sync_terminal_background = true;
+  std::string theme_name = "opencode";
 };
 
 struct ChatConfigResult {
