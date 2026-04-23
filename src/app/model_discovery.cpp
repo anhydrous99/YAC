@@ -1,5 +1,7 @@
 #include "app/model_discovery.hpp"
 
+#include "presentation/theme.hpp"
+
 #include <chrono>
 #include <exception>
 #include <string>
@@ -88,6 +90,8 @@ std::vector<Command> BuildCommands(const std::vector<chat::ModelInfo>& models) {
       {"cancel_response", "Cancel Response",
        "Stop the current assistant response"},
       {"help", "Help", "Show shortcuts, setup, and workspace status"},
+      {std::string(kSwitchThemeCommandId), "Switch Theme",
+       "Choose a color theme"},
   };
 
   if (!models.empty()) {
@@ -95,6 +99,15 @@ std::vector<Command> BuildCommands(const std::vector<chat::ModelInfo>& models) {
                           "Choose the model for future responses");
   }
 
+  return commands;
+}
+
+std::vector<Command> BuildThemeCommands() {
+  std::vector<Command> commands;
+  for (const auto& name : theme::ListThemes()) {
+    commands.emplace_back(std::string(kSwitchThemePrefix) + name, name,
+                          "Apply the " + name + " theme");
+  }
   return commands;
 }
 

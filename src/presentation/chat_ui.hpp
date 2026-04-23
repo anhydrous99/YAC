@@ -74,6 +74,7 @@ class ChatUI : public ChatEventSink {
                             std::nullopt) override;
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
+  void SetThemeCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
   void SetProviderModel(std::string provider_id, std::string model) override;
   void SetLastUsage(UsageStats usage) override;

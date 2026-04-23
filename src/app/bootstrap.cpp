@@ -218,6 +218,11 @@ void ConfigureChatUiCallbacks(const std::vector<chat::ModelInfo>& models,
     } else if (command.starts_with(presentation::kSwitchModelPrefix)) {
       chat_service.SetModel(
           command.substr(std::string(presentation::kSwitchModelPrefix).size()));
+    } else if (command.starts_with(presentation::kSwitchThemePrefix)) {
+      auto theme_name =
+          command.substr(std::string(presentation::kSwitchThemePrefix).size());
+      presentation::theme::ReinitializeTheme(
+          presentation::theme::GetTheme(theme_name));
     }
   });
   chat_ui.SetOnToolApproval(
@@ -227,6 +232,7 @@ void ConfigureChatUiCallbacks(const std::vector<chat::ModelInfo>& models,
 
   chat_ui.SetCommands(BuildCommands(models));
   chat_ui.SetModelCommands(BuildModelCommands(models));
+  chat_ui.SetThemeCommands(BuildThemeCommands());
 }
 
 presentation::SlashCommandRegistry BuildSlashCommandRegistry(

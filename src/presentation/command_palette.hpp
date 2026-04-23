@@ -12,6 +12,8 @@ namespace yac::presentation {
 
 inline constexpr std::string_view kSwitchModelCommandId = "switch_model";
 inline constexpr std::string_view kSwitchModelPrefix = "switch_model:";
+inline constexpr std::string_view kSwitchThemeCommandId = "switch_theme";
+inline constexpr std::string_view kSwitchThemePrefix = "switch_theme:";
 
 struct Command {
   Command() = default;

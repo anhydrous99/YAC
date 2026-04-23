@@ -60,6 +60,10 @@ void ChatUiOverlayState::SetModelCommands(std::vector<Command> commands) {
   model_commands_ = std::move(commands);
 }
 
+void ChatUiOverlayState::SetThemeCommands(std::vector<Command> commands) {
+  theme_commands_ = std::move(commands);
+}
+
 void ChatUiOverlayState::SetProviderModel(std::string provider_id,
                                           std::string model) {
   provider_id_ = std::move(provider_id);
@@ -122,6 +126,15 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   auto main_with_model_picker =
       DialogModal(main_component, modal_component, &show_model_palette_);
 
+  auto on_theme_select = [this](int index) { HandleThemeSelection(index); };
+  auto theme_palette = CommandPalette([this] { return theme_commands_; },
+                                      on_theme_select, &show_theme_palette_);
+  auto theme_modal_component =
+      DialogPanel("Switch Theme", theme_palette, &show_theme_palette_);
+  auto main_with_theme_picker =
+      DialogModal(main_with_model_picker, theme_modal_component,
+                  &show_theme_palette_);
+
   auto help_content = ftxui::Renderer([this] {
     return ftxui::paragraph(help_text_.empty()
                                 ? std::string{"No help available."}
@@ -130,7 +143,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   });
   auto help_panel = DialogPanel("Help", help_content, &show_help_);
   auto main_with_help =
-      DialogModal(main_with_model_picker, help_panel, &show_help_);
+      DialogModal(main_with_theme_picker, help_panel, &show_help_);
 
   auto approval_content = ftxui::Renderer([this] {
     ftxui::Elements rows{
@@ -213,7 +226,10 @@ int ChatUiOverlayState::QueueDepth() const {
 
 void ChatUiOverlayState::SyncPaletteVisibility() {
   show_palette_ = palette_level_ >= 0;
-  show_model_palette_ = palette_level_ >= 1;
+  show_model_palette_ =
+      palette_level_ >= 1 && sub_palette_kind_ == SubPaletteKind::Model;
+  show_theme_palette_ =
+      palette_level_ >= 1 && sub_palette_kind_ == SubPaletteKind::Theme;
 }
 
 void ChatUiOverlayState::HandleCommandSelection(int index) {
@@ -222,11 +238,20 @@ void ChatUiOverlayState::HandleCommandSelection(int index) {
   }
 
   if (commands_[index].id == kSwitchModelCommandId) {
+    sub_palette_kind_ = SubPaletteKind::Model;
     palette_level_ = 1;
     SyncPaletteVisibility();
     return;
   }
 
+  if (commands_[index].id == kSwitchThemeCommandId) {
+    sub_palette_kind_ = SubPaletteKind::Theme;
+    palette_level_ = 1;
+    SyncPaletteVisibility();
+    return;
+  }
+
+  sub_palette_kind_ = SubPaletteKind::None;
   palette_level_ = -1;
   SyncPaletteVisibility();
   if (on_command_) {
@@ -240,6 +265,18 @@ void ChatUiOverlayState::HandleModelSelection(int index) {
     on_command_(model_commands_[index].id);
   }
 
+  sub_palette_kind_ = SubPaletteKind::None;
+  palette_level_ = -1;
+  SyncPaletteVisibility();
+}
+
+void ChatUiOverlayState::HandleThemeSelection(int index) {
+  if (index >= 0 && static_cast<size_t>(index) < theme_commands_.size() &&
+      on_command_) {
+    on_command_(theme_commands_[index].id);
+  }
+
+  sub_palette_kind_ = SubPaletteKind::None;
   palette_level_ = -1;
   SyncPaletteVisibility();
 }

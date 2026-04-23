@@ -30,4 +30,6 @@ struct ModelDiscoveryResult {
 [[nodiscard]] std::vector<presentation::Command> BuildModelCommands(
     const std::vector<chat::ModelInfo>& models);
 
+[[nodiscard]] std::vector<presentation::Command> BuildThemeCommands();
+
 }  // namespace yac::app

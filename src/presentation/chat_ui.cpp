@@ -452,6 +452,10 @@ void ChatUI::SetModelCommands(std::vector<Command> commands) {
   overlay_state_.SetModelCommands(std::move(commands));
 }
 
+void ChatUI::SetThemeCommands(std::vector<Command> commands) {
+  overlay_state_.SetThemeCommands(std::move(commands));
+}
+
 void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
   slash_commands_ = std::move(registry);
 }
