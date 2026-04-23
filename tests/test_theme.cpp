@@ -1,8 +1,8 @@
 #include "presentation/theme.hpp"
 #include "presentation/theme_testing.hpp"
 
-#include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 using namespace yac::presentation::theme;
 
@@ -90,8 +90,7 @@ TEST_CASE("InitializeTheme rejects different theme after init") {
   testing::ResetThemeForTesting();
 
   InitializeTheme(GetTheme("opencode"));
-  REQUIRE_THROWS_AS(InitializeTheme(GetTheme("catppuccin")),
-                    std::logic_error);
+  REQUIRE_THROWS_AS(InitializeTheme(GetTheme("catppuccin")), std::logic_error);
 }
 
 TEST_CASE("Theme Instance returns consistent reference") {

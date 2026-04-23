@@ -67,9 +67,10 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       SyncCommands();
       ftxui::Elements children;
       children.push_back(input_->Render() |
-                         ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
                          ftxui::color(theme::CurrentTheme().dialog.input_fg));
-      children.push_back(ftxui::text(""));
+      children.push_back(
+          ftxui::text("") |
+          ftxui::color(theme::CurrentTheme().semantic.border_subtle));
 
       if (filtered_indices_.empty()) {
         children.push_back(ftxui::text("No commands found") |
@@ -135,13 +136,10 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       option.placeholder = "Type to filter...";
       option.cursor_position = &filter_cursor_;
       option.transform = [](ftxui::InputState state) {
-        state.element |=
-            ftxui::color(theme::CurrentTheme().dialog.input_fg) |
-            ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg);
+        state.element |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
         if (state.is_placeholder) {
           state.element |=
-              ftxui::color(theme::CurrentTheme().dialog.dim_text) |
-              ftxui::dim;
+              ftxui::color(theme::CurrentTheme().dialog.dim_text) | ftxui::dim;
         }
         if (state.focused) {
           state.element |= ftxui::focusCursorBarBlinking;
@@ -158,24 +156,20 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       bool selected = filtered_index == selected_index_;
 
       auto name = ftxui::text(command.name) | ftxui::bold;
-      auto description = ftxui::text(command.description);
-      auto row = ftxui::vbox({
-                     name,
-                     description,
-                 }) |
-                 ftxui::xflex;
+      auto desc = ftxui::text("  " + command.description);
 
       if (selected) {
-        row |= ftxui::color(theme::CurrentTheme().dialog.selected_fg) |
-               ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
-      } else {
-        name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
-        description |= ftxui::color(theme::CurrentTheme().dialog.dim_text) |
-                       ftxui::dim;
-        row = ftxui::vbox({name, description}) | ftxui::xflex;
+        auto bar =
+            ftxui::text(" ") |
+            ftxui::bgcolor(theme::CurrentTheme().semantic.accent_primary);
+        name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
+        desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
+        return ftxui::hbox({bar, ftxui::text(" "), name, desc | ftxui::flex});
       }
 
-      return row;
+      name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
+      desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
+      return ftxui::hbox({ftxui::text("  "), name, desc | ftxui::flex});
     }
 
     void RefreshFiltered() {

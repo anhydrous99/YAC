@@ -161,9 +161,9 @@ Theme OpenCodePreset() {
   t.name = "opencode";
   t.density = ThemeDensity::Comfortable;
 
-  t.role.user = ftxui::Color::RGB(112, 162, 191);    // desaturated steel blue
-  t.role.agent = ftxui::Color::RGB(214, 209, 195);   // body text (no green tint)
-  t.role.error = ftxui::Color::RGB(207, 95, 73);     // burnt sienna
+  t.role.user = ftxui::Color::RGB(112, 162, 191);   // desaturated steel blue
+  t.role.agent = ftxui::Color::RGB(214, 209, 195);  // body text (no green tint)
+  t.role.error = ftxui::Color::RGB(207, 95, 73);    // burnt sienna
 
   t.markdown.heading = ftxui::Color::RGB(232, 226, 209);  // light bone
   t.markdown.link = ftxui::Color::RGB(112, 162, 191);     // same as user role
@@ -185,12 +185,12 @@ Theme OpenCodePreset() {
 
   t.chrome.dim_text = ftxui::Color::RGB(120, 116, 103);
   t.chrome.body_text = ftxui::Color::RGB(214, 209, 195);
-  t.chrome.prompt = ftxui::Color::RGB(207, 142, 60);     // amber accent
-  t.chrome.canvas_bg = ftxui::Color::RGB(13, 13, 17);    // near-black cool tint
+  t.chrome.prompt = ftxui::Color::RGB(207, 142, 60);   // amber accent
+  t.chrome.canvas_bg = ftxui::Color::RGB(13, 13, 17);  // near-black cool tint
   t.chrome.canvas_bg_rgb = {13, 13, 17};
 
-  t.cards.user_bg = ftxui::Color::RGB(20, 20, 25);       // barely-raised panel
-  t.cards.agent_bg = ftxui::Color::RGB(13, 13, 17);      // same as canvas
+  t.cards.user_bg = ftxui::Color::RGB(20, 20, 25);   // barely-raised panel
+  t.cards.agent_bg = ftxui::Color::RGB(13, 13, 17);  // same as canvas
 
   t.tool.header_bg = ftxui::Color::RGB(20, 20, 25);
   t.tool.bash_accent = ftxui::Color::RGB(207, 142, 60);
@@ -223,8 +223,8 @@ Theme OpenCodePreset() {
   t.semantic.text_body = ftxui::Color::RGB(214, 209, 195);
   t.semantic.text_weak = ftxui::Color::RGB(168, 161, 145);
   t.semantic.text_muted = ftxui::Color::RGB(120, 116, 103);
-  t.semantic.accent_primary = ftxui::Color::RGB(207, 142, 60);    // amber
-  t.semantic.accent_secondary = ftxui::Color::RGB(112, 162, 191); // steel blue
+  t.semantic.accent_primary = ftxui::Color::RGB(207, 142, 60);     // amber
+  t.semantic.accent_secondary = ftxui::Color::RGB(112, 162, 191);  // steel blue
   t.semantic.surface_canvas = ftxui::Color::RGB(13, 13, 17);
   t.semantic.surface_panel = ftxui::Color::RGB(20, 20, 25);
   t.semantic.surface_raised = ftxui::Color::RGB(25, 25, 30);

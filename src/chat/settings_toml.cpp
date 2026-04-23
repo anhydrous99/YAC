@@ -186,8 +186,8 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
     ApplyBoolField(theme_section["sync_terminal_background"],
                    "theme.sync_terminal_background",
                    config.sync_terminal_background, issues);
-    if (ApplyStringField(theme_section["name"], "theme.name",
-                         config.theme_name, issues)) {
+    if (ApplyStringField(theme_section["name"], "theme.name", config.theme_name,
+                         issues)) {
       fields.theme_name = true;
       if (config.theme_name.empty()) {
         AddWarning(issues, "theme.name is empty in settings.toml",
