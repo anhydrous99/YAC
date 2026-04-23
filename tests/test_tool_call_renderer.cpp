@@ -85,7 +85,7 @@ TEST_CASE("ToolCallRenderer renders file read details") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("◆"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("read"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("README.md"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Loaded 12 lines"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("12 lines"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Yet Another Chat"));
 }
 
@@ -96,7 +96,7 @@ TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("read"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("notes.txt"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Loaded 0 lines"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("0 lines"));
 }
 
 TEST_CASE("ToolCallRenderer renders file write details") {

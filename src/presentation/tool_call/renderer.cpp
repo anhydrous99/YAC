@@ -31,8 +31,8 @@ ftxui::Element RenderLabelValue(const std::string& label,
                                 const std::string& value,
                                 const theme::Theme& theme) {
   return ftxui::hbox(
-      {ftxui::text(label) | ftxui::bold | ftxui::color(theme.chrome.dim_text),
-       ftxui::paragraph(value) | ftxui::color(theme.chrome.body_text) |
+      {ftxui::text(label) | ftxui::color(theme.semantic.text_muted),
+       ftxui::paragraph(value) | ftxui::color(theme.semantic.text_body) |
            ftxui::flex});
 }
 
@@ -45,38 +45,33 @@ ftxui::Element RenderContainer(const std::string& icon,
                                ftxui::Elements content,
                                const theme::Theme& theme) {
   auto header = ftxui::hbox({
-                    ftxui::text(" " + icon + " ") | ftxui::bold |
-                        ftxui::color(theme.tool.icon_fg),
-                    ftxui::text(label) | ftxui::bold | ftxui::color(accent),
-                    ftxui::filler(),
-                }) |
-                ftxui::bgcolor(theme.tool.header_bg);
+      ftxui::text("\xe2\x96\x8c") | ftxui::color(accent),
+      ftxui::text(" " + icon + " ") | ftxui::color(theme.semantic.text_muted),
+      ftxui::text(label) | ftxui::color(theme.semantic.text_strong),
+      ftxui::filler(),
+  });
 
   auto body =
-      ftxui::vbox(std::move(content)) | ftxui::color(theme.chrome.body_text);
+      ftxui::vbox(std::move(content)) | ftxui::color(theme.semantic.text_body);
 
   return ftxui::vbox({
-             header,
-             ftxui::hbox(
-                 {ftxui::text("  "), body | ftxui::flex, ftxui::text("  ")}) |
-                 ftxui::bgcolor(theme.cards.agent_bg),
-             ftxui::text("") | ftxui::bgcolor(theme.cards.agent_bg),
-         }) |
-         ftxui::bgcolor(theme.cards.agent_bg);
+      header,
+      ftxui::hbox({ftxui::text(" "), body | ftxui::flex}),
+  });
 }
 
 ftxui::Element RenderLines(const std::vector<std::string>& lines,
                            const theme::Theme& theme,
                            const std::string& empty_text = "") {
   if (lines.empty()) {
-    return empty_text.empty()
-               ? ftxui::text("")
-               : ftxui::text(empty_text) | ftxui::color(theme.chrome.dim_text);
+    return empty_text.empty() ? ftxui::text("")
+                              : ftxui::text(empty_text) |
+                                    ftxui::color(theme.semantic.text_muted);
   }
 
   ftxui::Elements elements;
   for (const auto& line : lines) {
-    elements.push_back(RenderWrappedLine(line, theme.chrome.body_text));
+    elements.push_back(RenderWrappedLine(line, theme.semantic.text_body));
   }
   return ftxui::vbox(std::move(elements));
 }
@@ -88,7 +83,7 @@ void AddOmittedRows(ftxui::Elements& content, size_t total,
   }
   content.push_back(RenderWrappedLine(
       "... " + std::to_string(total - kMaxPreviewRows) + " more omitted",
-      theme.chrome.dim_text));
+      theme.semantic.text_muted));
 }
 
 std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
@@ -127,9 +122,9 @@ ftxui::Color DiagnosticSeverityColor(tool_data::DiagnosticSeverity severity,
     case tool_data::DiagnosticSeverity::Information:
       return theme.tool.read_accent;
     case tool_data::DiagnosticSeverity::Hint:
-      return theme.chrome.dim_text;
+      return theme.semantic.text_muted;
   }
-  return theme.chrome.dim_text;
+  return theme.semantic.text_muted;
 }
 
 ftxui::Element RenderError(const std::string& error,
@@ -259,26 +254,23 @@ ftxui::Element ToolCallRenderer::BuildWritePeek(
   }
   const auto accent =
       call.is_error ? theme.tool.edit_remove : theme.tool.edit_add;
-  const auto card_bg = theme.cards.agent_bg;
 
   auto make_bar_row = [&](const std::string& text) {
     return ftxui::hbox({
-        ftxui::text("  ") | ftxui::bgcolor(card_bg),
-        ftxui::text("\xe2\x94\x83") | ftxui::color(accent) | ftxui::bold |
-            ftxui::bgcolor(card_bg),
-        ftxui::text("  ") | ftxui::bgcolor(card_bg),
-        ftxui::paragraph(text) | ftxui::color(theme.chrome.dim_text) |
-            ftxui::dim | ftxui::bgcolor(card_bg) | ftxui::flex,
-        ftxui::text("  ") | ftxui::bgcolor(card_bg),
+        ftxui::text("  "),
+        ftxui::text("\xe2\x94\x83") | ftxui::color(accent) | ftxui::bold,
+        ftxui::text("  "),
+        ftxui::paragraph(text) | ftxui::color(theme.semantic.text_muted) |
+            ftxui::dim | ftxui::flex,
+        ftxui::text("  "),
     });
   };
 
   auto spacer_row = [&]() {
     return ftxui::hbox({
-        ftxui::text("  ") | ftxui::bgcolor(card_bg),
-        ftxui::text("\xe2\x94\x83") | ftxui::color(accent) |
-            ftxui::bgcolor(card_bg),
-        ftxui::filler() | ftxui::bgcolor(card_bg),
+        ftxui::text("  "),
+        ftxui::text("\xe2\x94\x83") | ftxui::color(accent),
+        ftxui::filler(),
     });
   };
 
@@ -290,7 +282,7 @@ ftxui::Element ToolCallRenderer::BuildWritePeek(
     rows.push_back(make_bar_row(lines[i]));
   }
   rows.push_back(spacer_row());
-  return ftxui::vbox(std::move(rows)) | ftxui::bgcolor(card_bg);
+  return ftxui::vbox(std::move(rows));
 }
 
 std::string ToolCallRenderer::BuildLabel(
@@ -324,23 +316,33 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
     const tool_data::FileEditCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.filepath, theme));
+  content.push_back(ftxui::text(call.filepath) |
+                    ftxui::color(theme.semantic.text_strong));
 
   if (call.diff.empty()) {
     content.push_back(ftxui::text("No diff lines") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
     for (const auto& line : call.diff) {
-      std::string prefix = "  ";
-      ftxui::Color color = theme.tool.edit_context;
       if (line.type == tool_data::DiffLine::Add) {
-        prefix = "+ ";
-        color = theme.tool.edit_add;
+        content.push_back(ftxui::hbox({
+            ftxui::text("+ ") | ftxui::color(theme.tool.edit_add),
+            ftxui::paragraph(line.content) | ftxui::color(theme.tool.edit_add) |
+                ftxui::flex,
+        }));
       } else if (line.type == tool_data::DiffLine::Remove) {
-        prefix = "- ";
-        color = theme.tool.edit_remove;
+        content.push_back(ftxui::hbox({
+            ftxui::text("- ") | ftxui::color(theme.tool.edit_remove),
+            ftxui::paragraph(line.content) |
+                ftxui::color(theme.tool.edit_remove) | ftxui::flex,
+        }));
+      } else {
+        content.push_back(ftxui::hbox({
+            ftxui::text("  ") | ftxui::color(theme.tool.edit_context),
+            ftxui::paragraph(line.content) |
+                ftxui::color(theme.tool.edit_context) | ftxui::flex,
+        }));
       }
-      content.push_back(RenderWrappedLine(prefix + line.content, color));
     }
   }
 
@@ -352,12 +354,13 @@ ftxui::Element ToolCallRenderer::RenderFileRead(
     const tool_data::FileReadCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.filepath, theme));
+  content.push_back(ftxui::text(call.filepath) |
+                    ftxui::color(theme.semantic.text_strong));
   content.push_back(RenderWrappedLine(
-      "Loaded " + std::to_string(call.lines_loaded) + " lines",
-      theme.tool.read_accent));
+      std::to_string(call.lines_loaded) + " lines", theme.semantic.text_muted));
   if (!call.excerpt.empty()) {
-    content.push_back(RenderWrappedLine(call.excerpt, theme.chrome.body_text));
+    content.push_back(
+        RenderWrappedLine(call.excerpt, theme.semantic.text_body));
   }
 
   return RenderContainer("◆", "read", theme.tool.read_accent,
@@ -368,7 +371,8 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
     const tool_data::FileWriteCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.filepath, theme));
+  content.push_back(ftxui::text(call.filepath) |
+                    ftxui::color(theme.semantic.text_strong));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.is_streaming) {
@@ -377,26 +381,27 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
     content.push_back(RenderWrappedLine(
         "Added " + std::to_string(call.lines_added) + " lines, removed " +
             std::to_string(call.lines_removed) + " lines",
-        theme.tool.edit_add));
+        theme.semantic.text_muted));
   }
   if (!call.content_preview.empty()) {
-    content.push_back(RenderLabelValue("Preview: ", "", theme));
+    content.push_back(ftxui::text("Preview:") |
+                      ftxui::color(theme.semantic.text_muted));
     const auto lines = util::SplitLines(call.content_preview);
     if (call.is_streaming && lines.size() > kMaxPreviewRows) {
       const auto omitted = lines.size() - kMaxPreviewRows;
       content.push_back(
           ftxui::text("… " + std::to_string(omitted) + " earlier lines") |
-          ftxui::color(theme.chrome.dim_text));
+          ftxui::color(theme.semantic.text_muted));
       for (auto index = lines.size() - kMaxPreviewRows; index < lines.size();
            ++index) {
         content.push_back(
-            RenderWrappedLine(lines[index], theme.chrome.body_text));
+            RenderWrappedLine(lines[index], theme.semantic.text_body));
       }
     } else {
       const auto limit = std::min(lines.size(), kMaxPreviewRows);
       for (size_t index = 0; index < limit; ++index) {
         content.push_back(
-            RenderWrappedLine(lines[index], theme.chrome.body_text));
+            RenderWrappedLine(lines[index], theme.semantic.text_body));
       }
       AddOmittedRows(content, lines.size(), theme);
     }
@@ -411,13 +416,17 @@ ftxui::Element ToolCallRenderer::RenderListDir(
     const tool_data::ListDirCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("Path: ", call.path, theme));
+  content.push_back(ftxui::text(call.path) |
+                    ftxui::color(theme.semantic.text_strong));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.entries.empty()) {
     content.push_back(ftxui::text("No entries") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(
+        RenderWrappedLine(std::to_string(call.entries.size()) + " entries",
+                          theme.semantic.text_muted));
     const auto limit = std::min(call.entries.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& entry = call.entries[index];
@@ -425,12 +434,12 @@ ftxui::Element ToolCallRenderer::RenderListDir(
       if (entry.type == tool_data::DirectoryEntryType::File) {
         line += "  " + std::to_string(entry.size) + " bytes";
       }
-      content.push_back(RenderWrappedLine(line, theme.tool.glob_accent));
+      content.push_back(RenderWrappedLine(line, theme.semantic.text_body));
     }
     AddOmittedRows(content, call.entries.size(), theme);
     if (call.truncated) {
       content.push_back(
-          RenderWrappedLine("Result truncated", theme.chrome.dim_text));
+          RenderWrappedLine("Result truncated", theme.semantic.text_muted));
     }
   }
 
@@ -443,16 +452,18 @@ ftxui::Element ToolCallRenderer::RenderGrep(const tool_data::GrepCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("Pattern: ", call.pattern, theme));
-  content.push_back(RenderCodeText(call.pattern, theme));
-  content.push_back(RenderWrappedLine(
-      std::to_string(call.match_count) + " matches", theme.tool.grep_accent));
+  content.push_back(ftxui::text(call.pattern) |
+                    ftxui::color(theme.semantic.text_strong));
+  content.push_back(
+      RenderWrappedLine(std::to_string(call.match_count) + " matches",
+                        theme.semantic.text_muted));
 
   for (const auto& match : call.matches) {
     content.push_back(
         RenderWrappedLine(match.filepath + ":" + std::to_string(match.line),
-                          theme.chrome.body_text));
-    content.push_back(RenderWrappedLine(match.content, theme.chrome.dim_text));
+                          theme.semantic.text_body));
+    content.push_back(
+        RenderWrappedLine(match.content, theme.semantic.text_muted));
   }
 
   return RenderContainer("⊕", "grep", theme.tool.grep_accent,
@@ -463,15 +474,18 @@ ftxui::Element ToolCallRenderer::RenderGlob(const tool_data::GlobCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("Pattern: ", call.pattern, theme));
-  content.push_back(RenderCodeText(call.pattern, theme));
+  content.push_back(ftxui::text(call.pattern) |
+                    ftxui::color(theme.semantic.text_strong));
 
   if (call.matched_files.empty()) {
     content.push_back(ftxui::text("No matches") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(RenderWrappedLine(
+        std::to_string(call.matched_files.size()) + " matches",
+        theme.semantic.text_muted));
     for (const auto& filepath : call.matched_files) {
-      content.push_back(RenderWrappedLine(filepath, theme.tool.glob_accent));
+      content.push_back(RenderWrappedLine(filepath, theme.semantic.text_body));
     }
   }
 
@@ -523,20 +537,29 @@ ftxui::Element ToolCallRenderer::RenderLspDiagnostics(
     const tool_data::LspDiagnosticsCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(ftxui::text(call.file_path) |
+                    ftxui::color(theme.semantic.text_strong));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.diagnostics.empty()) {
     content.push_back(ftxui::text("No diagnostics") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(RenderWrappedLine(
+        std::to_string(call.diagnostics.size()) + " diagnostics",
+        theme.semantic.text_muted));
     const auto limit = std::min(call.diagnostics.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& diag = call.diagnostics[index];
-      content.push_back(RenderWrappedLine(
-          std::to_string(diag.line) + " " +
-              DiagnosticSeverityLabel(diag.severity) + ": " + diag.message,
-          DiagnosticSeverityColor(diag.severity, theme)));
+      content.push_back(ftxui::hbox({
+          ftxui::text("\xe2\x97\x8f") |
+              ftxui::color(DiagnosticSeverityColor(diag.severity, theme)),
+          ftxui::text(" "),
+          ftxui::paragraph(std::to_string(diag.line) + " " +
+                           DiagnosticSeverityLabel(diag.severity) + ": " +
+                           diag.message) |
+              ftxui::color(theme.semantic.text_body) | ftxui::flex,
+      }));
     }
     AddOmittedRows(content, call.diagnostics.size(), theme);
   }
@@ -550,23 +573,28 @@ ftxui::Element ToolCallRenderer::RenderLspReferences(
     const tool_data::LspReferencesCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(ftxui::text(call.file_path) |
+                    ftxui::color(theme.semantic.text_strong));
   if (!call.symbol.empty()) {
-    content.push_back(RenderLabelValue("Symbol: ", call.symbol, theme));
+    content.push_back(
+        RenderWrappedLine("Symbol: " + call.symbol, theme.semantic.text_muted));
   }
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.references.empty()) {
     content.push_back(ftxui::text("No references") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(RenderWrappedLine(
+        std::to_string(call.references.size()) + " references",
+        theme.semantic.text_muted));
     const auto limit = std::min(call.references.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& ref = call.references[index];
       content.push_back(RenderWrappedLine(ref.filepath + ":" +
                                               std::to_string(ref.line) + ":" +
                                               std::to_string(ref.character),
-                                          theme.tool.grep_accent));
+                                          theme.semantic.text_body));
     }
     AddOmittedRows(content, call.references.size(), theme);
   }
@@ -581,26 +609,31 @@ ftxui::Element ToolCallRenderer::RenderLspGotoDefinition(
     const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(ftxui::text(call.file_path) |
+                    ftxui::color(theme.semantic.text_strong));
   content.push_back(RenderWrappedLine("Position: " + std::to_string(call.line) +
                                           ":" + std::to_string(call.character),
-                                      theme.chrome.dim_text));
+                                      theme.semantic.text_muted));
   if (!call.symbol.empty()) {
-    content.push_back(RenderLabelValue("Symbol: ", call.symbol, theme));
+    content.push_back(
+        RenderWrappedLine("Symbol: " + call.symbol, theme.semantic.text_muted));
   }
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.definitions.empty()) {
     content.push_back(ftxui::text("No definitions") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(RenderWrappedLine(
+        std::to_string(call.definitions.size()) + " definitions",
+        theme.semantic.text_muted));
     const auto limit = std::min(call.definitions.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& def = call.definitions[index];
       content.push_back(RenderWrappedLine(def.filepath + ":" +
                                               std::to_string(def.line) + ":" +
                                               std::to_string(def.character),
-                                          theme.tool.read_accent));
+                                          theme.semantic.text_body));
     }
     AddOmittedRows(content, call.definitions.size(), theme);
   }
@@ -614,27 +647,30 @@ ftxui::Element ToolCallRenderer::RenderLspRename(
     const tool_data::LspRenameCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(ftxui::text(call.file_path) |
+                    ftxui::color(theme.semantic.text_strong));
   content.push_back(RenderWrappedLine("Position: " + std::to_string(call.line) +
                                           ":" + std::to_string(call.character),
-                                      theme.chrome.dim_text));
+                                      theme.semantic.text_muted));
   if (!call.old_name.empty()) {
-    content.push_back(RenderLabelValue("Old: ", call.old_name, theme));
+    content.push_back(
+        RenderWrappedLine("Old: " + call.old_name, theme.semantic.text_muted));
   }
-  content.push_back(RenderLabelValue("New: ", call.new_name, theme));
+  content.push_back(
+      RenderWrappedLine("New: " + call.new_name, theme.semantic.text_muted));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else {
     content.push_back(
         RenderWrappedLine(std::to_string(call.changes_count) + " changes",
-                          theme.tool.edit_context));
+                          theme.semantic.text_muted));
     const auto limit = std::min(call.changes.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& edit = call.changes[index];
       content.push_back(RenderWrappedLine(
           edit.filepath + ":" + std::to_string(edit.start_line) + ":" +
               std::to_string(edit.start_character),
-          theme.chrome.dim_text));
+          theme.semantic.text_body));
     }
     AddOmittedRows(content, call.changes.size(), theme);
   }
@@ -648,19 +684,23 @@ ftxui::Element ToolCallRenderer::RenderLspSymbols(
     const tool_data::LspSymbolsCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   ftxui::Elements content;
-  content.push_back(RenderLabelValue("File: ", call.file_path, theme));
+  content.push_back(ftxui::text(call.file_path) |
+                    ftxui::color(theme.semantic.text_strong));
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else if (call.symbols.empty()) {
     content.push_back(ftxui::text("No symbols") |
-                      ftxui::color(theme.chrome.dim_text));
+                      ftxui::color(theme.semantic.text_muted));
   } else {
+    content.push_back(
+        RenderWrappedLine(std::to_string(call.symbols.size()) + " symbols",
+                          theme.semantic.text_muted));
     const auto limit = std::min(call.symbols.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& symbol = call.symbols[index];
       content.push_back(RenderWrappedLine(
           std::to_string(symbol.line) + " " + symbol.kind + " " + symbol.name,
-          theme.tool.glob_accent));
+          theme.semantic.text_body));
     }
     AddOmittedRows(content, call.symbols.size(), theme);
   }
