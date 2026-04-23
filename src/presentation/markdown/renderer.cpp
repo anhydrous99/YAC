@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 
+#include "../ui_spacing.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/dom/table.hpp"
 #include "presentation/util/string_util.hpp"
@@ -220,17 +221,18 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
 
   ftxui::Elements inner;
   if (!cb.language.empty() || cb.partial) {
-    auto label_pad = std::string(gutter_width, ' ');
     std::string label = cb.language.empty() ? std::string("...") : cb.language;
     if (cb.partial && !cb.language.empty()) {
       label += " ...";
     }
     inner.push_back(ftxui::hbox({
-        ftxui::text(label_pad) | ftxui::bgcolor(theme.code.bg),
-        ftxui::text(" " + label + " ") | ftxui::bgcolor(theme.code.fg) |
-            ftxui::color(theme.code.bg) | ftxui::bold,
+        ftxui::filler(),
+        ftxui::text("[" + label + "]") |
+            ftxui::color(theme.semantic.text_muted) | ftxui::dim,
     }));
   }
+
+  inner.push_back(ftxui::text(""));
 
   auto even_bg = theme.code.bg;
   auto odd_bg = theme.code.alt_bg;
@@ -244,11 +246,13 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
 
     auto bg = (i % 2 == 1) ? odd_bg : even_bg;
     ftxui::Elements row_children = {
-        ftxui::text("\xe2\x96\x8e") | ftxui::color(theme.code.border) |
-            ftxui::bgcolor(bg),
+        ftxui::text(std::string(layout::kCardPadX, ' ')) | ftxui::bgcolor(bg),
+        ftxui::text("\xe2\x94\x82") |
+            ftxui::color(theme.semantic.border_subtle) | ftxui::bgcolor(bg),
         ftxui::text(padded_num) | ftxui::color(theme.chrome.dim_text) |
             ftxui::dim | ftxui::bgcolor(bg),
         line_elem | ftxui::bgcolor(bg),
+        ftxui::text(std::string(layout::kCardPadX, ' ')) | ftxui::bgcolor(bg),
     };
     if (trailing_inline && i + 1 == code_lines.size()) {
       row_children.push_back(std::move(trailing_inline) | ftxui::bgcolor(bg));
@@ -257,9 +261,9 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
   }
 
   return ftxui::vbox({
-             ftxui::text(""),
+             ftxui::text(std::string(layout::kCardPadY, ' ')),
              ftxui::vbox(inner),
-             ftxui::text(""),
+             ftxui::text(std::string(layout::kCardPadY, ' ')),
          }) |
          ftxui::bgcolor(theme.code.bg);
 }
