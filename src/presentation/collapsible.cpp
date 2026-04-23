@@ -41,40 +41,46 @@ class CollapsibleImpl : public ftxui::ComponentBase {
 
     auto indicator =
         *expanded_ ? ftxui::text("\xe2\x96\xbc") : ftxui::text("\xe2\x96\xb6");
-    indicator |= ftxui::color(theme::CurrentTheme().tool.icon_fg);
+    indicator |= ftxui::color(theme::CurrentTheme().semantic.text_muted);
 
     const std::string header_text =
         header_provider_ ? header_provider_() : std::string{};
     const std::string summary =
         summary_provider_ ? summary_provider_() : std::string{};
 
+    const auto header_color = *expanded_
+                                  ? theme::CurrentTheme().semantic.text_strong
+                                  : theme::CurrentTheme().semantic.text_weak;
+
     ftxui::Elements header_parts;
     header_parts.push_back(indicator);
     header_parts.push_back(ftxui::text(" "));
-    header_parts.push_back(ftxui::text(header_text) | ftxui::bold |
-                           ftxui::color(theme::CurrentTheme().chrome.body_text));
+    header_parts.push_back(ftxui::text(header_text) |
+                           ftxui::color(header_color));
     if (!summary.empty()) {
       header_parts.push_back(ftxui::filler());
-      header_parts.push_back(ftxui::text(" ") |
-                             ftxui::color(theme::CurrentTheme().chrome.dim_text));
-      header_parts.push_back(ftxui::text(summary) |
-                             ftxui::color(theme::CurrentTheme().chrome.dim_text) |
-                             ftxui::dim);
+      header_parts.push_back(
+          ftxui::text(" " + summary) |
+          ftxui::color(theme::CurrentTheme().semantic.text_muted));
     }
-    auto header_elem = ftxui::hbox(std::move(header_parts)) |
-                       ftxui::bgcolor(theme::CurrentTheme().tool.header_bg);
+
+    auto header_elem = ftxui::hbox(std::move(header_parts));
 
     header_elem |= ftxui::reflect(header_box_);
 
+    auto underline = ftxui::separator() |
+                     ftxui::color(theme::CurrentTheme().semantic.border_subtle);
+
     if (progress_ <= 0.0F) {
       if (peek_) {
-        return ftxui::vbox({header_elem, peek_});
+        return ftxui::vbox({header_elem, underline, peek_});
       }
       return header_elem;
     }
 
     auto rendered_content =
-        content_->Render() | ftxui::color(theme::CurrentTheme().chrome.body_text);
+        content_->Render() |
+        ftxui::color(theme::CurrentTheme().semantic.text_body);
 
     if (progress_ < 1.0F) {
       int max_height =
@@ -85,10 +91,12 @@ class CollapsibleImpl : public ftxui::ComponentBase {
     }
 
     if (peek_) {
-      return ftxui::vbox({header_elem, peek_, rendered_content});
+      return ftxui::vbox({header_elem, underline, peek_, rendered_content});
     }
+
     return ftxui::vbox({
         header_elem,
+        underline,
         rendered_content,
     });
   }
