@@ -23,6 +23,10 @@ struct Theme;
 // throws std::logic_error if called with a different name after init.
 void InitializeTheme(Theme value);
 
+// Unconditionally replaces the active theme. For runtime hot-switching.
+// Unlike InitializeTheme, does not throw if name differs.
+void ReinitializeTheme(Theme value);
+
 // Returns the active theme. Lazily initializes to CatppuccinPreset()
 // if InitializeTheme has not been called yet.
 [[nodiscard]] const Theme& CurrentTheme();

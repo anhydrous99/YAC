@@ -63,3 +63,13 @@ TEST_CASE("RegisterTheme adds a custom factory") {
   const auto t = yac::presentation::theme::GetTheme("custom-test");
   REQUIRE_FALSE(t.name.empty());
 }
+
+TEST_CASE("ReinitializeTheme replaces active theme") {
+  yac::presentation::theme::testing::ResetThemeForTesting();
+  yac::presentation::theme::InitializeTheme(
+      yac::presentation::theme::GetTheme("opencode"));
+  REQUIRE(yac::presentation::theme::CurrentTheme().name == "opencode");
+  yac::presentation::theme::ReinitializeTheme(
+      yac::presentation::theme::GetTheme("catppuccin"));
+  REQUIRE(yac::presentation::theme::CurrentTheme().name == "catppuccin");
+}

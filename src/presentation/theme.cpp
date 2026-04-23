@@ -38,6 +38,10 @@ void InitializeTheme(Theme value) {
                          "'");
 }
 
+void ReinitializeTheme(Theme value) {
+  g_active_theme = std::move(value);
+}
+
 const Theme& CurrentTheme() {
   if (!g_active_theme.has_value()) {
     g_active_theme = CatppuccinPreset();
