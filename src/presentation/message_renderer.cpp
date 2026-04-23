@@ -55,7 +55,9 @@ std::string StatusLabel(MessageStatus status, Sender sender) {
 ftxui::Element RenderStatusLabel(MessageStatus status, Sender sender,
                                  const theme::Theme& theme) {
   const auto label = StatusLabel(status, sender);
-  if (label.empty()) return ftxui::emptyElement();
+  if (label.empty()) {
+    return ftxui::emptyElement();
+  }
 
   ftxui::Color color;
   switch (status) {

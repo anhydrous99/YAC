@@ -131,9 +131,8 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
                                       on_theme_select, &show_theme_palette_);
   auto theme_modal_component =
       DialogPanel("Switch Theme", theme_palette, &show_theme_palette_);
-  auto main_with_theme_picker =
-      DialogModal(main_with_model_picker, theme_modal_component,
-                  &show_theme_palette_);
+  auto main_with_theme_picker = DialogModal(
+      main_with_model_picker, theme_modal_component, &show_theme_palette_);
 
   auto help_content = ftxui::Renderer([this] {
     return ftxui::paragraph(help_text_.empty()

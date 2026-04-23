@@ -202,13 +202,11 @@ void ConfigureServiceEventCallback(ftxui::App& screen, ChatEventBridge& bridge,
 }
 
 void ConfigureChatUiCallbacks(
-    const std::vector<chat::ModelInfo>& models,
-    const chat::ChatConfig& config,
+    const std::vector<chat::ModelInfo>& models, const chat::ChatConfig& config,
     const std::shared_ptr<
         std::optional<presentation::terminal::BackgroundGuard>>&
         terminal_bg_guard,
-    ftxui::App& screen,
-    chat::ChatService& chat_service,
+    ftxui::App& screen, chat::ChatService& chat_service,
     presentation::ChatUI& chat_ui) {
   chat_ui.SetOnSend([&chat_service](const std::string& message) {
     chat_service.SubmitUserMessage(message);
@@ -326,8 +324,8 @@ int RunApp() {
 
   auto screen = ftxui::App::Fullscreen();
 
-  auto terminal_bg_guard =
-      std::make_shared<std::optional<presentation::terminal::BackgroundGuard>>();
+  auto terminal_bg_guard = std::make_shared<
+      std::optional<presentation::terminal::BackgroundGuard>>();
   if (config.sync_terminal_background && config.theme_name != "system") {
     const auto rgb = presentation::theme::CurrentCanvasRgb();
     if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
