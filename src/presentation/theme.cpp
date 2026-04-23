@@ -21,7 +21,7 @@ static void RegisterBuiltinThemes() {
   registered = true;
 
   g_theme_registry["catppuccin"] = CatppuccinPreset;
-  g_theme_registry["opencode"] = CatppuccinPreset;
+  g_theme_registry["opencode"] = OpenCodePreset;
   g_theme_registry["system"] = CatppuccinPreset;
 }
 
@@ -150,6 +150,88 @@ Theme CatppuccinPreset() {
   t.sub_agent.header_bg = ftxui::Color::RGB(41, 44, 60);
   t.sub_agent.icon_fg = ftxui::Color::RGB(180, 190, 254);
   t.sub_agent.progress_fg = ftxui::Color::RGB(116, 199, 236);
+
+  return t;
+}
+
+// OpenCode theme: warm-dark, restrained, amber/steel-blue accents.
+// Transcript surfaces flatten into canvas (no chat-bubble symmetry).
+Theme OpenCodePreset() {
+  Theme t;
+  t.name = "opencode";
+  t.density = ThemeDensity::Comfortable;
+
+  t.role.user = ftxui::Color::RGB(112, 162, 191);    // desaturated steel blue
+  t.role.agent = ftxui::Color::RGB(214, 209, 195);   // body text (no green tint)
+  t.role.error = ftxui::Color::RGB(207, 95, 73);     // burnt sienna
+
+  t.markdown.heading = ftxui::Color::RGB(232, 226, 209);  // light bone
+  t.markdown.link = ftxui::Color::RGB(112, 162, 191);     // same as user role
+  t.markdown.quote_bg = ftxui::Color::RGB(20, 20, 25);    // same as user_bg
+
+  t.code.bg = ftxui::Color::RGB(20, 20, 25);
+  t.code.alt_bg = ftxui::Color::RGB(25, 25, 30);
+  t.code.fg = ftxui::Color::RGB(214, 209, 195);
+  t.code.inline_bg = ftxui::Color::RGB(30, 30, 35);
+  t.code.inline_fg = ftxui::Color::RGB(207, 142, 60);
+  t.code.border = ftxui::Color::RGB(40, 38, 33);
+
+  t.syntax.keyword = ftxui::Color::RGB(189, 147, 249);   // soft purple
+  t.syntax.string = ftxui::Color::RGB(166, 209, 137);    // sage
+  t.syntax.comment = ftxui::Color::RGB(120, 116, 103);   // dim_text
+  t.syntax.number = ftxui::Color::RGB(207, 142, 60);     // amber
+  t.syntax.type = ftxui::Color::RGB(232, 200, 99);       // gold
+  t.syntax.function = ftxui::Color::RGB(112, 162, 191);  // steel blue
+
+  t.chrome.dim_text = ftxui::Color::RGB(120, 116, 103);
+  t.chrome.body_text = ftxui::Color::RGB(214, 209, 195);
+  t.chrome.prompt = ftxui::Color::RGB(207, 142, 60);     // amber accent
+  t.chrome.canvas_bg = ftxui::Color::RGB(13, 13, 17);    // near-black cool tint
+  t.chrome.canvas_bg_rgb = {13, 13, 17};
+
+  t.cards.user_bg = ftxui::Color::RGB(20, 20, 25);       // barely-raised panel
+  t.cards.agent_bg = ftxui::Color::RGB(13, 13, 17);      // same as canvas
+
+  t.tool.header_bg = ftxui::Color::RGB(20, 20, 25);
+  t.tool.bash_accent = ftxui::Color::RGB(207, 142, 60);
+  t.tool.edit_add = ftxui::Color::RGB(166, 209, 137);
+  t.tool.edit_remove = ftxui::Color::RGB(207, 95, 73);
+  t.tool.edit_context = ftxui::Color::RGB(120, 116, 103);
+  t.tool.read_accent = ftxui::Color::RGB(112, 162, 191);
+  t.tool.grep_accent = ftxui::Color::RGB(189, 147, 249);
+  t.tool.glob_accent = ftxui::Color::RGB(127, 191, 175);  // muted teal
+  t.tool.web_accent = ftxui::Color::RGB(112, 162, 191);
+  t.tool.icon_fg = ftxui::Color::RGB(214, 209, 195);
+
+  t.dialog.overlay_bg = ftxui::Color::RGB(8, 8, 10);
+  t.dialog.selected_bg = ftxui::Color::RGB(40, 38, 33);
+  t.dialog.selected_fg = ftxui::Color::RGB(232, 226, 209);
+  t.dialog.input_bg = ftxui::Color::RGB(20, 20, 25);
+  t.dialog.input_fg = ftxui::Color::RGB(214, 209, 195);
+  t.dialog.dim_text = ftxui::Color::RGB(120, 116, 103);
+
+  t.sub_agent.pending_bg = ftxui::Color::RGB(25, 25, 30);
+  t.sub_agent.running_accent = ftxui::Color::RGB(207, 142, 60);
+  t.sub_agent.success_accent = ftxui::Color::RGB(166, 209, 137);
+  t.sub_agent.error_accent = ftxui::Color::RGB(207, 95, 73);
+  t.sub_agent.timeout_accent = ftxui::Color::RGB(232, 200, 99);
+  t.sub_agent.header_bg = ftxui::Color::RGB(20, 20, 25);
+  t.sub_agent.icon_fg = ftxui::Color::RGB(214, 209, 195);
+  t.sub_agent.progress_fg = ftxui::Color::RGB(112, 162, 191);
+
+  t.semantic.text_strong = ftxui::Color::RGB(232, 226, 209);
+  t.semantic.text_body = ftxui::Color::RGB(214, 209, 195);
+  t.semantic.text_weak = ftxui::Color::RGB(168, 161, 145);
+  t.semantic.text_muted = ftxui::Color::RGB(120, 116, 103);
+  t.semantic.accent_primary = ftxui::Color::RGB(207, 142, 60);    // amber
+  t.semantic.accent_secondary = ftxui::Color::RGB(112, 162, 191); // steel blue
+  t.semantic.surface_canvas = ftxui::Color::RGB(13, 13, 17);
+  t.semantic.surface_panel = ftxui::Color::RGB(20, 20, 25);
+  t.semantic.surface_raised = ftxui::Color::RGB(25, 25, 30);
+  t.semantic.border_subtle = ftxui::Color::RGB(30, 30, 35);
+  t.semantic.border_strong = ftxui::Color::RGB(40, 38, 33);
+  t.semantic.focus_ring = ftxui::Color::RGB(207, 142, 60);
+  t.semantic.selection_bg = ftxui::Color::RGB(40, 38, 33);
 
   return t;
 }

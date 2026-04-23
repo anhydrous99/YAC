@@ -151,5 +151,6 @@ struct Theme {
 };
 
 [[nodiscard]] Theme CatppuccinPreset();
+[[nodiscard]] Theme OpenCodePreset();
 
 }  // namespace yac::presentation::theme
