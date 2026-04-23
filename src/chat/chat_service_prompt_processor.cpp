@@ -58,6 +58,10 @@ void ChatServicePromptProcessor::ProcessPrompt(
     return;
   }
 
+  if (generation_value_() != generation) {
+    return;
+  }
+
   {
     std::lock_guard lock(*history_mutex_);
     ChatServiceHistory(*history_).AppendActiveUserMessage(prompt_id,
