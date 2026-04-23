@@ -14,12 +14,10 @@ constexpr int kDialogMaxWidth = 72;
 
 ftxui::Element DialogTitle(const std::string& title) {
   return ftxui::hbox({
-             ftxui::text(" "),
-             ftxui::text(title) | ftxui::bold,
-             ftxui::filler(),
-          }) |
-          ftxui::color(theme::CurrentTheme().dialog.selected_fg) |
-          ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
+      ftxui::text(title) | ftxui::bold |
+          ftxui::color(theme::CurrentTheme().semantic.text_strong),
+      ftxui::filler(),
+  });
 }
 
 }  // namespace
@@ -42,7 +40,7 @@ ftxui::Component DialogModal(ftxui::Component main, ftxui::Component modal,
 
       auto backdrop =
           document | ftxui::dim |
-          ftxui::bgcolor(theme::CurrentTheme().dialog.overlay_bg);
+          ftxui::bgcolor(theme::CurrentTheme().semantic.surface_canvas);
       return ftxui::dbox({
           backdrop,
           modal_->Render() | ftxui::clear_under | ftxui::center,
@@ -82,7 +80,7 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
         return ftxui::emptyElement();
       }
 
-      auto panel = ftxui::vbox({
+      auto inner = ftxui::vbox({
           DialogTitle(title_),
           ftxui::text(""),
           ftxui::hbox({ftxui::text("  "),
@@ -91,9 +89,15 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
           ftxui::text(""),
       });
 
-      return panel | ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
-             ftxui::borderStyled(ftxui::HEAVY,
-                                 theme::CurrentTheme().dialog.selected_bg) |
+      auto border_color = theme::CurrentTheme().semantic.border_subtle;
+
+      auto panel = ftxui::vbox({
+          ftxui::separator() | ftxui::color(border_color),
+          inner | ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg),
+          ftxui::separator() | ftxui::color(border_color),
+      });
+
+      return panel |
              ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, kDialogMaxWidth) |
              ftxui::center;
     }

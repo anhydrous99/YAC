@@ -59,8 +59,7 @@ TEST_CASE("DialogPanel renders title with prominent border") {
   auto output = RenderComponent(comp, 80, 24);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("My Title"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("━"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("┃"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("─"));
 }
 
 TEST_CASE("DialogPanel renders inner content when shown") {
