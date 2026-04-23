@@ -40,12 +40,12 @@ std::vector<Command> SampleModelCommands() {
 
 }  // namespace
 
-TEST_CASE("ChatUI renders command shortcut hint in footer") {
+TEST_CASE("ChatUI renders help hint chip in status rail") {
   ChatUI ui;
   auto component = ui.Build();
   auto output = RenderComponent(component);
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Ctrl+P=Commands"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[? help]"));
 }
 
 TEST_CASE("ChatUI renders active assistant while streaming") {

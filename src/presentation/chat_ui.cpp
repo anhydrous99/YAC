@@ -42,13 +42,14 @@ std::string FormatPercent(double percent) {
 }
 
 ftxui::Color PercentColor(double percent) {
-  if (percent < 60.0) {
-    return ftxui::Color::Green;
+  const auto& t = theme::CurrentTheme();
+  if (percent <= 50.0) {
+    return t.role.agent;
   }
-  if (percent < 85.0) {
+  if (percent <= 80.0) {
     return ftxui::Color::Yellow;
   }
-  return ftxui::Color::Red;
+  return t.role.error;
 }
 
 bool IsWhitespaceOnly(const std::string& value) {
@@ -199,108 +200,120 @@ ftxui::Component ChatUI::Build() {
   auto container = ftxui::Container::Stacked({message_list, input});
 
   auto main_ui = ftxui::Renderer(container, [this, message_list, input] {
-    ftxui::Elements stats_left;
-    const bool has_active_agent = HasActiveAgentMessage();
-    if (is_typing_ && !has_active_agent) {
-      stats_left.push_back(ftxui::text(" ● typing") |
-                           ftxui::color(render_context_.Colors().role.agent) |
-                           ftxui::bold);
-    }
-    if (const auto& last_usage = overlay_state_.LastUsage()) {
-      stats_left.push_back(
-          ftxui::text(" ↑" + FormatTokens(last_usage->prompt_tokens) + " ↓" +
-                      FormatTokens(last_usage->completion_tokens)) |
-          ftxui::color(render_context_.Colors().chrome.dim_text) | ftxui::dim);
-    }
-    if (overlay_state_.QueueDepth() > 0) {
-      stats_left.push_back(
-          ftxui::text(" queued " +
-                      std::to_string(overlay_state_.QueueDepth())) |
-          ftxui::color(ftxui::Color::Yellow) | ftxui::bold);
-    }
-    if (const auto& notice = overlay_state_.TransientStatus()) {
-      stats_left.push_back(ftxui::text(" " + NoticeText(*notice)) |
-                           ftxui::color(SeverityColor(notice->severity)));
-    }
+    const auto& colors = render_context_.Colors();
+    const int term_width = ftxui::Terminal::Size().dimx;
 
-    ftxui::Elements stats_right;
-    const int window = overlay_state_.ContextWindowTokens();
-    const int total = overlay_state_.LastUsage()
-                          ? overlay_state_.LastUsage()->total_tokens
-                          : 0;
-    if (window > 0 && total > 0) {
-      const double percent =
-          (static_cast<double>(total) / static_cast<double>(window)) * 100.0;
-      stats_right.push_back(ftxui::text(" " + FormatTokens(total) + " / " +
-                                        FormatTokens(window) + "  ") |
-                            ftxui::color(render_context_.Colors().chrome.body_text));
-      stats_right.push_back(ftxui::text(FormatPercent(percent)) |
-                            ftxui::color(PercentColor(percent)) | ftxui::bold);
-    } else {
-      stats_right.push_back(ftxui::text(" — / —") |
-                            ftxui::color(render_context_.Colors().chrome.dim_text) |
-                            ftxui::dim);
-    }
-    if (!session_.Empty()) {
-      auto count_label = "  [" + std::to_string(session_.MessageCount()) +
-                         " message" + (session_.MessageCount() > 1 ? "s" : "") +
-                         "]";
-      stats_right.push_back(ftxui::text(count_label) |
-                            ftxui::color(render_context_.Colors().chrome.dim_text) |
-                            ftxui::dim);
-    }
-    if (!overlay_state_.ProviderId().empty() ||
-        !overlay_state_.Model().empty()) {
-      auto provider_model = overlay_state_.ProviderId();
-      if (!provider_model.empty() && !overlay_state_.Model().empty()) {
-        provider_model += " / ";
+    // ── Status rail (single compact line) ────────────────────────
+    // Left: provider/model (abbreviated when narrow)
+    ftxui::Elements rail_left;
+    {
+      const auto& pid = overlay_state_.ProviderId();
+      const auto& mdl = overlay_state_.Model();
+      std::string label;
+      if (term_width < 100) {
+        label = mdl;
+      } else {
+        label = pid;
+        if (!label.empty() && !mdl.empty()) {
+          label += "/";
+        }
+        label += mdl;
       }
-      provider_model += overlay_state_.Model();
-      stats_right.push_back(ftxui::text("  " + provider_model + " ") |
-                            ftxui::color(render_context_.Colors().chrome.dim_text) |
-                            ftxui::dim);
+      if (!label.empty()) {
+        rail_left.push_back(ftxui::text(" " + label + " ") |
+                            ftxui::color(colors.semantic.text_weak));
+      }
     }
 
-    ftxui::Elements stats_row;
-    for (auto& element : stats_left) {
-      stats_row.push_back(std::move(element));
-    }
-    stats_row.push_back(ftxui::filler());
-    for (auto& element : stats_right) {
-      stats_row.push_back(std::move(element));
+    // Center: live status indicators (only when active)
+    ftxui::Elements rail_center;
+    {
+      const bool has_active_agent = HasActiveAgentMessage();
+      if (is_typing_ && !has_active_agent) {
+        rail_center.push_back(ftxui::text(" \xe2\x97\x8f typing") |
+                              ftxui::color(colors.semantic.accent_primary) |
+                              ftxui::bold);
+      }
+      if (const auto& last_usage = overlay_state_.LastUsage()) {
+        rail_center.push_back(
+            ftxui::text(
+                " \xe2\x86\x91" + FormatTokens(last_usage->prompt_tokens) +
+                " \xe2\x86\x93" + FormatTokens(last_usage->completion_tokens)) |
+            ftxui::color(colors.semantic.text_muted));
+      }
+      if (overlay_state_.QueueDepth() > 0) {
+        rail_center.push_back(
+            ftxui::text(" queued " +
+                        std::to_string(overlay_state_.QueueDepth())) |
+            ftxui::color(ftxui::Color::Yellow) | ftxui::bold);
+      }
+      if (const auto& notice = overlay_state_.TransientStatus()) {
+        rail_center.push_back(ftxui::text(" " + NoticeText(*notice)) |
+                              ftxui::color(SeverityColor(notice->severity)));
+      }
     }
 
-    auto input_area = ftxui::hbox({
-        ftxui::text(" > ") | ftxui::color(render_context_.Colors().chrome.prompt) |
-            ftxui::bold,
+    // Right: context %, token count, help chip
+    ftxui::Elements rail_right;
+    {
+      const int window = overlay_state_.ContextWindowTokens();
+      const int total = overlay_state_.LastUsage()
+                            ? overlay_state_.LastUsage()->total_tokens
+                            : 0;
+      if (window > 0 && total > 0) {
+        const double pct =
+            (static_cast<double>(total) / static_cast<double>(window)) * 100.0;
+        rail_right.push_back(ftxui::text(FormatPercent(pct) + " ") |
+                             ftxui::color(PercentColor(pct)) | ftxui::bold);
+        rail_right.push_back(ftxui::text(FormatTokens(total)) |
+                             ftxui::color(colors.semantic.text_muted));
+      }
+    }
+    rail_right.push_back(ftxui::text(" [? help]") |
+                         ftxui::color(colors.semantic.text_muted));
+
+    ftxui::Elements status_rail;
+    for (auto& el : rail_left) {
+      status_rail.push_back(std::move(el));
+    }
+    status_rail.push_back(ftxui::filler());
+    for (auto& el : rail_center) {
+      status_rail.push_back(std::move(el));
+    }
+    status_rail.push_back(ftxui::filler());
+    for (auto& el : rail_right) {
+      status_rail.push_back(std::move(el));
+    }
+
+    // ── Composer surface ─────────────────────────────────────────
+    const int line_count = composer_.CalculateHeight(kMaxInputLines);
+    auto composer_surface = ftxui::hbox({
+        ftxui::text(" \xe2\x9d\xaf ") |
+            ftxui::color(colors.semantic.accent_primary) | ftxui::bold,
         input->Render() | ftxui::flex,
-        ftxui::text(" " +
-                    std::to_string(composer_.CalculateHeight(kMaxInputLines)) +
-                    "/" + std::to_string(kMaxInputLines) + " ") |
-            ftxui::color(render_context_.Colors().chrome.dim_text) | ftxui::dim,
+        ftxui::text(" " + std::to_string(line_count) + "/" +
+                    std::to_string(kMaxInputLines) + " ") |
+            ftxui::color(colors.semantic.text_muted),
     });
 
-    ftxui::Elements footer_rows;
-    footer_rows.push_back(ftxui::hbox(std::move(stats_row)));
-    footer_rows.push_back(
-        ftxui::text(" Enter=Send \xe2\x94\x82 Ctrl+P=Commands \xe2\x94\x82 "
-                    "\xe2\x87\xa7+Enter=Newline \xe2\x94\x82 "
-                    "PgUp/PgDn \xe2\x94\x82 Home/End") |
-        ftxui::color(render_context_.Colors().chrome.dim_text) | ftxui::dim);
-
-    auto footer_with_hints = ftxui::vbox(footer_rows);
-
+    // ── Assembly ─────────────────────────────────────────────────
     ftxui::Elements main_parts;
     main_parts.push_back(message_list->Render() | ftxui::flex |
-                         ftxui::bgcolor(render_context_.Colors().chrome.canvas_bg));
-    main_parts.push_back(footer_with_hints |
-                         ftxui::bgcolor(render_context_.Colors().cards.agent_bg));
+                         ftxui::bgcolor(colors.chrome.canvas_bg));
+
+    // Separator: subtle border between transcript and chrome
+    main_parts.push_back(ftxui::separator() |
+                         ftxui::color(colors.semantic.border_subtle));
+
+    main_parts.push_back(ftxui::hbox(std::move(status_rail)) |
+                         ftxui::bgcolor(colors.semantic.surface_panel));
+
     if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
-      main_parts.push_back(
-          input_controller_.RenderSlashMenu(ftxui::Terminal::Size().dimx));
+      main_parts.push_back(input_controller_.RenderSlashMenu(term_width));
     }
+
     main_parts.push_back(
-        input_area | ftxui::bgcolor(render_context_.Colors().cards.user_bg) |
+        composer_surface | ftxui::bgcolor(colors.semantic.surface_panel) |
         ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, kMaxInputLines));
 
     return ftxui::vbox(std::move(main_parts));
@@ -590,11 +603,13 @@ ftxui::Component ChatUI::BuildMessageList() {
       ftxui::Elements track_rows;
       for (int i = 0; i < track_height; ++i) {
         if (i >= thumb_pos && i < thumb_pos + thumb_size) {
-          track_rows.push_back(ftxui::text(" ") |
-                               ftxui::bgcolor(render_context_.Colors().chrome.dim_text));
+          track_rows.push_back(
+              ftxui::text(" ") |
+              ftxui::bgcolor(render_context_.Colors().chrome.dim_text));
         } else {
-          track_rows.push_back(ftxui::text(" ") |
-                               ftxui::bgcolor(render_context_.Colors().cards.agent_bg));
+          track_rows.push_back(
+              ftxui::text(" ") |
+              ftxui::bgcolor(render_context_.Colors().cards.agent_bg));
         }
       }
       scrollbar = ftxui::vbox(std::move(track_rows)) |
@@ -729,7 +744,8 @@ ftxui::Component ChatUI::BuildToolContentComponent(size_t message_index) {
       const auto count = session_.SubAgentToolCalls(parent_id).size();
       return ftxui::text("Sub-agent tool calls (" + std::to_string(count) +
                          ")") |
-             ftxui::color(render_context_.Colors().chrome.dim_text) | ftxui::dim;
+             ftxui::color(render_context_.Colors().chrome.dim_text) |
+             ftxui::dim;
     }));
     for (size_t child_index = 0; child_index < child_tools.size();
          ++child_index) {
