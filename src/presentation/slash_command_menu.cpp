@@ -15,23 +15,20 @@ ftxui::Element RenderRow(const SlashCommand& command, bool selected) {
   for (const auto& alias : command.aliases) {
     label += ", /" + alias;
   }
-  auto indicator = ftxui::text(selected ? " \xe2\x96\xb8 " : "   ");
   auto name = ftxui::text(label) | ftxui::bold |
               ftxui::size(ftxui::WIDTH, ftxui::GREATER_THAN, 14);
   auto desc = ftxui::text(command.description) | ftxui::flex;
 
   if (selected) {
-    indicator = indicator | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
-    name = name | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
-    desc = desc | ftxui::color(theme::CurrentTheme().dialog.selected_fg);
-    return ftxui::hbox({indicator, name, desc}) |
-           ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
+    auto bar = ftxui::text(" ") |
+               ftxui::bgcolor(theme::CurrentTheme().semantic.accent_primary);
+    name |= ftxui::color(theme::CurrentTheme().dialog.selected_fg);
+    desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak);
+    return ftxui::hbox({bar, ftxui::text(" "), name, desc});
   }
-  indicator = indicator | ftxui::color(theme::CurrentTheme().dialog.dim_text);
-  name = name | ftxui::color(theme::CurrentTheme().dialog.input_fg);
-  desc = desc | ftxui::color(theme::CurrentTheme().dialog.dim_text) |
-         ftxui::dim;
-  return ftxui::hbox({indicator, name, desc});
+  name |= ftxui::color(theme::CurrentTheme().dialog.input_fg);
+  desc |= ftxui::color(theme::CurrentTheme().semantic.text_weak) | ftxui::dim;
+  return ftxui::hbox({ftxui::text("  "), name, desc});
 }
 
 }  // namespace
@@ -56,8 +53,10 @@ ftxui::Element RenderSlashCommandMenu(const std::vector<SlashCommand>& commands,
 
   auto content = ftxui::vbox(std::move(rows));
   int width = std::min(max_width, kMenuMaxWidth);
-  return content | ftxui::border |
-         ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
+  auto top_line = ftxui::text(std::string(width, ' ')) |
+                  ftxui::bgcolor(theme::CurrentTheme().semantic.border_subtle) |
+                  ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, 1);
+  return ftxui::vbox({top_line, content}) |
          ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, width);
 }
 
