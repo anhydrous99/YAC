@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 
 #include "../theme.hpp"
+#include "../ui_spacing.hpp"
 #include "../util/string_util.hpp"
 #include "descriptor.hpp"
 
@@ -56,7 +57,8 @@ ftxui::Element RenderContainer(const std::string& icon,
 
   return ftxui::vbox({
       header,
-      ftxui::hbox({ftxui::text(" "), body | ftxui::flex}),
+      ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
+                   body | ftxui::flex}),
   });
 }
 
@@ -257,18 +259,18 @@ ftxui::Element ToolCallRenderer::BuildWritePeek(
 
   auto make_bar_row = [&](const std::string& text) {
     return ftxui::hbox({
-        ftxui::text("  "),
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
         ftxui::text("\xe2\x94\x83") | ftxui::color(accent) | ftxui::bold,
-        ftxui::text("  "),
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
         ftxui::paragraph(text) | ftxui::color(theme.semantic.text_muted) |
             ftxui::dim | ftxui::flex,
-        ftxui::text("  "),
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
     });
   };
 
   auto spacer_row = [&]() {
     return ftxui::hbox({
-        ftxui::text("  "),
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
         ftxui::text("\xe2\x94\x83") | ftxui::color(accent),
         ftxui::filler(),
     });
@@ -338,7 +340,8 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
         }));
       } else {
         content.push_back(ftxui::hbox({
-            ftxui::text("  ") | ftxui::color(theme.tool.edit_context),
+            ftxui::text(std::string(layout::kCardPadX, ' ')) |
+                ftxui::color(theme.tool.edit_context),
             ftxui::paragraph(line.content) |
                 ftxui::color(theme.tool.edit_context) | ftxui::flex,
         }));
@@ -430,9 +433,11 @@ ftxui::Element ToolCallRenderer::RenderListDir(
     const auto limit = std::min(call.entries.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& entry = call.entries[index];
-      auto line = DirectoryEntryTypeLabel(entry.type) + "  " + entry.name;
+      auto line = DirectoryEntryTypeLabel(entry.type) +
+                  std::string(layout::kCardPadX, ' ') + entry.name;
       if (entry.type == tool_data::DirectoryEntryType::File) {
-        line += "  " + std::to_string(entry.size) + " bytes";
+        line += std::string(layout::kCardPadX, ' ') +
+                std::to_string(entry.size) + " bytes";
       }
       content.push_back(RenderWrappedLine(line, theme.semantic.text_body));
     }

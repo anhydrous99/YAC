@@ -1,6 +1,7 @@
 #include "message_renderer.hpp"
 
 #include "theme.hpp"
+#include "ui_spacing.hpp"
 #include "util/time_util.hpp"
 
 #include <algorithm>
@@ -83,8 +84,9 @@ ftxui::Element MessageRenderer::CardSurface(ftxui::Element content,
                                             const RenderContext& context) {
   return ftxui::vbox({
              ftxui::text(""),
-             ftxui::hbox({ftxui::text("  "), std::move(content) | ftxui::flex,
-                          ftxui::text("  ")}),
+             ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
+                          std::move(content) | ftxui::flex,
+                          ftxui::text(std::string(layout::kCardPadX, ' '))}),
              ftxui::text(""),
          }) |
          ftxui::bgcolor(background) |
@@ -164,9 +166,9 @@ ftxui::Element MessageRenderer::RenderUserMessage(
       RenderHeader(Sender::User, message.DisplayLabel(), message.created_at,
                    cache.relative_time, context, message.status),
       ftxui::text(""),
-      ftxui::hbox({ftxui::text("  "), ftxui::paragraph(message.Text()) |
-                                          ftxui::color(theme.role.user) |
-                                          ftxui::flex}),
+      ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
+                   ftxui::paragraph(message.Text()) |
+                       ftxui::color(theme.role.user) | ftxui::flex}),
   });
 
   auto accent_rail =
