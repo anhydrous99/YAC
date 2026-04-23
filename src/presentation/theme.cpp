@@ -1,9 +1,80 @@
 #include "theme.hpp"
 
+#include <iostream>
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <utility>
+
 namespace yac::presentation::theme {
+
+static std::optional<Theme>
+    g_active_theme;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+static std::map<std::string, ThemeFactory>
+    g_theme_registry;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
+
+static void RegisterBuiltinThemes() {
+  static bool registered = false;
+  if (registered) {
+    return;
+  }
+  registered = true;
+
+  g_theme_registry["catppuccin"] = CatppuccinMocha;
+  g_theme_registry["opencode"] = CatppuccinMocha;
+  g_theme_registry["system"] = CatppuccinMocha;
+}
+
+void InitializeTheme(Theme value) {
+  if (!g_active_theme.has_value()) {
+    g_active_theme = std::move(value);
+    return;
+  }
+  if (g_active_theme->name == value.name) {
+    return;
+  }
+  throw std::logic_error("[theme] re-initialize with different name: was '" +
+                         g_active_theme->name + "' attempting '" + value.name +
+                         "'");
+}
+
+const Theme& CurrentTheme() {
+  if (!g_active_theme.has_value()) {
+    g_active_theme = CatppuccinMocha();
+  }
+  return *g_active_theme;
+}
+
+void RegisterTheme(std::string name, ThemeFactory factory) {
+  RegisterBuiltinThemes();
+  g_theme_registry[std::move(name)] = std::move(factory);
+}
+
+Theme GetTheme(const std::string& name) {
+  RegisterBuiltinThemes();
+  auto it = g_theme_registry.find(name);
+  if (it == g_theme_registry.end()) {
+    std::cerr << "[theme] Unknown theme name: '" << name
+              << "'. Falling back to default 'opencode'.\n";
+    return g_theme_registry.at("opencode")();
+  }
+  return it->second();
+}
+
+std::vector<std::string> ListThemes() {
+  RegisterBuiltinThemes();
+  std::vector<std::string> names;
+  names.reserve(g_theme_registry.size());
+  for (const auto& [name, factory] : g_theme_registry) {
+    static_cast<void>(factory);
+    names.push_back(name);
+  }
+  return names;
+}
 
 Theme CatppuccinMocha() {
   Theme t;
+  t.name = "catppuccin-mocha";
   t.role.user = ftxui::Color::RGB(137, 180, 250);
   t.role.agent = ftxui::Color::RGB(166, 227, 161);
   t.role.error = ftxui::Color::RGB(243, 139, 168);
@@ -65,9 +136,10 @@ Theme CatppuccinMocha() {
   return t;
 }
 
-const Theme& Theme::Instance() {
-  static const Theme instance = CatppuccinMocha();
-  return instance;
+namespace testing {
+void ResetThemeForTesting() {
+  g_active_theme.reset();
 }
+}  // namespace testing
 
 }  // namespace yac::presentation::theme

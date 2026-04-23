@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <vector>
 
 #include <ftxui/screen/color.hpp>
 
@@ -12,6 +14,24 @@ inline constexpr std::uint8_t kCanvasBgGreen = 17;
 inline constexpr std::uint8_t kCanvasBgBlue = 27;
 
 enum class ThemeDensity { Compact, Comfortable };
+
+struct Theme;
+
+// Initialize the active theme. Idempotent for the same theme name;
+// throws std::logic_error if called with a different name after init.
+void InitializeTheme(Theme value);
+
+// Returns the active theme. Lazily initializes to CatppuccinMocha()
+// if InitializeTheme has not been called yet.
+[[nodiscard]] const Theme& CurrentTheme();
+
+using ThemeFactory = std::function<Theme()>;
+
+void RegisterTheme(std::string name, ThemeFactory factory);
+
+[[nodiscard]] Theme GetTheme(const std::string& name);
+
+[[nodiscard]] std::vector<std::string> ListThemes();
 
 struct SemanticRoles {
   ftxui::Color text_strong;
@@ -118,7 +138,11 @@ struct Theme {
   DialogColors dialog;
   SubAgentColors sub_agent;
 
-  [[nodiscard]] static const Theme& Instance();
+  [[deprecated(
+      "use RenderContext or CurrentTheme()")]] [[nodiscard]] static const Theme&
+  Instance() {
+    return CurrentTheme();
+  }
 };
 
 [[nodiscard]] Theme CatppuccinMocha();
