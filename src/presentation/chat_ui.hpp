@@ -119,6 +119,7 @@ class ChatUI : public ChatEventSink {
   [[nodiscard]] bool HasActiveAgentMessage() const;
   void SyncThinkingAnimation();
 
+  RenderContext render_context_;
   ChatSession session_;
   mutable MessageRenderCacheStore render_cache_;
   std::vector<MessageRenderItem> render_plan_;
