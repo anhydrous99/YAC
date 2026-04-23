@@ -10,8 +10,6 @@
 namespace yac::presentation {
 
 namespace {
-
-inline const auto& k_theme = theme::Theme::Instance();
 constexpr int kDialogMaxWidth = 72;
 
 ftxui::Element DialogTitle(const std::string& title) {
@@ -19,9 +17,9 @@ ftxui::Element DialogTitle(const std::string& title) {
              ftxui::text(" "),
              ftxui::text(title) | ftxui::bold,
              ftxui::filler(),
-         }) |
-         ftxui::color(k_theme.dialog.selected_fg) |
-         ftxui::bgcolor(k_theme.dialog.selected_bg);
+          }) |
+          ftxui::color(theme::CurrentTheme().dialog.selected_fg) |
+          ftxui::bgcolor(theme::CurrentTheme().dialog.selected_bg);
 }
 
 }  // namespace
@@ -43,7 +41,8 @@ ftxui::Component DialogModal(ftxui::Component main, ftxui::Component modal,
       }
 
       auto backdrop =
-          document | ftxui::dim | ftxui::bgcolor(k_theme.dialog.overlay_bg);
+          document | ftxui::dim |
+          ftxui::bgcolor(theme::CurrentTheme().dialog.overlay_bg);
       return ftxui::dbox({
           backdrop,
           modal_->Render() | ftxui::clear_under | ftxui::center,
@@ -92,8 +91,9 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
           ftxui::text(""),
       });
 
-      return panel | ftxui::bgcolor(k_theme.dialog.input_bg) |
-             ftxui::borderStyled(ftxui::HEAVY, k_theme.dialog.selected_bg) |
+      return panel | ftxui::bgcolor(theme::CurrentTheme().dialog.input_bg) |
+             ftxui::borderStyled(ftxui::HEAVY,
+                                 theme::CurrentTheme().dialog.selected_bg) |
              ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, kDialogMaxWidth) |
              ftxui::center;
     }
