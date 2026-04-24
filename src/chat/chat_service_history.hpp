@@ -8,6 +8,8 @@
 
 namespace yac::chat::internal {
 
+inline constexpr auto kDefaultCompactKeepLast = decltype(sizeof(0)){10};
+
 class ChatServiceHistory {
  public:
   explicit ChatServiceHistory(std::vector<ChatMessage>& history);
@@ -25,5 +27,8 @@ class ChatServiceHistory {
  private:
   std::vector<ChatMessage>* history_;
 };
+
+void CompactHistory(std::vector<ChatMessage>& history,
+                    decltype(sizeof(0)) keep_last = kDefaultCompactKeepLast);
 
 }  // namespace yac::chat::internal
