@@ -36,10 +36,22 @@ ChatUiInputController::ChatUiInputController(
     ComposerState& composer, SlashCommandRegistry& slash_commands)
     : composer_(&composer), slash_commands_(&slash_commands) {}
 
+void ChatUiInputController::SetOnModeToggle(
+    std::function<void()> on_mode_toggle) {
+  on_mode_toggle_ = std::move(on_mode_toggle);
+}
+
 bool ChatUiInputController::HandleEvent(
     const ftxui::Event& event, const std::function<void()>& submit_message,
     const std::function<void()>& insert_newline) {
   if (HandleSlashMenuEvent(event)) {
+    return true;
+  }
+
+  if (event == ftxui::Event::Tab && !composer_->IsSlashMenuActive()) {
+    if (on_mode_toggle_) {
+      on_mode_toggle_();
+    }
     return true;
   }
 

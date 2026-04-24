@@ -4,6 +4,7 @@
 #include "app/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
+#include "chat/agent_mode.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/prompt_library.hpp"
@@ -249,6 +250,24 @@ void ConfigureChatUiCallbacks(
       [&chat_service](const std::string& approval_id, bool approved) {
         chat_service.ResolveToolApproval(approval_id, approved);
       });
+
+  chat_ui.SetOnAskUserCallbacks(
+      [&chat_service](std::string approval_id, std::string response) {
+        chat_service.ResolveAskUser(std::move(approval_id),
+                                    std::move(response));
+      },
+      [&chat_service](std::string approval_id) {
+        chat_service.ResolveToolApproval(std::move(approval_id), false);
+      });
+
+  chat_ui.SetOnModeToggle([&chat_service, &screen] {
+    screen.Post([&chat_service] {
+      auto current = chat_service.GetAgentMode();
+      auto next = (current == chat::AgentMode::Build) ? chat::AgentMode::Plan
+                                                      : chat::AgentMode::Build;
+      chat_service.SetAgentMode(next);
+    });
+  });
 
   chat_ui.SetCommands(BuildCommands(models));
   chat_ui.SetModelCommands(BuildModelCommands(models));

@@ -7,6 +7,7 @@
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
+#include "message_renderer.hpp"
 #include "theme.hpp"
 #include "ui_spacing.hpp"
 #include "util/scroll_math.hpp"
@@ -192,6 +193,23 @@ void ChatUI::SetOnToolApproval(OnToolApprovalCallback on_tool_approval) {
   overlay_state_.SetOnToolApproval(std::move(on_tool_approval));
 }
 
+void ChatUI::SetOnAskUserCallbacks(OnAskUserResponseCallback on_response,
+                                   OnAskUserCancelCallback on_cancel) {
+  on_ask_user_response_ = std::move(on_response);
+  on_ask_user_cancel_ = std::move(on_cancel);
+  overlay_state_.SetOnAskUserSubmit(on_ask_user_response_);
+  overlay_state_.SetOnAskUserCancel(on_ask_user_cancel_);
+}
+
+void ChatUI::SetOnModeToggle(std::function<void()> on_mode_toggle) {
+  on_mode_toggle_ = on_mode_toggle;
+  input_controller_.SetOnModeToggle(std::move(on_mode_toggle));
+}
+
+void ChatUI::SetAgentMode(chat::AgentMode mode) {
+  agent_mode_ = mode;
+}
+
 void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
   thinking_animation_.SetUiTaskRunner(std::move(ui_task_runner));
   SyncThinkingAnimation();
@@ -226,6 +244,14 @@ ftxui::Component ChatUI::Build() {
       if (!label.empty()) {
         rail_left.push_back(ftxui::text(" " + label + " ") |
                             ftxui::color(colors.semantic.text_weak));
+      }
+      {
+        const bool is_plan = (agent_mode_ == chat::AgentMode::Plan);
+        const std::string mode_label = is_plan ? "[PLAN]" : "[BUILD]";
+        const ftxui::Color mode_color =
+            is_plan ? ftxui::Color::Yellow : colors.semantic.accent_primary;
+        rail_left.push_back(ftxui::text(mode_label) | ftxui::color(mode_color) |
+                            ftxui::bold);
       }
     }
 
@@ -445,6 +471,12 @@ void ChatUI::ShowToolApproval(
     std::optional<::yac::tool_call::ToolCallBlock> preview) {
   overlay_state_.ShowToolApproval(std::move(approval_id), std::move(tool_name),
                                   std::move(prompt), std::move(preview));
+}
+
+void ChatUI::ShowAskUserDialog(std::string approval_id, std::string question,
+                               std::vector<std::string> options) {
+  overlay_state_.ShowAskUserDialog(std::move(approval_id), std::move(question),
+                                   std::move(options));
 }
 
 void ChatUI::SetCommands(std::vector<Command> commands) {

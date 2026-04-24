@@ -24,7 +24,7 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
     std::vector<ChatMessage>& history, EmitEventFn emit_event,
     NextMessageIdFn next_message_id, ConfigSnapshotFn config_snapshot,
     GenerationValueFn generation_value, std::set<std::string> excluded_tools,
-    std::mutex* approval_gate)
+    std::mutex* approval_gate, ModeExcludedToolsFn mode_excluded_tools)
     : registry_(&registry),
       tool_executor_(&tool_executor),
       tool_approval_(&tool_approval),
@@ -35,7 +35,8 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
       config_snapshot_(std::move(config_snapshot)),
       generation_value_(std::move(generation_value)),
       excluded_tools_(std::move(excluded_tools)),
-      approval_gate_(approval_gate) {}
+      approval_gate_(approval_gate),
+      mode_excluded_tools_(std::move(mode_excluded_tools)) {}
 
 void ChatServicePromptProcessor::ProcessPrompt(
     ChatMessageId prompt_id, const std::string& prompt_content,
@@ -191,8 +192,10 @@ ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
     const ChatServiceRequestBuilder& request_builder) const {
   std::lock_guard lock(*history_mutex_);
   auto tools = ::yac::tool_call::ToolExecutor::Definitions();
-  std::erase_if(tools, [this](const auto& t) {
-    return excluded_tools_.contains(t.name);
+  auto mode_excluded =
+      mode_excluded_tools_ ? mode_excluded_tools_() : std::set<std::string>{};
+  std::erase_if(tools, [this, &mode_excluded](const auto& t) {
+    return excluded_tools_.contains(t.name) || mode_excluded.contains(t.name);
   });
   return request_builder.BuildRequest(*history_, tools);
 }
@@ -229,6 +232,15 @@ void ChatServicePromptProcessor::RunToolRound(
         }
       }
       auto approval_id = tool_approval_->BeginPendingApproval();
+      prepared.approval_id = approval_id;
+      std::string question;
+      std::vector<std::string> options;
+      if (const auto* ask_user =
+              std::get_if<::yac::tool_call::AskUserCall>(&prepared.preview);
+          ask_user != nullptr) {
+        question = ask_user->question;
+        options = ask_user->options;
+      }
       emit_event_(ChatEvent{
           ToolApprovalRequestedEvent{.message_id = tool_message_id,
                                      .role = ChatRole::Tool,
@@ -237,10 +249,14 @@ void ChatServicePromptProcessor::RunToolRound(
                                      .tool_name = tool_request.name,
                                      .approval_id = approval_id,
                                      .tool_call = prepared.preview,
-                                     .status = ChatMessageStatus::Queued}});
-      auto resolution =
-          tool_approval_->WaitForResolution(approval_id, stop_token);
-      approved = resolution.approved;
+                                     .status = ChatMessageStatus::Queued,
+                                     .question = std::move(question),
+                                     .options = std::move(options)}});
+      if (tool_request.name != ::yac::tool_call::kAskUserToolName) {
+        auto resolution =
+            tool_approval_->WaitForResolution(approval_id, stop_token);
+        approved = resolution.approved;
+      }
     }
 
     ::yac::tool_call::ToolExecutionResult result =

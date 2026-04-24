@@ -3,6 +3,7 @@
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
+#include "tool_call/todo_state.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -122,6 +123,7 @@ bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
 struct SubAgentTestContext {
   std::filesystem::path workspace;
   ProviderRegistry registry;
+  TodoState todo_state;
   std::shared_ptr<ToolExecutor> executor;
   internal::ChatServiceToolApproval tool_approval;
   std::atomic<ChatMessageId> next_id{1};
@@ -140,7 +142,7 @@ struct SubAgentTestContext {
     config.provider_id = prov->Id();
     config.model = "test-model";
     registry.Register(std::move(prov));
-    executor = std::make_shared<ToolExecutor>(workspace, nullptr);
+    executor = std::make_shared<ToolExecutor>(workspace, nullptr, todo_state);
     manager = std::make_unique<SubAgentManager>(
         registry, executor, tool_approval,
         [this](ChatEvent event) {

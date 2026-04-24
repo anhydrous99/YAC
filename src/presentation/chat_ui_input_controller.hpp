@@ -17,6 +17,7 @@ class ChatUiInputController {
   [[nodiscard]] bool HandleEvent(const ftxui::Event& event,
                                  const std::function<void()>& submit_message,
                                  const std::function<void()>& insert_newline);
+  void SetOnModeToggle(std::function<void()> on_mode_toggle);
   void UpdateSlashMenuState();
   [[nodiscard]] ftxui::Element RenderSlashMenu(int terminal_width) const;
 
@@ -27,6 +28,7 @@ class ChatUiInputController {
 
   ComposerState* composer_;
   SlashCommandRegistry* slash_commands_;
+  std::function<void()> on_mode_toggle_;
 };
 
 }  // namespace yac::presentation

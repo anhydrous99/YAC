@@ -1,6 +1,7 @@
 #include "chat/chat_service_request_builder.hpp"
 
 #include "tool_call/lsp_client.hpp"
+#include "tool_call/todo_state.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -88,7 +89,7 @@ ChatRequest ChatServiceRequestBuilder::BuildRequest(
 }
 
 std::shared_ptr<::yac::tool_call::ToolExecutor> MakeChatToolExecutor(
-    const ChatConfig& config) {
+    const ChatConfig& config, ::yac::tool_call::TodoState& todo_state) {
   auto root = config.workspace_root.empty()
                   ? std::filesystem::current_path()
                   : std::filesystem::path(config.workspace_root);
@@ -98,8 +99,8 @@ std::shared_ptr<::yac::tool_call::ToolExecutor> MakeChatToolExecutor(
           .args = config.lsp_clangd_args,
           .workspace_root = root,
       });
-  return std::make_shared<::yac::tool_call::ToolExecutor>(std::move(root),
-                                                          std::move(lsp));
+  return std::make_shared<::yac::tool_call::ToolExecutor>(
+      std::move(root), std::move(lsp), todo_state);
 }
 
 }  // namespace yac::chat::internal

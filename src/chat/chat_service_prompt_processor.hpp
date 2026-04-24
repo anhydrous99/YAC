@@ -21,6 +21,7 @@ class ChatServicePromptProcessor {
   using NextMessageIdFn = std::function<ChatMessageId()>;
   using ConfigSnapshotFn = std::function<ChatConfig()>;
   using GenerationValueFn = std::function<uint64_t()>;
+  using ModeExcludedToolsFn = std::function<std::set<std::string>()>;
 
   ChatServicePromptProcessor(provider::ProviderRegistry& registry,
                              ::yac::tool_call::ToolExecutor& tool_executor,
@@ -32,7 +33,8 @@ class ChatServicePromptProcessor {
                              ConfigSnapshotFn config_snapshot,
                              GenerationValueFn generation_value,
                              std::set<std::string> excluded_tools = {},
-                             std::mutex* approval_gate = nullptr);
+                             std::mutex* approval_gate = nullptr,
+                             ModeExcludedToolsFn mode_excluded_tools = {});
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
@@ -58,6 +60,7 @@ class ChatServicePromptProcessor {
   GenerationValueFn generation_value_;
   std::set<std::string> excluded_tools_;
   std::mutex* approval_gate_;
+  ModeExcludedToolsFn mode_excluded_tools_;
 };
 
 }  // namespace yac::chat::internal

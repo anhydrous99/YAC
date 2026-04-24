@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chat/agent_mode.hpp"
 #include "chat_event_sink.hpp"
 #include "chat_session.hpp"
 #include "chat_ui_input_controller.hpp"
@@ -12,7 +13,9 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "message.hpp"
+#include "message_render_cache.hpp"
 #include "message_renderer.hpp"
+#include "render_context.hpp"
 #include "slash_command_registry.hpp"
 
 #include <cstddef>
@@ -28,6 +31,9 @@ class ChatUI : public ChatEventSink {
   using OnSendCallback = std::function<void(const std::string&)>;
   using OnCommandCallback = std::function<void(const std::string&)>;
   using OnToolApprovalCallback = std::function<void(const std::string&, bool)>;
+  using OnAskUserResponseCallback =
+      std::function<void(std::string, std::string)>;
+  using OnAskUserCancelCallback = std::function<void(std::string)>;
   using UiTask = std::function<void()>;
   using UiTaskRunner = std::function<void(UiTask)>;
 
@@ -46,6 +52,10 @@ class ChatUI : public ChatEventSink {
   void SetOnSend(OnSendCallback on_send);
   void SetOnCommand(OnCommandCallback on_command);
   void SetOnToolApproval(OnToolApprovalCallback on_tool_approval);
+  void SetOnAskUserCallbacks(OnAskUserResponseCallback on_response,
+                             OnAskUserCancelCallback on_cancel);
+  void SetOnModeToggle(std::function<void()> on_mode_toggle);
+  void SetAgentMode(chat::AgentMode mode);
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);
@@ -72,6 +82,8 @@ class ChatUI : public ChatEventSink {
                         std::string prompt,
                         std::optional<::yac::tool_call::ToolCallBlock> preview =
                             std::nullopt) override;
+  void ShowAskUserDialog(std::string approval_id, std::string question,
+                         std::vector<std::string> options) override;
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetThemeCommands(std::vector<Command> commands);
@@ -131,6 +143,10 @@ class ChatUI : public ChatEventSink {
   ChatUiScrollState scroll_state_;
   ChatUiThinkingAnimation thinking_animation_;
   OnSendCallback on_send_;
+  std::function<void()> on_mode_toggle_;
+  chat::AgentMode agent_mode_ = chat::AgentMode::Build;
+  OnAskUserResponseCallback on_ask_user_response_;
+  OnAskUserCancelCallback on_ask_user_cancel_;
   bool is_typing_ = false;
   SlashCommandRegistry slash_commands_;
   mutable int last_terminal_width_ = -1;

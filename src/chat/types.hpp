@@ -49,6 +49,7 @@ enum class ChatEventType {
   MessageStatusChanged,
   QueueDepthChanged,
   ConversationCleared,
+  ConversationCompacted,
   ModelChanged,
   ToolCallRequested,
   ToolCallArgumentDelta,
@@ -58,6 +59,7 @@ enum class ChatEventType {
   SubAgentCompleted,
   SubAgentError,
   SubAgentCancelled,
+  AgentModeChanged,
 };
 
 struct StartedEvent {
@@ -173,6 +175,10 @@ struct ConversationClearedEvent {
   static constexpr ChatEventType kType = ChatEventType::ConversationCleared;
 };
 
+struct ConversationCompactedEvent {
+  static constexpr ChatEventType kType = ChatEventType::ConversationCompacted;
+};
+
 struct ModelChangedEvent {
   static constexpr ChatEventType kType = ChatEventType::ModelChanged;
 
@@ -267,16 +273,23 @@ struct SubAgentCancelledEvent {
   std::string sub_agent_task;
 };
 
+struct AgentModeChangedEvent {
+  static constexpr ChatEventType kType = ChatEventType::AgentModeChanged;
+
+  AgentMode mode = AgentMode::Build;
+};
+
 struct ChatEvent {
   using Payload = std::variant<
       StartedEvent, TextDeltaEvent, AssistantMessageDoneEvent,
       ToolCallStartedEvent, ToolCallDoneEvent, ErrorEvent, FinishedEvent,
       CancelledEvent, UserMessageQueuedEvent, UserMessageActiveEvent,
       MessageStatusChangedEvent, QueueDepthChangedEvent,
-      ConversationClearedEvent, ModelChangedEvent, ToolCallRequestedEvent,
-      ToolCallArgumentDeltaEvent, ToolApprovalRequestedEvent,
-      UsageReportedEvent, SubAgentProgressEvent, SubAgentCompletedEvent,
-      SubAgentErrorEvent, SubAgentCancelledEvent>;
+      ConversationClearedEvent, ConversationCompactedEvent, ModelChangedEvent,
+      ToolCallRequestedEvent, ToolCallArgumentDeltaEvent,
+      ToolApprovalRequestedEvent, UsageReportedEvent, SubAgentProgressEvent,
+      SubAgentCompletedEvent, SubAgentErrorEvent, SubAgentCancelledEvent,
+      AgentModeChangedEvent>;
 
   ChatEvent() = default;
 

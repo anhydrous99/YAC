@@ -848,9 +848,44 @@ ftxui::Element ToolCallRenderer::RenderTodoWrite(
                          std::move(content), theme);
 }
 
-ftxui::Element ToolCallRenderer::RenderAskUser(const tool_data::AskUserCall&,
-                                               const RenderContext&) {
-  return ftxui::text("[ask_user]");
+ftxui::Element ToolCallRenderer::RenderAskUser(
+    const tool_data::AskUserCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+
+  content.push_back(ftxui::paragraph(call.question) |
+                    ftxui::color(theme.semantic.text_strong));
+
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+    return RenderContainer("?", "ask_user", theme.tool.edit_remove,
+                           std::move(content), theme);
+  }
+
+  if (!call.options.empty()) {
+    content.push_back(ftxui::text(""));
+    for (const auto& opt : call.options) {
+      content.push_back(ftxui::hbox({
+          ftxui::text("  \xe2\x80\xa2 ") |
+              ftxui::color(theme.semantic.text_muted),
+          ftxui::paragraph(opt) | ftxui::color(theme.semantic.text_body) |
+              ftxui::flex,
+      }));
+    }
+  }
+
+  if (!call.response.empty()) {
+    content.push_back(ftxui::text(""));
+    content.push_back(ftxui::hbox({
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
+        ftxui::paragraph(call.response) | ftxui::color(theme.dialog.input_fg) |
+            ftxui::bgcolor(theme.dialog.input_bg) | ftxui::flex,
+        ftxui::text(std::string(layout::kCardPadX, ' ')),
+    }));
+  }
+
+  return RenderContainer("?", "ask_user", theme.semantic.accent_primary,
+                         std::move(content), theme);
 }
 
 }  // namespace yac::presentation::tool_call

@@ -1,4 +1,5 @@
 #include "tool_call/executor.hpp"
+#include "tool_call/todo_state.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <filesystem>
@@ -99,8 +100,14 @@ std::filesystem::path TempRoot(const std::string& name) {
   return path;
 }
 
+TodoState& SharedTodoState() {
+  static TodoState state;
+  return state;
+}
+
 ToolExecutor MakeExecutor(const std::filesystem::path& root) {
-  return ToolExecutor(root, std::make_shared<FakeLspClient>());
+  return ToolExecutor(root, std::make_shared<FakeLspClient>(),
+                      SharedTodoState());
 }
 
 std::string ReadFile(const std::filesystem::path& path) {
@@ -213,7 +220,8 @@ TEST_CASE("ToolExecutor preserves LSP rename errors from the client seam") {
     std::ofstream file(root / "rename.cpp");
     file << "int old = 0;\nold++;\n";
   }
-  ToolExecutor executor(root, std::make_shared<ErrorRenameLspClient>());
+  ToolExecutor executor(root, std::make_shared<ErrorRenameLspClient>(),
+                        SharedTodoState());
   ToolCallRequest request{
       .id = "call_1",
       .name = "lsp_rename",
@@ -238,7 +246,8 @@ TEST_CASE("ToolExecutor rejects LSP rename edits outside the workspace") {
     file << "old\n";
   }
   ToolExecutor executor(root,
-                        std::make_shared<OutsideWorkspaceRenameLspClient>());
+                        std::make_shared<OutsideWorkspaceRenameLspClient>(),
+                        SharedTodoState());
   ToolCallRequest request{
       .id = "call_1",
       .name = "lsp_rename",

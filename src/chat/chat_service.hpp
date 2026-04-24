@@ -4,6 +4,7 @@
 #include "chat/types.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
+#include "tool_call/todo_state.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -44,7 +45,11 @@ class ChatService {
   void SetModel(std::string model);
   void CancelActiveResponse();
   void ResolveToolApproval(std::string approval_id, bool approved);
+  void ResolveAskUser(const std::string& approval_id, std::string response);
+  [[nodiscard]] AgentMode GetAgentMode() const;
+  void SetAgentMode(AgentMode mode);
   void ResetConversation();
+  void CompactConversation(decltype(sizeof(0)) keep_last = 10);
   SubAgentManager& GetSubAgentManager() { return *sub_agent_manager_; }
   // Spawns a background sub-agent initiated by the user (e.g., /task).
   // Creates the UI card via a synthetic ToolCallStarted event and returns
@@ -76,6 +81,7 @@ class ChatService {
 
   provider::ProviderRegistry registry_;
   ChatConfig config_;
+  ::yac::tool_call::TodoState todo_state_;
   std::shared_ptr<::yac::tool_call::ToolExecutor> tool_executor_;
   std::unique_ptr<internal::ChatServiceToolApproval> tool_approval_;
   std::unique_ptr<SubAgentManager> sub_agent_manager_;

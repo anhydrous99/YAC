@@ -6,6 +6,10 @@
 #include <memory>
 #include <vector>
 
+namespace yac::tool_call {
+class TodoState;
+}  // namespace yac::tool_call
+
 namespace yac::chat::internal {
 
 class ChatServiceRequestBuilder {
@@ -22,6 +26,7 @@ class ChatServiceRequestBuilder {
 };
 
 [[nodiscard]] std::shared_ptr<::yac::tool_call::ToolExecutor>
-MakeChatToolExecutor(const ChatConfig& config);
+MakeChatToolExecutor(const ChatConfig& config,
+                     ::yac::tool_call::TodoState& todo_state);
 
 }  // namespace yac::chat::internal

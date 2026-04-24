@@ -100,6 +100,7 @@ add_library(yac_service STATIC
   src/tool_call/lsp_client.cpp
   src/tool_call/lsp_tool_executor.cpp
   src/tool_call/sub_agent_tool_executor.cpp
+  src/tool_call/todo_state.cpp
   src/tool_call/workspace_filesystem.cpp
 )
 target_include_directories(yac_service PUBLIC src)
@@ -219,6 +220,7 @@ add_custom_target(lint
           src/tool_call/executor.cpp
           src/tool_call/filesystem_tool_executor.cpp
           src/tool_call/lsp_tool_executor.cpp
+          src/tool_call/todo_state.cpp
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   COMMENT "Running clang-tidy checks (parallel, ICE-filtered)"
   VERBATIM

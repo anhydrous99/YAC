@@ -1,5 +1,6 @@
 #include "chat/chat_service.hpp"
 
+#include "chat/chat_service_history.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"
 #include "chat/chat_service_tool_approval.hpp"
@@ -12,7 +13,7 @@ namespace yac::chat {
 ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
     : registry_(std::move(registry)),
       config_(std::move(config)),
-      tool_executor_(internal::MakeChatToolExecutor(config_)),
+      tool_executor_(internal::MakeChatToolExecutor(config_, todo_state_)),
       tool_approval_(std::make_unique<internal::ChatServiceToolApproval>()),
       sub_agent_manager_(std::make_unique<SubAgentManager>(
           registry_, tool_executor_, *tool_approval_,
@@ -24,8 +25,10 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
           [this] { return NextMessageId(); },
           [this] { return ConfigSnapshot(); },
           [this] { return generation_.load(); }, std::set<std::string>{},
-          sub_agent_manager_->GetApprovalGate())) {
+          sub_agent_manager_->GetApprovalGate(),
+          [this] { return ExcludedToolsForMode(config_.agent_mode); })) {
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
+  tool_executor_->SetToolApproval(tool_approval_.get());
   sub_agent_manager_->SetBackgroundResultCallback(
       [this](std::string tool_call_id, std::string task, std::string result,
              bool is_error) {
@@ -107,6 +110,27 @@ void ChatService::ResolveToolApproval(std::string approval_id, bool approved) {
   tool_approval_->Resolve(approval_id, approved);
 }
 
+void ChatService::ResolveAskUser(const std::string& approval_id,
+                                 std::string response) {
+  tool_approval_->ResolveWithResponse(approval_id, true, std::move(response));
+}
+
+AgentMode ChatService::GetAgentMode() const {
+  std::lock_guard lock(mutex_);
+  return config_.agent_mode;
+}
+
+void ChatService::SetAgentMode(AgentMode mode) {
+  {
+    std::lock_guard lock(mutex_);
+    if (config_.agent_mode == mode) {
+      return;
+    }
+    config_.agent_mode = mode;
+  }
+  EmitEvent(ChatEvent{AgentModeChangedEvent{.mode = mode}});
+}
+
 void ChatService::ResetConversation() {
   uint64_t old_gen = generation_.fetch_add(1);
   (void)old_gen;
@@ -123,9 +147,27 @@ void ChatService::ResetConversation() {
   }
   sub_agent_manager_->CancelAll();
   tool_approval_->CancelPending();
+  todo_state_.Clear();
+  {
+    std::lock_guard lock(mutex_);
+    config_.agent_mode = AgentMode::Build;
+  }
   wake_.notify_one();
 
   EmitEvent(ChatEvent{ConversationClearedEvent{}});
+  EmitEvent(ChatEvent{AgentModeChangedEvent{.mode = AgentMode::Build}});
+}
+
+void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
+  {
+    std::lock_guard lock(mutex_);
+    if (active_ || !pending_.empty()) {
+      return;
+    }
+    internal::CompactHistory(history_, keep_last);
+  }
+
+  EmitEvent(ChatEvent{ConversationCompactedEvent{}});
 }
 
 std::vector<ChatMessage> ChatService::History() const {

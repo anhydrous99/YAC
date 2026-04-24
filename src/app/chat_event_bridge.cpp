@@ -3,6 +3,7 @@
 #include "app/model_context_windows.hpp"
 #include "chat/tool_call_argument_parser.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "presentation/chat_ui.hpp"
 #include "presentation/chat_ui_overlay_state.hpp"
 #include "presentation/util/terminal.hpp"
 
@@ -32,8 +33,9 @@ yac::presentation::Sender SenderForRole(yac::chat::ChatRole role) {
 
 }  // namespace
 
-ChatEventBridge::ChatEventBridge(presentation::ChatEventSink& chat_ui)
-    : chat_ui_(chat_ui) {}
+ChatEventBridge::ChatEventBridge(presentation::ChatEventSink& chat_ui,
+                                 HistoryProvider history_provider)
+    : chat_ui_(chat_ui), history_provider_(std::move(history_provider)) {}
 
 void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
   std::visit([this](auto& payload) { Handle(std::move(payload)); },
@@ -125,6 +127,27 @@ void ChatEventBridge::Handle(chat::ConversationClearedEvent event) {
                              .title = "Conversation cleared"});
 }
 
+void ChatEventBridge::RefreshFromHistory() {
+  auto history = history_provider_ ? history_provider_()
+                                   : std::vector<chat::ChatMessage>{};
+  auto& chat_ui = chat_ui_.get();
+  chat_ui.ClearMessages();
+  for (const auto& message : history) {
+    const auto sender = SenderForRole(message.role);
+    chat_ui.AddMessageWithId(message.id, sender, message.content,
+                             message.status);
+  }
+  chat_ui.SetTyping(false);
+}
+
+void ChatEventBridge::Handle(chat::ConversationCompactedEvent event) {
+  (void)event;
+  RefreshFromHistory();
+  chat_ui_.get().SetTransientStatus(
+      presentation::UiNotice{.severity = presentation::UiSeverity::Info,
+                             .title = "Conversation compacted"});
+}
+
 void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   auto& chat_ui = chat_ui_.get();
   chat_ui.SetContextWindowTokens(LookupContextWindow(event.model));
@@ -132,6 +155,12 @@ void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
                            std::move(event.model));
   chat_ui.SetTransientStatus(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info, .title = "Model switched"});
+}
+
+void ChatEventBridge::Handle(chat::AgentModeChangedEvent event) {
+  if (auto* ui = dynamic_cast<presentation::ChatUI*>(&chat_ui_.get())) {
+    ui->SetAgentMode(event.mode);
+  }
 }
 
 void ChatEventBridge::Handle(chat::UsageReportedEvent event) {
@@ -199,6 +228,14 @@ void ChatEventBridge::Handle(chat::ToolCallArgumentDeltaEvent event) {
 }
 
 void ChatEventBridge::Handle(chat::ToolApprovalRequestedEvent event) {
+  namespace tool_data = ::yac::tool_call;
+  auto* ask_user = std::get_if<tool_data::AskUserCall>(&event.tool_call);
+  if (ask_user != nullptr) {
+    chat_ui_.get().ShowAskUserDialog(std::move(event.approval_id),
+                                     std::move(event.question),
+                                     std::move(event.options));
+    return;
+  }
   chat_ui_.get().ShowToolApproval(
       std::move(event.approval_id), std::move(event.tool_name),
       std::move(event.text), std::move(event.tool_call));

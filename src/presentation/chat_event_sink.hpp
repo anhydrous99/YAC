@@ -37,6 +37,8 @@ class ChatEventSink {
   virtual void ShowToolApproval(
       std::string approval_id, std::string tool_name, std::string prompt,
       std::optional<::yac::tool_call::ToolCallBlock> preview) = 0;
+  virtual void ShowAskUserDialog(std::string approval_id, std::string question,
+                                 std::vector<std::string> options) = 0;
   virtual void SetProviderModel(std::string provider_id, std::string model) = 0;
   virtual void SetLastUsage(UsageStats usage) = 0;
   virtual void SetContextWindowTokens(int tokens) = 0;

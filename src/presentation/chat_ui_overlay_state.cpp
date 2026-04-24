@@ -41,6 +41,28 @@ ftxui::Element ApprovalActions() {
   });
 }
 
+ftxui::Element AskUserInputField(const std::string& input) {
+  const auto& t = theme::CurrentTheme();
+  auto prompt = ftxui::text("> " + input + "\xe2\x96\x81") |
+                ftxui::color(t.dialog.input_fg) |
+                ftxui::bgcolor(t.dialog.input_bg);
+  return ftxui::hbox({
+      ftxui::text(std::string(layout::kCardPadX, ' ')),
+      prompt | ftxui::flex,
+      ftxui::text(std::string(layout::kCardPadX, ' ')),
+  });
+}
+
+ftxui::Element AskUserActions() {
+  const auto& t = theme::CurrentTheme();
+  return ftxui::hbox({
+      ftxui::text(" \xe2\x86\xb5 Enter Submit ") | ftxui::bold |
+          ftxui::color(t.role.agent),
+      ftxui::text(std::string(layout::kRowGap, ' ')),
+      ftxui::text(" Esc Cancel ") | ftxui::bold | ftxui::color(t.role.error),
+  });
+}
+
 }  // namespace
 
 void ChatUiOverlayState::SetOnCommand(OnCommandCallback on_command) {
@@ -50,6 +72,14 @@ void ChatUiOverlayState::SetOnCommand(OnCommandCallback on_command) {
 void ChatUiOverlayState::SetOnToolApproval(
     OnToolApprovalCallback on_tool_approval) {
   on_tool_approval_ = std::move(on_tool_approval);
+}
+
+void ChatUiOverlayState::SetOnAskUserSubmit(OnAskUserSubmitCallback on_submit) {
+  on_ask_user_submit_ = std::move(on_submit);
+}
+
+void ChatUiOverlayState::SetOnAskUserCancel(OnAskUserCancelCallback on_cancel) {
+  on_ask_user_cancel_ = std::move(on_cancel);
 }
 
 void ChatUiOverlayState::SetCommands(std::vector<Command> commands) {
@@ -110,6 +140,16 @@ void ChatUiOverlayState::ShowToolApproval(
   show_tool_approval_ = true;
 }
 
+void ChatUiOverlayState::ShowAskUserDialog(std::string approval_id,
+                                           std::string question,
+                                           std::vector<std::string> options) {
+  ask_user_approval_id_ = std::move(approval_id);
+  ask_user_question_ = std::move(question);
+  ask_user_options_ = std::move(options);
+  ask_user_input_.clear();
+  show_ask_user_ = true;
+}
+
 ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   auto on_select = [this](int index) { HandleCommandSelection(index); };
   auto on_model_select = [this](int index) { HandleModelSelection(index); };
@@ -164,12 +204,61 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   auto approval_modal =
       DialogModal(main_with_help, tool_approval_panel, &show_tool_approval_);
 
-  return ftxui::CatchEvent(approval_modal, [this](const ftxui::Event& event) {
+  auto ask_user_content = ftxui::Renderer([this] {
+    const auto& t = theme::CurrentTheme();
+    ftxui::Elements rows;
+    rows.push_back(ftxui::paragraph(ask_user_question_) |
+                   ftxui::color(t.semantic.text_strong) | ftxui::bold);
+    rows.push_back(ftxui::text(""));
+    if (!ask_user_options_.empty()) {
+      for (const auto& opt : ask_user_options_) {
+        rows.push_back(ftxui::hbox({
+            ftxui::text("  \xe2\x80\xa2 ") |
+                ftxui::color(t.semantic.text_muted),
+            ftxui::paragraph(opt) | ftxui::color(t.semantic.text_body) |
+                ftxui::flex,
+        }));
+      }
+      rows.push_back(ftxui::text(""));
+    }
+    rows.push_back(AskUserInputField(ask_user_input_));
+    rows.push_back(ftxui::text(""));
+    rows.push_back(AskUserActions());
+    return ftxui::vbox(std::move(rows));
+  });
+  auto ask_user_panel =
+      DialogPanel("Ask User", ask_user_content, &show_ask_user_);
+  auto ask_user_modal =
+      DialogModal(approval_modal, ask_user_panel, &show_ask_user_);
+
+  return ftxui::CatchEvent(ask_user_modal, [this](const ftxui::Event& event) {
     return HandleGlobalEvent(event);
   });
 }
 
 bool ChatUiOverlayState::HandleGlobalEvent(const ftxui::Event& event) {
+  if (show_ask_user_) {
+    if (event == ftxui::Event::Return) {
+      DispatchAskUserSubmit();
+      return true;
+    }
+    if (event == ftxui::Event::Escape) {
+      DispatchAskUserCancel();
+      return true;
+    }
+    if (event == ftxui::Event::Backspace) {
+      if (!ask_user_input_.empty()) {
+        ask_user_input_.pop_back();
+      }
+      return true;
+    }
+    if (event.is_character()) {
+      ask_user_input_ += event.character();
+      return true;
+    }
+    return true;
+  }
+
   if (show_tool_approval_) {
     if (event == ftxui::Event::Return ||
         event == ftxui::Event::Character('y') ||
@@ -289,6 +378,31 @@ void ChatUiOverlayState::DispatchToolApproval(bool approved) {
   approval_preview_.reset();
   if (on_tool_approval_ && !approval_id.empty()) {
     on_tool_approval_(approval_id, approved);
+  }
+}
+
+void ChatUiOverlayState::DispatchAskUserSubmit() {
+  auto approval_id = ask_user_approval_id_;
+  auto response = ask_user_input_;
+  show_ask_user_ = false;
+  ask_user_approval_id_.clear();
+  ask_user_question_.clear();
+  ask_user_options_.clear();
+  ask_user_input_.clear();
+  if (on_ask_user_submit_ && !approval_id.empty()) {
+    on_ask_user_submit_(std::move(approval_id), std::move(response));
+  }
+}
+
+void ChatUiOverlayState::DispatchAskUserCancel() {
+  auto approval_id = ask_user_approval_id_;
+  show_ask_user_ = false;
+  ask_user_approval_id_.clear();
+  ask_user_question_.clear();
+  ask_user_options_.clear();
+  ask_user_input_.clear();
+  if (on_ask_user_cancel_ && !approval_id.empty()) {
+    on_ask_user_cancel_(std::move(approval_id));
   }
 }
 
