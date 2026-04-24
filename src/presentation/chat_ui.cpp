@@ -532,14 +532,14 @@ ftxui::Component ChatUI::Build() {
                          ftxui::color(colors.semantic.border_strong));
 
     main_parts.push_back(ftxui::hbox(std::move(status_rail)) |
-                         ftxui::bgcolor(colors.semantic.surface_panel));
+                         ftxui::bgcolor(colors.chrome.canvas_bg));
 
     if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
       main_parts.push_back(input_controller_.RenderSlashMenu(term_width));
     }
 
     main_parts.push_back(
-        composer_surface | ftxui::bgcolor(colors.semantic.surface_panel) |
+        composer_surface | ftxui::bgcolor(colors.chrome.canvas_bg) |
         ftxui::size(ftxui::HEIGHT, ftxui::EQUAL,
                     kMaxInputLines + (2 * layout::kComposerPadY)));
 
