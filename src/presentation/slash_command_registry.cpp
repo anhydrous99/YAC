@@ -113,6 +113,8 @@ void RegisterBuiltinSlashCommands(SlashCommandRegistry& registry) {
   registry.Define("quit", "quit", "Exit the application", {"exit"});
   registry.Define("clear", "clear", "Clear the conversation");
   registry.Define("cancel", "cancel", "Cancel the active response");
+  registry.Define("compact", "compact", "Compact conversation history");
+  registry.Define("init", "init", "Scan repo and create/update AGENTS.md");
   registry.Define("help", "help", "Show shortcuts and setup status", {"?"});
 }
 

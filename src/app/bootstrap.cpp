@@ -287,6 +287,38 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
   slash_registry.SetHandler(
       "cancel", [&chat_service] { chat_service.CancelActiveResponse(); });
   slash_registry.SetHandler("help", [&chat_ui] { chat_ui.ShowHelp(); });
+  slash_registry.SetHandler("compact", [&chat_service, &chat_ui] {
+    if (chat_service.IsBusy()) {
+      chat_ui.SetTransientStatus(presentation::UiNotice{
+          .severity = presentation::UiSeverity::Warning,
+          .title = "Cannot compact while a response is active",
+      });
+      return;
+    }
+    chat_service.CompactConversation();
+  });
+  slash_registry.SetArgumentsHandler("init", [&chat_service](std::string args) {
+    std::string context = "=== Repo Context ===\n";
+    try {
+      const auto root = std::filesystem::current_path();
+      context += "Workspace: " + root.string() + "\nTop-level entries:\n";
+      for (const auto& entry : std::filesystem::directory_iterator(root)) {
+        context += "  " + entry.path().filename().string();
+        if (entry.is_directory()) {
+          context += "/";
+        }
+        context += "\n";
+      }
+    } catch (...) {
+    }
+    context += "\n";
+    const std::string prompt =
+        context +
+        "Create or update AGENTS.md for this repository with build commands, "
+        "architecture overview, and coding conventions.\n" +
+        (args.empty() ? "" : "\nFocus: " + args);
+    chat_service.SubmitUserMessage(prompt);
+  });
   slash_registry.Define("task", "task",
                         "Spawn a background sub-agent with a task");
   slash_registry.SetArgumentsHandler(

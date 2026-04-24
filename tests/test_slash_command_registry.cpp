@@ -139,7 +139,7 @@ TEST_CASE("RegisterBuiltinSlashCommands defines built-in commands",
   yac::presentation::RegisterBuiltinSlashCommands(registry);
 
   const auto& cmds = registry.Commands();
-  REQUIRE(cmds.size() == 4);
+  REQUIRE(cmds.size() == 6);
   CHECK(cmds[0].name == "quit");
   REQUIRE(cmds[0].aliases.size() == 1);
   CHECK(cmds[0].aliases[0] == "exit");
@@ -147,7 +147,9 @@ TEST_CASE("RegisterBuiltinSlashCommands defines built-in commands",
   CHECK(cmds[1].description == "Clear the conversation");
   CHECK(cmds[1].aliases.empty());
   CHECK(cmds[2].name == "cancel");
-  CHECK(cmds[3].name == "help");
+  CHECK(cmds[3].name == "compact");
+  CHECK(cmds[4].name == "init");
+  CHECK(cmds[5].name == "help");
 }
 
 TEST_CASE("RegisterBuiltinSlashCommands dispatches clear after handler set",
