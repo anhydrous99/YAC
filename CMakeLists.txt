@@ -113,6 +113,7 @@ include(src/chat/CMakeLists.txt)
 add_library(yac_app STATIC
   src/app/bootstrap.cpp
   src/app/chat_event_bridge.cpp
+  src/app/headless.cpp
   src/app/model_context_windows.cpp
   src/app/model_discovery.cpp
   src/app/prompt_slash_commands.cpp

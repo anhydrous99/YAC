@@ -58,3 +58,4 @@ yac_add_test(yac_test_tool_call_argument_parser test_tool_call_argument_parser.c
 yac_add_test(yac_test_agent_mode     test_agent_mode.cpp)
 yac_add_test(yac_test_compact_history test_compact_history.cpp)
 yac_add_test(yac_test_todo_state      test_todo_state.cpp)
+yac_add_test(yac_test_headless        test_headless.cpp)
