@@ -139,3 +139,25 @@ TEST_CASE("ComposerState SetSlashMenuSelectedIndex updates index",
   state.SetSlashMenuSelectedIndex(3);
   CHECK(state.SlashMenuSelectedIndex() == 3);
 }
+
+TEST_CASE("ComposerState SlashMenuFilter excludes arguments after command name",
+          "[composer_state]") {
+  ComposerState state;
+  state.Content() = "/review HEAD";
+  *state.CursorPosition() = 12;
+  CHECK(state.SlashMenuFilter() == "review");
+}
+
+TEST_CASE(
+    "ComposerState FilteredSlashIndices matches command with trailing "
+    "arguments",
+    "[composer_state]") {
+  ComposerState state;
+  state.Content() = "/review HEAD";
+  *state.CursorPosition() = 12;
+  std::vector<SlashCommand> commands = {MakeCommand("review", "Review"),
+                                        MakeCommand("clear", "Clear")};
+  auto indices = state.FilteredSlashIndices(commands);
+  REQUIRE(indices.size() == 1);
+  CHECK(indices[0] == 0);
+}

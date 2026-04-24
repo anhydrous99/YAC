@@ -56,6 +56,31 @@ TEST_CASE("SlashCommandRegistry ignores trailing arguments",
   CHECK(quit_called);
 }
 
+TEST_CASE("SlashCommandRegistry dispatches arguments to arguments_handler",
+          "[slash_command]") {
+  SlashCommandRegistry registry;
+  registry.Define("review", "review", "Review code");
+  std::string received_args;
+  registry.SetArgumentsHandler(
+      "review", [&](std::string args) { received_args = std::move(args); });
+
+  CHECK(registry.TryDispatch("/review HEAD"));
+  CHECK(received_args == "HEAD");
+}
+
+TEST_CASE(
+    "SlashCommandRegistry arguments_handler receives multi-word arguments",
+    "[slash_command]") {
+  SlashCommandRegistry registry;
+  registry.Define("task", "task", "Spawn task");
+  std::string received_args;
+  registry.SetArgumentsHandler(
+      "task", [&](std::string args) { received_args = std::move(args); });
+
+  CHECK(registry.TryDispatch("/task fix the login bug"));
+  CHECK(received_args == "fix the login bug");
+}
+
 TEST_CASE("SlashCommandRegistry returns false for unknown command",
           "[slash_command]") {
   SlashCommandRegistry registry;
