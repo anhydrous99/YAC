@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chat/agent_mode.hpp"
 #include "core_types/chat_ids.hpp"
 #include "core_types/tool_call_types.hpp"
 #include "model_info.hpp"
@@ -344,6 +345,7 @@ struct ChatConfig {
   std::string lsp_clangd_command = "clangd";
   std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
+  AgentMode agent_mode{AgentMode::Build};
   bool sync_terminal_background = true;
   std::string theme_name = "opencode";
   std::string theme_density = "comfortable";
