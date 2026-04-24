@@ -12,6 +12,7 @@ class WorkspaceFilesystem {
  public:
   explicit WorkspaceFilesystem(std::filesystem::path workspace_root);
 
+  [[nodiscard]] const std::filesystem::path& Root() const;
   [[nodiscard]] std::filesystem::path ResolvePath(
       const std::string& path) const;
   [[nodiscard]] std::string DisplayPath(

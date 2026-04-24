@@ -93,6 +93,7 @@ add_library(yac_service STATIC
   src/provider/openai_chat_provider.cpp
   src/provider/openai_chat_protocol.cpp
   src/provider/provider_registry.cpp
+  src/tool_call/bash_tool_executor.cpp
   src/tool_call/executor_arguments.cpp
   src/tool_call/executor_catalog.cpp
   src/tool_call/executor.cpp
@@ -218,6 +219,7 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/run_clang_tidy.py"
 add_custom_target(lint
   COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_BINARY_DIR}/run_clang_tidy.py
           ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}
+          src/tool_call/bash_tool_executor.cpp
           src/tool_call/executor.cpp
           src/tool_call/filesystem_tool_executor.cpp
           src/tool_call/lsp_tool_executor.cpp

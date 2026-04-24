@@ -1,6 +1,7 @@
 #include "tool_call/executor.hpp"
 
 #include "chat/chat_service_tool_approval.hpp"
+#include "tool_call/bash_tool_executor.hpp"
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/filesystem_tool_executor.hpp"
@@ -97,6 +98,10 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
     }
     if (prepared.request.name == kSubAgentToolName) {
       return ExecuteSubAgentTool(prepared, sub_agent_manager_, stop_token);
+    }
+    if (prepared.request.name == kBashToolName) {
+      return ExecuteBashTool(prepared.request, workspace_filesystem_.Root(),
+                             stop_token);
     }
     if (prepared.request.name == kTodoWriteToolName) {
       const auto& call = std::get<TodoWriteCall>(prepared.preview);

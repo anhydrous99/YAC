@@ -20,6 +20,7 @@ inline constexpr std::string_view kLspSymbolsToolName = "lsp_symbols";
 inline constexpr std::string_view kSubAgentToolName = "sub_agent";
 inline constexpr std::string_view kTodoWriteToolName = "todo_write";
 inline constexpr std::string_view kAskUserToolName = "ask_user";
+inline constexpr std::string_view kBashToolName = "bash";
 
 struct DiffLine {
   enum Type { Add, Remove, Context };

@@ -19,6 +19,10 @@ WorkspaceFilesystem::WorkspaceFilesystem(std::filesystem::path workspace_root)
     : workspace_root_(std::filesystem::absolute(std::move(workspace_root))
                           .lexically_normal()) {}
 
+const std::filesystem::path& WorkspaceFilesystem::Root() const {
+  return workspace_root_;
+}
+
 std::filesystem::path WorkspaceFilesystem::ResolvePath(
     const std::string& path) const {
   std::filesystem::path candidate(path);

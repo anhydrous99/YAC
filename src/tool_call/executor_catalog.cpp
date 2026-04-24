@@ -56,6 +56,13 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
        .description = "Ask the user a question and wait for their response.",
        .parameters_schema_json =
            R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
+      {.name = std::string(kBashToolName),
+       .description =
+           "Execute a shell command in the workspace directory. stdout and "
+           "stderr are merged. Output is capped at 16 KB. Every call requires "
+           "user approval before execution.",
+       .parameters_schema_json =
+           R"json({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})json"},
   };
 }
 
@@ -176,6 +183,18 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
               AskUserCall{.question = question, .options = std::move(options)},
           .requires_approval = true,
           .approval_prompt = question};
+    }
+    if (request.name == kBashToolName) {
+      const auto command = RequireString(args, "command");
+      std::string preview = command;
+      if (preview.size() > 120) {
+        preview.resize(120);
+        preview += "...";
+      }
+      return PreparedToolCall{.request = request,
+                              .preview = BashCall{.command = command},
+                              .requires_approval = true,
+                              .approval_prompt = "Execute: " + preview};
     }
     return PreparedToolCall{
         .request = request,
