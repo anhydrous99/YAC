@@ -1,19 +1,126 @@
 #include "composer_state.hpp"
 
+#include "ftxui/screen/string.hpp"
 #include "slash_command_registry.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 namespace yac::presentation {
 
 namespace {
 
+struct ComposerGlyph {
+  size_t start = 0;
+  size_t end = 0;
+  int width = 0;
+  bool space = false;
+};
+
 int CountNewlines(const std::string& text) {
   return static_cast<int>(std::accumulate(
       text.begin(), text.end(), 0,
       [](int count, char ch) { return count + static_cast<int>(ch == '\n'); }));
+}
+
+size_t NextGlyphEnd(const std::string& text, size_t start, size_t limit) {
+  if (start >= limit) {
+    return limit;
+  }
+
+  const auto byte = static_cast<unsigned char>(text[start]);
+  size_t advance = 1;
+  if ((byte & 0b1110'0000) == 0b1100'0000) {
+    advance = 2;
+  } else if ((byte & 0b1111'0000) == 0b1110'0000) {
+    advance = 3;
+  } else if ((byte & 0b1111'1000) == 0b1111'0000) {
+    advance = 4;
+  }
+  return std::min(start + advance, limit);
+}
+
+std::vector<ComposerGlyph> BuildGlyphs(const std::string& text, size_t start,
+                                       size_t end) {
+  std::vector<ComposerGlyph> glyphs;
+  for (size_t pos = start; pos < end;) {
+    const size_t next = NextGlyphEnd(text, pos, end);
+    const std::string glyph = text.substr(pos, next - pos);
+    glyphs.push_back(ComposerGlyph{
+        .start = pos,
+        .end = next,
+        .width = std::max(1, ftxui::string_width(glyph)),
+        .space = glyph == " ",
+    });
+    pos = next;
+  }
+  return glyphs;
+}
+
+void PushVisualLine(std::vector<ComposerVisualLine>& lines,
+                    const std::string& text, size_t start, size_t end) {
+  lines.push_back(ComposerVisualLine{
+      .text = text.substr(start, end - start),
+      .start = start,
+      .end = end,
+  });
+}
+
+void WrapHardLine(std::vector<ComposerVisualLine>& lines,
+                  const std::string& text, size_t start, size_t end,
+                  int wrap_width) {
+  if (start == end) {
+    PushVisualLine(lines, text, start, end);
+    return;
+  }
+
+  const auto glyphs = BuildGlyphs(text, start, end);
+  size_t row_start = 0;
+  size_t i = 0;
+  int row_width = 0;
+  std::optional<size_t> last_space;
+
+  while (i < glyphs.size()) {
+    const int next_width = glyphs[i].width;
+    if (row_width > 0 && row_width + next_width > wrap_width) {
+      if (glyphs[i].space) {
+        PushVisualLine(lines, text, glyphs[row_start].start, glyphs[i].start);
+        row_start = i;
+        while (row_start < glyphs.size() && glyphs[row_start].space) {
+          ++row_start;
+        }
+        i = row_start;
+      } else if (last_space.has_value() && *last_space > row_start) {
+        PushVisualLine(lines, text, glyphs[row_start].start,
+                       glyphs[*last_space].start);
+
+        row_start = *last_space;
+        while (row_start < glyphs.size() && glyphs[row_start].space) {
+          ++row_start;
+        }
+        i = row_start;
+      } else {
+        PushVisualLine(lines, text, glyphs[row_start].start, glyphs[i].start);
+        row_start = i;
+      }
+      row_width = 0;
+      last_space.reset();
+      continue;
+    }
+
+    row_width += next_width;
+    if (glyphs[i].space && i > row_start) {
+      last_space = i;
+    }
+    ++i;
+  }
+
+  if (row_start < glyphs.size()) {
+    PushVisualLine(lines, text, glyphs[row_start].start, end);
+  }
 }
 
 }  // namespace
@@ -28,6 +135,37 @@ int ComposerState::CalculateHeight(int max_lines) const {
   }
   int lines = CountNewlines(content_) + 1;
   return std::min(lines, max_lines);
+}
+
+int ComposerState::CalculateHeight(int max_lines, int wrap_width) const {
+  if (content_.empty()) {
+    return 1;
+  }
+  return std::min(static_cast<int>(VisualLines(wrap_width).size()), max_lines);
+}
+
+std::vector<ComposerVisualLine> ComposerState::VisualLines(
+    int wrap_width) const {
+  const int width = std::max(1, wrap_width);
+  std::vector<ComposerVisualLine> lines;
+  if (content_.empty()) {
+    PushVisualLine(lines, content_, 0, 0);
+    return lines;
+  }
+
+  size_t line_start = 0;
+  while (line_start <= content_.size()) {
+    const size_t line_end = content_.find('\n', line_start);
+    const size_t hard_end =
+        line_end == std::string::npos ? content_.size() : line_end;
+    WrapHardLine(lines, content_, line_start, hard_end, width);
+    if (line_end == std::string::npos) {
+      break;
+    }
+    line_start = line_end + 1;
+  }
+
+  return lines;
 }
 
 std::string& ComposerState::Content() {

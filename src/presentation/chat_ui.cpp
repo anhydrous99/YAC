@@ -6,6 +6,7 @@
 #include "ftxui/component/component_options.hpp"
 #include "ftxui/component/event.hpp"
 #include "ftxui/dom/elements.hpp"
+#include "ftxui/screen/string.hpp"
 #include "ftxui/screen/terminal.hpp"
 #include "message_renderer.hpp"
 #include "theme.hpp"
@@ -18,6 +19,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace yac::presentation {
 
@@ -94,6 +96,105 @@ ftxui::Element NoticeLine(const UiNotice& notice) {
   return ftxui::paragraph("  " + SeverityLabel(notice.severity) + ": " +
                           NoticeText(notice)) |
          ftxui::color(SeverityColor(notice.severity));
+}
+
+constexpr char kComposerPrompt[] = " \xe2\x9d\xaf ";
+
+int ComposerInputWrapWidth(int terminal_width, int max_input_lines) {
+  const std::string counter = " " + std::to_string(max_input_lines) + "/" +
+                              std::to_string(max_input_lines) + " ";
+  const int reserved_width = (2 * layout::kComposerPadX) +
+                             ftxui::string_width(kComposerPrompt) +
+                             ftxui::string_width(counter);
+  return std::max(1, terminal_width - reserved_width);
+}
+
+size_t NextGlyphEnd(const std::string& text, size_t start, size_t limit) {
+  if (start >= limit) {
+    return limit;
+  }
+
+  const auto byte = static_cast<unsigned char>(text[start]);
+  size_t advance = 1;
+  if ((byte & 0b1110'0000) == 0b1100'0000) {
+    advance = 2;
+  } else if ((byte & 0b1111'0000) == 0b1110'0000) {
+    advance = 3;
+  } else if ((byte & 0b1111'1000) == 0b1111'0000) {
+    advance = 4;
+  }
+  return std::min(start + advance, limit);
+}
+
+size_t CursorVisualLineIndex(const std::vector<ComposerVisualLine>& lines,
+                             size_t cursor) {
+  if (lines.empty()) {
+    return 0;
+  }
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const size_t next_start =
+        i + 1 < lines.size() ? lines[i + 1].start : lines[i].end;
+    if (cursor >= lines[i].start &&
+        (cursor <= lines[i].end || cursor < next_start)) {
+      return i;
+    }
+  }
+  return lines.size() - 1;
+}
+
+ftxui::Element CursorCell(std::string text, bool focused) {
+  auto cell = ftxui::text(std::move(text));
+  if (focused) {
+    cell |= ftxui::focusCursorBarBlinking;
+  } else {
+    cell |= ftxui::focus;
+  }
+  return cell;
+}
+
+ftxui::Element RenderComposerVisualLine(const ComposerVisualLine& line,
+                                        size_t cursor, bool show_cursor,
+                                        bool focused) {
+  if (!show_cursor) {
+    return ftxui::text(line.text) | ftxui::xflex;
+  }
+
+  const size_t clamped_cursor = std::clamp(cursor, line.start, line.end);
+  const size_t local_cursor = clamped_cursor - line.start;
+  if (local_cursor >= line.text.size()) {
+    return ftxui::hbox({
+               ftxui::text(line.text),
+               CursorCell(" ", focused),
+           }) |
+           ftxui::xflex;
+  }
+
+  const size_t glyph_end =
+      NextGlyphEnd(line.text, local_cursor, line.text.size());
+  return ftxui::hbox({
+             ftxui::text(line.text.substr(0, local_cursor)),
+             CursorCell(
+                 line.text.substr(local_cursor, glyph_end - local_cursor),
+                 focused),
+             ftxui::text(line.text.substr(glyph_end)),
+         }) |
+         ftxui::xflex;
+}
+
+ftxui::Element RenderWrappedComposerInput(ComposerState& composer,
+                                          int wrap_width, bool focused) {
+  auto lines = composer.VisualLines(wrap_width);
+  const size_t cursor =
+      static_cast<size_t>(std::max(0, *composer.CursorPosition()));
+  const size_t cursor_line = CursorVisualLineIndex(lines, cursor);
+
+  ftxui::Elements rows;
+  rows.reserve(lines.size());
+  for (size_t i = 0; i < lines.size(); ++i) {
+    rows.push_back(
+        RenderComposerVisualLine(lines[i], cursor, i == cursor_line, focused));
+  }
+  return ftxui::vbox(std::move(rows)) | ftxui::frame;
 }
 
 struct DynamicMessageStackViewport {
@@ -396,10 +497,13 @@ ftxui::Component ChatUI::Build() {
     }
 
     // ── Composer surface ─────────────────────────────────────────
-    const int line_count = composer_.CalculateHeight(kMaxInputLines);
+    const int input_wrap_width =
+        ComposerInputWrapWidth(term_width, kMaxInputLines);
+    const int line_count =
+        composer_.CalculateHeight(kMaxInputLines, input_wrap_width);
     auto composer_content = ftxui::hbox({
         ftxui::text(std::string(layout::kComposerPadX, ' ')),
-        ftxui::text(" \xe2\x9d\xaf ") |
+        ftxui::text(kComposerPrompt) |
             ftxui::color(colors.semantic.accent_primary) | ftxui::bold,
         input->Render() | ftxui::flex,
         ftxui::text(" " + std::to_string(line_count) + "/" +
@@ -662,15 +766,23 @@ ftxui::Component ChatUI::BuildInput() {
   option.placeholder = "Type a message...";
   option.cursor_position = composer_.CursorPosition();
   option.transform = [this](ftxui::InputState state) {
-    state.element |= ftxui::color(render_context_.Colors().chrome.body_text);
+    const int wrap_width = ComposerInputWrapWidth(ftxui::Terminal::Size().dimx,
+                                                  ChatUI::kMaxInputLines);
+    auto element = state.is_placeholder
+                       ? state.element
+                       : ftxui::dbox({state.element, RenderWrappedComposerInput(
+                                                         composer_, wrap_width,
+                                                         state.focused) |
+                                                         ftxui::clear_under});
+    element |= ftxui::color(render_context_.Colors().chrome.body_text);
     if (state.is_placeholder) {
-      state.element |=
+      element |=
           ftxui::dim | ftxui::color(render_context_.Colors().chrome.dim_text);
+      if (state.focused) {
+        element |= ftxui::focusCursorBarBlinking;
+      }
     }
-    if (state.focused) {
-      state.element |= ftxui::focusCursorBarBlinking;
-    }
-    return state.element;
+    return element;
   };
 
   auto input = ftxui::Input(&composer_.Content(), option);

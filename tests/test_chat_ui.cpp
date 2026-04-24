@@ -319,6 +319,23 @@ TEST_CASE("CalculateInputHeight caps at kMaxInputLines") {
   REQUIRE(ui.CalculateInputHeight() == ChatUI::kMaxInputLines);
 }
 
+TEST_CASE("ChatUI composer soft-wraps long typed input") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  std::string text;
+  for (int i = 0; i < 30; ++i) {
+    text += "word ";
+  }
+  text += "TAIL";
+
+  TypeText(component, text);
+
+  auto output = RenderComponent(component, 40, 12);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("3/3"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("TAIL"));
+}
+
 TEST_CASE("HandleInputEvent returns true for plain Enter") {
   ChatUI ui;
   REQUIRE(ui.HandleInputEvent(ftxui::Event::Return));
@@ -417,6 +434,29 @@ TEST_CASE("HandleInputEvent Enter submits and clears content") {
   REQUIRE(sent);
   REQUIRE(captured == "hello");
   REQUIRE(ui.CalculateInputHeight() == 1);
+}
+
+TEST_CASE("HandleInputEvent submits soft-wrapped content unchanged") {
+  bool sent = false;
+  std::string captured;
+  ChatUI ui([&](const std::string& msg) {
+    sent = true;
+    captured = msg;
+  });
+  auto component = ui.Build();
+  std::string typed;
+  for (int i = 0; i < 30; ++i) {
+    typed += "word ";
+  }
+  typed += "unchanged";
+
+  TypeText(component, typed);
+  auto output = RenderComponent(component, 32, 12);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("3/3"));
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+  REQUIRE(sent);
+  REQUIRE(captured == typed);
 }
 
 TEST_CASE("Whitespace-only input is not submitted") {

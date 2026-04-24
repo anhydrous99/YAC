@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -7,10 +8,19 @@ namespace yac::presentation {
 
 struct SlashCommand;
 
+struct ComposerVisualLine {
+  std::string text;
+  size_t start = 0;
+  size_t end = 0;
+};
+
 class ComposerState {
  public:
   [[nodiscard]] bool Empty() const;
   [[nodiscard]] int CalculateHeight(int max_lines) const;
+  [[nodiscard]] int CalculateHeight(int max_lines, int wrap_width) const;
+  [[nodiscard]] std::vector<ComposerVisualLine> VisualLines(
+      int wrap_width) const;
 
   [[nodiscard]] std::string& Content();
   [[nodiscard]] const std::string& Content() const;
