@@ -137,8 +137,12 @@ void ChatUiInputController::DispatchSlashMenuSelection() {
   }
 
   const auto& command = slash_commands_->Commands()[filtered[selected]];
-  (void)composer_->Submit();
-  if (command.handler.has_value()) {
+  std::string content = composer_->Submit();
+  auto space_pos = content.find(' ');
+  if (space_pos != std::string::npos && command.arguments_handler.has_value()) {
+    auto args = content.substr(space_pos + 1);
+    (*command.arguments_handler)(std::move(args));
+  } else if (command.handler.has_value()) {
     (*command.handler)();
   }
 }
