@@ -804,8 +804,48 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
 }
 
 ftxui::Element ToolCallRenderer::RenderTodoWrite(
-    const tool_data::TodoWriteCall&, const RenderContext&) {
-  return ftxui::text("[todo_write]");
+    const tool_data::TodoWriteCall& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.todos.empty()) {
+    content.push_back(ftxui::text("No todos") |
+                      ftxui::color(theme.semantic.text_muted));
+  } else {
+    for (const auto& item : call.todos) {
+      auto row = [&]() {
+        if (item.status == "completed") {
+          return ftxui::hbox({
+              ftxui::text("[x]") | ftxui::color(theme.tool.edit_add),
+              ftxui::text(" "),
+              ftxui::text(item.content) |
+                  ftxui::color(theme.semantic.text_body),
+          });
+        }
+        if (item.status == "in_progress") {
+          return ftxui::hbox({
+              ftxui::text("[~]") | ftxui::color(theme.tool.bash_accent),
+              ftxui::text(" "),
+              ftxui::text(item.content) |
+                  ftxui::color(theme.semantic.text_body),
+          });
+        }
+        return ftxui::hbox({
+                   ftxui::text("[ ]") | ftxui::color(theme.semantic.text_muted),
+                   ftxui::text(" "),
+                   ftxui::text(item.content) |
+                       ftxui::color(theme.semantic.text_muted),
+               }) |
+               ftxui::dim;
+      }();
+      content.push_back(std::move(row));
+    }
+  }
+
+  return RenderContainer("☑", "Todo List", theme.tool.edit_context,
+                         std::move(content), theme);
 }
 
 ftxui::Element ToolCallRenderer::RenderAskUser(const tool_data::AskUserCall&,

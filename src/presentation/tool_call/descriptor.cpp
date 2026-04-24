@@ -1,5 +1,6 @@
 #include "descriptor.hpp"
 
+#include <algorithm>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -166,10 +167,28 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
                          SubAgentStatusSummary(call.status),
           };
         } else if constexpr (std::is_same_v<T, tool_data::TodoWriteCall>) {
+          if (call.is_error) {
+            return ToolCallDescriptor{
+                .tag = "todo",
+                .label = "Todo list",
+                .summary = "failed",
+            };
+          }
+          const auto completed = std::count_if(
+              call.todos.begin(), call.todos.end(),
+              [](const auto& todo) { return todo.status == "completed"; });
+          if (call.todos.empty()) {
+            return ToolCallDescriptor{
+                .tag = "todo",
+                .label = "Todo list",
+                .summary = "Todo list cleared",
+            };
+          }
           return ToolCallDescriptor{
               .tag = "todo",
-              .label = "todo_write",
-              .summary = "todo_write",
+              .label = "Todo list",
+              .summary = "Updated " + std::to_string(call.todos.size()) +
+                         " todos (" + std::to_string(completed) + " completed)",
           };
         } else if constexpr (std::is_same_v<T, tool_data::AskUserCall>) {
           return ToolCallDescriptor{
