@@ -155,6 +155,7 @@ The interface is keyboard-first:
 
 - `Enter` sends the current message
 - `Shift+Enter`, `Ctrl+Enter`, and `Alt+Enter` insert a newline in the composer
+- `Shift+Tab` toggles between plan and build mode
 - `Ctrl+P` opens the command palette
 - `Help` opens shortcuts, setup status, and workspace status
 - `Switch Model` opens the model picker for future responses

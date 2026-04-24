@@ -35,6 +35,10 @@ ftxui::Event MakeKittyCtrlEnter() {
   return ftxui::Event::Special("\x1b[27;5;13~");
 }
 
+ftxui::Event MakeKittyShiftTab() {
+  return ftxui::Event::Special("\x1b[9;2u");
+}
+
 ftxui::Event MakeAltEnterCR() {
   return ftxui::Event::Special("\x1b\r");
 }
@@ -297,6 +301,27 @@ TEST_CASE("HandleInputEvent returns false for mouse events") {
   REQUIRE_FALSE(ui.HandleInputEvent(event));
 }
 
+TEST_CASE("HandleInputEvent toggles mode on Shift+Tab") {
+  int toggle_count = 0;
+  ChatUI ui;
+  ui.SetOnModeToggle([&] { ++toggle_count; });
+
+  REQUIRE(ui.HandleInputEvent(ftxui::Event::TabReverse));
+  REQUIRE(toggle_count == 1);
+
+  REQUIRE(ui.HandleInputEvent(MakeKittyShiftTab()));
+  REQUIRE(toggle_count == 2);
+}
+
+TEST_CASE("HandleInputEvent does not toggle mode on plain Tab") {
+  int toggle_count = 0;
+  ChatUI ui;
+  ui.SetOnModeToggle([&] { ++toggle_count; });
+
+  REQUIRE_FALSE(ui.HandleInputEvent(ftxui::Event::Tab));
+  REQUIRE(toggle_count == 0);
+}
+
 TEST_CASE("HandleInputEvent inserts newline on Shift+Enter escape") {
   ChatUI ui;
   REQUIRE(ui.HandleInputEvent(MakeShiftEnter()));
@@ -434,6 +459,21 @@ TEST_CASE("Slash menu Escape preserves raw slash input for later submit") {
   REQUIRE(component->OnEvent(ftxui::Event::Return));
   REQUIRE(sent);
   REQUIRE(captured == "/quit-later");
+}
+
+TEST_CASE("Slash menu Tab navigation does not toggle mode") {
+  int toggle_count = 0;
+  ChatUI ui;
+  ui.SetOnModeToggle([&] { ++toggle_count; });
+  SlashCommandRegistry registry;
+  RegisterBuiltinSlashCommands(registry);
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Tab));
+  REQUIRE(toggle_count == 0);
 }
 
 TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {

@@ -128,6 +128,8 @@ std::string BuildHelpText(const presentation::StartupStatus& startup) {
          "  /             Slash command menu\n"
          "  Esc           Close palette or menu\n"
          "  Up / Down     Move selection\n\n"
+         "Mode\n"
+         "  Shift+Tab     Toggle plan/build mode\n\n"
          "Composer\n"
          "  Enter         Send message\n"
          "  Shift+Enter   Insert newline\n"

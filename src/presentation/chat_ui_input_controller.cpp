@@ -30,6 +30,17 @@ bool IsCtrlEnter(const ftxui::Event& event) {
   return seq == "\x1b[13;5~" || seq == "\x1b[27;5;13~" || seq == "\x1b[13;5u";
 }
 
+bool IsShiftTab(const ftxui::Event& event) {
+  if (event == ftxui::Event::TabReverse) {
+    return true;
+  }
+  if (event.is_mouse() || event.input().empty()) {
+    return false;
+  }
+  const auto& seq = event.input();
+  return seq == "\x1b[Z" || seq == "\x1b[9;2u";
+}
+
 }  // namespace
 
 ChatUiInputController::ChatUiInputController(
@@ -48,7 +59,7 @@ bool ChatUiInputController::HandleEvent(
     return true;
   }
 
-  if (event == ftxui::Event::Tab && !composer_->IsSlashMenuActive()) {
+  if (IsShiftTab(event) && !composer_->IsSlashMenuActive()) {
     if (on_mode_toggle_) {
       on_mode_toggle_();
     }
