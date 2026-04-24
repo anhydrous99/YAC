@@ -1,4 +1,5 @@
 #include "presentation/chat_ui.hpp"
+#include "presentation/theme.hpp"
 #include "tool_call/types.hpp"
 
 #include <chrono>
@@ -137,6 +138,31 @@ TEST_CASE("Build returns a non-null component") {
   ChatUI ui;
   auto component = ui.Build();
   REQUIRE(component != nullptr);
+}
+
+TEST_CASE("Composer and status rail share the canvas background color") {
+  // Regression for the "docked chrome panel" seam: the composer and the
+  // status rail used semantic.surface_panel, leaving a visible color step
+  // against the terminal's OSC 11 background (chrome.canvas_bg). Both must
+  // match chrome.canvas_bg so they blend with the real terminal background.
+  ChatUI ui;
+  auto component = ui.Build();
+
+  constexpr int kWidth = 80;
+  constexpr int kHeight = 24;
+  auto screen = ftxui::Screen(kWidth, kHeight);
+  ftxui::Render(screen, component->Render());
+
+  const auto expected_bg =
+      yac::presentation::theme::CurrentTheme().chrome.canvas_bg;
+  const int x = kWidth / 2;
+  // Layout (top→bottom): message list (flex) / separator / status rail /
+  // composer (kMaxInputLines + 2*kComposerPadY = 5 rows).
+  const int status_rail_row = kHeight - 6;
+  const int composer_row = kHeight - 3;
+
+  REQUIRE(screen.PixelAt(x, status_rail_row).background_color == expected_bg);
+  REQUIRE(screen.PixelAt(x, composer_row).background_color == expected_bg);
 }
 
 TEST_CASE("ChatUI renders active provider and model in footer") {
