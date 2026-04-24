@@ -17,6 +17,8 @@ struct MessageRenderCache {
   util::RelativeTimeCache relative_time;
   std::optional<ftxui::Element> element;
   int terminal_width = -1;
+  std::optional<ftxui::Element> tool_element;
+  int tool_terminal_width = -1;
 
   void ResetElement();
   void ResetContent();

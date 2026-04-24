@@ -15,15 +15,20 @@
 #include "provider/openai_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <ftxui/component/app.hpp>
@@ -194,13 +199,94 @@ void ConfigureUiTaskRunner(ftxui::App& screen, presentation::ChatUI& chat_ui) {
   });
 }
 
-void ConfigureServiceEventCallback(ftxui::App& screen, ChatEventBridge& bridge,
-                                   chat::ChatService& chat_service) {
-  chat_service.SetEventCallback([&bridge, &screen](chat::ChatEvent event) {
+class StreamingCoalescer {
+ public:
+  StreamingCoalescer(ftxui::App& screen, ChatEventBridge& bridge)
+      : screen_(screen), bridge_(bridge) {
+    worker_ = std::jthread([this](std::stop_token stop_token) {
+      while (!stop_token.stop_requested()) {
+        std::unique_lock lock(mutex_);
+        cv_.wait_for(lock, kFlushInterval, [this, &stop_token] {
+          return stop_token.stop_requested() || flush_now_;
+        });
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        flush_now_ = false;
+        FlushLocked(lock);
+      }
+    });
+  }
+
+  ~StreamingCoalescer() {
+    worker_.request_stop();
+    {
+      std::lock_guard lock(mutex_);
+      flush_now_ = true;
+    }
+    cv_.notify_all();
+  }
+
+  StreamingCoalescer(const StreamingCoalescer&) = delete;
+  StreamingCoalescer& operator=(const StreamingCoalescer&) = delete;
+  StreamingCoalescer(StreamingCoalescer&&) = delete;
+  StreamingCoalescer& operator=(StreamingCoalescer&&) = delete;
+
+  void Dispatch(chat::ChatEvent event) {
+    if (auto* delta = std::get_if<chat::TextDeltaEvent>(&event.payload)) {
+      std::lock_guard lock(mutex_);
+      auto [it, inserted] =
+          pending_deltas_.try_emplace(delta->message_id, *delta);
+      if (!inserted) {
+        it->second.text += delta->text;
+      }
+      return;
+    }
+    {
+      std::unique_lock lock(mutex_);
+      FlushLocked(lock);
+    }
+    PostEvent(std::move(event));
+  }
+
+ private:
+  static constexpr auto kFlushInterval = std::chrono::milliseconds(33);
+
+  void FlushLocked(std::unique_lock<std::mutex>& lock) {
+    if (pending_deltas_.empty()) {
+      return;
+    }
+    auto drained = std::move(pending_deltas_);
+    pending_deltas_.clear();
+    lock.unlock();
+    for (auto& [id, delta] : drained) {
+      PostEvent(chat::ChatEvent{std::move(delta)});
+    }
+    lock.lock();
+  }
+
+  void PostEvent(chat::ChatEvent event) {
+    auto& bridge = bridge_;
+    auto& screen = screen_;
     screen.Post([&bridge, &screen, event = std::move(event)] {
       bridge.HandleEvent(event);
       screen.PostEvent(ftxui::Event::Custom);
     });
+  }
+
+  ftxui::App& screen_;
+  ChatEventBridge& bridge_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::unordered_map<chat::ChatMessageId, chat::TextDeltaEvent> pending_deltas_;
+  bool flush_now_ = false;
+  std::jthread worker_;
+};
+
+void ConfigureServiceEventCallback(StreamingCoalescer& coalescer,
+                                   chat::ChatService& chat_service) {
+  chat_service.SetEventCallback([&coalescer](chat::ChatEvent event) {
+    coalescer.Dispatch(std::move(event));
   });
 }
 
@@ -397,7 +483,8 @@ int RunApp() {
   registry.Register(provider);
   chat::ChatService chat_service(std::move(registry), config);
 
-  ConfigureServiceEventCallback(screen, bridge, chat_service);
+  StreamingCoalescer event_coalescer(screen, bridge);
+  ConfigureServiceEventCallback(event_coalescer, chat_service);
   ConfigureChatUiCallbacks({}, config, terminal_bg_guard, screen, chat_service,
                            chat_ui);
 

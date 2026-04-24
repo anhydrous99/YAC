@@ -11,25 +11,26 @@ constexpr auto kTickInterval = std::chrono::seconds(30);
 
 }  // namespace
 
-ChatUiClockTicker::~ChatUiClockTicker() { Stop(); }
+ChatUiClockTicker::~ChatUiClockTicker() {
+  Stop();
+}
 
 void ChatUiClockTicker::Start(UiTaskRunner ui_task_runner) {
   if (worker_.joinable()) {
     return;
   }
-  worker_ = std::jthread(
-      [ui_task_runner = std::move(ui_task_runner),
-       this](std::stop_token stop_token) mutable {
-        while (!stop_token.stop_requested()) {
-          std::unique_lock lock(mutex_);
-          wake_.wait_for(lock, stop_token, kTickInterval, [] { return false; });
-          if (stop_token.stop_requested()) {
-            return;
-          }
-          lock.unlock();
-          ui_task_runner([] {});
-        }
-      });
+  worker_ = std::jthread([ui_task_runner = std::move(ui_task_runner),
+                          this](std::stop_token stop_token) mutable {
+    while (!stop_token.stop_requested()) {
+      std::unique_lock lock(mutex_);
+      wake_.wait_for(lock, stop_token, kTickInterval, [] { return false; });
+      if (stop_token.stop_requested()) {
+        return;
+      }
+      lock.unlock();
+      ui_task_runner([] {});
+    }
+  });
 }
 
 void ChatUiClockTicker::Stop() {

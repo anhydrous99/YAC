@@ -5,6 +5,8 @@ namespace yac::presentation {
 void MessageRenderCache::ResetElement() {
   element = std::nullopt;
   terminal_width = -1;
+  tool_element = std::nullopt;
+  tool_terminal_width = -1;
 }
 
 void MessageRenderCache::ResetContent() {
