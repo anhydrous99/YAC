@@ -407,6 +407,77 @@ TEST_CASE("Render invalidates cache when width changes") {
   REQUIRE(cache.element.has_value());
 }
 
+// Relative-time cache expiry and element cache invalidation
+
+TEST_CASE("Element cache is bypassed when relative_time has expired") {
+  // Message created 90 seconds ago → shows "1m ago" on first render.
+  Message msg{Sender::User, "test"};
+  msg.created_at =
+      std::chrono::system_clock::now() - std::chrono::seconds(90);
+
+  MessageRenderCache cache;
+  auto output1 = RenderMessageToString(msg, cache);
+  REQUIRE_THAT(StripAnsi(output1), Catch::Matchers::ContainsSubstring("1m ago"));
+  REQUIRE(cache.element.has_value());
+  REQUIRE(cache.relative_time.has_value());
+
+  // Simulate the minute boundary passing: expire the relative_time cache and
+  // advance created_at so recomputation yields a different label.
+  cache.relative_time->second =
+      std::chrono::system_clock::now() - std::chrono::seconds(1);
+  msg.created_at =
+      std::chrono::system_clock::now() - std::chrono::seconds(150);
+
+  // Element cache must be bypassed; recomputed timestamp should be "2m ago".
+  auto output2 = RenderMessageToString(msg, cache);
+  REQUIRE_THAT(StripAnsi(output2), Catch::Matchers::ContainsSubstring("2m ago"));
+}
+
+TEST_CASE("Element cache is used when relative_time has not expired") {
+  // Message 30 seconds old: relative_time expires at tp+60s, which is now+30s.
+  Message msg{Sender::User, "test"};
+  msg.created_at =
+      std::chrono::system_clock::now() - std::chrono::seconds(30);
+
+  MessageRenderCache cache;
+  RenderMessageToString(msg, cache);
+  REQUIRE(cache.element.has_value());
+  REQUIRE(cache.relative_time.has_value());
+  REQUIRE(cache.relative_time->second > std::chrono::system_clock::now());
+
+  // Advance created_at to a value that would produce "2m ago" if recomputed.
+  msg.created_at =
+      std::chrono::system_clock::now() - std::chrono::seconds(150);
+
+  // Relative_time still valid → element cache hit → output still "just now".
+  auto output = RenderMessageToString(msg, cache);
+  REQUIRE_THAT(StripAnsi(output), Catch::Matchers::ContainsSubstring("just now"));
+}
+
+TEST_CASE("Element cache repopulates with fresh expiry after relative_time bypass") {
+  Message msg{Sender::User, "test"};
+  msg.created_at =
+      std::chrono::system_clock::now() - std::chrono::seconds(90);
+
+  MessageRenderCache cache;
+  RenderMessageToString(msg, cache);
+
+  // Force expiry so the next render bypasses the element cache.
+  cache.relative_time->second =
+      std::chrono::system_clock::now() - std::chrono::seconds(1);
+
+  // First render after expiry: bypasses element cache, repopulates it.
+  auto out1 = RenderMessageToString(msg, cache);
+  REQUIRE(cache.element.has_value());
+  // relative_time should have been refreshed with a future expiry.
+  REQUIRE(cache.relative_time.has_value());
+  REQUIRE(cache.relative_time->second > std::chrono::system_clock::now());
+
+  // Second render at the same width: element cache is valid again → stable output.
+  auto out2 = RenderMessageToString(msg, cache);
+  REQUIRE(StripAnsi(out1) == StripAnsi(out2));
+}
+
 TEST_CASE("Visual output identical with and without cache") {
   Message msg{Sender::Agent, "# Heading\n\nSome **bold** text"};
   MessageRenderCache parsed_cache;

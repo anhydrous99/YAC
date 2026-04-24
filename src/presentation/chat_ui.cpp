@@ -211,6 +211,7 @@ void ChatUI::SetAgentMode(chat::AgentMode mode) {
 }
 
 void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
+  clock_ticker_.Start(ui_task_runner);
   thinking_animation_.SetUiTaskRunner(std::move(ui_task_runner));
   SyncThinkingAnimation();
 }

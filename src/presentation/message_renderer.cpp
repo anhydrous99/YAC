@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <string>
 #include <utility>
 
@@ -113,8 +114,11 @@ ftxui::Element MessageRenderer::Render(const Message& message,
   int current_width = context.terminal_width;
   const bool is_animated = message.sender == Sender::Agent &&
                            message.status == MessageStatus::Active;
+  const bool time_cache_expired =
+      cache.relative_time.has_value() &&
+      std::chrono::system_clock::now() >= cache.relative_time->second;
   if (!is_animated && message.sender != Sender::Tool && cache.element &&
-      cache.terminal_width == current_width) {
+      cache.terminal_width == current_width && !time_cache_expired) {
     return *cache.element;
   }
 

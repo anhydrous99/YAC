@@ -57,6 +57,7 @@ add_library(yac_presentation STATIC
   src/presentation/chat_ui_overlay_state.cpp
   src/presentation/chat_ui_render_plan.cpp
   src/presentation/chat_ui_scroll_state.cpp
+  src/presentation/chat_ui_clock_ticker.cpp
   src/presentation/chat_ui_thinking_animation.cpp
   src/presentation/composer_state.cpp
   src/presentation/command_palette.cpp

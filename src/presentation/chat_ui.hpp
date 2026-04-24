@@ -7,6 +7,7 @@
 #include "chat_ui_overlay_state.hpp"
 #include "chat_ui_render_plan.hpp"
 #include "chat_ui_scroll_state.hpp"
+#include "chat_ui_clock_ticker.hpp"
 #include "chat_ui_thinking_animation.hpp"
 #include "command_palette.hpp"
 #include "composer_state.hpp"
@@ -141,6 +142,7 @@ class ChatUI : public ChatEventSink {
   ChatUiInputController input_controller_;
   ChatUiOverlayState overlay_state_;
   ChatUiScrollState scroll_state_;
+  ChatUiClockTicker clock_ticker_;
   ChatUiThinkingAnimation thinking_animation_;
   OnSendCallback on_send_;
   std::function<void()> on_mode_toggle_;
