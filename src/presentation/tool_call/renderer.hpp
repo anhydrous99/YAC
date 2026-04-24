@@ -61,6 +61,10 @@ class ToolCallRenderer {
       const tool_data::LspSymbolsCall& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderSubAgent(
       const tool_data::SubAgentCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderTodoWrite(
+      const tool_data::TodoWriteCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderAskUser(
+      const tool_data::AskUserCall& call, const RenderContext& context);
 };
 
 }  // namespace yac::presentation::tool_call

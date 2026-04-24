@@ -178,6 +178,10 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
           return RenderLspSymbols(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
           return RenderSubAgent(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::TodoWriteCall>) {
+          return RenderTodoWrite(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::AskUserCall>) {
+          return RenderAskUser(call, context);
         } else {
           return ftxui::text("");
         }
@@ -797,6 +801,16 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
   }
 
   return RenderContainer(icon, "Sub-agent", accent, std::move(content), theme);
+}
+
+ftxui::Element ToolCallRenderer::RenderTodoWrite(
+    const tool_data::TodoWriteCall&, const RenderContext&) {
+  return ftxui::text("[todo_write]");
+}
+
+ftxui::Element ToolCallRenderer::RenderAskUser(const tool_data::AskUserCall&,
+                                               const RenderContext&) {
+  return ftxui::text("[ask_user]");
 }
 
 }  // namespace yac::presentation::tool_call

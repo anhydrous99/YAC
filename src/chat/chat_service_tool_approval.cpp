@@ -23,6 +23,19 @@ void ChatServiceToolApproval::Resolve(const std::string& approval_id,
   wake_.notify_all();
 }
 
+void ChatServiceToolApproval::ResolveWithResponse(
+    const std::string& approval_id, bool approved, std::string response) {
+  {
+    std::lock_guard lock(mutex_);
+    if (!pending_.has_value() || pending_->id != approval_id) {
+      return;
+    }
+    pending_->approved = approved;
+    pending_->response = std::move(response);
+  }
+  wake_.notify_all();
+}
+
 void ChatServiceToolApproval::CancelPending() {
   {
     std::lock_guard lock(mutex_);
@@ -34,8 +47,8 @@ void ChatServiceToolApproval::CancelPending() {
   wake_.notify_all();
 }
 
-bool ChatServiceToolApproval::WaitForResolution(const std::string& approval_id,
-                                                std::stop_token stop_token) {
+ApprovalResolution ChatServiceToolApproval::WaitForResolution(
+    const std::string& approval_id, std::stop_token stop_token) {
   std::unique_lock lock(mutex_);
   wake_.wait(lock, stop_token, [&] {
     return !pending_.has_value() || pending_->id != approval_id ||
@@ -44,11 +57,14 @@ bool ChatServiceToolApproval::WaitForResolution(const std::string& approval_id,
   if (stop_token.stop_requested() || !pending_.has_value() ||
       pending_->id != approval_id || !pending_->approved.has_value()) {
     pending_.reset();
-    return false;
+    return ApprovalResolution{};
   }
-  const bool approved = *pending_->approved;
+  ApprovalResolution resolution{
+      .approved = *pending_->approved,
+      .response = pending_->response.value_or(std::string{}),
+  };
   pending_.reset();
-  return approved;
+  return resolution;
 }
 
 }  // namespace yac::chat::internal

@@ -89,6 +89,18 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
     if (prepared.request.name == kSubAgentToolName) {
       return ExecuteSubAgentTool(prepared, sub_agent_manager_, stop_token);
     }
+    if (prepared.request.name == kTodoWriteToolName) {
+      return ToolExecutionResult{
+          .block = prepared.preview,
+          .result_json = R"({"result":"[todo_write: not yet implemented]"})",
+      };
+    }
+    if (prepared.request.name == kAskUserToolName) {
+      return ToolExecutionResult{
+          .block = prepared.preview,
+          .result_json = R"({"result":"[ask_user: not yet implemented]"})",
+      };
+    }
     return ErrorResult(prepared.preview,
                        "Unknown tool: " + prepared.request.name);
   } catch (const std::exception& error) {

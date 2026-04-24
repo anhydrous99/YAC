@@ -10,18 +10,26 @@
 
 namespace yac::chat::internal {
 
+struct ApprovalResolution {
+  bool approved = false;
+  std::string response;
+};
+
 class ChatServiceToolApproval {
  public:
   [[nodiscard]] std::string BeginPendingApproval();
   void Resolve(const std::string& approval_id, bool approved);
+  void ResolveWithResponse(const std::string& approval_id, bool approved,
+                           std::string response);
   void CancelPending();
-  [[nodiscard]] bool WaitForResolution(const std::string& approval_id,
-                                       std::stop_token stop_token);
+  [[nodiscard]] ApprovalResolution WaitForResolution(
+      const std::string& approval_id, std::stop_token stop_token);
 
  private:
   struct PendingApproval {
     std::string id;
     std::optional<bool> approved;
+    std::optional<std::string> response;
   };
 
   std::mutex mutex_;

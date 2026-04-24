@@ -206,6 +206,8 @@ struct ToolApprovalRequestedEvent {
   std::string approval_id;
   ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Queued;
+  std::string question;
+  std::vector<std::string> options;
 };
 
 struct UsageReportedEvent {

@@ -18,6 +18,8 @@ inline constexpr std::string_view kLspGotoDefinitionToolName =
 inline constexpr std::string_view kLspRenameToolName = "lsp_rename";
 inline constexpr std::string_view kLspSymbolsToolName = "lsp_symbols";
 inline constexpr std::string_view kSubAgentToolName = "sub_agent";
+inline constexpr std::string_view kTodoWriteToolName = "todo_write";
+inline constexpr std::string_view kAskUserToolName = "ask_user";
 
 struct DiffLine {
   enum Type { Add, Remove, Context };
@@ -200,10 +202,31 @@ struct SubAgentCall {
   int elapsed_ms{};
 };
 
+struct TodoItem {
+  std::string content;
+  std::string status;
+  std::string priority;
+};
+
+struct TodoWriteCall {
+  std::vector<TodoItem> todos;
+  bool is_error{};
+  std::string error;
+};
+
+struct AskUserCall {
+  std::string question;
+  std::vector<std::string> options;
+  std::string response;
+  bool is_error{};
+  std::string error;
+};
+
 using ToolCallBlock =
     std::variant<BashCall, FileEditCall, FileReadCall, FileWriteCall,
                  ListDirCall, GrepCall, GlobCall, WebFetchCall, WebSearchCall,
                  LspDiagnosticsCall, LspReferencesCall, LspGotoDefinitionCall,
-                 LspRenameCall, LspSymbolsCall, SubAgentCall>;
+                 LspRenameCall, LspSymbolsCall, SubAgentCall, TodoWriteCall,
+                 AskUserCall>;
 
 }  // namespace yac::tool_call

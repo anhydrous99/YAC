@@ -51,6 +51,11 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
            "to all tools but cannot spawn further sub-agents.",
        .parameters_schema_json =
            R"({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})"},
+      {.name = std::string(kTodoWriteToolName), .description = "Write the current todo list.", .parameters_schema_json = R"({"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string","description":"Task description"},"status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Current status"},"priority":{"type":"string","enum":["high","medium","low"],"description":"Priority level"}},"required":["content","status"]}}},"required":["todos"]})"},
+      {.name = std::string(kAskUserToolName),
+       .description = "Ask the user a question and wait for their response.",
+       .parameters_schema_json =
+           R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
   };
 }
 
@@ -134,6 +139,43 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
                                   .mode = mode,
                                   .status = SubAgentStatus::Pending},
           .requires_approval = false};
+    }
+    if (request.name == kTodoWriteToolName) {
+      const auto todos_json = args.contains("todos") && args["todos"].is_array()
+                                  ? args["todos"]
+                                  : Json::array();
+      std::vector<TodoItem> todos;
+      todos.reserve(todos_json.size());
+      for (const auto& item : todos_json) {
+        todos.push_back(TodoItem{
+            .content = item.value("content", std::string{}),
+            .status = item.value("status", std::string{"pending"}),
+            .priority = item.value("priority", std::string{"medium"})});
+      }
+      return PreparedToolCall{
+          .request = request,
+          .preview = TodoWriteCall{.todos = std::move(todos)},
+          .requires_approval = false};
+    }
+    if (request.name == kAskUserToolName) {
+      const auto question = RequireString(args, "question");
+      const auto options_json =
+          args.contains("options") && args["options"].is_array()
+              ? args["options"]
+              : Json::array();
+      std::vector<std::string> options;
+      options.reserve(options_json.size());
+      for (const auto& opt : options_json) {
+        if (opt.is_string()) {
+          options.push_back(opt.get<std::string>());
+        }
+      }
+      return PreparedToolCall{
+          .request = request,
+          .preview =
+              AskUserCall{.question = question, .options = std::move(options)},
+          .requires_approval = true,
+          .approval_prompt = question};
     }
     return PreparedToolCall{
         .request = request,

@@ -165,6 +165,18 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = "Sub-agent: " + TruncateString(call.task, 40) + " - " +
                          SubAgentStatusSummary(call.status),
           };
+        } else if constexpr (std::is_same_v<T, tool_data::TodoWriteCall>) {
+          return ToolCallDescriptor{
+              .tag = "todo",
+              .label = "todo_write",
+              .summary = "todo_write",
+          };
+        } else if constexpr (std::is_same_v<T, tool_data::AskUserCall>) {
+          return ToolCallDescriptor{
+              .tag = "ask",
+              .label = "ask_user",
+              .summary = "ask_user",
+          };
         } else {
           return ToolCallDescriptor{
               .tag = "tool",

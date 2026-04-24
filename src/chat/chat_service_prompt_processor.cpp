@@ -238,7 +238,9 @@ void ChatServicePromptProcessor::RunToolRound(
                                      .approval_id = approval_id,
                                      .tool_call = prepared.preview,
                                      .status = ChatMessageStatus::Queued}});
-      approved = tool_approval_->WaitForResolution(approval_id, stop_token);
+      auto resolution =
+          tool_approval_->WaitForResolution(approval_id, stop_token);
+      approved = resolution.approved;
     }
 
     ::yac::tool_call::ToolExecutionResult result =
