@@ -85,7 +85,12 @@ std::string ComposerState::SlashMenuFilter() const {
   if (pos < 1) {
     return {};
   }
-  return content_.substr(1, pos - 1);
+  auto text = content_.substr(1, pos - 1);
+  auto space = text.find(' ');
+  if (space != std::string::npos) {
+    text.resize(space);
+  }
+  return text;
 }
 
 std::vector<int> ComposerState::FilteredSlashIndices(
