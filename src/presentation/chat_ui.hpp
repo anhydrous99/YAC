@@ -3,11 +3,11 @@
 #include "chat/agent_mode.hpp"
 #include "chat_event_sink.hpp"
 #include "chat_session.hpp"
+#include "chat_ui_clock_ticker.hpp"
 #include "chat_ui_input_controller.hpp"
 #include "chat_ui_overlay_state.hpp"
 #include "chat_ui_render_plan.hpp"
 #include "chat_ui_scroll_state.hpp"
-#include "chat_ui_clock_ticker.hpp"
 #include "chat_ui_thinking_animation.hpp"
 #include "command_palette.hpp"
 #include "composer_state.hpp"
@@ -20,6 +20,7 @@
 #include "slash_command_registry.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -130,6 +131,7 @@ class ChatUI : public ChatEventSink {
   [[nodiscard]] ftxui::Element RenderEmptyState() const;
   void RebuildMessageComponents();
   void SyncMessageComponents();
+  void SyncTerminalWidth();
   [[nodiscard]] bool HasActiveAgentMessage() const;
   void SyncThinkingAnimation();
 
@@ -138,6 +140,8 @@ class ChatUI : public ChatEventSink {
   mutable MessageRenderCacheStore render_cache_;
   std::vector<MessageRenderItem> render_plan_;
   std::vector<ftxui::Component> message_components_;
+  uint64_t last_plan_generation_ = 0;
+  bool plan_valid_ = false;
   ComposerState composer_;
   ChatUiInputController input_controller_;
   ChatUiOverlayState overlay_state_;
@@ -152,6 +156,15 @@ class ChatUI : public ChatEventSink {
   bool is_typing_ = false;
   SlashCommandRegistry slash_commands_;
   mutable int last_terminal_width_ = -1;
+  // Cache for the per-frame msg_element->ComputeRequirement() walk that
+  // feeds scroll_state_.SetContentHeight(). Walking the full N-message
+  // element tree each frame is the dominant idle-CPU cost; we only need
+  // to re-walk when structure, content, or width changes.
+  mutable uint64_t content_height_cache_plan_gen_ = 0;
+  mutable uint64_t content_height_cache_content_gen_ = 0;
+  mutable int content_height_cache_width_ = -1;
+  mutable int content_height_cache_value_ = 0;
+  mutable bool content_height_cache_valid_ = false;
 };
 
 }  // namespace yac::presentation

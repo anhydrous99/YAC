@@ -96,20 +96,81 @@ ftxui::Element NoticeLine(const UiNotice& notice) {
          ftxui::color(SeverityColor(notice.severity));
 }
 
+struct DynamicMessageStackViewport {
+  int scroll_offset_y = 0;
+  int viewport_height = 0;
+};
+
 class DynamicMessageStack : public ftxui::ComponentBase {
  public:
-  explicit DynamicMessageStack(std::function<ftxui::Components()> get_children)
-      : get_children_(std::move(get_children)) {}
+  DynamicMessageStack(std::function<uint64_t()> get_generation,
+                      std::function<ftxui::Components()> get_children,
+                      std::function<DynamicMessageStackViewport()> get_viewport,
+                      std::function<bool()> get_active_tail_dirty)
+      : get_generation_(std::move(get_generation)),
+        get_children_(std::move(get_children)),
+        get_viewport_(std::move(get_viewport)),
+        get_active_tail_dirty_(std::move(get_active_tail_dirty)) {}
 
   ftxui::Element OnRender() override {
     SyncChildren();
 
+    const int current_width = ftxui::Terminal::Size().dimx;
+    if (current_width != last_width_) {
+      measured_heights_.assign(children_.size(), -1);
+      last_width_ = current_width;
+    } else if (measured_heights_.size() != children_.size()) {
+      measured_heights_.resize(children_.size(), -1);
+    }
+    // An active-streaming tail can grow every frame; never trust its
+    // cached height while a response is in flight.
+    if (!children_.empty() && get_active_tail_dirty_ &&
+        get_active_tail_dirty_()) {
+      measured_heights_.back() = -1;
+    }
+
+    const DynamicMessageStackViewport vp =
+        get_viewport_ ? get_viewport_() : DynamicMessageStackViewport{};
+    // Over-render a few rows around the viewport so mouse-wheel scrolling
+    // doesn't flash in an un-rendered filler before the next frame.
+    constexpr int kOverscan = 8;
+    const bool have_viewport = vp.viewport_height > 0;
+    const int vp_top = vp.scroll_offset_y - kOverscan;
+    const int vp_bottom = vp.scroll_offset_y + vp.viewport_height + kOverscan;
+
+    constexpr int kGap = 1;
     ftxui::Elements elements;
-    for (const auto& child : children_) {
-      if (!elements.empty()) {
+    elements.reserve(children_.size() * 2);
+    int y_cursor = 0;
+    for (size_t i = 0; i < children_.size(); ++i) {
+      if (i > 0) {
         elements.push_back(ftxui::text(" "));
+        y_cursor += kGap;
       }
-      elements.push_back(child->Render());
+
+      const int known_h = measured_heights_[i];
+      const bool have_measurement = known_h >= 0;
+      const int span_top = y_cursor;
+      const int span_bottom = span_top + (have_measurement ? known_h : 0);
+
+      // Virtualize only when we have a measurement AND a viewport; during
+      // the first render neither is known, so we render everything once
+      // to populate measured_heights_.
+      const bool off_screen = have_viewport && have_measurement &&
+                              (span_bottom <= vp_top || span_top >= vp_bottom);
+
+      if (off_screen) {
+        elements.push_back(ftxui::filler() |
+                           ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, known_h));
+        y_cursor = span_bottom;
+      } else {
+        auto rendered = children_[i]->Render();
+        rendered->ComputeRequirement();
+        const int measured = rendered->requirement().min_y;
+        measured_heights_[i] = measured;
+        elements.push_back(std::move(rendered));
+        y_cursor = span_top + measured;
+      }
     }
     return ftxui::vbox(std::move(elements));
   }
@@ -121,6 +182,11 @@ class DynamicMessageStack : public ftxui::ComponentBase {
 
  private:
   void SyncChildren() {
+    const uint64_t generation = get_generation_();
+    if (seen_generation_.has_value() && *seen_generation_ == generation) {
+      return;
+    }
+
     auto children = get_children_();
     const auto child_count = ChildCount();
     bool rebuild = children.size() < child_count;
@@ -135,14 +201,27 @@ class DynamicMessageStack : public ftxui::ComponentBase {
 
     if (rebuild) {
       DetachAllChildren();
+      measured_heights_.clear();
     }
     const auto start = rebuild ? 0 : child_count;
     for (size_t i = start; i < children.size(); ++i) {
       Add(children[i]);
     }
+    // Keep the heights vector in sync with children count; new slots are
+    // unmeasured until rendered once.
+    if (measured_heights_.size() != children_.size()) {
+      measured_heights_.resize(children_.size(), -1);
+    }
+    seen_generation_ = generation;
   }
 
+  std::function<uint64_t()> get_generation_;
   std::function<ftxui::Components()> get_children_;
+  std::function<DynamicMessageStackViewport()> get_viewport_;
+  std::function<bool()> get_active_tail_dirty_;
+  std::optional<uint64_t> seen_generation_;
+  std::vector<int> measured_heights_;
+  int last_width_ = -1;
 };
 
 class SlashMenuInputWrapper : public ftxui::ComponentBase {
@@ -541,6 +620,7 @@ void ChatUI::ClearMessages() {
   render_cache_.Clear();
   render_plan_.clear();
   message_components_.clear();
+  plan_valid_ = false;
   scroll_state_.Clear();
   SyncThinkingAnimation();
 }
@@ -615,22 +695,42 @@ bool ChatUI::HandleInputEvent(const ftxui::Event& event) {
 }
 
 ftxui::Component ChatUI::BuildMessageList() {
-  SyncMessageComponents();
-  auto message_stack = ftxui::Make<DynamicMessageStack>([this] {
-    SyncMessageComponents();
-    return message_components_;
-  });
+  auto message_stack = ftxui::Make<DynamicMessageStack>(
+      [this] { return session_.PlanGeneration(); },
+      [this] {
+        SyncMessageComponents();
+        return message_components_;
+      },
+      [this] {
+        return DynamicMessageStackViewport{
+            .scroll_offset_y = scroll_state_.ScrollOffsetY(),
+            .viewport_height = scroll_state_.ViewportHeight()};
+      },
+      [this] { return session_.HasActiveAgent(); });
 
   auto content = ftxui::Renderer(message_stack, [this, message_stack] {
-    SyncMessageComponents();
+    SyncTerminalWidth();
     auto msg_element =
         session_.Empty() && !is_typing_
             ? RenderEmptyState()
             : message_stack->Render() |
                   ftxui::color(render_context_.Colors().chrome.dim_text);
 
-    msg_element->ComputeRequirement();
-    scroll_state_.SetContentHeight(msg_element->requirement().min_y);
+    const int term_width = ftxui::Terminal::Size().dimx;
+    const uint64_t plan_gen = session_.PlanGeneration();
+    const uint64_t content_gen = session_.ContentGeneration();
+    if (!content_height_cache_valid_ ||
+        content_height_cache_plan_gen_ != plan_gen ||
+        content_height_cache_content_gen_ != content_gen ||
+        content_height_cache_width_ != term_width) {
+      msg_element->ComputeRequirement();
+      content_height_cache_value_ = msg_element->requirement().min_y;
+      content_height_cache_plan_gen_ = plan_gen;
+      content_height_cache_content_gen_ = content_gen;
+      content_height_cache_width_ = term_width;
+      content_height_cache_valid_ = true;
+    }
+    scroll_state_.SetContentHeight(content_height_cache_value_);
     int viewport_height = scroll_state_.ViewportHeight();
     scroll_state_.ApplyMeasuredLayout();
 
@@ -776,14 +876,23 @@ ftxui::Component ChatUI::BuildToolContentComponent(size_t message_index) {
     if (message_index >= msgs.size()) {
       return ftxui::text("Tool call unavailable");
     }
-    const auto* tool_call = msgs[message_index].ToolCall();
+    const auto& msg = msgs[message_index];
+    const auto* tool_call = msg.ToolCall();
     if (tool_call == nullptr) {
       return ftxui::text("Tool call unavailable");
     }
-    return tool_call::ToolCallRenderer::Render(
+    auto& cache = render_cache_.For(msg.id);
+    if (cache.tool_element &&
+        cache.tool_terminal_width == last_terminal_width_) {
+      return *cache.tool_element;
+    }
+    auto elem = tool_call::ToolCallRenderer::Render(
         *tool_call,
         RenderContext{.terminal_width = last_terminal_width_,
                       .thinking_frame = thinking_animation_.Frame()});
+    cache.tool_element = elem;
+    cache.tool_terminal_width = last_terminal_width_;
+    return elem;
   });
 
   if (!is_sub_agent) {
@@ -987,26 +1096,32 @@ ftxui::Element ChatUI::RenderEmptyState() const {
 void ChatUI::RebuildMessageComponents() {
   render_plan_.clear();
   message_components_.clear();
+  plan_valid_ = false;
   SyncMessageComponents();
 }
 
-void ChatUI::SyncMessageComponents() {
+void ChatUI::SyncTerminalWidth() {
   int current_width = ftxui::Terminal::Size().dimx;
-  if (current_width != last_terminal_width_) {
-    for (const auto& msg : session_.Messages()) {
-      if (msg.sender != Sender::Tool) {
-        render_cache_.ResetElement(msg.id);
-      }
-    }
-    last_terminal_width_ = current_width;
+  if (current_width == last_terminal_width_) {
+    return;
   }
+  for (const auto& msg : session_.Messages()) {
+    if (msg.sender != Sender::Tool) {
+      render_cache_.ResetElement(msg.id);
+    }
+  }
+  last_terminal_width_ = current_width;
+}
 
-  auto next_plan = BuildMessageRenderPlan(session_.Messages());
-  if (next_plan == render_plan_) {
+void ChatUI::SyncMessageComponents() {
+  SyncTerminalWidth();
+
+  const uint64_t gen = session_.PlanGeneration();
+  if (plan_valid_ && gen == last_plan_generation_) {
     return;
   }
 
-  render_plan_ = std::move(next_plan);
+  render_plan_ = BuildMessageRenderPlan(session_.Messages());
   message_components_.clear();
   message_components_.reserve(render_plan_.size());
   for (const auto& item : render_plan_) {
@@ -1024,14 +1139,12 @@ void ChatUI::SyncMessageComponents() {
         break;
     }
   }
+  last_plan_generation_ = gen;
+  plan_valid_ = true;
 }
 
 bool ChatUI::HasActiveAgentMessage() const {
-  return std::any_of(session_.Messages().begin(), session_.Messages().end(),
-                     [](const Message& message) {
-                       return message.sender == Sender::Agent &&
-                              message.status == MessageStatus::Active;
-                     });
+  return session_.HasActiveAgent();
 }
 
 void ChatUI::SyncThinkingAnimation() {

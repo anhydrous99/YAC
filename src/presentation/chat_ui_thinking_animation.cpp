@@ -8,7 +8,7 @@ namespace yac::presentation {
 
 namespace {
 
-constexpr auto kThinkingFrameDuration = std::chrono::milliseconds(260);
+constexpr auto kThinkingFrameDuration = std::chrono::milliseconds(500);
 
 }  // namespace
 

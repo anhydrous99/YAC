@@ -32,6 +32,12 @@ MessageId ChatSession::AddMessageWithId(MessageId id, Sender sender,
   message.id = id;
   message.status = status;
   messages_.push_back(std::move(message));
+  id_to_index_[id] = messages_.size() - 1;
+  if (sender == Sender::Agent && status == MessageStatus::Active) {
+    ++active_agent_count_;
+  }
+  ++plan_generation_;
+  ++content_generation_;
   return id;
 }
 
@@ -51,7 +57,10 @@ MessageId ChatSession::AddToolCallMessageWithId(
   message.id = id;
   message.status = status;
   messages_.push_back(std::move(message));
+  id_to_index_[id] = messages_.size() - 1;
   tool_expanded_states_.push_back(std::make_unique<bool>(false));
+  ++plan_generation_;
+  ++content_generation_;
   return id;
 }
 
@@ -67,6 +76,7 @@ void ChatSession::AppendToAgentMessage(MessageId id, std::string delta) {
 
   auto& message = messages_[*idx];
   message.Text() += delta;
+  ++content_generation_;
 }
 
 void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
@@ -79,7 +89,18 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
   if (message.status == status) {
     return;
   }
+  if (message.sender == Sender::Agent) {
+    const bool was_active = message.status == MessageStatus::Active;
+    const bool now_active = status == MessageStatus::Active;
+    if (was_active && !now_active) {
+      --active_agent_count_;
+    } else if (!was_active && now_active) {
+      ++active_agent_count_;
+    }
+  }
   message.status = status;
+  ++plan_generation_;
+  ++content_generation_;
 }
 
 void ChatSession::SetToolCallMessage(MessageId id,
@@ -93,6 +114,8 @@ void ChatSession::SetToolCallMessage(MessageId id,
   auto& message = messages_[*idx];
   message.body = ToolContent{std::move(block)};
   message.status = status;
+  ++plan_generation_;
+  ++content_generation_;
 }
 
 bool ChatSession::UpsertSubAgentToolCall(MessageId parent_id,
@@ -116,11 +139,13 @@ bool ChatSession::UpsertSubAgentToolCall(MessageId parent_id,
     existing->tool_name = std::move(tool_name);
     existing->block = std::move(block);
     existing->status = status;
+    ++content_generation_;
     return false;
   }
 
   child_tools.emplace_back(std::move(tool_call_id), std::move(tool_name),
                            std::move(block), status);
+  ++content_generation_;
   return true;
 }
 
@@ -134,18 +159,21 @@ void ChatSession::SetToolExpanded(size_t index, bool expanded) {
 
 void ChatSession::ClearMessages() {
   messages_.clear();
+  id_to_index_.clear();
+  active_agent_count_ = 0;
   tool_expanded_states_.clear();
   group_expanded_states_.clear();
   sub_agent_tool_messages_.clear();
+  ++plan_generation_;
+  ++content_generation_;
 }
 
 std::optional<size_t> ChatSession::FindMessageIndex(MessageId id) const {
-  for (size_t i = 0; i < messages_.size(); ++i) {
-    if (messages_[i].id == id) {
-      return i;
-    }
+  auto it = id_to_index_.find(id);
+  if (it == id_to_index_.end()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return it->second;
 }
 
 const std::vector<Message>& ChatSession::Messages() const {
@@ -153,7 +181,7 @@ const std::vector<Message>& ChatSession::Messages() const {
 }
 
 bool ChatSession::HasMessage(MessageId id) const {
-  return FindMessageIndex(id).has_value();
+  return id_to_index_.find(id) != id_to_index_.end();
 }
 
 bool ChatSession::Empty() const {
@@ -162,6 +190,18 @@ bool ChatSession::Empty() const {
 
 size_t ChatSession::MessageCount() const {
   return messages_.size();
+}
+
+uint64_t ChatSession::PlanGeneration() const {
+  return plan_generation_;
+}
+
+uint64_t ChatSession::ContentGeneration() const {
+  return content_generation_;
+}
+
+bool ChatSession::HasActiveAgent() const {
+  return active_agent_count_ > 0;
 }
 
 bool* ChatSession::ToolExpandedState(size_t index) {

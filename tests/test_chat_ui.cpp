@@ -265,6 +265,40 @@ TEST_CASE("ChatUI keeps thinking animation active after text streams") {
                       [&] { return !tasks.empty(); }));
 }
 
+TEST_CASE("ChatUI renders large history without error and keeps tail visible") {
+  ChatUI ui;
+  for (int i = 0; i < 40; ++i) {
+    ui.AddMessage(Sender::User, "msg-" + std::to_string(i));
+  }
+  ui.AddMessage(Sender::User, "tail-sentinel");
+
+  auto component = ui.Build();
+  // First render populates DynamicMessageStack's height cache.
+  auto output1 = RenderComponent(component, 80, 12);
+  REQUIRE_THAT(output1, Catch::Matchers::ContainsSubstring("tail-sentinel"));
+
+  // Second render should be served by the virtualization fast path
+  // (off-screen messages replaced by fillers) but must still show the tail
+  // and a stable total layout.
+  auto output2 = RenderComponent(component, 80, 12);
+  REQUIRE_THAT(output2, Catch::Matchers::ContainsSubstring("tail-sentinel"));
+}
+
+TEST_CASE("ChatUI handles width change across renders with large history") {
+  ChatUI ui;
+  for (int i = 0; i < 30; ++i) {
+    ui.AddMessage(Sender::Agent, "line-" + std::to_string(i));
+  }
+  ui.AddMessage(Sender::Agent, "wide-tail");
+
+  auto component = ui.Build();
+  auto wide = RenderComponent(component, 120, 15);
+  auto narrow = RenderComponent(component, 40, 15);
+
+  REQUIRE_THAT(wide, Catch::Matchers::ContainsSubstring("wide-tail"));
+  REQUIRE_THAT(narrow, Catch::Matchers::ContainsSubstring("wide-tail"));
+}
+
 TEST_CASE("CalculateInputHeight returns 1 for empty input") {
   ChatUI ui;
   REQUIRE(ui.CalculateInputHeight() == 1);

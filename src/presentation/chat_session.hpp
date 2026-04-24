@@ -3,6 +3,7 @@
 #include "message.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -53,6 +54,13 @@ class ChatSession {
   [[nodiscard]] bool HasMessage(MessageId id) const;
   [[nodiscard]] bool Empty() const;
   [[nodiscard]] size_t MessageCount() const;
+  [[nodiscard]] uint64_t PlanGeneration() const;
+  // Bumps on every mutation that changes rendered text / tool-call content,
+  // including streaming text appends. Paired with PlanGeneration(), gives
+  // callers a cache key that invalidates iff the rendered height could
+  // change.
+  [[nodiscard]] uint64_t ContentGeneration() const;
+  [[nodiscard]] bool HasActiveAgent() const;
   [[nodiscard]] bool* ToolExpandedState(size_t index);
   [[nodiscard]] bool* GroupExpandedState(size_t group_index,
                                          bool default_expanded);
@@ -65,7 +73,25 @@ class ChatSession {
 
  private:
   MessageId next_id_ = 1;
+  // Bumped on mutations that change the render plan shape (add, status,
+  // tool-call body, clear). Text appends do NOT bump — they never change
+  // sender/status/ordering, which is all BuildMessageRenderPlan reads.
+  uint64_t plan_generation_ = 0;
+  // Bumped by every mutation that changes rendered content (including text
+  // appends). Used by ChatUI to invalidate its content-height measurement
+  // cache.
+  uint64_t content_generation_ = 0;
   std::vector<Message> messages_;
+  // Parallel to messages_: maps MessageId → index into messages_. Keeps
+  // FindMessageIndex / HasMessage at O(1). Safe because messages_ is
+  // append-only + clear (no reorder, no single-message delete). A future
+  // method that removes or reorders messages must update this map.
+  std::unordered_map<MessageId, size_t> id_to_index_;
+  // Count of messages where sender == Agent && status == Active. Maintained
+  // by the Add/SetMessageStatus/Clear paths. HasActiveAgent() reads this in
+  // O(1). Any future code path that mutates a message's sender or status
+  // outside SetMessageStatus must update this counter.
+  int active_agent_count_ = 0;
   std::vector<std::unique_ptr<bool>> tool_expanded_states_;
   std::vector<std::unique_ptr<bool>> group_expanded_states_;
   std::unordered_map<MessageId, std::vector<SubAgentToolMessage>>
