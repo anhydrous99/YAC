@@ -203,6 +203,23 @@ TEST_CASE("Renderer draws table with headers and data") {
   REQUIRE(header_line < cell_line);
 }
 
+TEST_CASE(
+    "Renderer keeps whole words intact when table cell must shrink to fit") {
+  // Regression: when a single-column table's natural content width exceeds
+  // the render width, the cell's inline hbox used to contain one ftxui::text
+  // per word, which FTXUI's shrink logic would clip per-element - dropping
+  // the trailing character of every word ("clockmaker" -> "clockmake", etc.).
+  auto blocks = MarkdownParser::Parse(
+      "| Answer |\n"
+      "| ------ |\n"
+      "| He was a clockmaker and he always carried a silver cane |");
+  auto output = RenderToString(blocks, 40, 6);
+  // Pick the first whole word that fits entirely in the available cell
+  // width. If shrink dropped characters, these substrings would be missing.
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("clockmaker"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("always"));
+}
+
 TEST_CASE("Renderer right-aligns column with ---: delimiter") {
   auto blocks = MarkdownParser::Parse(
       "| Value                  |\n"

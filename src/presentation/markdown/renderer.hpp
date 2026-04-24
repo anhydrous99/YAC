@@ -32,6 +32,8 @@ class MarkdownRenderer {
       ftxui::Element trailing_inline);
   [[nodiscard]] static ftxui::Elements RenderInlineWords(
       const InlineNode& node, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderInlineRun(
+      const InlineNode& node, const RenderContext& context);
 
   [[nodiscard]] static ftxui::Element RenderHeading(
       const Heading& h, const RenderContext& context,

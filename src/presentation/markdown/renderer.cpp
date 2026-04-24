@@ -132,6 +132,46 @@ ftxui::Element MarkdownRenderer::RenderInline(
   return ftxui::vbox(std::move(row_elems));
 }
 
+ftxui::Element MarkdownRenderer::RenderInlineRun(const InlineNode& node,
+                                                 const RenderContext& context) {
+  const auto& theme = context.Colors();
+  return std::visit(
+      [&theme](const auto& n) -> ftxui::Element {
+        using T = std::decay_t<decltype(n)>;
+        if constexpr (std::is_same_v<T, Text>) {
+          return ftxui::text(n.content) | ftxui::color(theme.chrome.body_text);
+        } else if constexpr (std::is_same_v<T, Bold>) {
+          return ftxui::text(n.content) | ftxui::bold |
+                 ftxui::color(theme.chrome.body_text);
+        } else if constexpr (std::is_same_v<T, Italic>) {
+          return ftxui::text(n.content) | ftxui::italic |
+                 ftxui::color(theme.chrome.body_text);
+        } else if constexpr (std::is_same_v<T, Strikethrough>) {
+          return ftxui::text(n.content) | ftxui::strikethrough |
+                 ftxui::color(theme.chrome.body_text);
+        } else if constexpr (std::is_same_v<T, InlineCode>) {
+          return ftxui::text(" " + n.content + " ") | ftxui::bold |
+                 ftxui::bgcolor(theme.code.inline_bg) |
+                 ftxui::color(theme.code.inline_fg);
+        } else if constexpr (std::is_same_v<T, Link>) {
+          return ftxui::hyperlink(n.url, ftxui::text(n.text) |
+                                             ftxui::color(theme.markdown.link) |
+                                             ftxui::underlined);
+        } else if constexpr (std::is_same_v<T, Image>) {
+          std::string label =
+              "[" + (n.alt.empty() ? std::string("image") : n.alt) + "]";
+          return ftxui::hyperlink(n.url, ftxui::text(label) |
+                                             ftxui::color(theme.markdown.link) |
+                                             ftxui::underlined);
+        } else if constexpr (std::is_same_v<T, LineBreak>) {
+          return ftxui::text(" ");
+        } else {
+          return ftxui::text("");
+        }
+      },
+      node);
+}
+
 ftxui::Elements MarkdownRenderer::RenderInlineWords(
     const InlineNode& node, const RenderContext& context) {
   const auto& theme = context.Colors();
@@ -350,19 +390,24 @@ ftxui::Element MarkdownRenderer::RenderTableCell(
     const RenderContext& context, bool is_header,
     ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
-  ftxui::Elements words;
+  // Table cells layout inside a non-wrapping hbox. If we used
+  // RenderInlineWords here, each word becomes its own ftxui::text, and when
+  // the table shrinks a column below its natural width FTXUI distributes the
+  // deficit across every child - clipping one character off every word
+  // instead of only at the cell's right edge. Emit one element per styled
+  // run so shrinkage clips the run as a whole.
+  ftxui::Elements runs;
   for (const auto& node : cell) {
-    auto pieces = RenderInlineWords(node, context);
-    words.insert(words.end(), pieces.begin(), pieces.end());
+    runs.push_back(RenderInlineRun(node, context));
   }
   if (trailing_inline) {
-    words.push_back(std::move(trailing_inline));
+    runs.push_back(std::move(trailing_inline));
   }
-  if (words.empty()) {
-    words.push_back(ftxui::text(""));
+  if (runs.empty()) {
+    runs.push_back(ftxui::text(""));
   }
 
-  auto content = ftxui::hbox(words);
+  auto content = ftxui::hbox(runs);
   if (is_header) {
     content = content | ftxui::bold | ftxui::color(theme.markdown.heading);
   }
