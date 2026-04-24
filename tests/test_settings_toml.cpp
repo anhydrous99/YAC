@@ -8,6 +8,10 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
 #include <catch2/catch_test_macros.hpp>
 
 using yac::chat::ChatConfig;
@@ -221,3 +225,48 @@ TEST_CASE("WriteDefaultSettingsToml writes the canonical template") {
 
   std::filesystem::remove_all(dir);
 }
+
+#ifndef _WIN32
+TEST_CASE("WriteDefaultSettingsToml creates the file with mode 0600") {
+  const auto dir =
+      std::filesystem::temp_directory_path() / "yac_test_settings_perms";
+  std::filesystem::remove_all(dir);
+  const auto path = dir / "settings.toml";
+
+  std::vector<ConfigIssue> issues;
+  WriteDefaultSettingsToml(path, issues);
+  REQUIRE(issues.empty());
+  REQUIRE(std::filesystem::exists(path));
+
+  struct stat file_stat {};
+  REQUIRE(::stat(path.c_str(), &file_stat) == 0);
+  REQUIRE((file_stat.st_mode & 0777) == 0600);
+
+  std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("WriteDefaultSettingsToml does not overwrite an existing file") {
+  const auto dir =
+      std::filesystem::temp_directory_path() / "yac_test_settings_no_clobber";
+  std::filesystem::remove_all(dir);
+  std::filesystem::create_directories(dir);
+  const auto path = dir / "settings.toml";
+
+  constexpr std::string_view kExistingContent = "# pre-existing\n";
+  {
+    std::ofstream pre(path, std::ios::trunc);
+    pre << kExistingContent;
+  }
+
+  std::vector<ConfigIssue> issues;
+  WriteDefaultSettingsToml(path, issues);
+  REQUIRE(issues.empty());
+
+  std::ifstream input(path);
+  std::string content((std::istreambuf_iterator<char>(input)),
+                      std::istreambuf_iterator<char>());
+  REQUIRE(content == std::string{kExistingContent});
+
+  std::filesystem::remove_all(dir);
+}
+#endif

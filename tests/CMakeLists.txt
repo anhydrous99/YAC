@@ -58,5 +58,7 @@ yac_add_test(yac_test_tool_call_argument_parser test_tool_call_argument_parser.c
 yac_add_test(yac_test_agent_mode     test_agent_mode.cpp)
 yac_add_test(yac_test_compact_history test_compact_history.cpp)
 yac_add_test(yac_test_bash_tool_executor test_bash_tool_executor.cpp)
+yac_add_test(yac_test_lsp_client      test_lsp_client.cpp)
+yac_add_test(yac_test_workspace_filesystem test_workspace_filesystem.cpp)
 yac_add_test(yac_test_todo_state      test_todo_state.cpp)
 yac_add_test(yac_test_headless        test_headless.cpp)

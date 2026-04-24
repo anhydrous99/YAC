@@ -400,14 +400,23 @@ class JsonRpcLspClient::Impl {
                  {"params", std::move(params)}});
 
     std::unique_lock lock(mutex_);
-    const bool ready = response_wake_.wait_for(
-        lock, config_.request_timeout,
-        [&] { return responses_.find(id) != responses_.end(); });
+    const bool ready =
+        response_wake_.wait_for(lock, config_.request_timeout, [&] {
+          return responses_.find(id) != responses_.end() || !reader_alive_;
+        });
     if (!ready) {
       throw std::runtime_error("LSP request timed out: " + method);
     }
-    auto response = std::move(responses_[id]);
-    responses_.erase(id);
+    auto it = responses_.find(id);
+    if (it == responses_.end()) {
+      // Reader exited before a response arrived (child disconnect, framing
+      // error, stop requested). Surface a prompt error to the caller instead
+      // of letting them block for the full request_timeout.
+      throw std::runtime_error("LSP request aborted: " + method + ": " +
+                               reader_death_reason_);
+    }
+    auto response = std::move(it->second);
+    responses_.erase(it);
     if (response.contains("error")) {
       throw std::runtime_error(response["error"].dump());
     }
@@ -445,9 +454,44 @@ class JsonRpcLspClient::Impl {
     while (!stop_token.stop_requested()) {
       auto message = ReadMessage();
       if (!message.has_value()) {
+        FaultAllPending(stop_token.stop_requested()
+                            ? "LSP client shut down"
+                            : "LSP server disconnected");
         return;
       }
       ProcessMessage(*message);
+    }
+    FaultAllPending("LSP client shut down");
+  }
+
+  void FaultAllPending(std::string_view reason) {
+    {
+      std::lock_guard lock(mutex_);
+      if (!reader_alive_) {
+        return;
+      }
+      reader_alive_ = false;
+      reader_death_reason_ = std::string(reason);
+    }
+    response_wake_.notify_all();
+    diagnostics_wake_.notify_all();
+  }
+
+  // Parses a "Content-Length: <n>" header value. Returns nullopt if the value
+  // is malformed or exceeds kMaxLspMessageBytes; caller treats either as a
+  // framing error and lets the reader fault pending requests.
+  static std::optional<size_t> ParseContentLength(std::string_view value) {
+    constexpr size_t kMaxLspMessageBytes = 64UL * 1024UL * 1024UL;  // 64 MiB
+    try {
+      size_t consumed = 0;
+      const std::string trimmed(value);
+      const auto parsed = std::stoul(trimmed, &consumed);
+      if (parsed > kMaxLspMessageBytes) {
+        return std::nullopt;
+      }
+      return static_cast<size_t>(parsed);
+    } catch (const std::exception&) {
+      return std::nullopt;
     }
   }
 
@@ -463,8 +507,12 @@ class JsonRpcLspClient::Impl {
       }
       constexpr std::string_view kHeader = "Content-Length:";
       if (line->rfind(kHeader, 0) == 0) {
-        content_length =
-            static_cast<size_t>(std::stoul(line->substr(kHeader.size())));
+        auto parsed =
+            ParseContentLength(std::string_view(*line).substr(kHeader.size()));
+        if (!parsed.has_value()) {
+          return std::nullopt;
+        }
+        content_length = *parsed;
       }
     }
     if (content_length == 0) {
@@ -700,6 +748,12 @@ class JsonRpcLspClient::Impl {
   int read_fd_ = -1;
   int write_fd_ = -1;
   bool initialized_ = false;
+  // Protected by mutex_. reader_alive_ flips to false when ReaderLoop exits
+  // (child disconnect, framing error, stop_token). Waiters on response_wake_
+  // / diagnostics_wake_ then observe it and return an error instead of
+  // waiting for their per-request timeout.
+  bool reader_alive_ = true;
+  std::string reader_death_reason_;
 };
 
 JsonRpcLspClient::JsonRpcLspClient(LspServerConfig config)

@@ -8,6 +8,15 @@
 #include <system_error>
 #include <toml++/toml.hpp>
 
+#ifndef _WIN32
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <string_view>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 namespace yac::chat {
 
 namespace {
@@ -235,6 +244,44 @@ void WriteDefaultSettingsToml(const std::filesystem::path& path,
 #endif
   }
 
+#ifndef _WIN32
+  // Create atomically with 0600 so the file never exists with umask-default
+  // permissions. O_EXCL also means we will not clobber a file created by a
+  // racing process between the caller's existence check and this call.
+  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+                        S_IRUSR | S_IWUSR);
+  if (fd < 0) {
+    if (errno == EEXIST) {
+      // Another writer beat us to it; the caller's "create if missing"
+      // semantic is satisfied, so treat as success.
+      return;
+    }
+    AddWarning(issues, "Failed to create " + path.string(),
+               std::strerror(errno));
+    return;
+  }
+  const std::string_view body = kDefaultSettingsToml;
+  size_t written = 0;
+  while (written < body.size()) {
+    const auto bytes =
+        ::write(fd, body.data() + written, body.size() - written);
+    if (bytes < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      const auto err = std::string(std::strerror(errno));
+      ::close(fd);
+      AddWarning(issues, "Failed to write " + path.string(), err);
+      return;
+    }
+    written += static_cast<size_t>(bytes);
+  }
+  if (::close(fd) != 0) {
+    AddWarning(issues, "Failed to close " + path.string(),
+               std::strerror(errno));
+  }
+#else
   std::ofstream output(path, std::ios::trunc);
   if (!output) {
     AddWarning(issues, "Failed to create " + path.string(),
@@ -247,16 +294,6 @@ void WriteDefaultSettingsToml(const std::filesystem::path& path,
     AddWarning(issues, "Failed to write " + path.string(),
                "YAC will continue with built-in defaults.");
     return;
-  }
-
-#ifndef _WIN32
-  std::filesystem::permissions(
-      path,
-      std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-      std::filesystem::perm_options::replace, ec);
-  if (ec) {
-    AddWarning(issues, "Failed to set permissions on " + path.string(),
-               ec.message());
   }
 #endif
 }

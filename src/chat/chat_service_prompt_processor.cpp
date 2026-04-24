@@ -82,9 +82,13 @@ void ChatServicePromptProcessor::ProcessPrompt(
 
   std::string visible_assistant_text;
   bool assistant_error = false;
-  for (int round = 0; round <= kMaxToolRounds; ++round) {
+  // Hoisted so the post-loop check can inspect the final iteration's value:
+  // non-empty after the loop exits means the model still wanted to call tools
+  // when we hit the kMaxToolRounds cap.
+  std::vector<ToolCallRequest> requested_tools;
+  for (int round = 0; round < kMaxToolRounds; ++round) {
     std::string round_text;
-    std::vector<ToolCallRequest> requested_tools;
+    requested_tools.clear();
     std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
     const ChatRequest request = BuildRoundRequest(request_builder);
 
@@ -165,15 +169,15 @@ void ChatServicePromptProcessor::ProcessPrompt(
     }
 
     RunToolRound(requested_tools, streaming_card_ids, stop_token);
+  }
 
-    if (round == kMaxToolRounds) {
-      emit_event_(ChatEvent{ErrorEvent{.message_id = assistant_id,
-                                       .role = ChatRole::Assistant,
-                                       .text = "Tool round limit reached.",
-                                       .status = ChatMessageStatus::Error}});
-      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
-      return;
-    }
+  if (!requested_tools.empty()) {
+    emit_event_(ChatEvent{ErrorEvent{.message_id = assistant_id,
+                                     .role = ChatRole::Assistant,
+                                     .text = "Tool round limit reached.",
+                                     .status = ChatMessageStatus::Error}});
+    emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+    return;
   }
 
   if (!visible_assistant_text.empty()) {

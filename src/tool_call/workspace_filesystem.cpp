@@ -31,6 +31,8 @@ std::filesystem::path WorkspaceFilesystem::ResolvePath(
   }
   candidate = std::filesystem::absolute(candidate).lexically_normal();
 
+  // Cheap string-prefix gate: rejects ../ escape attempts without touching
+  // the filesystem.
   const auto root = workspace_root_.string();
   const auto value = candidate.string();
   const auto with_separator =
@@ -40,6 +42,35 @@ std::filesystem::path WorkspaceFilesystem::ResolvePath(
   if (value != root && !value.starts_with(with_separator)) {
     throw std::runtime_error("Path is outside the workspace: " + path);
   }
+
+  // Symlink-aware gate: resolves any symlinks that already exist on the
+  // candidate path and rejects the request if the resolved path leaves
+  // workspace_root_. lexically_normal alone does not catch this — a symlink
+  // planted inside the workspace that points at /etc/passwd would pass the
+  // string check above but escape at open-time.
+  std::error_code ec;
+  const auto real_candidate = std::filesystem::weakly_canonical(candidate, ec);
+  if (ec) {
+    throw std::runtime_error("Unable to resolve path: " + path);
+  }
+  const auto real_root = std::filesystem::weakly_canonical(workspace_root_, ec);
+  if (ec) {
+    throw std::runtime_error("Unable to resolve workspace root: " +
+                             workspace_root_.string());
+  }
+  const auto real_root_str = real_root.string();
+  const auto real_value_str = real_candidate.string();
+  const auto real_with_separator =
+      !real_root_str.empty() &&
+              real_root_str.back() == std::filesystem::path::preferred_separator
+          ? real_root_str
+          : real_root_str + std::filesystem::path::preferred_separator;
+  if (real_value_str != real_root_str &&
+      !real_value_str.starts_with(real_with_separator)) {
+    throw std::runtime_error(
+        "Path resolves outside the workspace via symlink: " + path);
+  }
+
   return candidate;
 }
 
@@ -56,6 +87,11 @@ std::string WorkspaceFilesystem::DisplayPath(
 
 std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
   std::error_code ec;
+  const auto sym_status = std::filesystem::symlink_status(path, ec);
+  if (!ec && std::filesystem::is_symlink(sym_status)) {
+    throw std::runtime_error("Refusing to read through symlink: " +
+                             path.string());
+  }
   if (!std::filesystem::exists(path, ec)) {
     return {};
   }
@@ -86,6 +122,12 @@ void WorkspaceFilesystem::WriteFile(const std::filesystem::path& path,
     throw std::runtime_error("Content exceeds " +
                              std::to_string(kMaxFileBytes) +
                              " byte write limit: " + path.string());
+  }
+  std::error_code sym_ec;
+  const auto sym_status = std::filesystem::symlink_status(path, sym_ec);
+  if (!sym_ec && std::filesystem::is_symlink(sym_status)) {
+    throw std::runtime_error("Refusing to write through symlink: " +
+                             path.string());
   }
   std::filesystem::create_directories(path.parent_path());
   std::ofstream file(path, std::ios::binary | std::ios::trunc);

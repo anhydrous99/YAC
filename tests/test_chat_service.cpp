@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -139,6 +140,27 @@ class ToolRoundProvider : public LanguageModelProvider {
  private:
   mutable std::mutex mutex_;
   std::vector<ChatRequest> requests_;
+};
+
+class InfiniteToolLoopProvider : public LanguageModelProvider {
+ public:
+  [[nodiscard]] std::string Id() const override { return "infinite-tools"; }
+
+  void CompleteStream([[maybe_unused]] const ChatRequest& request,
+                      ChatEventSink sink,
+                      [[maybe_unused]] std::stop_token stop_token) override {
+    const int call_index = call_count_.fetch_add(1);
+    sink(ChatEvent{
+        ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                   .id = "tool_" + std::to_string(call_index),
+                                   .name = "list_dir",
+                                   .arguments_json = R"({"path":"."})"}}}});
+  }
+
+  [[nodiscard]] int CallCount() const { return call_count_.load(); }
+
+ private:
+  std::atomic<int> call_count_{0};
 };
 
 class BlockingFakeProvider : public LanguageModelProvider {
@@ -466,6 +488,44 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
     return message.role == ChatRole::Tool && message.tool_call_id == "tool_1" &&
            message.content.find("note.txt") != std::string::npos;
   }));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
+  auto root = std::filesystem::temp_directory_path() / "yac_tool_round_limit";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto provider = std::make_shared<InfiniteToolLoopProvider>();
+  ChatConfig config;
+  config.provider_id = "infinite-tools";
+  config.model = "fake-model";
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  const auto events = CollectEvents(service, "go");
+
+  // kMaxToolRounds = 8: when the model never stops requesting tools, the
+  // service should run exactly 8 completions + 8 tool rounds, then surface
+  // a single "Tool round limit reached" error.
+  REQUIRE(provider->CallCount() == 8);
+
+  const auto tool_done_count =
+      std::count_if(events.begin(), events.end(), [](const ChatEvent& e) {
+        return e.Type() == ChatEventType::ToolCallDone;
+      });
+  REQUIRE(tool_done_count == 8);
+
+  REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
+
+  const auto error_it = std::find_if(
+      events.begin(), events.end(),
+      [](const ChatEvent& e) { return e.Type() == ChatEventType::Error; });
+  REQUIRE(error_it != events.end());
+  const auto* err = error_it->As<ErrorEvent>();
+  REQUIRE(err != nullptr);
+  REQUIRE(err->text.find("Tool round limit reached") != std::string::npos);
+
   std::filesystem::remove_all(root);
 }
 
