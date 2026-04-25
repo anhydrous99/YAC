@@ -95,6 +95,7 @@ add_library(yac_service STATIC
   src/provider/openai_chat_protocol.cpp
   src/provider/provider_registry.cpp
   src/tool_call/bash_tool_executor.cpp
+  src/tool_call/edit_replacers.cpp
   src/tool_call/executor_arguments.cpp
   src/tool_call/executor_catalog.cpp
   src/tool_call/executor.cpp
@@ -103,7 +104,9 @@ add_library(yac_service STATIC
   src/tool_call/lsp_tool_executor.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
+  src/tool_call/glob_matcher.cpp
   src/tool_call/workspace_filesystem.cpp
+  src/tool_call/gitignore_filter.cpp
 )
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service
