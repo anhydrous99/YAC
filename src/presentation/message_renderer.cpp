@@ -185,6 +185,8 @@ ftxui::Element MessageRenderer::RenderUserMessage(
       ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
                    ftxui::paragraph(message.Text()) |
                        ftxui::color(theme.role.user) | ftxui::flex}),
+      theme.density == theme::ThemeDensity::Compact ? ftxui::emptyElement()
+                                                    : ftxui::text(""),
   });
 
   auto accent_rail =
