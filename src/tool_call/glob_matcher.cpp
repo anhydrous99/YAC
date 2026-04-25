@@ -42,10 +42,15 @@ std::string GlobToRegex(std::string_view glob) {
   return result;
 }
 
+CompiledGlob::CompiledGlob(std::string_view glob)
+    : re_(GlobToRegex(glob), std::regex::ECMAScript) {}
+
+bool CompiledGlob::Match(std::string_view path) const {
+  return std::regex_match(std::string(path), re_);
+}
+
 bool MatchesGlob(std::string_view path, std::string_view glob) {
-  std::string regex_str = GlobToRegex(glob);
-  std::regex re(regex_str, std::regex::ECMAScript);
-  return std::regex_match(std::string(path), re);
+  return CompiledGlob(glob).Match(path);
 }
 
 }  // namespace yac::tool_call

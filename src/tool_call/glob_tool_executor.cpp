@@ -37,6 +37,8 @@ ToolExecutionResult ExecuteGlobTool(
     filter.emplace(workspace_filesystem.Root());
   }
 
+  const CompiledGlob compiled(pattern);
+
   using FileEntry =
       std::pair<std::filesystem::path, std::filesystem::file_time_type>;
   std::vector<FileEntry> matches;
@@ -52,7 +54,7 @@ ToolExecutionResult ExecuteGlobTool(
     if (filter && filter->ShouldSkip(relative)) {
       continue;
     }
-    if (!MatchesGlob(relative, pattern)) {
+    if (!compiled.Match(relative)) {
       continue;
     }
     matches.emplace_back(entry.path(), entry.last_write_time());
