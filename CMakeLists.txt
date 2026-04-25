@@ -73,6 +73,19 @@ add_library(yac_presentation STATIC
   src/presentation/slash_command_menu.cpp
   src/presentation/slash_command_registry.cpp
   src/presentation/syntax/highlighter.cpp
+  src/presentation/syntax/internal/lexer.cpp
+  src/presentation/syntax/language_alias.cpp
+  src/presentation/syntax/language_registry.cpp
+  src/presentation/syntax/languages/bash_lang.cpp
+  src/presentation/syntax/languages/cpp_lang.cpp
+  src/presentation/syntax/languages/diff_lang.cpp
+  src/presentation/syntax/languages/go_lang.cpp
+  src/presentation/syntax/languages/javascript_lang.cpp
+  src/presentation/syntax/languages/json_lang.cpp
+  src/presentation/syntax/languages/python_lang.cpp
+  src/presentation/syntax/languages/rust_lang.cpp
+  src/presentation/syntax/languages/typescript_lang.cpp
+  src/presentation/syntax/languages/yaml_lang.cpp
   src/presentation/theme.cpp
   src/presentation/tool_call/descriptor.cpp
   src/presentation/tool_call/renderer.cpp

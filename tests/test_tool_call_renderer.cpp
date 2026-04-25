@@ -1,6 +1,8 @@
 #include "presentation/tool_call/renderer.hpp"
 #include "tool_call/types.hpp"
 
+#include <string>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <ftxui/screen/screen.hpp>
@@ -10,13 +12,32 @@ using namespace yac::tool_call;
 
 namespace {
 
+// Strips ANSI CSI sequences (\e[...m) so substring matches see only the
+// visible text. Necessary now that tool-call cards run code through the
+// syntax highlighter, which interleaves color escapes between tokens.
+std::string StripAnsi(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (size_t i = 0; i < in.size(); ++i) {
+    if (in[i] == '\x1b' && i + 1 < in.size() && in[i + 1] == '[') {
+      i += 2;
+      while (i < in.size() && in[i] != 'm') {
+        ++i;
+      }
+      continue;
+    }
+    out.push_back(in[i]);
+  }
+  return out;
+}
+
 std::string RenderToString(const ToolCallBlock& block, int width = 80,
                            int height = 24) {
   auto elem = ToolCallRenderer::Render(block);
   REQUIRE(elem != nullptr);
   ftxui::Screen screen(width, height);
   ftxui::Render(screen, elem);
-  return screen.ToString();
+  return StripAnsi(screen.ToString());
 }
 
 void RenderAndCheck(const ToolCallBlock& block, int width = 80,

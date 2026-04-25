@@ -275,12 +275,15 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
   auto even_bg = theme.code.bg;
   auto odd_bg = theme.code.alt_bg;
 
+  auto highlighted = syntax::SyntaxHighlighter::HighlightLines(
+      cb.source, cb.language, context);
+
   for (size_t i = 0; i < code_lines.size(); ++i) {
     auto num_str = std::to_string(i + 1);
     auto padded_num =
         std::string(gutter_width - num_str.size(), ' ') + num_str + " ";
-    auto line_elem = syntax::SyntaxHighlighter::Highlight(code_lines[i],
-                                                          cb.language, context);
+    auto line_elem = i < highlighted.size() ? std::move(highlighted[i])
+                                            : ftxui::text(code_lines[i]);
 
     auto bg = (i % 2 == 1) ? odd_bg : even_bg;
     ftxui::Elements row_children = {

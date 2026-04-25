@@ -170,3 +170,84 @@ TEST_CASE("TokenizeLine falls back to plain tokens for unknown languages") {
   REQUIRE(spans[0].kind == TokenKind::Plain);
   REQUIRE(spans[0].text == "some code here");
 }
+
+TEST_CASE("TokenizeLine recognises function calls") {
+  auto spans = SyntaxHighlighter::TokenizeLine("compute(x);", "cpp");
+  REQUIRE(KindForText(spans, "compute") == TokenKind::FunctionCall);
+}
+
+TEST_CASE("TokenizeLine does not downgrade keywords to FunctionCall") {
+  auto spans = SyntaxHighlighter::TokenizeLine("if (cond) {}", "cpp");
+  REQUIRE(KindForText(spans, "if") == TokenKind::Keyword);
+}
+
+TEST_CASE("TokenizeLine emits whole-line Preprocessor for #include") {
+  auto spans = SyntaxHighlighter::TokenizeLine("#include <vector>", "cpp");
+  REQUIRE(spans.size() == 1);
+  REQUIRE(spans[0].kind == TokenKind::Preprocessor);
+}
+
+TEST_CASE("TokenizeLine emits Decorator for Python @decorator") {
+  auto spans = SyntaxHighlighter::TokenizeLine("@dataclass", "python");
+  REQUIRE(KindForText(spans, "@dataclass") == TokenKind::Decorator);
+}
+
+TEST_CASE("TokenizeLine emits Variable for Bash $VAR") {
+  auto spans = SyntaxHighlighter::TokenizeLine("echo $HOME", "bash");
+  REQUIRE(KindForText(spans, "$HOME") == TokenKind::Variable);
+}
+
+TEST_CASE("TokenizeLine emits Variable for Bash ${VAR}") {
+  auto spans = SyntaxHighlighter::TokenizeLine("echo ${HOME}/bin", "bash");
+  REQUIRE(KindForText(spans, "${HOME}") == TokenKind::Variable);
+}
+
+TEST_CASE("TokenizeLine recognises hex/binary/octal numbers") {
+  auto hex = SyntaxHighlighter::TokenizeLine("auto a = 0xFF;", "cpp");
+  REQUIRE(KindForText(hex, "0xFF") == TokenKind::Number);
+
+  auto bin = SyntaxHighlighter::TokenizeLine("auto b = 0b1010;", "cpp");
+  REQUIRE(KindForText(bin, "0b1010") == TokenKind::Number);
+
+  auto under = SyntaxHighlighter::TokenizeLine("x = 1_000_000", "python");
+  REQUIRE(KindForText(under, "1_000_000") == TokenKind::Number);
+
+  auto exp = SyntaxHighlighter::TokenizeLine("y = 3.14e-5", "python");
+  REQUIRE(KindForText(exp, "3.14e-5") == TokenKind::Number);
+}
+
+TEST_CASE("Language alias resolution: cc and hpp map to cpp") {
+  auto cc = SyntaxHighlighter::TokenizeLine("int x = 0;", "cc");
+  REQUIRE(KindForText(cc, "int") == TokenKind::Type);
+
+  auto hpp = SyntaxHighlighter::TokenizeLine("int x = 0;", "hpp");
+  REQUIRE(KindForText(hpp, "int") == TokenKind::Type);
+}
+
+TEST_CASE("TokenizeLine recognises TypeScript keywords") {
+  auto spans =
+      SyntaxHighlighter::TokenizeLine("interface Foo { x: number; }", "ts");
+  REQUIRE(KindForText(spans, "interface") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "number") == TokenKind::Keyword);
+}
+
+TEST_CASE("TokenizeLine recognises Go keywords and types") {
+  auto spans =
+      SyntaxHighlighter::TokenizeLine("func main() { var x int }", "go");
+  REQUIRE(KindForText(spans, "func") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "var") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "int") == TokenKind::Type);
+}
+
+TEST_CASE("TokenizeLine recognises JSON keywords") {
+  auto spans = SyntaxHighlighter::TokenizeLine("{ \"a\": null }", "json");
+  REQUIRE(KindForText(spans, "null") == TokenKind::Keyword);
+}
+
+TEST_CASE("TokenizeLine recognises Bash keywords") {
+  auto spans =
+      SyntaxHighlighter::TokenizeLine("if [ -z $x ]; then echo hi; fi", "bash");
+  REQUIRE(KindForText(spans, "if") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "then") == TokenKind::Keyword);
+  REQUIRE(KindForText(spans, "fi") == TokenKind::Keyword);
+}

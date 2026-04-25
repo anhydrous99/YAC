@@ -1,5 +1,9 @@
 #include "renderer.hpp"
 
+#include "../syntax/highlighter.hpp"
+#include "../syntax/internal/lexer.hpp"
+#include "../syntax/language_alias.hpp"
+#include "../syntax/language_registry.hpp"
 #include "../theme.hpp"
 #include "../ui_spacing.hpp"
 #include "../util/string_util.hpp"
@@ -7,7 +11,9 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -134,6 +140,35 @@ ftxui::Color DiagnosticSeverityColor(tool_data::DiagnosticSeverity severity,
 ftxui::Element RenderError(const std::string& error,
                            const theme::Theme& theme) {
   return RenderWrappedLine("Error: " + error, theme.tool.edit_remove);
+}
+
+// Renders one source line through the shared lexer, then tints it with the
+// given background. Falls back to a flat-foreground paragraph when the lexer
+// has no language to work with.
+ftxui::Element RenderHighlightedLine(syntax::internal::Lexer* lexer,
+                                     std::string_view content,
+                                     const RenderContext& ctx,
+                                     ftxui::Color fallback_fg,
+                                     ftxui::Color tint_bg, bool tint) {
+  if (lexer == nullptr) {
+    auto element =
+        ftxui::paragraph(std::string(content)) | ftxui::color(fallback_fg);
+    if (tint) {
+      element = element | ftxui::bgcolor(tint_bg);
+    }
+    return element | ftxui::flex;
+  }
+  auto spans = lexer->NextLine(content);
+  ftxui::Elements segments;
+  segments.reserve(spans.size());
+  for (const auto& span : spans) {
+    segments.push_back(syntax::internal::RenderToken(span, ctx));
+  }
+  auto row = segments.empty() ? ftxui::text("") : ftxui::hbox(segments);
+  if (tint) {
+    row = row | ftxui::bgcolor(tint_bg);
+  }
+  return row | ftxui::flex;
 }
 
 }  // namespace
@@ -332,27 +367,38 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
     content.push_back(ftxui::text("No diff lines") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
+    auto language = syntax::LanguageForExtension(call.filepath);
+    const auto* lang_def =
+        language.empty() ? nullptr : syntax::FindLanguage(language);
+    std::optional<syntax::internal::Lexer> lexer;
+    if (lang_def != nullptr) {
+      lexer.emplace(*lang_def);
+    }
+    auto* lexer_ptr = lexer.has_value() ? &*lexer : nullptr;
+
     for (const auto& line : call.diff) {
+      ftxui::Color gutter_fg = theme.tool.edit_context;
+      ftxui::Color fallback_fg = theme.tool.edit_context;
+      std::string gutter = std::string(layout::kCardPadX, ' ');
+      bool tint = false;
       if (line.type == tool_data::DiffLine::Add) {
-        content.push_back(ftxui::hbox({
-            ftxui::text("+ ") | ftxui::color(theme.tool.edit_add),
-            ftxui::paragraph(line.content) | ftxui::color(theme.tool.edit_add) |
-                ftxui::flex,
-        }));
+        gutter = "+ ";
+        gutter_fg = theme.tool.edit_add;
+        fallback_fg = theme.tool.edit_add;
+        tint = false;  // foreground tint already conveys add/remove
       } else if (line.type == tool_data::DiffLine::Remove) {
-        content.push_back(ftxui::hbox({
-            ftxui::text("- ") | ftxui::color(theme.tool.edit_remove),
-            ftxui::paragraph(line.content) |
-                ftxui::color(theme.tool.edit_remove) | ftxui::flex,
-        }));
-      } else {
-        content.push_back(ftxui::hbox({
-            ftxui::text(std::string(layout::kCardPadX, ' ')) |
-                ftxui::color(theme.tool.edit_context),
-            ftxui::paragraph(line.content) |
-                ftxui::color(theme.tool.edit_context) | ftxui::flex,
-        }));
+        gutter = "- ";
+        gutter_fg = theme.tool.edit_remove;
+        fallback_fg = theme.tool.edit_remove;
+        tint = false;
       }
+      auto body =
+          RenderHighlightedLine(lexer_ptr, line.content, context, fallback_fg,
+                                theme.tool.header_bg, tint);
+      content.push_back(ftxui::hbox({
+          ftxui::text(gutter) | ftxui::color(gutter_fg),
+          body,
+      }));
     }
   }
 
@@ -369,8 +415,17 @@ ftxui::Element ToolCallRenderer::RenderFileRead(
   content.push_back(RenderWrappedLine(
       std::to_string(call.lines_loaded) + " lines", theme.semantic.text_muted));
   if (!call.excerpt.empty()) {
-    content.push_back(
-        RenderWrappedLine(call.excerpt, theme.semantic.text_body));
+    auto language = syntax::LanguageForExtension(call.filepath);
+    if (!language.empty()) {
+      auto highlighted = syntax::SyntaxHighlighter::HighlightLines(
+          call.excerpt, language, context);
+      for (auto& line : highlighted) {
+        content.push_back(std::move(line));
+      }
+    } else {
+      content.push_back(
+          RenderWrappedLine(call.excerpt, theme.semantic.text_body));
+    }
   }
 
   return RenderContainer("◆", "read", theme.tool.read_accent,
@@ -397,21 +452,41 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
     content.push_back(ftxui::text("Preview:") |
                       ftxui::color(theme.semantic.text_muted));
     const auto lines = util::SplitLines(call.content_preview);
+    auto language = syntax::LanguageForExtension(call.filepath);
+    const auto* lang_def =
+        language.empty() ? nullptr : syntax::FindLanguage(language);
+    std::optional<syntax::internal::Lexer> lexer;
+    if (lang_def != nullptr) {
+      lexer.emplace(*lang_def);
+    }
+    auto* lexer_ptr = lexer.has_value() ? &*lexer : nullptr;
+
+    auto render_at = [&](size_t index) -> ftxui::Element {
+      return RenderHighlightedLine(lexer_ptr, lines[index], context,
+                                   theme.semantic.text_body,
+                                   theme.tool.header_bg, false);
+    };
+
     if (call.is_streaming && lines.size() > kMaxPreviewRows) {
       const auto omitted = lines.size() - kMaxPreviewRows;
       content.push_back(
           ftxui::text("… " + std::to_string(omitted) + " earlier lines") |
           ftxui::color(theme.semantic.text_muted));
+      // Skipped lines still need to advance the lexer state so block-comment
+      // / multiline-string carry-over picks up correctly on the visible part.
+      if (lexer_ptr != nullptr) {
+        for (size_t skip = 0; skip < lines.size() - kMaxPreviewRows; ++skip) {
+          (void)lexer_ptr->NextLine(lines[skip]);
+        }
+      }
       for (auto index = lines.size() - kMaxPreviewRows; index < lines.size();
            ++index) {
-        content.push_back(
-            RenderWrappedLine(lines[index], theme.semantic.text_body));
+        content.push_back(render_at(index));
       }
     } else {
       const auto limit = std::min(lines.size(), kMaxPreviewRows);
       for (size_t index = 0; index < limit; ++index) {
-        content.push_back(
-            RenderWrappedLine(lines[index], theme.semantic.text_body));
+        content.push_back(render_at(index));
       }
       AddOmittedRows(content, lines.size(), theme);
     }
