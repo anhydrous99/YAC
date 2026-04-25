@@ -56,14 +56,33 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
        .description = "Ask the user a question and wait for their response.",
        .parameters_schema_json =
            R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
-      {.name = std::string(kBashToolName),
-       .description =
-           "Execute a shell command in the workspace directory. stdout and "
-           "stderr are merged. Output is capped at 16 KB. Every call requires "
-           "user approval before execution.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})json"},
-  };
+       {.name = std::string(kBashToolName),
+        .description =
+            "Execute a shell command in the workspace directory. stdout and "
+            "stderr are merged. Output is capped at 16 KB. Every call requires "
+            "user approval before execution.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})json"},
+       {.name = std::string(kFileEditToolName),
+        .description =
+            "Edit a file by replacing an exact string. old_string must match "
+            "exactly once (whitespace-tolerant fallbacks applied). Use "
+            "replace_all to replace all occurrences.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})"},
+       {.name = std::string(kGrepToolName),
+        .description =
+            "Search for a regex pattern in workspace files using ripgrep. "
+            "Respects .gitignore by default. Requires ripgrep (rg) in PATH.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})"},
+       {.name = std::string(kGlobToolName),
+        .description =
+            "Find files matching a glob pattern. Supports **, *, ?. "
+            "Respects .gitignore by default. Results sorted by mtime descending.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})"},
+   };
 }
 
 PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
@@ -192,9 +211,37 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
         preview += "...";
       }
       return PreparedToolCall{.request = request,
-                              .preview = BashCall{.command = command},
+                               .preview = BashCall{.command = command},
+                               .requires_approval = true,
+                               .approval_prompt = "Execute: " + preview};
+    }
+    if (request.name == kFileEditToolName) {
+      const auto filepath = RequireString(args, "filepath");
+      const auto old_string = RequireString(args, "old_string");
+      const auto new_string = RequireString(args, "new_string");
+      std::string preview = "Edit " + filepath + ": replace \"";
+      preview += old_string.size() > 40 ? old_string.substr(0, 40) + "..."
+                                        : old_string;
+      preview += "\" -> \"";
+      preview += new_string.size() > 40 ? new_string.substr(0, 40) + "..."
+                                        : new_string;
+      preview += "\"";
+      return PreparedToolCall{.request = request,
+                              .preview = FileEditCall{.filepath = filepath},
                               .requires_approval = true,
-                              .approval_prompt = "Execute: " + preview};
+                              .approval_prompt = std::move(preview)};
+    }
+    if (request.name == kGrepToolName) {
+      const auto pattern = RequireString(args, "pattern");
+      return PreparedToolCall{.request = request,
+                              .preview = GrepCall{.pattern = pattern},
+                              .requires_approval = false};
+    }
+    if (request.name == kGlobToolName) {
+      const auto pattern = RequireString(args, "pattern");
+      return PreparedToolCall{.request = request,
+                              .preview = GlobCall{.pattern = pattern},
+                              .requires_approval = false};
     }
     return PreparedToolCall{
         .request = request,
