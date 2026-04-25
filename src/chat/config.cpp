@@ -9,6 +9,7 @@
 #include <exception>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <unordered_map>
@@ -34,6 +35,20 @@ double ParseTemperature(const std::string& value) {
     throw std::out_of_range("YAC_TEMPERATURE must be between 0.0 and 2.0");
   }
   return temp;
+}
+
+int ParseToolRoundLimit(const std::string& value) {
+  size_t consumed = 0;
+  const int rounds = std::stoi(value, &consumed);
+  if (consumed != value.size()) {
+    throw std::invalid_argument("YAC_MAX_TOOL_ROUNDS must be an integer");
+  }
+  if (rounds < kMinToolRoundLimit || rounds > kMaxToolRoundLimit) {
+    throw std::out_of_range("YAC_MAX_TOOL_ROUNDS must be between " +
+                            std::to_string(kMinToolRoundLimit) + " and " +
+                            std::to_string(kMaxToolRoundLimit));
+  }
+  return rounds;
 }
 
 std::vector<std::string> SplitArgs(const std::string& value) {
@@ -108,6 +123,16 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_TEMPERATURE",
+                        .detail = error.what()});
+    }
+  }
+  if (auto val = GetEnv("YAC_MAX_TOOL_ROUNDS")) {
+    try {
+      config.max_tool_rounds = ParseToolRoundLimit(*val);
+      fields.max_tool_rounds = true;
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_MAX_TOOL_ROUNDS",
                         .detail = error.what()});
     }
   }

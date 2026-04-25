@@ -12,6 +12,7 @@
 # path is the default and keeps your key out of a plaintext file in $HOME.
 
 temperature = 0.7
+max_tool_rounds = 32                    # sequential tool rounds per response
 # system_prompt = "You are a helpful assistant."
 # workspace_root = "/path/to/workspace"   # defaults to the launch directory
 

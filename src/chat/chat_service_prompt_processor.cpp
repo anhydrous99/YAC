@@ -2,14 +2,14 @@
 
 #include "chat/chat_service_history.hpp"
 
+#include <algorithm>
+#include <string>
 #include <unordered_map>
 #include <utility>
 
 namespace yac::chat::internal {
 
 namespace {
-
-constexpr int kMaxToolRounds = 8;
 
 std::string ToolRejectedJson() {
   return R"({"error":"User rejected tool execution."})";
@@ -84,9 +84,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
   bool assistant_error = false;
   // Hoisted so the post-loop check can inspect the final iteration's value:
   // non-empty after the loop exits means the model still wanted to call tools
-  // when we hit the kMaxToolRounds cap.
+  // when we hit the configured tool-round cap.
   std::vector<ToolCallRequest> requested_tools;
-  for (int round = 0; round < kMaxToolRounds; ++round) {
+  const int max_tool_rounds =
+      std::max(kMinToolRoundLimit, request_builder.Config().max_tool_rounds);
+  for (int round = 0; round < max_tool_rounds; ++round) {
     std::string round_text;
     requested_tools.clear();
     std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
@@ -172,10 +174,13 @@ void ChatServicePromptProcessor::ProcessPrompt(
   }
 
   if (!requested_tools.empty()) {
-    emit_event_(ChatEvent{ErrorEvent{.message_id = assistant_id,
-                                     .role = ChatRole::Assistant,
-                                     .text = "Tool round limit reached.",
-                                     .status = ChatMessageStatus::Error}});
+    emit_event_(ChatEvent{
+        ErrorEvent{.message_id = assistant_id,
+                   .role = ChatRole::Assistant,
+                   .text = "Tool round limit reached after " +
+                           std::to_string(max_tool_rounds) +
+                           (max_tool_rounds == 1 ? " round." : " rounds."),
+                   .status = ChatMessageStatus::Error}});
     emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
     return;
   }

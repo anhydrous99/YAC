@@ -18,6 +18,7 @@ using yac::chat::ChatConfig;
 using yac::chat::ConfigIssue;
 using yac::chat::ConfigIssueSeverity;
 using yac::chat::kDefaultSettingsToml;
+using yac::chat::kDefaultToolRoundLimit;
 using yac::chat::LoadSettingsFromToml;
 using yac::chat::WriteDefaultSettingsToml;
 
@@ -63,6 +64,7 @@ TEST_CASE("LoadSettingsFromToml overlays explicit values") {
   TempFile file("yac_test_settings_full.toml");
   WriteFile(file.Path(),
             "temperature = 1.2\n"
+            "max_tool_rounds = 48\n"
             "system_prompt = \"hi\"\n"
             "\n"
             "[provider]\n"
@@ -79,10 +81,12 @@ TEST_CASE("LoadSettingsFromToml overlays explicit values") {
   REQUIRE(fields.provider_id);
   REQUIRE(fields.model);
   REQUIRE(fields.temperature);
+  REQUIRE(fields.max_tool_rounds);
   REQUIRE(fields.lsp_clangd_args);
   REQUIRE(config.provider_id == "zai");
   REQUIRE(config.model == "glm-custom");
   REQUIRE(config.temperature == 1.2);
+  REQUIRE(config.max_tool_rounds == 48);
   REQUIRE(config.system_prompt == std::string{"hi"});
   REQUIRE(config.lsp_clangd_command == "/usr/bin/clangd-18");
   REQUIRE(config.lsp_clangd_args ==
@@ -99,6 +103,7 @@ TEST_CASE("LoadSettingsFromToml keeps defaults for absent fields") {
   REQUIRE(fields.temperature);
   REQUIRE_FALSE(fields.provider_id);
   REQUIRE(config.temperature == 0.3);
+  REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
   REQUIRE(config.provider_id == "openai");
   REQUIRE(config.model == "gpt-4o-mini");
 }
@@ -179,6 +184,19 @@ TEST_CASE("LoadSettingsFromToml rejects out-of-range temperature") {
   REQUIRE(config.temperature == 0.7);
 }
 
+TEST_CASE("LoadSettingsFromToml rejects out-of-range max_tool_rounds") {
+  TempFile file("yac_test_settings_tool_rounds_range.toml");
+  WriteFile(file.Path(), "max_tool_rounds = 0\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("max_tool_rounds") != std::string::npos;
+  }));
+  REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
+}
+
 TEST_CASE("WriteDefaultSettingsToml round-trips to the default ChatConfig") {
   const auto dir =
       std::filesystem::temp_directory_path() / "yac_test_settings_roundtrip";
@@ -196,12 +214,14 @@ TEST_CASE("WriteDefaultSettingsToml round-trips to the default ChatConfig") {
   auto fields = LoadSettingsFromToml(path, loaded, load_issues);
   REQUIRE(load_issues.empty());
   REQUIRE(fields.temperature);
+  REQUIRE(fields.max_tool_rounds);
   REQUIRE(fields.provider_id);
   REQUIRE(loaded.provider_id == expected.provider_id);
   REQUIRE(loaded.model == expected.model);
   REQUIRE(loaded.base_url == expected.base_url);
   REQUIRE(loaded.api_key_env == expected.api_key_env);
   REQUIRE(loaded.temperature == expected.temperature);
+  REQUIRE(loaded.max_tool_rounds == expected.max_tool_rounds);
   REQUIRE(loaded.lsp_clangd_command == expected.lsp_clangd_command);
   REQUIRE(loaded.lsp_clangd_args == expected.lsp_clangd_args);
 

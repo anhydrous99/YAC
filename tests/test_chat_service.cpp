@@ -32,6 +32,7 @@ class ScopedEnvClear {
                                          "YAC_MODEL",
                                          "YAC_BASE_URL",
                                          "YAC_TEMPERATURE",
+                                         "YAC_MAX_TOOL_ROUNDS",
                                          "YAC_API_KEY_ENV",
                                          "YAC_SYSTEM_PROMPT",
                                          "YAC_WORKSPACE_ROOT",
@@ -501,20 +502,21 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
   config.provider_id = "infinite-tools";
   config.model = "fake-model";
   config.workspace_root = root.string();
+  config.max_tool_rounds = 3;
   auto service = MakeService(provider, config);
 
   const auto events = CollectEvents(service, "go");
 
-  // kMaxToolRounds = 8: when the model never stops requesting tools, the
-  // service should run exactly 8 completions + 8 tool rounds, then surface
+  // When the model never stops requesting tools, the service should run
+  // exactly the configured number of completions + tool rounds, then surface
   // a single "Tool round limit reached" error.
-  REQUIRE(provider->CallCount() == 8);
+  REQUIRE(provider->CallCount() == config.max_tool_rounds);
 
   const auto tool_done_count =
       std::count_if(events.begin(), events.end(), [](const ChatEvent& e) {
         return e.Type() == ChatEventType::ToolCallDone;
       });
-  REQUIRE(tool_done_count == 8);
+  REQUIRE(tool_done_count == config.max_tool_rounds);
 
   REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
 
@@ -525,6 +527,7 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
   const auto* err = error_it->As<ErrorEvent>();
   REQUIRE(err != nullptr);
   REQUIRE(err->text.find("Tool round limit reached") != std::string::npos);
+  REQUIRE(err->text.find("3 rounds") != std::string::npos);
 
   std::filesystem::remove_all(root);
 }
@@ -968,6 +971,7 @@ TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
   REQUIRE(config.provider_id == "openai");
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
+  REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
   REQUIRE_FALSE(config.system_prompt.has_value());
 }
 
@@ -1080,6 +1084,7 @@ TEST_CASE("settings.toml values are read end-to-end") {
   ScopedSettingsFile settings("yac_test_cfg_full.toml");
   settings.Write(
       "temperature = 1.5\n"
+      "max_tool_rounds = 44\n"
       "system_prompt = \"TOML system prompt\"\n"
       "\n"
       "[provider]\n"
@@ -1097,6 +1102,7 @@ TEST_CASE("settings.toml values are read end-to-end") {
   REQUIRE(config.model == "custom-model");
   REQUIRE(config.base_url == "https://example.com/v1/");
   REQUIRE(config.temperature == 1.5);
+  REQUIRE(config.max_tool_rounds == 44);
   REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_FILE");
   REQUIRE(config.api_key == "toml-api-key");
   REQUIRE(config.system_prompt == std::string{"TOML system prompt"});
@@ -1118,6 +1124,7 @@ TEST_CASE("YAC_* env vars override settings.toml values") {
   setenv("YAC_PROVIDER", "env-provider", 1);
   setenv("YAC_MODEL", "env-model", 1);
   setenv("YAC_TEMPERATURE", "0.8", 1);
+  setenv("YAC_MAX_TOOL_ROUNDS", "12", 1);
   setenv("YAC_TEST_API_KEY_OVERRIDE", "env-api-key", 1);
 
   auto config =
@@ -1127,13 +1134,32 @@ TEST_CASE("YAC_* env vars override settings.toml values") {
   REQUIRE(config.provider_id == "env-provider");
   REQUIRE(config.model == "env-model");
   REQUIRE(config.temperature == 0.8);
+  REQUIRE(config.max_tool_rounds == 12);
   REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_OVERRIDE");
   REQUIRE(config.api_key == "env-api-key");
 
   unsetenv("YAC_PROVIDER");
   unsetenv("YAC_MODEL");
   unsetenv("YAC_TEMPERATURE");
+  unsetenv("YAC_MAX_TOOL_ROUNDS");
   unsetenv("YAC_TEST_API_KEY_OVERRIDE");
+}
+
+TEST_CASE("YAC_MAX_TOOL_ROUNDS env var reports invalid values") {
+  ScopedEnvClear env_guard;
+  ScopedSettingsFile settings("yac_test_cfg_bad_tool_rounds_env.toml");
+  setenv("YAC_MAX_TOOL_ROUNDS", "0", 1);
+
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
+
+  REQUIRE(result.config.max_tool_rounds == kDefaultToolRoundLimit);
+  REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message == "Invalid YAC_MAX_TOOL_ROUNDS";
+  }));
+
+  unsetenv("YAC_MAX_TOOL_ROUNDS");
 }
 
 TEST_CASE(

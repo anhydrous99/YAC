@@ -70,10 +70,10 @@ void ChatEventBridge::Handle(chat::ErrorEvent event) {
   using yac::chat::ChatMessageStatus;
   auto& chat_ui = chat_ui_.get();
   chat_ui.SetTyping(false);
-  chat_ui.SetTransientStatus(
-      presentation::UiNotice{.severity = presentation::UiSeverity::Error,
-                             .title = "Provider error",
-                             .detail = event.text});
+  chat_ui.SetTransientStatus(presentation::UiNotice{
+      .severity = presentation::UiSeverity::Error,
+      .title = event.provider_id.empty() ? "YAC error" : "Provider error",
+      .detail = event.text});
   if (!chat_ui.HasMessage(event.message_id)) {
     chat_ui.AddMessageWithId(event.message_id, SenderForRole(event.role),
                              "Error: " + event.text, ChatMessageStatus::Error);

@@ -16,6 +16,10 @@
 
 namespace yac::chat {
 
+inline constexpr int kDefaultToolRoundLimit = 32;
+inline constexpr int kMinToolRoundLimit = 1;
+inline constexpr int kMaxToolRoundLimit = 256;
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;
@@ -357,6 +361,7 @@ struct ChatConfig {
   std::string workspace_root;
   std::string lsp_clangd_command = "clangd";
   std::vector<std::string> lsp_clangd_args;
+  int max_tool_rounds = kDefaultToolRoundLimit;
   std::optional<std::string> system_prompt;
   AgentMode agent_mode{AgentMode::Build};
   bool sync_terminal_background = true;

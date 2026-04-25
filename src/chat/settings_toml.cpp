@@ -79,6 +79,29 @@ bool ApplyTemperature(const toml::node_view<toml::node>& node, double& target,
   return true;
 }
 
+bool ApplyIntegerField(const toml::node_view<toml::node>& node,
+                       const std::string& key, int min_value, int max_value,
+                       int& target, std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  auto* value = node.as_integer();
+  if (value == nullptr) {
+    AddError(issues, "Invalid type for " + key + " in settings.toml",
+             "Expected an integer.");
+    return false;
+  }
+  const auto parsed = value->get();
+  if (parsed < min_value || parsed > max_value) {
+    AddError(issues, "Invalid " + key + " in settings.toml",
+             "Value must be between " + std::to_string(min_value) + " and " +
+                 std::to_string(max_value) + ".");
+    return false;
+  }
+  target = static_cast<int>(parsed);
+  return true;
+}
+
 bool ApplyBoolField(const toml::node_view<toml::node>& node,
                     const std::string& key, bool& target,
                     std::vector<ConfigIssue>& issues) {
@@ -146,6 +169,9 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
 
   fields.temperature =
       ApplyTemperature(table["temperature"], config.temperature, issues);
+  fields.max_tool_rounds = ApplyIntegerField(
+      table["max_tool_rounds"], "max_tool_rounds", kMinToolRoundLimit,
+      kMaxToolRoundLimit, config.max_tool_rounds, issues);
 
   if (auto* system_prompt = table["system_prompt"].as_string()) {
     config.system_prompt = system_prompt->get();
