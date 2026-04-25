@@ -38,10 +38,10 @@ command = "clangd"
 args    = []
 
 [theme]
-# Active theme preset. Built-in: "opencode" (default), "catppuccin",
-# "system". The "system" theme uses terminal default colors and
+# Active theme preset. Built-in: "vivid" (default), "system".
+# The "system" theme uses terminal default colors and
 # disables OSC 11 background sync.
-name = "opencode"
+name = "vivid"
 
 # Theme density: "comfortable" (default, normal spacing) or "compact"
 # (tighter layout).

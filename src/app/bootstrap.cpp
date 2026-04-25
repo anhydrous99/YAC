@@ -510,7 +510,7 @@ int RunApp() {
       config_result.issues.push_back(
           {.severity = chat::ConfigIssueSeverity::Warning,
            .message = "Unknown theme: '" + config.theme_name + "'",
-           .detail = "Falling back to default theme 'opencode'."});
+           .detail = "Falling back to default theme 'vivid'."});
     }
     if (config.theme_density == "compact") {
       theme.density = presentation::theme::ThemeDensity::Compact;

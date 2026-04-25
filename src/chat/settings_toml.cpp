@@ -496,8 +496,8 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
       fields.theme_name = true;
       if (config.theme_name.empty()) {
         AddWarning(issues, "theme.name is empty in settings.toml",
-                   "Falling back to default theme 'opencode'.");
-        config.theme_name = "opencode";
+                   "Falling back to default theme 'vivid'.");
+        config.theme_name = "vivid";
         fields.theme_name = false;
       }
     }

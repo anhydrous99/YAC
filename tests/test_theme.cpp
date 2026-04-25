@@ -19,7 +19,7 @@ bool ColorsEqual(const ftxui::Color& a, const ftxui::Color& b) {
 }  // namespace
 
 TEST_CASE("GetTheme returns fully populated Theme") {
-  const std::string name = GENERATE("opencode", "catppuccin", "system");
+  const std::string name = GENERATE("vivid", "system");
   const auto t = GetTheme(name);
 
   REQUIRE(t.name == name);
@@ -58,25 +58,25 @@ TEST_CASE("GetTheme returns fully populated Theme") {
   REQUIRE_FALSE(ColorsEqual(t.cards.agent_bg, ftxui::Color()));
 }
 
-TEST_CASE("CatppuccinPreset canvas_bg matches stored RGB tuple") {
-  auto t = CatppuccinPreset();
+TEST_CASE("VividPreset canvas_bg matches stored RGB tuple") {
+  auto t = VividPreset();
   auto expected =
       ftxui::Color::RGB(t.chrome.canvas_bg_rgb.r, t.chrome.canvas_bg_rgb.g,
                         t.chrome.canvas_bg_rgb.b);
-  REQUIRE(t.chrome.canvas_bg_rgb.r == 17);
-  REQUIRE(t.chrome.canvas_bg_rgb.g == 17);
-  REQUIRE(t.chrome.canvas_bg_rgb.b == 27);
+  REQUIRE(t.chrome.canvas_bg_rgb.r == 10);
+  REQUIRE(t.chrome.canvas_bg_rgb.g == 10);
+  REQUIRE(t.chrome.canvas_bg_rgb.b == 18);
   REQUIRE(ColorsEqual(t.chrome.canvas_bg, expected));
 }
 
 TEST_CASE("InitializeTheme + CurrentTheme round-trip") {
   testing::ResetThemeForTesting();
 
-  InitializeTheme(GetTheme("opencode"));
-  REQUIRE(CurrentTheme().name == "opencode");
+  InitializeTheme(GetTheme("vivid"));
+  REQUIRE(CurrentTheme().name == "vivid");
 
-  REQUIRE_NOTHROW(InitializeTheme(GetTheme("opencode")));
-  REQUIRE(CurrentTheme().name == "opencode");
+  REQUIRE_NOTHROW(InitializeTheme(GetTheme("vivid")));
+  REQUIRE(CurrentTheme().name == "vivid");
 }
 
 TEST_CASE("CurrentTheme lazy default before InitializeTheme") {
@@ -89,8 +89,8 @@ TEST_CASE("CurrentTheme lazy default before InitializeTheme") {
 TEST_CASE("InitializeTheme rejects different theme after init") {
   testing::ResetThemeForTesting();
 
-  InitializeTheme(GetTheme("opencode"));
-  REQUIRE_THROWS_AS(InitializeTheme(GetTheme("catppuccin")), std::logic_error);
+  InitializeTheme(GetTheme("vivid"));
+  REQUIRE_THROWS_AS(InitializeTheme(GetTheme("system")), std::logic_error);
 }
 
 TEST_CASE("Theme Instance returns consistent reference") {
@@ -99,11 +99,11 @@ TEST_CASE("Theme Instance returns consistent reference") {
   REQUIRE(&a == &b);
 }
 
-TEST_CASE("Theme Instance matches CatppuccinPreset values") {
+TEST_CASE("Theme Instance matches VividPreset values") {
   testing::ResetThemeForTesting();
 
   const auto& instance = CurrentTheme();
-  auto preset = GetTheme("catppuccin");
+  auto preset = GetTheme("vivid");
 
   REQUIRE(ColorsEqual(instance.role.user, preset.role.user));
   REQUIRE(ColorsEqual(instance.role.agent, preset.role.agent));
@@ -111,7 +111,7 @@ TEST_CASE("Theme Instance matches CatppuccinPreset values") {
 }
 
 TEST_CASE("GetTheme role colors are distinct") {
-  const std::string name = GENERATE("opencode", "catppuccin", "system");
+  const std::string name = GENERATE("vivid", "system");
   auto t = GetTheme(name);
 
   if (name == "system") {

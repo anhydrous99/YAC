@@ -17,12 +17,10 @@ void ResetThemeState() {
 TEST_CASE("Registry returns registered themes") {
   ResetThemeState();
 
-  REQUIRE(yac::presentation::theme::ListThemes().size() >= 3);
-  const auto opencode = yac::presentation::theme::GetTheme("opencode");
-  const auto catppuccin = yac::presentation::theme::GetTheme("catppuccin");
+  REQUIRE(yac::presentation::theme::ListThemes().size() >= 2);
+  const auto vivid = yac::presentation::theme::GetTheme("vivid");
   const auto system = yac::presentation::theme::GetTheme("system");
-  REQUIRE_FALSE(opencode.name.empty());
-  REQUIRE_FALSE(catppuccin.name.empty());
+  REQUIRE_FALSE(vivid.name.empty());
   REQUIRE_FALSE(system.name.empty());
 }
 
@@ -37,29 +35,25 @@ TEST_CASE("ListThemes returns all built-in presets") {
   ResetThemeState();
 
   const auto names = yac::presentation::theme::ListThemes();
-  REQUIRE(names.size() >= 3);
+  REQUIRE(names.size() >= 2);
 
-  bool has_opencode = false;
-  bool has_catppuccin = false;
+  bool has_vivid = false;
   bool has_system = false;
   // NOLINTNEXTLINE(modernize-loop-convert)
   for (std::size_t i = 0; i < names.size(); ++i) {
     const auto& n = names[i];
-    has_opencode = has_opencode || n == "opencode";
-    has_catppuccin = has_catppuccin || n == "catppuccin";
+    has_vivid = has_vivid || n == "vivid";
     has_system = has_system || n == "system";
   }
-  REQUIRE(has_opencode);
-  REQUIRE(has_catppuccin);
+  REQUIRE(has_vivid);
   REQUIRE(has_system);
 }
 
 TEST_CASE("RegisterTheme adds a custom factory") {
   ResetThemeState();
 
-  yac::presentation::theme::RegisterTheme("custom-test", []() {
-    return yac::presentation::theme::CatppuccinPreset();
-  });
+  yac::presentation::theme::RegisterTheme(
+      "custom-test", []() { return yac::presentation::theme::VividPreset(); });
   const auto t = yac::presentation::theme::GetTheme("custom-test");
   REQUIRE_FALSE(t.name.empty());
 }
@@ -67,9 +61,9 @@ TEST_CASE("RegisterTheme adds a custom factory") {
 TEST_CASE("ReinitializeTheme replaces active theme") {
   yac::presentation::theme::testing::ResetThemeForTesting();
   yac::presentation::theme::InitializeTheme(
-      yac::presentation::theme::GetTheme("opencode"));
-  REQUIRE(yac::presentation::theme::CurrentTheme().name == "opencode");
+      yac::presentation::theme::GetTheme("vivid"));
+  REQUIRE(yac::presentation::theme::CurrentTheme().name == "vivid");
   yac::presentation::theme::ReinitializeTheme(
-      yac::presentation::theme::GetTheme("catppuccin"));
-  REQUIRE(yac::presentation::theme::CurrentTheme().name == "catppuccin");
+      yac::presentation::theme::GetTheme("system"));
+  REQUIRE(yac::presentation::theme::CurrentTheme().name == "system");
 }

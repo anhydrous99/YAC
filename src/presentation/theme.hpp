@@ -27,7 +27,7 @@ void InitializeTheme(Theme value);
 // Unlike InitializeTheme, does not throw if name differs.
 void ReinitializeTheme(Theme value);
 
-// Returns the active theme. Lazily initializes to CatppuccinPreset()
+// Returns the active theme. Lazily initializes to VividPreset()
 // if InitializeTheme has not been called yet.
 [[nodiscard]] const Theme& CurrentTheme();
 
@@ -148,8 +148,7 @@ struct Theme {
   SubAgentColors sub_agent;
 };
 
-[[nodiscard]] Theme CatppuccinPreset();
-[[nodiscard]] Theme OpenCodePreset();
+[[nodiscard]] Theme VividPreset();
 [[nodiscard]] Theme SystemPreset();
 
 }  // namespace yac::presentation::theme

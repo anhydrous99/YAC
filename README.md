@@ -50,8 +50,8 @@ The SVG previews show the current chat surface and command palette.
   task, and quit commands
 - User-defined predefined prompt commands loaded from `~/.yac/prompts/*.toml`,
   with seeded `/init` and `/review` prompts
-- Selectable theme presets (`opencode`, `catppuccin`, `system`) with a calm,
-  focused visual language built around semantic color roles
+- Selectable theme presets (`vivid`, `system`) with a bright, high-saturation
+  visual language built around semantic color roles
 
 ## Quick Start
 
@@ -124,7 +124,7 @@ args    = []
 | `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
 | `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
 | `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
-| `theme.name` | `YAC_THEME_NAME` | `"opencode"` | Active theme preset (`opencode`, `catppuccin`, `system`) |
+| `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
 | `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
 
 Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
