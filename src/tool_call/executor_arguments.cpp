@@ -32,4 +32,12 @@ std::string OptionalString(const Json& args, const std::string& key) {
   return args[key].get<std::string>();
 }
 
+bool OptionalBool(const Json& args, const std::string& key,
+                  bool default_value) {
+  if (!args.contains(key) || !args[key].is_boolean()) {
+    return default_value;
+  }
+  return args[key].get<bool>();
+}
+
 }  // namespace yac::tool_call

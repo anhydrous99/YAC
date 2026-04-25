@@ -326,8 +326,9 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
   ftxui::Elements content;
   content.push_back(ftxui::text(call.filepath) |
                     ftxui::color(theme.semantic.text_strong));
-
-  if (call.diff.empty()) {
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.diff.empty()) {
     content.push_back(ftxui::text("No diff lines") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
@@ -465,16 +466,20 @@ ftxui::Element ToolCallRenderer::RenderGrep(const tool_data::GrepCall& call,
   ftxui::Elements content;
   content.push_back(ftxui::text(call.pattern) |
                     ftxui::color(theme.semantic.text_strong));
-  content.push_back(
-      RenderWrappedLine(std::to_string(call.match_count) + " matches",
-                        theme.semantic.text_muted));
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else {
+    content.push_back(
+        RenderWrappedLine(std::to_string(call.match_count) + " matches",
+                          theme.semantic.text_muted));
 
-  for (const auto& match : call.matches) {
-    content.push_back(
-        RenderWrappedLine(match.filepath + ":" + std::to_string(match.line),
-                          theme.semantic.text_body));
-    content.push_back(
-        RenderWrappedLine(match.content, theme.semantic.text_muted));
+    for (const auto& match : call.matches) {
+      content.push_back(
+          RenderWrappedLine(match.filepath + ":" + std::to_string(match.line),
+                            theme.semantic.text_body));
+      content.push_back(
+          RenderWrappedLine(match.content, theme.semantic.text_muted));
+    }
   }
 
   return RenderContainer("⊕", "grep", theme.tool.grep_accent,
@@ -487,8 +492,9 @@ ftxui::Element ToolCallRenderer::RenderGlob(const tool_data::GlobCall& call,
   ftxui::Elements content;
   content.push_back(ftxui::text(call.pattern) |
                     ftxui::color(theme.semantic.text_strong));
-
-  if (call.matched_files.empty()) {
+  if (call.is_error) {
+    content.push_back(RenderError(call.error, theme));
+  } else if (call.matched_files.empty()) {
     content.push_back(ftxui::text("No matches") |
                       ftxui::color(theme.semantic.text_muted));
   } else {

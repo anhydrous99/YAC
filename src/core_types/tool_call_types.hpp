@@ -21,6 +21,9 @@ inline constexpr std::string_view kSubAgentToolName = "sub_agent";
 inline constexpr std::string_view kTodoWriteToolName = "todo_write";
 inline constexpr std::string_view kAskUserToolName = "ask_user";
 inline constexpr std::string_view kBashToolName = "bash";
+inline constexpr std::string_view kFileEditToolName = "file_edit";
+inline constexpr std::string_view kGrepToolName = "grep";
+inline constexpr std::string_view kGlobToolName = "glob";
 
 struct DiffLine {
   enum Type { Add, Remove, Context };
@@ -88,6 +91,8 @@ struct BashCall {
 struct FileEditCall {
   std::string filepath;
   std::vector<DiffLine> diff;
+  bool is_error{};
+  std::string error;
 };
 
 struct FileReadCall {
@@ -119,11 +124,15 @@ struct GrepCall {
   std::string pattern;
   int match_count{};
   std::vector<GrepMatch> matches;
+  bool is_error{};
+  std::string error;
 };
 
 struct GlobCall {
   std::string pattern;
   std::vector<std::string> matched_files;
+  bool is_error{};
+  std::string error;
 };
 
 struct WebFetchCall {

@@ -1,8 +1,31 @@
 #include "chat/tool_call_argument_parser.hpp"
+#include "tool_call/executor_arguments.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 using yac::chat::ExtractStringFieldPartial;
+using yac::tool_call::OptionalBool;
+
+TEST_CASE("OptionalBool returns default when key missing") {
+  REQUIRE(OptionalBool({}, "replace_all", true));
+  REQUIRE_FALSE(OptionalBool({}, "replace_all", false));
+}
+
+TEST_CASE("OptionalBool returns true when present true") {
+  const auto args = yac::tool_call::Json::parse(R"({"replace_all":true})");
+  REQUIRE(OptionalBool(args, "replace_all", false));
+}
+
+TEST_CASE("OptionalBool returns false when present false") {
+  const auto args = yac::tool_call::Json::parse(R"({"replace_all":false})");
+  REQUIRE_FALSE(OptionalBool(args, "replace_all", true));
+}
+
+TEST_CASE("OptionalBool returns default for non-bool") {
+  const auto args = yac::tool_call::Json::parse(R"({"replace_all":"true"})");
+  REQUIRE(OptionalBool(args, "replace_all", true));
+  REQUIRE_FALSE(OptionalBool(args, "replace_all", false));
+}
 
 TEST_CASE("ExtractStringFieldPartial returns nullopt when key missing") {
   REQUIRE_FALSE(

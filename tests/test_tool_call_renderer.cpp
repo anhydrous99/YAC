@@ -77,6 +77,18 @@ TEST_CASE("ToolCallRenderer renders empty file edit at narrow width") {
       output, Catch::Matchers::ContainsSubstring("src/presentation/tool_call"));
 }
 
+TEST_CASE("ToolCallRenderer renders file edit errors") {
+  FileEditCall call{"src/main.cpp", {}};
+  call.is_error = true;
+  call.error = "some error message";
+
+  auto output = RenderToString(call, 80, 8);
+
+  REQUIRE_FALSE(output.empty());
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Error: some error"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("src/main.cpp"));
+}
+
 TEST_CASE("ToolCallRenderer renders file read details") {
   FileReadCall call{"README.md", 12, "Yet Another Chat"};
 
@@ -154,6 +166,18 @@ TEST_CASE("ToolCallRenderer renders empty grep at narrow width") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("0 matches"));
 }
 
+TEST_CASE("ToolCallRenderer renders grep errors") {
+  GrepCall call{"needle", 0, {}};
+  call.is_error = true;
+  call.error = "some error message";
+
+  auto output = RenderToString(call, 80, 8);
+
+  REQUIRE_FALSE(output.empty());
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Error: some error"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("needle"));
+}
+
 TEST_CASE("ToolCallRenderer renders glob details") {
   GlobCall call{"src/**/*.cpp",
                 {"src/main.cpp", "src/presentation/message_renderer.cpp"}};
@@ -174,6 +198,18 @@ TEST_CASE("ToolCallRenderer renders empty glob at narrow width") {
   auto output = RenderToString(call, 40, 8);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("glob"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("tests/*.cpp"));
+}
+
+TEST_CASE("ToolCallRenderer renders glob errors") {
+  GlobCall call{"tests/*.cpp", {}};
+  call.is_error = true;
+  call.error = "some error message";
+
+  auto output = RenderToString(call, 80, 8);
+
+  REQUIRE_FALSE(output.empty());
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Error: some error"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("tests/*.cpp"));
 }
 
