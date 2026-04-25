@@ -60,9 +60,8 @@ ToolExecutionResult ExecuteEditTool(
                  LineTrimmedReplacer(old_content, old_string, new_string);
              replaced.has_value()) {
     new_content = *replaced;
-  } else if (const auto replaced =
-                 WhitespaceNormalizedReplacer(old_content, old_string,
-                                             new_string);
+  } else if (const auto replaced = WhitespaceNormalizedReplacer(
+                 old_content, old_string, new_string);
              replaced.has_value()) {
     new_content = *replaced;
   } else {

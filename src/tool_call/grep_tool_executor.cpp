@@ -177,23 +177,22 @@ ToolExecutionResult ExecuteGrepTool(
 
         if (exit_code != 0 && exit_code != 1) {
           const std::string err_msg =
-              output.empty() ? "rg exited with code " +
-                                   std::to_string(exit_code)
-                             : output;
+              output.empty()
+                  ? "rg exited with code " + std::to_string(exit_code)
+                  : output;
           return MakeErrorResult(grep_args.pattern, err_msg);
         }
 
         if (exit_code == 1) {
           auto block = GrepCall{.pattern = grep_args.pattern, .match_count = 0};
-          return ToolExecutionResult{
-              .block = std::move(block),
-              .result_json =
-                  Json{{"pattern", grep_args.pattern},
-                       {"match_count", 0},
-                       {"file_count", 0},
-                       {"matches", Json::array()},
-                       {"truncated", false}}
-                      .dump()};
+          return ToolExecutionResult{.block = std::move(block),
+                                     .result_json = Json{
+                                         {"pattern", grep_args.pattern},
+                                         {"match_count", 0},
+                                         {"file_count", 0},
+                                         {"matches", Json::array()},
+                                         {"truncated",
+                                          false}}.dump()};
         }
 
         std::vector<GrepMatch> matches;
@@ -216,18 +215,14 @@ ToolExecutionResult ExecuteGrepTool(
               !data.contains("lines")) {
             continue;
           }
-          std::string filepath =
-              data["path"].value("text", std::string{});
+          std::string filepath = data["path"].value("text", std::string{});
           int line_number = data["line_number"].get<int>();
-          std::string content =
-              data["lines"].value("text", std::string{});
+          std::string content = data["lines"].value("text", std::string{});
           if (!content.empty() && content.back() == '\n') {
             content.pop_back();
           }
-          matches.push_back(
-              GrepMatch{.filepath = filepath,
-                        .line = line_number,
-                        .content = content});
+          matches.push_back(GrepMatch{
+              .filepath = filepath, .line = line_number, .content = content});
         }
 
         bool capped = matches.size() >= static_cast<size_t>(kMaxMatches);
@@ -258,25 +253,23 @@ ToolExecutionResult ExecuteGrepTool(
 
         Json matches_json = Json::array();
         for (const auto& m : matches) {
-          matches_json.push_back(
-              Json{{"filepath", m.filepath},
-                   {"line", m.line},
-                   {"content", m.content}});
+          matches_json.push_back(Json{{"filepath", m.filepath},
+                                      {"line", m.line},
+                                      {"content", m.content}});
         }
 
         const int match_count = static_cast<int>(matches.size());
         auto block = GrepCall{.pattern = grep_args.pattern,
                               .match_count = match_count,
                               .matches = std::move(matches)};
-        return ToolExecutionResult{
-            .block = std::move(block),
-            .result_json =
-                Json{{"pattern", grep_args.pattern},
-                     {"match_count", match_count},
-                     {"file_count", file_count},
-                     {"matches", matches_json},
-                     {"truncated", is_truncated}}
-                    .dump()};
+        return ToolExecutionResult{.block = std::move(block),
+                                   .result_json = Json{
+                                       {"pattern", grep_args.pattern},
+                                       {"match_count", match_count},
+                                       {"file_count", file_count},
+                                       {"matches", matches_json},
+                                       {"truncated",
+                                        is_truncated}}.dump()};
       }
       continue;
     }
@@ -347,22 +340,21 @@ ToolExecutionResult ExecuteGrepTool(
 
   if (exit_code != 0 && exit_code != 1) {
     const std::string err_msg =
-        output.empty()
-            ? "rg exited with code " + std::to_string(exit_code)
-            : output;
+        output.empty() ? "rg exited with code " + std::to_string(exit_code)
+                       : output;
     return MakeErrorResult(grep_args.pattern, err_msg);
   }
 
   if (exit_code == 1) {
     auto block = GrepCall{.pattern = grep_args.pattern, .match_count = 0};
-    return ToolExecutionResult{
-        .block = std::move(block),
-        .result_json = Json{{"pattern", grep_args.pattern},
-                            {"match_count", 0},
-                            {"file_count", 0},
-                            {"matches", Json::array()},
-                            {"truncated", false}}
-                           .dump()};
+    return ToolExecutionResult{.block = std::move(block),
+                               .result_json = Json{
+                                   {"pattern", grep_args.pattern},
+                                   {"match_count", 0},
+                                   {"file_count", 0},
+                                   {"matches", Json::array()},
+                                   {"truncated",
+                                    false}}.dump()};
   }
 
   std::vector<GrepMatch> matches;
@@ -391,8 +383,8 @@ ToolExecutionResult ExecuteGrepTool(
     if (!content.empty() && content.back() == '\n') {
       content.pop_back();
     }
-    matches.push_back(
-        GrepMatch{.filepath = filepath, .line = line_number, .content = content});
+    matches.push_back(GrepMatch{
+        .filepath = filepath, .line = line_number, .content = content});
   }
 
   bool capped = matches.size() >= static_cast<size_t>(kMaxMatches);
@@ -422,23 +414,22 @@ ToolExecutionResult ExecuteGrepTool(
 
   Json matches_json = Json::array();
   for (const auto& m : matches) {
-    matches_json.push_back(Json{{"filepath", m.filepath},
-                                {"line", m.line},
-                                {"content", m.content}});
+    matches_json.push_back(Json{
+        {"filepath", m.filepath}, {"line", m.line}, {"content", m.content}});
   }
 
   const int match_count = static_cast<int>(matches.size());
   auto block = GrepCall{.pattern = grep_args.pattern,
                         .match_count = match_count,
                         .matches = std::move(matches)};
-  return ToolExecutionResult{
-      .block = std::move(block),
-      .result_json = Json{{"pattern", grep_args.pattern},
-                          {"match_count", match_count},
-                          {"file_count", file_count},
-                          {"matches", matches_json},
-                          {"truncated", is_truncated}}
-                         .dump()};
+  return ToolExecutionResult{.block = std::move(block),
+                             .result_json = Json{
+                                 {"pattern", grep_args.pattern},
+                                 {"match_count", match_count},
+                                 {"file_count", file_count},
+                                 {"matches", matches_json},
+                                 {"truncated",
+                                  is_truncated}}.dump()};
 }
 
 }  // namespace yac::tool_call

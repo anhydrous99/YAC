@@ -5,12 +5,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <openai.hpp>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
-#include <openai.hpp>
 
 using namespace yac::chat;
 using namespace yac::tool_call;
@@ -22,14 +22,13 @@ using Json = openai::_detail::Json;
 class TempWorkspace {
  public:
   TempWorkspace() {
-    std::string unique =
-        std::to_string(std::chrono::steady_clock::now()
-                           .time_since_epoch()
-                           .count());
+    std::string unique = std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count());
     unique += "_";
-    unique +=
-        std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    root_ = std::filesystem::temp_directory_path() / ("yac_test_edit_" + unique);
+    unique += std::to_string(
+        std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    root_ =
+        std::filesystem::temp_directory_path() / ("yac_test_edit_" + unique);
     std::filesystem::create_directories(root_);
   }
 
@@ -45,7 +44,8 @@ class TempWorkspace {
 
   [[nodiscard]] const std::filesystem::path& Root() const { return root_; }
 
-  void Write(const std::string& relative_path, const std::string& content) const {
+  void Write(const std::string& relative_path,
+             const std::string& content) const {
     const auto path = root_ / relative_path;
     std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
@@ -88,11 +88,11 @@ TEST_CASE("EditTool: simple replacement updates file and reports diff") {
   workspace.Write("src/demo.txt", "alpha\nbeta\ngamma\n");
 
   WorkspaceFilesystem filesystem(workspace.Root());
-  const auto result = ExecuteEditTool(
-      MakeEditRequest({{"filepath", "src/demo.txt"},
-                       {"old_string", "beta"},
-                       {"new_string", "delta"}}),
-      filesystem);
+  const auto result =
+      ExecuteEditTool(MakeEditRequest({{"filepath", "src/demo.txt"},
+                                       {"old_string", "beta"},
+                                       {"new_string", "delta"}}),
+                      filesystem);
 
   REQUIRE_FALSE(result.is_error);
   REQUIRE(workspace.Read("src/demo.txt") == "alpha\ndelta\ngamma\n");
@@ -144,11 +144,10 @@ TEST_CASE("EditTool: missing file is rejected") {
 
   RequireRuntimeErrorContains(
       [&] {
-        (void)ExecuteEditTool(
-            MakeEditRequest({{"filepath", "missing.txt"},
-                             {"old_string", "a"},
-                             {"new_string", "b"}}),
-            filesystem);
+        (void)ExecuteEditTool(MakeEditRequest({{"filepath", "missing.txt"},
+                                               {"old_string", "a"},
+                                               {"new_string", "b"}}),
+                              filesystem);
       },
       "file not found: missing.txt");
 }
@@ -168,7 +167,8 @@ TEST_CASE("EditTool: binary files are rejected") {
       "Cannot edit binary file: file.bin");
 }
 
-TEST_CASE("EditTool: no match without replace_all reports exact-match failure") {
+TEST_CASE(
+    "EditTool: no match without replace_all reports exact-match failure") {
   TempWorkspace workspace;
   workspace.Write("file.txt", "alpha\nbeta\n");
   WorkspaceFilesystem filesystem(workspace.Root());
@@ -203,12 +203,11 @@ TEST_CASE("EditTool: replace_all updates every match") {
   workspace.Write("file.txt", "foo\nbar\nfoo\nfoo\n");
   WorkspaceFilesystem filesystem(workspace.Root());
 
-  const auto result = ExecuteEditTool(
-      MakeEditRequest({{"filepath", "file.txt"},
-                       {"old_string", "foo"},
-                       {"new_string", "qux"},
-                       {"replace_all", true}}),
-      filesystem);
+  const auto result = ExecuteEditTool(MakeEditRequest({{"filepath", "file.txt"},
+                                                       {"old_string", "foo"},
+                                                       {"new_string", "qux"},
+                                                       {"replace_all", true}}),
+                                      filesystem);
 
   REQUIRE(workspace.Read("file.txt") == "qux\nbar\nqux\nqux\n");
   const auto json = Json::parse(result.result_json);
@@ -221,17 +220,18 @@ TEST_CASE("EditTool: line-trimmed fallback tolerates whitespace drift") {
   workspace.Write("file.txt", "first\nvalue = 1   \nnext();\nlast\n");
   WorkspaceFilesystem filesystem(workspace.Root());
 
-  const auto result = ExecuteEditTool(
-      MakeEditRequest({{"filepath", "file.txt"},
-                       {"old_string", "value = 1\nnext();\n"},
-                       {"new_string", "value = 2\nnext();\n"}}),
-      filesystem);
+  const auto result =
+      ExecuteEditTool(MakeEditRequest({{"filepath", "file.txt"},
+                                       {"old_string", "value = 1\nnext();\n"},
+                                       {"new_string", "value = 2\nnext();\n"}}),
+                      filesystem);
 
   REQUIRE(workspace.Read("file.txt") == "first\nvalue = 2\nnext();\nlast\n");
   REQUIRE_FALSE(std::get<FileEditCall>(result.block).diff.empty());
 }
 
-TEST_CASE("EditTool: whitespace-normalized fallback tolerates indentation drift") {
+TEST_CASE(
+    "EditTool: whitespace-normalized fallback tolerates indentation drift") {
   TempWorkspace workspace;
   workspace.Write("code.cpp", "if (ready) {\n    call(a,\tb);\n}\n");
   WorkspaceFilesystem filesystem(workspace.Root());
@@ -242,7 +242,6 @@ TEST_CASE("EditTool: whitespace-normalized fallback tolerates indentation drift"
                        {"new_string", "if (ready) {\n  call(updated);\n}\n"}}),
       filesystem);
 
-  REQUIRE(workspace.Read("code.cpp") ==
-          "if (ready) {\n  call(updated);\n}\n");
+  REQUIRE(workspace.Read("code.cpp") == "if (ready) {\n  call(updated);\n}\n");
   REQUIRE_FALSE(std::get<FileEditCall>(result.block).diff.empty());
 }

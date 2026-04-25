@@ -25,7 +25,7 @@ namespace yac::tool_call {
                                      std::string_view old_string,
                                      std::string_view new_string);
 
-[[nodiscard]] std::vector<DiffLine> ComputeDiff(
-    std::string_view old_text, std::string_view new_text);
+[[nodiscard]] std::vector<DiffLine> ComputeDiff(std::string_view old_text,
+                                                std::string_view new_text);
 
 }  // namespace yac::tool_call

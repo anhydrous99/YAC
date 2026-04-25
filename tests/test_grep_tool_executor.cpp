@@ -1,5 +1,5 @@
-#include "tool_call/grep_tool_executor.hpp"
 #include "tool_call/executor.hpp"
+#include "tool_call/grep_tool_executor.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <cstdlib>
@@ -55,8 +55,8 @@ TEST_CASE("GrepTool: finds known string in fixture file") {
   WorkspaceFilesystem wfs(ws.Path());
   std::stop_source ss;
 
-  auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"hello world"})"), wfs, ss.get_token());
+  auto result = ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"hello world"})"),
+                                wfs, ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
   REQUIRE_FALSE(block.is_error);
@@ -73,8 +73,9 @@ TEST_CASE("GrepTool: no matches returns empty result without error") {
   WorkspaceFilesystem wfs(ws.Path());
   std::stop_source ss;
 
-  auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"ZZZNOTFOUNDZZZXXX"})"), wfs, ss.get_token());
+  auto result =
+      ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"ZZZNOTFOUNDZZZXXX"})"),
+                      wfs, ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
   REQUIRE_FALSE(block.is_error);
@@ -93,8 +94,8 @@ TEST_CASE("GrepTool: rg not in PATH returns error with ripgrep message") {
   const char* original_path = std::getenv("PATH");
   setenv("PATH", "/nonexistent_path_for_test_only", 1);
 
-  auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"content"})"), wfs, ss.get_token());
+  auto result = ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"content"})"),
+                                wfs, ss.get_token());
 
   if (original_path) {
     setenv("PATH", original_path, 1);
@@ -117,8 +118,8 @@ TEST_CASE("GrepTool: include_ignored=false skips node_modules by default") {
   WorkspaceFilesystem wfs(ws.Path());
   std::stop_source ss;
 
-  auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"hello"})"), wfs, ss.get_token());
+  auto result = ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"hello"})"), wfs,
+                                ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
   REQUIRE_FALSE(block.is_error);
@@ -135,8 +136,8 @@ TEST_CASE("GrepTool: include_ignored=true finds matches in node_modules") {
   std::stop_source ss;
 
   auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"greeting","include_ignored":true})"),
-      wfs, ss.get_token());
+      MakeGrepRequest(R"({"pattern":"greeting","include_ignored":true})"), wfs,
+      ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
   REQUIRE_FALSE(block.is_error);
@@ -159,8 +160,8 @@ TEST_CASE("GrepTool: include glob filters by extension") {
   std::stop_source ss;
 
   auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"target_token","include":"*.cpp"})"),
-      wfs, ss.get_token());
+      MakeGrepRequest(R"({"pattern":"target_token","include":"*.cpp"})"), wfs,
+      ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
   REQUIRE_FALSE(block.is_error);
@@ -177,9 +178,9 @@ TEST_CASE("GrepTool: result_json contains expected fields") {
   WorkspaceFilesystem wfs(ws.Path());
   std::stop_source ss;
 
-  auto result = ExecuteGrepTool(
-      MakeGrepRequest(R"({"pattern":"unique_xyz_token_abc"})"),
-      wfs, ss.get_token());
+  auto result =
+      ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"unique_xyz_token_abc"})"),
+                      wfs, ss.get_token());
 
   REQUIRE_FALSE(result.result_json.empty());
   REQUIRE(result.result_json.find("pattern") != std::string::npos);

@@ -1,17 +1,16 @@
-#include "tool_call/glob_tool_executor.hpp"
-
 #include "chat/types.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "tool_call/glob_tool_executor.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <openai.hpp>
 #include <string>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
-#include <openai.hpp>
 
 using yac::chat::ToolCallRequest;
 using yac::tool_call::ExecuteGlobTool;
@@ -58,11 +57,10 @@ class TempWorkspace {
 };
 
 ToolCallRequest MakeRequest(Json args) {
-  return ToolCallRequest{.name = "glob",
-                         .arguments_json = args.dump()};
+  return ToolCallRequest{.name = "glob", .arguments_json = args.dump()};
 }
 
-}
+}  // namespace
 
 TEST_CASE("glob happy path: **/*.hpp returns matching header files") {
   TempWorkspace ws;
@@ -150,7 +148,8 @@ TEST_CASE("glob include_ignored=true: ignored files are included") {
   REQUIRE(block.matched_files.size() == 3);
 }
 
-TEST_CASE("glob 200-result cap: truncates at kMaxResults and sets truncated flag") {
+TEST_CASE(
+    "glob 200-result cap: truncates at kMaxResults and sets truncated flag") {
   TempWorkspace ws;
   ws.WriteGitignore(".git/\n");
   for (int i = 0; i < 250; ++i) {

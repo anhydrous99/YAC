@@ -26,8 +26,7 @@ ToolExecutionResult ExecuteGlobTool(
   const auto args = ParseArguments(request);
   const auto pattern = RequireString(args, "pattern");
   const auto path_arg = OptionalString(args, "path");
-  const bool include_ignored =
-      OptionalBool(args, "include_ignored", false);
+  const bool include_ignored = OptionalBool(args, "include_ignored", false);
 
   const std::filesystem::path walk_root =
       path_arg.empty() ? workspace_filesystem.Root()
@@ -38,13 +37,12 @@ ToolExecutionResult ExecuteGlobTool(
     filter.emplace(workspace_filesystem.Root());
   }
 
-  using FileEntry = std::pair<std::filesystem::path,
-                              std::filesystem::file_time_type>;
+  using FileEntry =
+      std::pair<std::filesystem::path, std::filesystem::file_time_type>;
   std::vector<FileEntry> matches;
 
   std::filesystem::recursive_directory_iterator it(
-      walk_root,
-      std::filesystem::directory_options::skip_permission_denied);
+      walk_root, std::filesystem::directory_options::skip_permission_denied);
   for (const auto& entry : it) {
     if (!entry.is_regular_file()) {
       continue;
@@ -76,8 +74,7 @@ ToolExecutionResult ExecuteGlobTool(
     matched_files.push_back(workspace_filesystem.DisplayPath(path));
   }
 
-  auto block = GlobCall{.pattern = pattern,
-                        .matched_files = matched_files};
+  auto block = GlobCall{.pattern = pattern, .matched_files = matched_files};
 
   Json result{{"pattern", pattern},
               {"match_count", static_cast<int>(matched_files.size())},

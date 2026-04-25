@@ -60,7 +60,8 @@ struct MatchRange {
   return normalized;
 }
 
-[[nodiscard]] std::vector<LineInfo> SplitLinesWithOffsets(std::string_view text) {
+[[nodiscard]] std::vector<LineInfo> SplitLinesWithOffsets(
+    std::string_view text) {
   std::vector<LineInfo> lines;
   if (text.empty()) {
     return lines;
@@ -116,7 +117,8 @@ struct MatchRange {
 
 template <typename Normalize>
 [[nodiscard]] std::vector<MatchRange> FindLineWindowMatches(
-    std::string_view content, std::string_view old_string, Normalize normalize) {
+    std::string_view content, std::string_view old_string,
+    Normalize normalize) {
   const auto content_lines = SplitLinesWithOffsets(content);
   const auto old_lines = SplitLinesWithOffsets(old_string);
   if (old_lines.empty() || content_lines.size() < old_lines.size()) {
@@ -129,7 +131,8 @@ template <typename Normalize>
   for (size_t i = 0; i + old_lines.size() <= content_lines.size(); ++i) {
     bool matched = true;
     for (size_t j = 0; j < old_lines.size(); ++j) {
-      if (normalize(content_lines[i + j].text) != normalize(old_lines[j].text)) {
+      if (normalize(content_lines[i + j].text) !=
+          normalize(old_lines[j].text)) {
         matched = false;
         break;
       }
@@ -205,26 +208,24 @@ std::optional<std::string> SimpleReplacer(std::string_view content,
 std::optional<std::string> LineTrimmedReplacer(std::string_view content,
                                                std::string_view old_string,
                                                std::string_view new_string) {
-  return ReplaceSingleMatch(content,
-                            FindLineWindowMatches(content, old_string,
-                                                 [](std::string_view line) {
-                                                   return std::string(
-                                                       TrimTrailingWhitespace(
-                                                           line));
-                                                 }),
-                            new_string);
+  return ReplaceSingleMatch(
+      content,
+      FindLineWindowMatches(content, old_string,
+                            [](std::string_view line) {
+                              return std::string(TrimTrailingWhitespace(line));
+                            }),
+      new_string);
 }
 
 std::optional<std::string> WhitespaceNormalizedReplacer(
     std::string_view content, std::string_view old_string,
     std::string_view new_string) {
-  return ReplaceSingleMatch(content,
-                            FindLineWindowMatches(content, old_string,
-                                                 [](std::string_view line) {
-                                                   return CollapseWhitespaceRuns(
-                                                       line);
-                                                 }),
-                            new_string);
+  return ReplaceSingleMatch(
+      content,
+      FindLineWindowMatches(
+          content, old_string,
+          [](std::string_view line) { return CollapseWhitespaceRuns(line); }),
+      new_string);
 }
 
 std::string ReplaceAll(std::string_view content, std::string_view old_string,

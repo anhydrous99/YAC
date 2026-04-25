@@ -14,7 +14,7 @@ using Json = openai::_detail::Json;
                                         const std::string& key);
 [[nodiscard]] int RequireInt(const Json& args, const std::string& key);
 [[nodiscard]] std::string OptionalString(const Json& args,
-                                          const std::string& key);
+                                         const std::string& key);
 [[nodiscard]] bool OptionalBool(const Json& args, const std::string& key,
                                 bool default_value);
 

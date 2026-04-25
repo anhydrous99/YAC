@@ -18,8 +18,8 @@ class GitignoreFilter {
 
  private:
   std::filesystem::path root_;
-  std::vector<std::string> patterns_;    // patterns that cause skip
-  std::vector<std::string> negations_;   // patterns starting with ! that un-skip
+  std::vector<std::string> patterns_;   // patterns that cause skip
+  std::vector<std::string> negations_;  // patterns starting with ! that un-skip
   bool using_fallback_denylist_{false};
 };
 

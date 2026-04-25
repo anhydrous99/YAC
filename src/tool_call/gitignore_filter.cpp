@@ -1,8 +1,7 @@
 #include "tool_call/gitignore_filter.hpp"
 
-#include <fnmatch.h>
-
 #include <filesystem>
+#include <fnmatch.h>
 #include <fstream>
 #include <string>
 #include <string_view>
