@@ -1,7 +1,5 @@
 #include "message.hpp"
 
-#include "tool_call/renderer.hpp"
-
 #include <utility>
 
 namespace yac::presentation {
@@ -9,40 +7,50 @@ namespace yac::presentation {
 Message::Message(Sender sender, std::string content, std::string role_label,
                  std::string timestamp)
     : sender(sender),
-      body(TextContent{std::move(content)}),
       role_label(std::move(role_label)),
-      timestamp(std::move(timestamp)) {}
-
-Message Message::Tool(::yac::tool_call::ToolCallBlock block) {
-  Message message;
-  message.sender = Sender::Tool;
-  message.body = ToolContent{std::move(block)};
-  return message;
+      timestamp(std::move(timestamp)) {
+  segments.emplace_back(TextSegment{std::move(content)});
 }
 
-const std::string& Message::Text() const {
-  static const std::string k_empty;
-  const auto* text = std::get_if<TextContent>(&body);
-  return text == nullptr ? k_empty : text->text;
-}
-
-std::string& Message::Text() {
-  auto* text = std::get_if<TextContent>(&body);
-  if (text == nullptr) {
-    body = TextContent{};
-    text = std::get_if<TextContent>(&body);
+void Message::AppendText(std::string delta) {
+  if (segments.empty() ||
+      !std::holds_alternative<TextSegment>(segments.back())) {
+    segments.emplace_back(TextSegment{std::move(delta)});
+    return;
   }
-  return text->text;
+  std::get<TextSegment>(segments.back()).text += std::move(delta);
 }
 
-const ::yac::tool_call::ToolCallBlock* Message::ToolCall() const {
-  const auto* tool = std::get_if<ToolContent>(&body);
-  return tool == nullptr ? nullptr : &tool->block;
+std::string Message::CombinedText() const {
+  std::string out;
+  for (const auto& segment : segments) {
+    if (const auto* text = std::get_if<TextSegment>(&segment)) {
+      out += text->text;
+    }
+  }
+  return out;
 }
 
-::yac::tool_call::ToolCallBlock* Message::ToolCall() {
-  auto* tool = std::get_if<ToolContent>(&body);
-  return tool == nullptr ? nullptr : &tool->block;
+ToolSegment* Message::FindToolSegment(MessageId tool_id) {
+  for (auto& segment : segments) {
+    if (auto* tool = std::get_if<ToolSegment>(&segment)) {
+      if (tool->id == tool_id) {
+        return tool;
+      }
+    }
+  }
+  return nullptr;
+}
+
+const ToolSegment* Message::FindToolSegment(MessageId tool_id) const {
+  for (const auto& segment : segments) {
+    if (const auto* tool = std::get_if<ToolSegment>(&segment)) {
+      if (tool->id == tool_id) {
+        return tool;
+      }
+    }
+  }
+  return nullptr;
 }
 
 std::string Message::DisplayLabel() const {
@@ -54,15 +62,7 @@ std::string Message::DisplayLabel() const {
       return "You";
     case Sender::Agent:
       return "Assistant";
-    case Sender::Tool: {
-      const auto* block = ToolCall();
-      if (block != nullptr) {
-        return tool_call::ToolCallRenderer::BuildLabel(*block);
-      }
-      return "Tool";
-    }
   }
-
   return "Unknown";
 }
 

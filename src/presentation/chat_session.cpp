@@ -33,49 +33,107 @@ MessageId ChatSession::AddMessageWithId(MessageId id, Sender sender,
   message.status = status;
   messages_.push_back(std::move(message));
   id_to_index_[id] = messages_.size() - 1;
-  if (sender == Sender::Agent && status == MessageStatus::Active) {
-    ++active_agent_count_;
+  if (sender == Sender::Agent) {
+    if (status == MessageStatus::Active) {
+      ++active_agent_count_;
+      active_agent_id_ = id;
+    } else if (active_agent_id_.has_value() && *active_agent_id_ == id) {
+      active_agent_id_.reset();
+    }
   }
   ++plan_generation_;
   ++content_generation_;
   return id;
 }
 
-MessageId ChatSession::AddToolCallMessage(
-    ::yac::tool_call::ToolCallBlock block) {
-  auto id = next_id_++;
-  return AddToolCallMessageWithId(id, std::move(block),
-                                  MessageStatus::Complete);
-}
-
-MessageId ChatSession::AddToolCallMessageWithId(
-    MessageId id, ::yac::tool_call::ToolCallBlock block, MessageStatus status) {
-  if (id >= next_id_) {
-    next_id_ = id + 1;
+size_t ChatSession::EnsureAgentTurn() {
+  if (active_agent_id_.has_value()) {
+    if (auto idx = FindMessageIndex(*active_agent_id_); idx.has_value()) {
+      return *idx;
+    }
+    // Active id pointed at a deleted/cleared message; fall through and
+    // open a new turn.
+    active_agent_id_.reset();
   }
-  auto message = Message::Tool(std::move(block));
-  message.id = id;
-  message.status = status;
+  auto fresh_id = next_id_++;
+  Message message{Sender::Agent, ""};
+  message.id = fresh_id;
+  message.status = MessageStatus::Active;
+  // Drop the auto-pushed empty TextSegment so the first segment we attach
+  // (likely a ToolSegment) is the visible leader.
+  message.segments.clear();
   messages_.push_back(std::move(message));
-  id_to_index_[id] = messages_.size() - 1;
-  tool_expanded_states_.push_back(std::make_unique<bool>(false));
+  id_to_index_[fresh_id] = messages_.size() - 1;
+  active_agent_id_ = fresh_id;
+  ++active_agent_count_;
   ++plan_generation_;
   ++content_generation_;
+  return messages_.size() - 1;
+}
+
+MessageId ChatSession::AddToolCallSegment(::yac::tool_call::ToolCallBlock block,
+                                          MessageStatus status) {
+  auto id = next_id_++;
+  AddToolCallSegment(id, std::move(block), status);
   return id;
+}
+
+void ChatSession::AddToolCallSegment(MessageId tool_id,
+                                     ::yac::tool_call::ToolCallBlock block,
+                                     MessageStatus status) {
+  if (tool_id >= next_id_) {
+    next_id_ = tool_id + 1;
+  }
+  size_t agent_index = EnsureAgentTurn();
+  auto& agent_message = messages_[agent_index];
+  agent_message.segments.emplace_back(
+      ToolSegment{tool_id, std::move(block), status});
+  size_t segment_index = agent_message.segments.size() - 1;
+  tool_location_[tool_id] = {agent_index, segment_index};
+  tool_expanded_.emplace(tool_id, std::make_unique<bool>(false));
+  ++plan_generation_;
+  ++content_generation_;
+}
+
+void ChatSession::UpdateToolCallSegment(MessageId tool_id,
+                                        ::yac::tool_call::ToolCallBlock block,
+                                        MessageStatus status) {
+  auto it = tool_location_.find(tool_id);
+  if (it == tool_location_.end()) {
+    return;
+  }
+  auto [msg_idx, seg_idx] = it->second;
+  if (msg_idx >= messages_.size() ||
+      seg_idx >= messages_[msg_idx].segments.size()) {
+    return;
+  }
+  auto& segment = messages_[msg_idx].segments[seg_idx];
+  auto* tool = std::get_if<ToolSegment>(&segment);
+  if (tool == nullptr) {
+    return;
+  }
+  tool->block = std::move(block);
+  tool->status = status;
+  ++plan_generation_;
+  ++content_generation_;
 }
 
 void ChatSession::AppendToAgentMessage(MessageId id, std::string delta) {
   if (delta.empty()) {
     return;
   }
-
   auto idx = FindMessageIndex(id);
   if (!idx.has_value()) {
     return;
   }
-
   auto& message = messages_[*idx];
-  message.Text() += delta;
+  const bool opens_new_segment =
+      message.segments.empty() ||
+      !std::holds_alternative<TextSegment>(message.segments.back());
+  message.AppendText(std::move(delta));
+  if (opens_new_segment) {
+    ++plan_generation_;
+  }
   ++content_generation_;
 }
 
@@ -84,7 +142,6 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
   if (!idx.has_value()) {
     return;
   }
-
   auto& message = messages_[*idx];
   if (message.status == status) {
     return;
@@ -94,25 +151,14 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
     const bool now_active = status == MessageStatus::Active;
     if (was_active && !now_active) {
       --active_agent_count_;
+      if (active_agent_id_.has_value() && *active_agent_id_ == id) {
+        active_agent_id_.reset();
+      }
     } else if (!was_active && now_active) {
       ++active_agent_count_;
+      active_agent_id_ = id;
     }
   }
-  message.status = status;
-  ++plan_generation_;
-  ++content_generation_;
-}
-
-void ChatSession::SetToolCallMessage(MessageId id,
-                                     ::yac::tool_call::ToolCallBlock block,
-                                     MessageStatus status) {
-  auto idx = FindMessageIndex(id);
-  if (!idx.has_value()) {
-    return;
-  }
-
-  auto& message = messages_[*idx];
-  message.body = ToolContent{std::move(block)};
   message.status = status;
   ++plan_generation_;
   ++content_generation_;
@@ -149,20 +195,21 @@ bool ChatSession::UpsertSubAgentToolCall(MessageId parent_id,
   return true;
 }
 
-void ChatSession::SetToolExpanded(size_t index, bool expanded) {
-  if (index >= tool_expanded_states_.size()) {
+void ChatSession::SetToolExpanded(MessageId tool_id, bool expanded) {
+  auto it = tool_expanded_.find(tool_id);
+  if (it == tool_expanded_.end()) {
     return;
   }
-
-  *tool_expanded_states_[index] = expanded;
+  *it->second = expanded;
 }
 
 void ChatSession::ClearMessages() {
   messages_.clear();
   id_to_index_.clear();
+  tool_location_.clear();
+  active_agent_id_.reset();
   active_agent_count_ = 0;
-  tool_expanded_states_.clear();
-  group_expanded_states_.clear();
+  tool_expanded_.clear();
   sub_agent_tool_messages_.clear();
   ++plan_generation_;
   ++content_generation_;
@@ -182,6 +229,23 @@ const std::vector<Message>& ChatSession::Messages() const {
 
 bool ChatSession::HasMessage(MessageId id) const {
   return id_to_index_.find(id) != id_to_index_.end();
+}
+
+bool ChatSession::HasToolSegment(MessageId tool_id) const {
+  return tool_location_.find(tool_id) != tool_location_.end();
+}
+
+const ToolSegment* ChatSession::FindToolSegment(MessageId tool_id) const {
+  auto it = tool_location_.find(tool_id);
+  if (it == tool_location_.end()) {
+    return nullptr;
+  }
+  auto [msg_idx, seg_idx] = it->second;
+  if (msg_idx >= messages_.size() ||
+      seg_idx >= messages_[msg_idx].segments.size()) {
+    return nullptr;
+  }
+  return std::get_if<ToolSegment>(&messages_[msg_idx].segments[seg_idx]);
 }
 
 bool ChatSession::Empty() const {
@@ -204,19 +268,32 @@ bool ChatSession::HasActiveAgent() const {
   return active_agent_count_ > 0;
 }
 
-bool* ChatSession::ToolExpandedState(size_t index) {
-  while (tool_expanded_states_.size() <= index) {
-    tool_expanded_states_.push_back(std::make_unique<bool>(false));
-  }
-  return tool_expanded_states_[index].get();
+std::optional<MessageId> ChatSession::ActiveAgentId() const {
+  return active_agent_id_;
 }
 
-bool* ChatSession::GroupExpandedState(size_t group_index,
-                                      bool default_expanded) {
-  while (group_expanded_states_.size() <= group_index) {
-    group_expanded_states_.push_back(std::make_unique<bool>(default_expanded));
+std::optional<size_t> ChatSession::TrailingTextSegmentIndex(
+    MessageId id) const {
+  auto loc = FindMessageIndex(id);
+  if (!loc.has_value()) {
+    return std::nullopt;
   }
-  return group_expanded_states_[group_index].get();
+  const auto& message = messages_[*loc];
+  std::optional<size_t> result;
+  size_t text_idx = 0;
+  for (const auto& seg : message.segments) {
+    if (std::holds_alternative<TextSegment>(seg)) {
+      result = text_idx;
+      ++text_idx;
+    }
+  }
+  return result;
+}
+
+bool* ChatSession::ToolExpandedState(MessageId tool_id) {
+  auto [it, _] =
+      tool_expanded_.try_emplace(tool_id, std::make_unique<bool>(false));
+  return it->second.get();
 }
 
 const std::vector<SubAgentToolMessage>& ChatSession::SubAgentToolCalls(

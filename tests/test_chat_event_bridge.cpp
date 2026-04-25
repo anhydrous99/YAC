@@ -24,7 +24,7 @@ TEST_CASE("ChatEventBridge inserts queued user message by service ID") {
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].id == 10);
   REQUIRE(ui.GetMessages()[0].sender == Sender::User);
-  REQUIRE(ui.GetMessages()[0].Text() == "hello");
+  REQUIRE(ui.GetMessages()[0].CombinedText() == "hello");
 }
 
 TEST_CASE("ChatEventBridge streams assistant deltas by assistant service ID") {
@@ -45,7 +45,7 @@ TEST_CASE("ChatEventBridge streams assistant deltas by assistant service ID") {
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].id == 20);
   REQUIRE(ui.GetMessages()[0].sender == Sender::Agent);
-  REQUIRE(ui.GetMessages()[0].Text() == "partial");
+  REQUIRE(ui.GetMessages()[0].CombinedText() == "partial");
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Complete);
   REQUIRE_FALSE(ui.IsTyping());
 }
@@ -62,7 +62,7 @@ TEST_CASE("ChatEventBridge creates assistant error message when missing") {
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].id == 30);
   REQUIRE(ui.GetMessages()[0].sender == Sender::Agent);
-  REQUIRE(ui.GetMessages()[0].Text() == "Error: provider failed");
+  REQUIRE(ui.GetMessages()[0].CombinedText() == "Error: provider failed");
   REQUIRE(ui.GetMessages()[0].status == MessageStatus::Error);
 }
 
@@ -88,9 +88,10 @@ TEST_CASE("ChatEventBridge creates and updates tool call messages") {
       .status = ChatMessageStatus::Active}});
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].id == 40);
-  REQUIRE(ui.GetMessages()[0].sender == Sender::Tool);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Active);
+  REQUIRE(ui.GetMessages()[0].sender == Sender::Agent);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(40);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Active);
 
   bridge.HandleEvent(ChatEvent{ToolCallDoneEvent{
       .message_id = 40,
@@ -102,10 +103,10 @@ TEST_CASE("ChatEventBridge creates and updates tool call messages") {
                                ""},
       .status = ChatMessageStatus::Complete}});
 
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Complete);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  REQUIRE(std::get<ListDirCall>(*call).entries.size() == 1);
+  tool = ui.GetMessages()[0].FindToolSegment(40);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Complete);
+  REQUIRE(std::get<ListDirCall>(tool->block).entries.size() == 1);
 }
 
 TEST_CASE("ChatEvent reports payload type for each event family") {

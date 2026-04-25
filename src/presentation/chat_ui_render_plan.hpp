@@ -7,26 +7,11 @@
 
 namespace yac::presentation {
 
-struct ToolRenderRef {
-  size_t message_index = 0;
-  size_t tool_state_index = 0;
-
-  auto operator==(const ToolRenderRef&) const -> bool = default;
-};
-
 struct MessageRenderItem {
-  enum class Kind {
-    StandaloneMessage,
-    StandaloneTool,
-    AgentGroup,
-  };
+  enum class Kind { User, Agent };
 
-  Kind kind = Kind::StandaloneMessage;
+  Kind kind = Kind::User;
   size_t message_index = 0;
-  size_t tool_state_index = 0;
-  size_t group_ordinal = 0;
-  bool any_tool_active = false;
-  std::vector<ToolRenderRef> tools;
 
   auto operator==(const MessageRenderItem&) const -> bool = default;
 };

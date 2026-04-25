@@ -24,9 +24,8 @@ yac::presentation::Sender SenderForRole(yac::chat::ChatRole role) {
       return Sender::User;
     case ChatRole::Assistant:
     case ChatRole::System:
-      return Sender::Agent;
     case ChatRole::Tool:
-      return Sender::Tool;
+      return Sender::Agent;
   }
   return Sender::Agent;
 }
@@ -133,6 +132,13 @@ void ChatEventBridge::RefreshFromHistory() {
   auto& chat_ui = chat_ui_.get();
   chat_ui.ClearMessages();
   for (const auto& message : history) {
+    // Tool result entries are part of the prior assistant turn's context;
+    // after compaction they have no structured ToolCallBlock to render, so
+    // we skip them here. Live tool segments are restored by the normal
+    // event stream.
+    if (message.role == chat::ChatRole::Tool) {
+      continue;
+    }
     const auto sender = SenderForRole(message.role);
     chat_ui.AddMessageWithId(message.id, sender, message.content,
                              message.status);
@@ -175,12 +181,12 @@ void ChatEventBridge::Handle(chat::QueueDepthChangedEvent event) {
 
 void ChatEventBridge::Handle(chat::ToolCallStartedEvent event) {
   auto& chat_ui = chat_ui_.get();
-  if (chat_ui.HasMessage(event.message_id)) {
+  if (chat_ui.HasToolSegment(event.message_id)) {
     chat_ui.UpdateToolCallMessage(event.message_id, std::move(event.tool_call),
                                   event.status);
   } else {
-    chat_ui.AddToolCallMessageWithId(event.message_id,
-                                     std::move(event.tool_call), event.status);
+    chat_ui.AddToolCallSegment(event.message_id, std::move(event.tool_call),
+                               event.status);
   }
 }
 
@@ -218,12 +224,12 @@ void ChatEventBridge::Handle(chat::ToolCallArgumentDeltaEvent event) {
   };
 
   auto& chat_ui = chat_ui_.get();
-  if (chat_ui.HasMessage(event.card_message_id)) {
+  if (chat_ui.HasToolSegment(event.card_message_id)) {
     chat_ui.UpdateToolCallMessage(event.card_message_id, std::move(block),
                                   yac::presentation::MessageStatus::Active);
   } else {
-    chat_ui.AddToolCallMessageWithId(event.card_message_id, std::move(block),
-                                     yac::presentation::MessageStatus::Active);
+    chat_ui.AddToolCallSegment(event.card_message_id, std::move(block),
+                               yac::presentation::MessageStatus::Active);
   }
 }
 

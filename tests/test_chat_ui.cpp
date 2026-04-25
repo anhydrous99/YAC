@@ -79,7 +79,7 @@ TEST_CASE("Constructor with callback stores it") {
   SECTION("Callback fires on submit") {
     ui.AddMessage(Sender::User, "hello");
     REQUIRE(ui.GetMessages().size() == 1);
-    REQUIRE(ui.GetMessages()[0].Text() == "hello");
+    REQUIRE(ui.GetMessages()[0].CombinedText() == "hello");
     REQUIRE(ui.GetMessages()[0].sender == Sender::User);
   }
 }
@@ -93,11 +93,11 @@ TEST_CASE("AddMessage appends to message list") {
   const auto& msgs = ui.GetMessages();
   REQUIRE(msgs.size() == 3);
   REQUIRE(msgs[0].sender == Sender::User);
-  REQUIRE(msgs[0].Text() == "first");
+  REQUIRE(msgs[0].CombinedText() == "first");
   REQUIRE(msgs[1].sender == Sender::Agent);
-  REQUIRE(msgs[1].Text() == "second");
+  REQUIRE(msgs[1].CombinedText() == "second");
   REQUIRE(msgs[2].sender == Sender::User);
-  REQUIRE(msgs[2].Text() == "third");
+  REQUIRE(msgs[2].CombinedText() == "third");
 }
 
 TEST_CASE("StartAgentMessage and AppendToAgentMessage stream content by ID") {
@@ -110,7 +110,7 @@ TEST_CASE("StartAgentMessage and AppendToAgentMessage stream content by ID") {
   const auto& msgs = ui.GetMessages();
   REQUIRE(msgs.size() == 1);
   REQUIRE(msgs[0].sender == Sender::Agent);
-  REQUIRE(msgs[0].Text() == "partial response");
+  REQUIRE(msgs[0].CombinedText() == "partial response");
 }
 
 TEST_CASE("AddMessageWithId stores service-owned message ID") {

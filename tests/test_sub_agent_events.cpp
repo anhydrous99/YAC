@@ -119,12 +119,11 @@ TEST_CASE(
   bridge.HandleEvent(MakeToolStartedEvent(50, "agent-1", "analyze"));
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].id == 50);
-  REQUIRE(ui.GetMessages()[0].sender == Sender::Tool);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Active);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  const auto& sub = std::get<SubAgentCall>(*call);
+  REQUIRE(ui.GetMessages()[0].sender == Sender::Agent);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(50);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Active);
+  const auto& sub = std::get<SubAgentCall>(tool->block);
   REQUIRE(sub.task == "analyze");
   REQUIRE(sub.status == SubAgentStatus::Running);
   REQUIRE(sub.agent_id == "agent-1");
@@ -148,10 +147,10 @@ TEST_CASE(
   }});
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Complete);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  const auto& sub = std::get<SubAgentCall>(*call);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(51);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Complete);
+  const auto& sub = std::get<SubAgentCall>(tool->block);
   REQUIRE(sub.status == SubAgentStatus::Complete);
   REQUIRE(sub.result == "all 42 tests passed");
   REQUIRE(sub.tool_count == 5);
@@ -172,10 +171,10 @@ TEST_CASE("Bridge handles SubAgentError -- updates card with error status") {
   }});
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Error);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  const auto& sub = std::get<SubAgentCall>(*call);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(52);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Error);
+  const auto& sub = std::get<SubAgentCall>(tool->block);
   REQUIRE(sub.status == SubAgentStatus::Error);
   REQUIRE(sub.result == "connection refused");
 }
@@ -195,10 +194,10 @@ TEST_CASE(
   }});
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Cancelled);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  const auto& sub = std::get<SubAgentCall>(*call);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(53);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Cancelled);
+  const auto& sub = std::get<SubAgentCall>(tool->block);
   REQUIRE(sub.status == SubAgentStatus::Cancelled);
 }
 
@@ -216,10 +215,10 @@ TEST_CASE("Bridge handles SubAgentProgress -- updates card with tool count") {
   }});
 
   REQUIRE(ui.GetMessages().size() == 1);
-  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Active);
-  const auto* call = ui.GetMessages()[0].ToolCall();
-  REQUIRE(call != nullptr);
-  const auto& sub = std::get<SubAgentCall>(*call);
+  const auto* tool = ui.GetMessages()[0].FindToolSegment(54);
+  REQUIRE(tool != nullptr);
+  REQUIRE(tool->status == MessageStatus::Active);
+  const auto& sub = std::get<SubAgentCall>(tool->block);
   REQUIRE(sub.status == SubAgentStatus::Running);
   REQUIRE(sub.tool_count == 3);
 }
@@ -240,7 +239,7 @@ TEST_CASE("Sub-agent tool calls render inside the sub-agent dropdown") {
   ChatEventBridge expanded_bridge(expanded_ui);
   expanded_bridge.HandleEvent(
       MakeToolStartedEvent(55, "agent-6", "inspect workspace"));
-  expanded_ui.SetToolExpanded(0, true);
+  expanded_ui.SetToolExpanded(55, true);
   EmitSubAgentChildTool(expanded_bridge, 55, "agent-6");
 
   auto expanded_component = expanded_ui.Build();
@@ -256,7 +255,7 @@ TEST_CASE("Completed sub-agent and nested tool boxes remain mouse toggleable") {
   ChatEventBridge bridge(ui);
 
   bridge.HandleEvent(MakeToolStartedEvent(56, "agent-7", "inspect workspace"));
-  ui.SetToolExpanded(0, true);
+  ui.SetToolExpanded(56, true);
   EmitSubAgentChildTool(bridge, 56, "agent-7");
 
   auto component = ui.Build();

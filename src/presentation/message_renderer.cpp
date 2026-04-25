@@ -1,6 +1,9 @@
 #include "message_renderer.hpp"
 
+#include "markdown/parser.hpp"
+#include "markdown/renderer.hpp"
 #include "theme.hpp"
+#include "tool_call/renderer.hpp"
 #include "ui_spacing.hpp"
 #include "util/time_util.hpp"
 
@@ -9,6 +12,7 @@
 #include <chrono>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include <ftxui/dom/elements.hpp>
 
@@ -18,16 +22,9 @@ namespace {
 
 const char* ThinkingPulseGlyph(int frame) {
   constexpr std::array<const char*, 10> kBrailleFrames = {
-      "\xe2\xa0\x8b",  // ⠋
-      "\xe2\xa0\x99",  // ⠙
-      "\xe2\xa0\xb9",  // ⠹
-      "\xe2\xa0\xb8",  // ⠸
-      "\xe2\xa0\xbc",  // ⠼
-      "\xe2\xa0\xb4",  // ⠴
-      "\xe2\xa0\xa6",  // ⠦
-      "\xe2\xa0\xa7",  // ⠧
-      "\xe2\xa0\x87",  // ⠇
-      "\xe2\xa0\x8f",  // ⠏
+      "\xe2\xa0\x8b", "\xe2\xa0\x99", "\xe2\xa0\xb9", "\xe2\xa0\xb8",
+      "\xe2\xa0\xbc", "\xe2\xa0\xb4", "\xe2\xa0\xa6", "\xe2\xa0\xa7",
+      "\xe2\xa0\x87", "\xe2\xa0\x8f",
   };
   return kBrailleFrames.at(frame % kBrailleFrames.size());
 }
@@ -80,6 +77,51 @@ ftxui::Element RenderStatusLabel(MessageStatus status, Sender sender,
   return ftxui::text(" \xC2\xB7 " + label + " ") | ftxui::color(color);
 }
 
+ftxui::Element RenderHeader(Sender sender, const std::string& label,
+                            std::chrono::system_clock::time_point created_at,
+                            util::RelativeTimeCache& cache,
+                            const RenderContext& context,
+                            MessageStatus status) {
+  const auto& theme = context.Colors();
+  const bool is_error = status == MessageStatus::Error;
+  const bool is_active =
+      sender == Sender::Agent && status == MessageStatus::Active;
+
+  const auto& icon_color = SenderSwitch(
+      sender, [&]() -> const auto& { return theme.role.user; },
+      [&]() -> const auto& {
+        return is_error ? theme.role.error : theme.role.agent;
+      });
+
+  const char* avatar = SenderSwitch(
+      sender, [&]() -> const char* { return "\xe2\x97\x8f"; },
+      [&]() -> const char* { return "\xe2\x97\x86"; });
+
+  ftxui::Elements left_parts;
+  left_parts.push_back(ftxui::text(avatar) | ftxui::color(icon_color));
+  left_parts.push_back(ftxui::text(" "));
+  left_parts.push_back(ftxui::text(label) |
+                       ftxui::color(theme.semantic.text_weak));
+  left_parts.push_back(RenderStatusLabel(status, sender, theme));
+
+  if (is_active) {
+    left_parts.push_back(
+        ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
+        ftxui::color(theme.semantic.accent_primary) | ftxui::bold);
+  }
+
+  auto left = ftxui::hbox(std::move(left_parts));
+
+  ftxui::Element right = ftxui::emptyElement();
+  if (created_at != std::chrono::system_clock::time_point{}) {
+    auto rel_time = util::FormatRelativeTime(created_at, cache);
+    right = ftxui::text(" \xC2\xB7 " + rel_time) |
+            ftxui::color(theme.semantic.text_muted);
+  }
+
+  return ftxui::hbox({left | ftxui::flex, right});
+}
+
 }  // namespace
 
 ftxui::Element MessageRenderer::CardSurface(ftxui::Element content,
@@ -97,6 +139,42 @@ ftxui::Element MessageRenderer::CardSurface(ftxui::Element content,
                      MessageCardMaxWidth(context));
 }
 
+ftxui::Element MessageRenderer::RenderAgentHeader(
+    const Message& message, util::RelativeTimeCache& time_cache,
+    const RenderContext& context) {
+  return RenderHeader(Sender::Agent, message.DisplayLabel(), message.created_at,
+                      time_cache, context, message.status);
+}
+
+ftxui::Element MessageRenderer::RenderTextSegment(
+    const std::string& text, bool is_streaming, TextSegmentCache& cache,
+    const RenderContext& context) {
+  if (cache.element.has_value() &&
+      cache.terminal_width == context.terminal_width && !is_streaming) {
+    return *cache.element;
+  }
+
+  if (!cache.markdown_blocks.has_value()) {
+    cache.markdown_blocks = markdown::MarkdownParser::Parse(
+        text, markdown::ParseOptions{.streaming = is_streaming});
+  }
+
+  ftxui::Element stream_cursor;
+  if (is_streaming && !text.empty()) {
+    stream_cursor = ftxui::text(" \xe2\x96\x8d") |
+                    ftxui::color(context.Colors().semantic.accent_primary);
+  }
+
+  auto element = markdown::MarkdownRenderer::Render(
+      *cache.markdown_blocks, context, std::move(stream_cursor));
+
+  if (!is_streaming) {
+    cache.element = element;
+    cache.terminal_width = context.terminal_width;
+  }
+  return element;
+}
+
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        int current_width) {
   return Render(message, RenderContext{.terminal_width = current_width});
@@ -111,31 +189,10 @@ ftxui::Element MessageRenderer::Render(const Message& message,
 ftxui::Element MessageRenderer::Render(const Message& message,
                                        MessageRenderCache& cache,
                                        const RenderContext& context) {
-  int current_width = context.terminal_width;
-  const bool is_animated = message.sender == Sender::Agent &&
-                           message.status == MessageStatus::Active;
-  const bool time_cache_expired =
-      cache.relative_time.has_value() &&
-      std::chrono::system_clock::now() >= cache.relative_time->second;
-  if (!is_animated && message.sender != Sender::Tool && cache.element &&
-      cache.terminal_width == current_width && !time_cache_expired) {
-    return *cache.element;
-  }
-
-  ftxui::Element elem = SenderSwitch(
+  return SenderSwitch(
       message.sender,
       [&] { return RenderUserMessage(message, cache, context); },
-      [&] { return RenderAgentMessage(message, cache, context); },
-      [&] { return RenderToolCallMessage(message, context); },
-      [] { return ftxui::text("Unknown Sender"); });
-
-  if (is_animated || message.sender == Sender::Tool) {
-    return elem;
-  }
-
-  cache.element = std::move(elem);
-  cache.terminal_width = current_width;
-  return *cache.element;
+      [&] { return RenderAgentMessage(message, cache, context); });
 }
 
 ftxui::Element MessageRenderer::RenderAll(const std::vector<Message>& messages,
@@ -177,13 +234,21 @@ ftxui::Element MessageRenderer::RenderUserMessage(
     const Message& message, MessageRenderCache& cache,
     const RenderContext& context) {
   const auto& theme = context.Colors();
+  const bool time_cache_expired =
+      cache.relative_time.has_value() &&
+      std::chrono::system_clock::now() >= cache.relative_time->second;
+  if (cache.element.has_value() &&
+      cache.terminal_width == context.terminal_width && !time_cache_expired) {
+    return *cache.element;
+  }
+
   auto content = ftxui::vbox({
       RenderHeader(Sender::User, message.DisplayLabel(), message.created_at,
                    cache.relative_time, context, message.status),
       theme.density == theme::ThemeDensity::Compact ? ftxui::emptyElement()
                                                     : ftxui::text(""),
       ftxui::hbox({ftxui::text(std::string(layout::kCardPadX, ' ')),
-                   ftxui::paragraph(message.Text()) |
+                   ftxui::paragraph(message.CombinedText()) |
                        ftxui::color(theme.role.user) | ftxui::flex}),
       theme.density == theme::ThemeDensity::Compact ? ftxui::emptyElement()
                                                     : ftxui::text(""),
@@ -191,105 +256,59 @@ ftxui::Element MessageRenderer::RenderUserMessage(
 
   auto accent_rail =
       ftxui::text("▌") | ftxui::color(theme.semantic.accent_secondary);
-  return ftxui::hbox({accent_rail, std::move(content) | ftxui::flex |
-                                       ftxui::bgcolor(theme.cards.user_bg)}) |
-         ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
-                     MessageCardMaxWidth(context));
-}
+  auto element =
+      ftxui::hbox({accent_rail, std::move(content) | ftxui::flex |
+                                    ftxui::bgcolor(theme.cards.user_bg)}) |
+      ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN, MessageCardMaxWidth(context));
 
-ftxui::Element MessageRenderer::RenderAgentMessageContent(
-    const Message& message, MessageRenderCache& cache,
-    const RenderContext& context) {
-  const auto& theme = context.Colors();
-  const bool is_active = message.status == MessageStatus::Active;
-  if (!cache.markdown_blocks.has_value()) {
-    cache.markdown_blocks = markdown::MarkdownParser::Parse(
-        message.Text(), markdown::ParseOptions{.streaming = is_active});
-  }
-  const auto& blocks = *cache.markdown_blocks;
-
-  ftxui::Elements rows;
-  rows.push_back(RenderHeader(Sender::Agent, message.DisplayLabel(),
-                              message.created_at, cache.relative_time, context,
-                              message.status));
-  if (theme.density != theme::ThemeDensity::Compact) {
-    rows.push_back(ftxui::text(""));
-  }
-
-  ftxui::Element stream_cursor;
-  if (is_active && !message.Text().empty()) {
-    stream_cursor = ftxui::text(" \xe2\x96\x8d") |
-                    ftxui::color(theme.semantic.accent_primary);
-  }
-  rows.push_back(markdown::MarkdownRenderer::Render(blocks, context,
-                                                    std::move(stream_cursor)));
-
-  return ftxui::vbox(std::move(rows));
+  cache.element = element;
+  cache.terminal_width = context.terminal_width;
+  return element;
 }
 
 ftxui::Element MessageRenderer::RenderAgentMessage(
     const Message& message, MessageRenderCache& cache,
     const RenderContext& context) {
-  return RenderAgentMessageContent(message, cache, context) |
-         ftxui::size(ftxui::WIDTH, ftxui::LESS_THAN,
-                     MessageCardMaxWidth(context));
-}
-
-ftxui::Element MessageRenderer::RenderToolCallMessage(
-    const Message& message, const RenderContext& context) {
-  const auto* tool_call = message.ToolCall();
-  if (tool_call == nullptr) {
-    return ftxui::text("Tool call unavailable");
-  }
-
-  return tool_call::ToolCallRenderer::Render(*tool_call, context);
-}
-
-ftxui::Element MessageRenderer::RenderHeader(
-    Sender sender, const std::string& label,
-    std::chrono::system_clock::time_point created_at,
-    util::RelativeTimeCache& cache, const RenderContext& context,
-    MessageStatus status) {
   const auto& theme = context.Colors();
-  const bool is_error = status == MessageStatus::Error;
-  const bool is_active =
-      sender == Sender::Agent && status == MessageStatus::Active;
+  const bool is_active = message.status == MessageStatus::Active;
 
-  const auto& icon_color = SenderSwitch(
-      sender, [&]() -> const auto& { return theme.role.user; },
-      [&]() -> const auto& {
-        return is_error ? theme.role.error : theme.role.agent;
-      },
-      [&]() -> const auto& { return theme.sub_agent.icon_fg; });
-
-  const char* avatar = SenderSwitch(
-      sender, [&]() -> const char* { return "\xe2\x97\x8f"; },
-      [&]() -> const char* { return "\xe2\x97\x86"; },
-      [&]() -> const char* { return "\xe2\x97\x8b"; });
-
-  ftxui::Elements left_parts;
-  left_parts.push_back(ftxui::text(avatar) | ftxui::color(icon_color));
-  left_parts.push_back(ftxui::text(" "));
-  left_parts.push_back(ftxui::text(label) |
-                       ftxui::color(theme.semantic.text_weak));
-  left_parts.push_back(RenderStatusLabel(status, sender, theme));
-
-  if (is_active) {
-    left_parts.push_back(
-        ftxui::text(ThinkingPulseGlyph(context.thinking_frame)) |
-        ftxui::color(theme.semantic.accent_primary) | ftxui::bold);
+  ftxui::Elements rows;
+  rows.push_back(RenderAgentHeader(message, cache.relative_time, context));
+  if (theme.density != theme::ThemeDensity::Compact) {
+    rows.push_back(ftxui::text(""));
   }
 
-  auto left = ftxui::hbox(std::move(left_parts));
-
-  ftxui::Element right = ftxui::emptyElement();
-  if (created_at != std::chrono::system_clock::time_point{}) {
-    auto rel_time = util::FormatRelativeTime(created_at, cache);
-    right = ftxui::text(" \xC2\xB7 " + rel_time) |
-            ftxui::color(theme.semantic.text_muted);
+  // Find the index of the last text segment so we know where to put the
+  // streaming cursor when the agent is still thinking.
+  size_t last_text_segment = message.segments.size();
+  for (size_t i = message.segments.size(); i-- > 0;) {
+    if (std::holds_alternative<TextSegment>(message.segments[i])) {
+      last_text_segment = i;
+      break;
+    }
   }
 
-  return ftxui::hbox({left | ftxui::flex, right});
+  size_t text_segment_idx = 0;
+  bool first_segment = true;
+  for (size_t i = 0; i < message.segments.size(); ++i) {
+    if (!first_segment) {
+      rows.push_back(ftxui::text(""));
+    }
+    first_segment = false;
+    const auto& segment = message.segments[i];
+    if (const auto* text = std::get_if<TextSegment>(&segment)) {
+      const bool is_streaming = is_active && i == last_text_segment;
+      auto& seg_cache = cache.EnsureSegment(text_segment_idx);
+      rows.push_back(
+          RenderTextSegment(text->text, is_streaming, seg_cache, context));
+      ++text_segment_idx;
+    } else if (const auto* tool = std::get_if<ToolSegment>(&segment)) {
+      rows.push_back(tool_call::ToolCallRenderer::Render(tool->block, context));
+    }
+  }
+
+  auto stack = ftxui::vbox(std::move(rows));
+  return CardSurface(std::move(stack), theme.cards.agent_bg, context);
 }
 
 }  // namespace yac::presentation

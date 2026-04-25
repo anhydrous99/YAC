@@ -68,11 +68,11 @@ class ChatUI : public ChatEventSink {
   MessageId StartAgentMessage(MessageId id) override;
   void AppendToAgentMessage(MessageId id, std::string delta) override;
   void SetMessageStatus(MessageId id, MessageStatus status) override;
-  void AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
-  void AddToolCallMessageWithId(MessageId id,
-                                ::yac::tool_call::ToolCallBlock block,
-                                MessageStatus status) override;
-  void UpdateToolCallMessage(MessageId id,
+  MessageId AddToolCallMessage(::yac::tool_call::ToolCallBlock block);
+  void AddToolCallSegment(MessageId tool_id,
+                          ::yac::tool_call::ToolCallBlock block,
+                          MessageStatus status) override;
+  void UpdateToolCallMessage(MessageId tool_id,
                              ::yac::tool_call::ToolCallBlock block,
                              MessageStatus status) override;
   void UpdateSubAgentToolCallMessage(MessageId parent_id,
@@ -99,11 +99,12 @@ class ChatUI : public ChatEventSink {
   void SetHelpText(std::string help_text);
   void ShowHelp();
   void SetTyping(bool typing) override;
-  void SetToolExpanded(size_t index, bool expanded);
+  void SetToolExpanded(MessageId tool_id, bool expanded);
   void ClearMessages() override;
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool HasMessage(MessageId id) const override;
+  [[nodiscard]] bool HasToolSegment(MessageId tool_id) const override;
   [[nodiscard]] bool IsTyping() const;
   [[nodiscard]] std::string ProviderId() const;
   [[nodiscard]] std::string Model() const override;
@@ -115,19 +116,16 @@ class ChatUI : public ChatEventSink {
   void InsertNewline();
   ftxui::Component BuildInput();
   ftxui::Component BuildMessageList();
-  [[nodiscard]] ftxui::Component BuildStandaloneMessageComponent(
+  [[nodiscard]] ftxui::Component BuildUserMessageComponent(
       size_t message_index);
-  [[nodiscard]] ftxui::Component BuildAgentGroupComponent(
-      const MessageRenderItem& item);
-  [[nodiscard]] ftxui::Component BuildToolContentComponent(
+  [[nodiscard]] ftxui::Component BuildAgentMessageComponent(
       size_t message_index);
-  [[nodiscard]] ftxui::Component BuildToolCollapsible(size_t message_index,
-                                                      size_t tool_state_index);
+  [[nodiscard]] ftxui::Component BuildToolContentComponent(MessageId tool_id);
+  [[nodiscard]] ftxui::Component BuildToolCollapsible(MessageId tool_id);
   [[nodiscard]] ftxui::Component BuildSubAgentToolCollapsible(
       MessageId parent_id, size_t child_index);
   [[nodiscard]] ftxui::Element BuildToolPeek(
       const ::yac::tool_call::ToolCallBlock* block, MessageStatus status) const;
-  [[nodiscard]] ftxui::Element RenderMessages() const;
   [[nodiscard]] ftxui::Element RenderEmptyState() const;
   void RebuildMessageComponents();
   void SyncMessageComponents();

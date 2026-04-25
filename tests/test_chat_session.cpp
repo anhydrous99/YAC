@@ -1,6 +1,8 @@
 #include "presentation/chat_session.hpp"
 #include "tool_call/types.hpp"
 
+#include <variant>
+
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::presentation;
@@ -13,28 +15,32 @@ TEST_CASE("ChatSession stores text messages") {
   session.AddMessage(Sender::Agent, "# response");
 
   REQUIRE(session.MessageCount() == 2);
-  REQUIRE(session.Messages()[0].Text() == "hello");
-  REQUIRE(session.Messages()[1].Text() == "# response");
+  REQUIRE(session.Messages()[0].CombinedText() == "hello");
+  REQUIRE(session.Messages()[1].CombinedText() == "# response");
 }
 
-TEST_CASE("ChatSession stores tool messages with expansion state") {
+TEST_CASE("ChatSession AddToolCallSegment opens an agent turn") {
   ChatSession session;
 
-  session.AddToolCallMessage(BashCall{"pwd", "/tmp/project", 0, false});
+  auto tool_id = session.AddToolCallSegment(
+      BashCall{"pwd", "/tmp/project", 0, false}, MessageStatus::Complete);
 
   REQUIRE(session.MessageCount() == 1);
-  REQUIRE(session.Messages()[0].sender == Sender::Tool);
-  REQUIRE(session.Messages()[0].ToolCall() != nullptr);
-  REQUIRE_FALSE(*session.ToolExpandedState(0));
+  const auto& agent = session.Messages()[0];
+  REQUIRE(agent.sender == Sender::Agent);
+  REQUIRE(agent.segments.size() == 1);
+  REQUIRE(std::holds_alternative<ToolSegment>(agent.segments[0]));
+  REQUIRE(session.HasToolSegment(tool_id));
+  REQUIRE_FALSE(*session.ToolExpandedState(tool_id));
 }
 
-TEST_CASE("ChatSession updates tool expansion state") {
+TEST_CASE("ChatSession updates tool expansion state by id") {
   ChatSession session;
-  session.AddToolCallMessage(BashCall{"pwd", "/tmp", 0, false});
+  auto tool_id = session.AddToolCallSegment(BashCall{"pwd", "/tmp", 0, false});
 
-  session.SetToolExpanded(0, false);
+  session.SetToolExpanded(tool_id, true);
 
-  REQUIRE_FALSE(*session.ToolExpandedState(0));
+  REQUIRE(*session.ToolExpandedState(tool_id));
 }
 
 TEST_CASE("ChatSession ContentGeneration bumps on every content mutation") {
@@ -53,7 +59,7 @@ TEST_CASE("ChatSession ContentGeneration bumps on every content mutation") {
   auto after_status = session.ContentGeneration();
   REQUIRE(after_status > after_append);
 
-  session.AddToolCallMessage(BashCall{"ls", "/tmp", 0, false});
+  session.AddToolCallSegment(BashCall{"ls", "/tmp", 0, false});
   auto after_tool = session.ContentGeneration();
   REQUIRE(after_tool > after_status);
 
@@ -63,8 +69,8 @@ TEST_CASE("ChatSession ContentGeneration bumps on every content mutation") {
 }
 
 TEST_CASE(
-    "ChatSession AppendToAgentMessage bumps ContentGeneration without "
-    "bumping PlanGeneration") {
+    "ChatSession AppendToAgentMessage to an existing text segment does not "
+    "bump PlanGeneration") {
   ChatSession session;
   const auto id = session.AddMessage(Sender::Agent, "", MessageStatus::Active);
 
@@ -96,7 +102,7 @@ TEST_CASE("ChatSession appends streaming deltas to agent message by ID") {
 
   REQUIRE(session.MessageCount() == 1);
   REQUIRE(session.Messages()[0].sender == Sender::Agent);
-  REQUIRE(session.Messages()[0].Text() == "hello world");
+  REQUIRE(session.Messages()[0].CombinedText() == "hello world");
 }
 
 TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
@@ -106,7 +112,53 @@ TEST_CASE("ChatSession AppendToAgentMessage ignores unknown IDs") {
   session.AppendToAgentMessage(999, "ignored");
 
   REQUIRE(session.MessageCount() == 1);
-  REQUIRE(session.Messages()[0].Text() == "existing");
+  REQUIRE(session.Messages()[0].CombinedText() == "existing");
+}
+
+TEST_CASE("ChatSession preserves emission order of text and tool segments") {
+  ChatSession session;
+  const auto agent_id =
+      session.AddMessage(Sender::Agent, "", MessageStatus::Active);
+
+  session.AppendToAgentMessage(agent_id, "before tool ");
+  const auto tool_a = session.AddToolCallSegment(BashCall{"ls", "/", 0, false});
+  session.AppendToAgentMessage(agent_id, "between tools ");
+  const auto tool_b =
+      session.AddToolCallSegment(BashCall{"pwd", "/", 0, false});
+  session.AppendToAgentMessage(agent_id, "after tools");
+
+  REQUIRE(session.MessageCount() == 1);
+  const auto& agent = session.Messages()[0];
+  REQUIRE(agent.segments.size() == 5);
+
+  REQUIRE(std::holds_alternative<TextSegment>(agent.segments[0]));
+  REQUIRE(std::get<TextSegment>(agent.segments[0]).text == "before tool ");
+
+  REQUIRE(std::holds_alternative<ToolSegment>(agent.segments[1]));
+  REQUIRE(std::get<ToolSegment>(agent.segments[1]).id == tool_a);
+
+  REQUIRE(std::holds_alternative<TextSegment>(agent.segments[2]));
+  REQUIRE(std::get<TextSegment>(agent.segments[2]).text == "between tools ");
+
+  REQUIRE(std::holds_alternative<ToolSegment>(agent.segments[3]));
+  REQUIRE(std::get<ToolSegment>(agent.segments[3]).id == tool_b);
+
+  REQUIRE(std::holds_alternative<TextSegment>(agent.segments[4]));
+  REQUIRE(std::get<TextSegment>(agent.segments[4]).text == "after tools");
+}
+
+TEST_CASE("ChatSession UpdateToolCallSegment updates an existing segment") {
+  ChatSession session;
+  const auto tool_id =
+      session.AddToolCallSegment(BashCall{"old", "/", 0, false});
+
+  session.UpdateToolCallSegment(tool_id, BashCall{"new", "/", 0, false},
+                                MessageStatus::Complete);
+
+  const auto* segment = session.FindToolSegment(tool_id);
+  REQUIRE(segment != nullptr);
+  REQUIRE(std::holds_alternative<BashCall>(segment->block));
+  REQUIRE(std::get<BashCall>(segment->block).command == "new");
 }
 
 TEST_CASE("ChatSession inserts explicit message IDs") {
@@ -144,12 +196,14 @@ TEST_CASE("ChatSession bumps PlanGeneration on plan-shape mutators") {
     REQUIRE(session.PlanGeneration() == gen0 + 1);
   }
 
-  SECTION("AddToolCallMessage bumps") {
-    session.AddToolCallMessage(BashCall{"ls", "/tmp", 0, false});
-    REQUIRE(session.PlanGeneration() == gen0 + 1);
+  SECTION("AddToolCallSegment bumps") {
+    session.AddToolCallSegment(BashCall{"ls", "/tmp", 0, false});
+    // EnsureAgentTurn opens a synthetic agent (one bump) then attaches the
+    // tool segment (another bump).
+    REQUIRE(session.PlanGeneration() >= gen0 + 1);
   }
 
-  SECTION("AppendToAgentMessage does NOT bump plan generation") {
+  SECTION("AppendToAgentMessage to existing text segment does not bump") {
     auto id = session.AddMessage(Sender::Agent, "");
     const auto gen1 = session.PlanGeneration();
     session.AppendToAgentMessage(id, "hi");
@@ -158,6 +212,14 @@ TEST_CASE("ChatSession bumps PlanGeneration on plan-shape mutators") {
     REQUIRE(session.PlanGeneration() == gen1);
     session.AppendToAgentMessage(id, "");
     REQUIRE(session.PlanGeneration() == gen1);
+  }
+
+  SECTION("AppendToAgentMessage opening a new text segment bumps") {
+    auto id = session.AddMessage(Sender::Agent, "", MessageStatus::Active);
+    session.AddToolCallSegment(BashCall{"ls", "/", 0, false});
+    const auto gen1 = session.PlanGeneration();
+    session.AppendToAgentMessage(id, "after tool");
+    REQUIRE(session.PlanGeneration() == gen1 + 1);
   }
 
   SECTION("SetMessageStatus bumps only when status changes") {
@@ -169,11 +231,11 @@ TEST_CASE("ChatSession bumps PlanGeneration on plan-shape mutators") {
     REQUIRE(session.PlanGeneration() == gen1 + 1);
   }
 
-  SECTION("SetToolCallMessage bumps") {
-    auto id = session.AddToolCallMessage(BashCall{"ls", "/tmp", 0, false});
+  SECTION("UpdateToolCallSegment bumps") {
+    auto id = session.AddToolCallSegment(BashCall{"ls", "/tmp", 0, false});
     const auto gen1 = session.PlanGeneration();
-    session.SetToolCallMessage(id, BashCall{"pwd", "/home", 0, false},
-                               MessageStatus::Complete);
+    session.UpdateToolCallSegment(id, BashCall{"pwd", "/home", 0, false},
+                                  MessageStatus::Complete);
     REQUIRE(session.PlanGeneration() == gen1 + 1);
   }
 
@@ -201,7 +263,7 @@ TEST_CASE("ChatSession does not bump generation on read accessors") {
 
 TEST_CASE("ChatSession UpsertSubAgentToolCall does not bump generation") {
   ChatSession session;
-  auto parent = session.AddToolCallMessage(BashCall{"cmd", "/", 0, false});
+  auto parent = session.AddToolCallSegment(BashCall{"cmd", "/", 0, false});
   const auto gen = session.PlanGeneration();
 
   (void)session.UpsertSubAgentToolCall(parent, "tool-1", "bash",
@@ -266,11 +328,11 @@ TEST_CASE("ChatSession HasActiveAgent tracks add/status/clear transitions") {
   REQUIRE_FALSE(session.HasActiveAgent());
 }
 
-TEST_CASE("ChatSession HasActiveAgent ignores non-agent messages") {
+TEST_CASE("ChatSession AddToolCallSegment opens an Active agent when none") {
   ChatSession session;
-
   session.AddMessage(Sender::User, "hi", MessageStatus::Active);
-  session.AddToolCallMessage(BashCall{"ls", "/", 0, false});
 
   REQUIRE_FALSE(session.HasActiveAgent());
+  session.AddToolCallSegment(BashCall{"ls", "/", 0, false});
+  REQUIRE(session.HasActiveAgent());
 }

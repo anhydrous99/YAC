@@ -7,28 +7,31 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace yac::presentation {
 
-enum class Sender { User, Agent, Tool };
+enum class Sender { User, Agent };
 
 using MessageId = chat::ChatMessageId;
 using MessageStatus = chat::ChatMessageStatus;
 
-struct TextContent {
+struct TextSegment {
   std::string text;
 };
 
-struct ToolContent {
+struct ToolSegment {
+  MessageId id = 0;
   ::yac::tool_call::ToolCallBlock block;
+  MessageStatus status = MessageStatus::Complete;
 };
 
-using MessageContent = std::variant<TextContent, ToolContent>;
+using MessageSegment = std::variant<TextSegment, ToolSegment>;
 
 struct Message {
   MessageId id = 0;
   Sender sender = Sender::User;
-  MessageContent body = TextContent{};
+  std::vector<MessageSegment> segments;
   MessageStatus status = MessageStatus::Complete;
   std::string role_label;
   std::string timestamp;
@@ -39,43 +42,28 @@ struct Message {
   Message(Sender sender, std::string content, std::string role_label = "",
           std::string timestamp = "");
 
-  [[nodiscard]] static Message Tool(::yac::tool_call::ToolCallBlock block);
+  // Append `delta` to the trailing text segment, opening a new one if the
+  // last segment is a tool (or the segments vector is empty). This is the
+  // single point that makes interleaved text/tool emission preserve order.
+  void AppendText(std::string delta);
 
-  [[nodiscard]] const std::string& Text() const;
-  [[nodiscard]] std::string& Text();
-  [[nodiscard]] const ::yac::tool_call::ToolCallBlock* ToolCall() const;
-  [[nodiscard]] ::yac::tool_call::ToolCallBlock* ToolCall();
+  // Concatenation of every TextSegment. User messages always have exactly
+  // one TextSegment, so this returns its text directly.
+  [[nodiscard]] std::string CombinedText() const;
+  [[nodiscard]] ToolSegment* FindToolSegment(MessageId tool_id);
+  [[nodiscard]] const ToolSegment* FindToolSegment(MessageId tool_id) const;
   [[nodiscard]] std::string DisplayLabel() const;
 };
 
-template <typename UserFn, typename AgentFn, typename ToolFn,
-          typename DefaultFn>
+template <typename UserFn, typename AgentFn>
 decltype(auto) SenderSwitch(Sender sender, UserFn&& when_user,
-                            AgentFn&& when_agent, ToolFn&& when_tool,
-                            DefaultFn&& default_value) {
+                            AgentFn&& when_agent) {
   switch (sender) {
     case Sender::User:
       return std::forward<UserFn>(when_user)();
     case Sender::Agent:
-      return std::forward<AgentFn>(when_agent)();
-    case Sender::Tool:
-      return std::forward<ToolFn>(when_tool)();
     default:
-      return std::forward<DefaultFn>(default_value)();
-  }
-}
-
-template <typename UserFn, typename AgentFn, typename ToolFn>
-decltype(auto) SenderSwitch(Sender sender, UserFn&& when_user,
-                            AgentFn&& when_agent, ToolFn&& when_tool) {
-  switch (sender) {
-    case Sender::User:
-      return std::forward<UserFn>(when_user)();
-    case Sender::Agent:
       return std::forward<AgentFn>(when_agent)();
-    case Sender::Tool:
-    default:
-      return std::forward<ToolFn>(when_tool)();
   }
 }
 

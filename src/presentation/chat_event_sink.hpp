@@ -25,10 +25,10 @@ class ChatEventSink {
   virtual MessageId StartAgentMessage(MessageId id) = 0;
   virtual void AppendToAgentMessage(MessageId id, std::string delta) = 0;
   virtual void SetMessageStatus(MessageId id, MessageStatus status) = 0;
-  virtual void AddToolCallMessageWithId(MessageId id,
-                                        ::yac::tool_call::ToolCallBlock block,
-                                        MessageStatus status) = 0;
-  virtual void UpdateToolCallMessage(MessageId id,
+  virtual void AddToolCallSegment(MessageId tool_id,
+                                  ::yac::tool_call::ToolCallBlock block,
+                                  MessageStatus status) = 0;
+  virtual void UpdateToolCallMessage(MessageId tool_id,
                                      ::yac::tool_call::ToolCallBlock block,
                                      MessageStatus status) = 0;
   virtual void UpdateSubAgentToolCallMessage(
@@ -48,6 +48,7 @@ class ChatEventSink {
   virtual void ClearMessages() = 0;
 
   [[nodiscard]] virtual bool HasMessage(MessageId id) const = 0;
+  [[nodiscard]] virtual bool HasToolSegment(MessageId tool_id) const = 0;
   [[nodiscard]] virtual std::string Model() const = 0;
 };
 
