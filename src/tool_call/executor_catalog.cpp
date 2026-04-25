@@ -69,19 +69,19 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
             "exactly once (whitespace-tolerant fallbacks applied). Use "
             "replace_all to replace all occurrences.",
         .parameters_schema_json =
-            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})"},
+            R"json({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})json"},
        {.name = std::string(kGrepToolName),
         .description =
             "Search for a regex pattern in workspace files using ripgrep. "
             "Respects .gitignore by default. Requires ripgrep (rg) in PATH.",
         .parameters_schema_json =
-            R"({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})"},
+            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
        {.name = std::string(kGlobToolName),
         .description =
             "Find files matching a glob pattern. Supports **, *, ?. "
             "Respects .gitignore by default. Results sorted by mtime descending.",
         .parameters_schema_json =
-            R"({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})"},
+            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
    };
 }
 

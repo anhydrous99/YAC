@@ -2,9 +2,12 @@
 
 #include "chat/chat_service_tool_approval.hpp"
 #include "tool_call/bash_tool_executor.hpp"
+#include "tool_call/edit_tool_executor.hpp"
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/filesystem_tool_executor.hpp"
+#include "tool_call/glob_tool_executor.hpp"
+#include "tool_call/grep_tool_executor.hpp"
 #include "tool_call/lsp_tool_executor.hpp"
 #include "tool_call/sub_agent_tool_executor.hpp"
 #include "tool_call/todo_state.hpp"
@@ -148,6 +151,16 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
           .block = call,
           .result_json = Json{{"result", call.response}}.dump(),
       };
+    }
+    if (prepared.request.name == kFileEditToolName) {
+      return ExecuteEditTool(prepared.request, workspace_filesystem_);
+    }
+    if (prepared.request.name == kGrepToolName) {
+      return ExecuteGrepTool(prepared.request, workspace_filesystem_,
+                             stop_token);
+    }
+    if (prepared.request.name == kGlobToolName) {
+      return ExecuteGlobTool(prepared.request, workspace_filesystem_);
     }
     return ErrorResult(prepared.preview,
                        "Unknown tool: " + prepared.request.name);
