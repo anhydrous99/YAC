@@ -41,6 +41,23 @@ bool IsShiftTab(const ftxui::Event& event) {
   return seq == "\x1b[Z" || seq == "\x1b[9;2u";
 }
 
+bool IsSlashArgumentWhitespace(char value) {
+  return value == ' ' || value == '\t' || value == '\n' || value == '\r' ||
+         value == '\f' || value == '\v';
+}
+
+std::string ExtractSlashArguments(const std::string& content) {
+  auto args_start = content.find_first_of(" \t\n\r\f\v");
+  if (args_start == std::string::npos) {
+    return {};
+  }
+  while (args_start < content.size() &&
+         IsSlashArgumentWhitespace(content[args_start])) {
+    ++args_start;
+  }
+  return content.substr(args_start);
+}
+
 }  // namespace
 
 ChatUiInputController::ChatUiInputController(
@@ -138,9 +155,8 @@ void ChatUiInputController::DispatchSlashMenuSelection() {
 
   const auto& command = slash_commands_->Commands()[filtered[selected]];
   std::string content = composer_->Submit();
-  auto space_pos = content.find(' ');
-  if (space_pos != std::string::npos && command.arguments_handler.has_value()) {
-    auto args = content.substr(space_pos + 1);
+  if (command.arguments_handler.has_value()) {
+    auto args = ExtractSlashArguments(content);
     (*command.arguments_handler)(std::move(args));
   } else if (command.handler.has_value()) {
     (*command.handler)();

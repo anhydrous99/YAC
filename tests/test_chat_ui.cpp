@@ -517,6 +517,28 @@ TEST_CASE("Slash clear command dispatches without sending a message") {
   REQUIRE_FALSE(sent);
 }
 
+TEST_CASE("Slash menu Return dispatches argument command without arguments") {
+  bool sent = false;
+  bool called = false;
+  std::string captured = "not called";
+  ChatUI ui([&](const std::string&) { sent = true; });
+  SlashCommandRegistry registry;
+  registry.Define("init", "init", "Initialize repository");
+  registry.SetArgumentsHandler("init", [&](std::string args) {
+    called = true;
+    captured = std::move(args);
+  });
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/init");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  REQUIRE(called);
+  REQUIRE(captured.empty());
+  REQUIRE_FALSE(sent);
+}
+
 TEST_CASE("Slash menu Return dismisses unmatched command before raw submit") {
   bool sent = false;
   std::string captured;
