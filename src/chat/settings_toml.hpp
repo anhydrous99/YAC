@@ -3,6 +3,7 @@
 #include "chat/types.hpp"
 
 #include <filesystem>
+#include <string_view>
 #include <vector>
 
 namespace yac::chat {
@@ -40,5 +41,12 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
 // with built-in defaults.
 void WriteDefaultSettingsToml(const std::filesystem::path& path,
                               std::vector<ConfigIssue>& issues);
+
+// Persists a runtime theme selection by updating [theme].name in settings.toml.
+// Creates the default settings file if it is missing. Malformed TOML or an
+// invalid [theme] shape is left untouched and reported through `issues`.
+[[nodiscard]] bool SaveThemeNameToSettingsToml(
+    const std::filesystem::path& path, std::string_view theme_name,
+    std::vector<ConfigIssue>& issues);
 
 }  // namespace yac::chat

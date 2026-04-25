@@ -7,7 +7,9 @@
 #include "chat/agent_mode.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
+#include "chat/config_paths.hpp"
 #include "chat/prompt_library.hpp"
+#include "chat/settings_toml.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
@@ -18,6 +20,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -87,6 +90,47 @@ bool IsExecutableAvailable(const std::string& command) {
     }
   }
   return false;
+}
+
+bool HasEnvValue(const char* name) {
+  const char* value = std::getenv(name);
+  return value != nullptr && *value != '\0';
+}
+
+void ReportThemeSaveResult(presentation::ChatUI& chat_ui,
+                           const std::string& theme_name,
+                           const std::filesystem::path& settings_path,
+                           bool saved,
+                           const std::vector<chat::ConfigIssue>& issues) {
+  if (!saved) {
+    presentation::UiNotice notice{
+        .severity = presentation::UiSeverity::Warning,
+        .title = "Theme not saved",
+        .detail = "Could not update " + settings_path.string() + "."};
+    if (!issues.empty()) {
+      notice.severity = SeverityFor(issues.front().severity);
+      notice.detail = issues.front().message;
+      if (!issues.front().detail.empty()) {
+        notice.detail += ": " + issues.front().detail;
+      }
+    }
+    chat_ui.SetTransientStatus(std::move(notice));
+    return;
+  }
+
+  if (HasEnvValue("YAC_THEME_NAME")) {
+    chat_ui.SetTransientStatus(
+        {.severity = presentation::UiSeverity::Warning,
+         .title = "Theme saved, env override active",
+         .detail = "YAC_THEME_NAME is set, so restart will use that value "
+                   "until it is unset."});
+    return;
+  }
+
+  chat_ui.SetTransientStatus(
+      {.severity = presentation::UiSeverity::Info,
+       .title = "Theme saved",
+       .detail = "Next launch will use '" + theme_name + "'."});
 }
 
 presentation::StartupStatus BuildStartupStatus(
@@ -330,6 +374,19 @@ void ConfigureChatUiCallbacks(
             terminal_bg_guard->emplace(rgb.r, rgb.g, rgb.b);
           }
         }
+      }
+      try {
+        const auto settings_path = chat::GetSettingsPath();
+        std::vector<chat::ConfigIssue> save_issues;
+        const bool saved = chat::SaveThemeNameToSettingsToml(
+            settings_path, theme_name, save_issues);
+        ReportThemeSaveResult(chat_ui, theme_name, settings_path, saved,
+                              save_issues);
+      } catch (const std::exception& error) {
+        chat_ui.SetTransientStatus(
+            {.severity = presentation::UiSeverity::Warning,
+             .title = "Theme not saved",
+             .detail = error.what()});
       }
       screen.PostEvent(ftxui::Event::Custom);
     }

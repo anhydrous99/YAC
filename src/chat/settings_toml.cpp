@@ -2,17 +2,23 @@
 
 #include "chat/settings_toml_template.hpp"
 
+#include <cctype>
+#include <cstddef>
 #include <exception>
 #include <fstream>
+#include <iomanip>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <toml++/toml.hpp>
+#include <vector>
 
 #ifndef _WIN32
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
-#include <string_view>
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
@@ -142,6 +148,270 @@ bool ApplyStringArray(const toml::node_view<toml::node>& node,
   }
   target = std::move(values);
   return true;
+}
+
+struct TextLine {
+  std::string text;
+  std::string newline;
+};
+
+std::string_view TrimLeft(std::string_view value) {
+  while (!value.empty() &&
+         std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+    value.remove_prefix(1);
+  }
+  return value;
+}
+
+std::string_view TrimRight(std::string_view value) {
+  while (!value.empty() &&
+         std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+    value.remove_suffix(1);
+  }
+  return value;
+}
+
+std::string_view Trim(std::string_view value) {
+  return TrimRight(TrimLeft(value));
+}
+
+std::vector<TextLine> SplitPreservingNewlines(std::string_view content) {
+  std::vector<TextLine> lines;
+  size_t pos = 0;
+  while (pos < content.size()) {
+    const auto line_end = content.find_first_of("\r\n", pos);
+    if (line_end == std::string_view::npos) {
+      lines.push_back({std::string(content.substr(pos)), ""});
+      break;
+    }
+    std::string newline;
+    size_t next_pos = line_end + 1;
+    if (content[line_end] == '\r' && next_pos < content.size() &&
+        content[next_pos] == '\n') {
+      newline = "\r\n";
+      ++next_pos;
+    } else {
+      newline = content[line_end];
+    }
+    lines.push_back(
+        {std::string(content.substr(pos, line_end - pos)), newline});
+    pos = next_pos;
+  }
+  return lines;
+}
+
+std::string DetectNewline(const std::vector<TextLine>& lines) {
+  for (const auto& line : lines) {
+    if (!line.newline.empty()) {
+      return line.newline;
+    }
+  }
+  return "\n";
+}
+
+std::optional<std::string> ParseTableHeader(std::string_view line) {
+  line = Trim(line);
+  if (line.empty() || line.front() != '[' || line.starts_with("[[")) {
+    return std::nullopt;
+  }
+  const auto close = line.find(']');
+  if (close == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const auto rest = Trim(line.substr(close + 1));
+  if (!rest.empty() && rest.front() != '#') {
+    return std::nullopt;
+  }
+  return std::string(Trim(line.substr(1, close - 1)));
+}
+
+bool IsKeyAssignment(std::string_view line, std::string_view key) {
+  line = TrimLeft(line);
+  if (line.empty() || line.front() == '#' || !line.starts_with(key)) {
+    return false;
+  }
+  const auto rest = TrimLeft(line.substr(key.size()));
+  return !rest.empty() && rest.front() == '=';
+}
+
+std::string QuoteTomlString(std::string_view value) {
+  std::ostringstream output;
+  output << '"';
+  for (const unsigned char ch : value) {
+    switch (ch) {
+      case '\\':
+        output << "\\\\";
+        break;
+      case '"':
+        output << "\\\"";
+        break;
+      case '\b':
+        output << "\\b";
+        break;
+      case '\t':
+        output << "\\t";
+        break;
+      case '\n':
+        output << "\\n";
+        break;
+      case '\f':
+        output << "\\f";
+        break;
+      case '\r':
+        output << "\\r";
+        break;
+      default:
+        if (ch < 0x20) {
+          output << "\\u00" << std::hex << std::setw(2) << std::setfill('0')
+                 << static_cast<int>(ch) << std::dec;
+        } else {
+          output << static_cast<char>(ch);
+        }
+    }
+  }
+  output << '"';
+  return output.str();
+}
+
+std::string JoinLines(const std::vector<TextLine>& lines) {
+  std::string output;
+  for (const auto& line : lines) {
+    output += line.text;
+    output += line.newline;
+  }
+  return output;
+}
+
+bool ReadTextFile(const std::filesystem::path& path, std::string& content,
+                  std::vector<ConfigIssue>& issues) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    AddWarning(issues, "Failed to read " + path.string(),
+               "Could not open file.");
+    return false;
+  }
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  if (input.bad()) {
+    AddWarning(issues, "Failed to read " + path.string(),
+               "I/O error while reading file.");
+    return false;
+  }
+  content = buffer.str();
+  return true;
+}
+
+bool WriteTextFile(const std::filesystem::path& path, std::string_view content,
+                   std::vector<ConfigIssue>& issues) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output) {
+    AddWarning(issues, "Failed to write " + path.string(),
+               "Could not open file for writing.");
+    return false;
+  }
+  output << content;
+  output.close();
+  if (!output) {
+    AddWarning(issues, "Failed to write " + path.string(),
+               "I/O error while writing file.");
+    return false;
+  }
+  return true;
+}
+
+bool ValidateEditableSettingsToml(const std::filesystem::path& path,
+                                  std::vector<ConfigIssue>& issues) {
+  toml::table table;
+  try {
+    table = toml::parse_file(path.string());
+  } catch (const toml::parse_error& error) {
+    AddError(issues, "Failed to parse settings.toml",
+             std::string(error.description()));
+    return false;
+  } catch (const std::exception& error) {
+    AddError(issues, "Failed to read settings.toml", error.what());
+    return false;
+  }
+
+  const auto theme_section = table["theme"];
+  if (theme_section && !theme_section.is_table()) {
+    AddError(issues, "Invalid type for [theme] in settings.toml",
+             "Expected a table.");
+    return false;
+  }
+  if (theme_section.is_table()) {
+    const auto theme_name = theme_section["name"];
+    if (theme_name && !theme_name.is_string()) {
+      AddError(issues, "Invalid type for theme.name in settings.toml",
+               "Expected a string.");
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ValidateGeneratedSettingsToml(std::string_view content,
+                                   const std::filesystem::path& path,
+                                   std::vector<ConfigIssue>& issues) {
+  try {
+    static_cast<void>(toml::parse(content, path.string()));
+    return true;
+  } catch (const toml::parse_error& error) {
+    AddError(issues, "Generated invalid settings.toml",
+             std::string(error.description()));
+  } catch (const std::exception& error) {
+    AddError(issues, "Generated invalid settings.toml", error.what());
+  }
+  return false;
+}
+
+std::string WithThemeName(std::string_view content,
+                          std::string_view theme_name) {
+  auto lines = SplitPreservingNewlines(content);
+  const auto newline = DetectNewline(lines);
+  const auto assignment = "name = " + QuoteTomlString(theme_name);
+
+  std::optional<size_t> theme_start;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const auto table_name = ParseTableHeader(lines[i].text);
+    if (table_name == "theme") {
+      theme_start = i;
+      break;
+    }
+  }
+
+  if (!theme_start.has_value()) {
+    if (!lines.empty()) {
+      if (lines.back().newline.empty()) {
+        lines.back().newline = newline;
+      }
+      if (!lines.back().text.empty()) {
+        lines.push_back({"", newline});
+      }
+    }
+    lines.push_back({"[theme]", newline});
+    lines.push_back({assignment, newline});
+    return JoinLines(lines);
+  }
+
+  size_t theme_end = lines.size();
+  for (size_t i = *theme_start + 1; i < lines.size(); ++i) {
+    if (ParseTableHeader(lines[i].text).has_value()) {
+      theme_end = i;
+      break;
+    }
+  }
+
+  for (size_t i = *theme_start + 1; i < theme_end; ++i) {
+    if (IsKeyAssignment(lines[i].text, "name")) {
+      lines[i].text = assignment;
+      return JoinLines(lines);
+    }
+  }
+
+  lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(*theme_start + 1),
+               TextLine{assignment, newline});
+  return JoinLines(lines);
 }
 
 }  // namespace
@@ -322,6 +592,49 @@ void WriteDefaultSettingsToml(const std::filesystem::path& path,
     return;
   }
 #endif
+}
+
+bool SaveThemeNameToSettingsToml(const std::filesystem::path& path,
+                                 std::string_view theme_name,
+                                 std::vector<ConfigIssue>& issues) {
+  if (theme_name.empty()) {
+    AddError(issues, "Cannot save empty theme name",
+             "Choose a named theme preset before saving.");
+    return false;
+  }
+
+  std::error_code ec;
+  const bool exists = std::filesystem::exists(path, ec) && !ec;
+  if (ec) {
+    AddWarning(issues, "Failed to inspect " + path.string(), ec.message());
+    return false;
+  }
+  if (!exists) {
+    WriteDefaultSettingsToml(path, issues);
+    ec.clear();
+    if (!std::filesystem::exists(path, ec) || ec) {
+      if (ec) {
+        AddWarning(issues, "Failed to inspect " + path.string(), ec.message());
+      }
+      return false;
+    }
+  }
+
+  if (!ValidateEditableSettingsToml(path, issues)) {
+    return false;
+  }
+
+  std::string content;
+  if (!ReadTextFile(path, content, issues)) {
+    return false;
+  }
+
+  const auto updated = WithThemeName(content, theme_name);
+  if (!ValidateGeneratedSettingsToml(updated, path, issues)) {
+    return false;
+  }
+
+  return WriteTextFile(path, updated, issues);
 }
 
 }  // namespace yac::chat

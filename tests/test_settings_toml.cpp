@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@ using yac::chat::ConfigIssueSeverity;
 using yac::chat::kDefaultSettingsToml;
 using yac::chat::kDefaultToolRoundLimit;
 using yac::chat::LoadSettingsFromToml;
+using yac::chat::SaveThemeNameToSettingsToml;
 using yac::chat::WriteDefaultSettingsToml;
 
 namespace {
@@ -46,6 +48,12 @@ void WriteFile(const std::filesystem::path& path, std::string_view content) {
   std::filesystem::create_directories(path.parent_path());
   std::ofstream stream(path, std::ios::trunc);
   stream << content;
+}
+
+std::string ReadFile(const std::filesystem::path& path) {
+  std::ifstream input(path);
+  return {std::istreambuf_iterator<char>(input),
+          std::istreambuf_iterator<char>()};
 }
 
 }  // namespace
@@ -143,6 +151,128 @@ TEST_CASE("LoadSettingsFromToml reports invalid [theme] type") {
            issue.message.find("sync_terminal_background") != std::string::npos;
   }));
   REQUIRE(config.sync_terminal_background);
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml updates existing theme name") {
+  TempFile file("yac_test_settings_theme_save_existing.toml");
+  WriteFile(file.Path(),
+            "# keep me\n"
+            "temperature = 0.5\n"
+            "\n"
+            "[theme]\n"
+            "# also keep me\n"
+            "name = \"opencode\" # replaced\n"
+            "sync_terminal_background = false\n"
+            "\n"
+            "[provider]\n"
+            "id = \"openai\"\n");
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveThemeNameToSettingsToml(file.Path(), "catppuccin", issues));
+  REQUIRE(issues.empty());
+
+  const auto content = ReadFile(file.Path());
+  REQUIRE(content.find("# keep me\n") != std::string::npos);
+  REQUIRE(content.find("# also keep me\n") != std::string::npos);
+  REQUIRE(content.find("name = \"catppuccin\"\n") != std::string::npos);
+  REQUIRE(content.find("sync_terminal_background = false\n") !=
+          std::string::npos);
+  REQUIRE(content.find("[provider]\n") != std::string::npos);
+
+  ChatConfig config;
+  std::vector<ConfigIssue> load_issues;
+  auto fields = LoadSettingsFromToml(file.Path(), config, load_issues);
+  REQUIRE(load_issues.empty());
+  REQUIRE(fields.theme_name);
+  REQUIRE(config.theme_name == "catppuccin");
+  REQUIRE_FALSE(config.sync_terminal_background);
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml inserts name in existing theme table") {
+  TempFile file("yac_test_settings_theme_save_insert.toml");
+  WriteFile(file.Path(),
+            "[theme]\n"
+            "sync_terminal_background = false\n");
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveThemeNameToSettingsToml(file.Path(), "system", issues));
+  REQUIRE(issues.empty());
+
+  ChatConfig config;
+  std::vector<ConfigIssue> load_issues;
+  auto fields = LoadSettingsFromToml(file.Path(), config, load_issues);
+  REQUIRE(load_issues.empty());
+  REQUIRE(fields.theme_name);
+  REQUIRE(config.theme_name == "system");
+  REQUIRE_FALSE(config.sync_terminal_background);
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml appends theme table when absent") {
+  TempFile file("yac_test_settings_theme_save_append.toml");
+  WriteFile(file.Path(), "temperature = 0.5\n");
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveThemeNameToSettingsToml(file.Path(), "catppuccin", issues));
+  REQUIRE(issues.empty());
+
+  const auto content = ReadFile(file.Path());
+  REQUIRE(content.find("temperature = 0.5\n") != std::string::npos);
+  REQUIRE(content.find("[theme]\n") != std::string::npos);
+  REQUIRE(content.find("name = \"catppuccin\"\n") != std::string::npos);
+
+  ChatConfig config;
+  std::vector<ConfigIssue> load_issues;
+  auto fields = LoadSettingsFromToml(file.Path(), config, load_issues);
+  REQUIRE(load_issues.empty());
+  REQUIRE(fields.theme_name);
+  REQUIRE(config.theme_name == "catppuccin");
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml creates missing settings file") {
+  TempFile dir("yac_test_settings_theme_save_missing");
+  const auto path = dir.Path() / "settings.toml";
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveThemeNameToSettingsToml(path, "system", issues));
+  REQUIRE(issues.empty());
+  REQUIRE(std::filesystem::exists(path));
+
+  ChatConfig config;
+  std::vector<ConfigIssue> load_issues;
+  auto fields = LoadSettingsFromToml(path, config, load_issues);
+  REQUIRE(load_issues.empty());
+  REQUIRE(fields.theme_name);
+  REQUIRE(config.theme_name == "system");
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml leaves malformed TOML untouched") {
+  TempFile file("yac_test_settings_theme_save_bad_toml.toml");
+  WriteFile(file.Path(), "garbage garbage garbage\n");
+  const auto before = ReadFile(file.Path());
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE_FALSE(SaveThemeNameToSettingsToml(file.Path(), "system", issues));
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("settings.toml") != std::string::npos;
+  }));
+  REQUIRE(ReadFile(file.Path()) == before);
+}
+
+TEST_CASE("SaveThemeNameToSettingsToml leaves invalid theme table untouched") {
+  TempFile file("yac_test_settings_theme_save_bad_theme.toml");
+  WriteFile(file.Path(),
+            "[theme]\n"
+            "name = 42\n");
+  const auto before = ReadFile(file.Path());
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE_FALSE(SaveThemeNameToSettingsToml(file.Path(), "system", issues));
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error &&
+           issue.message.find("theme.name") != std::string::npos;
+  }));
+  REQUIRE(ReadFile(file.Path()) == before);
 }
 
 TEST_CASE("LoadSettingsFromToml reports parse errors without throwing") {
