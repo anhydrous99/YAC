@@ -38,6 +38,12 @@ The SVG previews show the current chat surface and command palette.
 - Keyword-based syntax highlighting for C++, Python, JavaScript, and Rust
 - Structured tool-call rendering for file reads/writes, directory listings, LSP
   diagnostics/navigation/rename/symbols, and legacy bash/search-style blocks
+- `file_edit` tool for surgical string-replacement edits with human approval,
+  avoiding full-file overwrites
+- `grep` tool for ripgrep-backed content search across the workspace, with
+  filename and line-number output
+- `glob` tool for native filesystem walks with gitignore filtering, returning
+  paths sorted by modification time
 - Scrollable transcript with cached Markdown parsing and rendered elements for
   smoother redraws
 - Command palette plus slash command autocomplete for help, clear, cancel,
@@ -274,6 +280,7 @@ flowchart TD
 
 ## Notes
 
+- The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
 - Dependencies are fetched by CMake with `FetchContent`.
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
