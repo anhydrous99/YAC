@@ -12,8 +12,8 @@ class ChatEventBridge {
  public:
   using HistoryProvider = std::function<std::vector<chat::ChatMessage>()>;
 
-  ChatEventBridge(presentation::ChatEventSink& chat_ui,
-                  HistoryProvider history_provider = {});
+  explicit ChatEventBridge(presentation::ChatEventSink& chat_ui,
+                           HistoryProvider history_provider = {});
 
   void HandleEvent(chat::ChatEvent event);
 
@@ -34,7 +34,6 @@ class ChatEventBridge {
   void Handle(chat::ConversationCompactedEvent event);
   void Handle(chat::ModelChangedEvent event);
   void Handle(chat::AgentModeChangedEvent event);
-  void Handle(chat::ToolCallRequestedEvent event);
   void Handle(chat::ToolCallArgumentDeltaEvent event);
   void Handle(chat::ToolApprovalRequestedEvent event);
   void Handle(chat::UsageReportedEvent event);
@@ -42,6 +41,10 @@ class ChatEventBridge {
   void Handle(chat::SubAgentCompletedEvent event);
   void Handle(chat::SubAgentErrorEvent event);
   void Handle(chat::SubAgentCancelledEvent event);
+  static void Handle(chat::ToolCallRequestedEvent event);
+  static void Handle(chat::McpServerStateChangedEvent event);
+  static void Handle(chat::McpAuthRequiredEvent event);
+  static void Handle(chat::McpProgressUpdateEvent event);
   void RefreshFromHistory();
 
   std::reference_wrapper<presentation::ChatEventSink> chat_ui_;

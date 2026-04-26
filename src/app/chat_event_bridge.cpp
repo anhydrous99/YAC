@@ -325,4 +325,16 @@ void ChatEventBridge::Handle(chat::SubAgentCancelledEvent event) {
                                        MessageStatus::Cancelled);
 }
 
+void ChatEventBridge::Handle(chat::McpServerStateChangedEvent event) {
+  (void)event;
+}
+
+void ChatEventBridge::Handle(chat::McpAuthRequiredEvent event) {
+  (void)event;
+}
+
+void ChatEventBridge::Handle(chat::McpProgressUpdateEvent event) {
+  (void)event;
+}
+
 }  // namespace yac::app

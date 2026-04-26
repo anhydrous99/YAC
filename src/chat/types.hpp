@@ -6,7 +6,6 @@
 #include "mcp/mcp_server_config.hpp"
 #include "model_info.hpp"
 
-#include <chrono>
 #include <map>
 #include <optional>
 #include <string>
@@ -16,6 +15,8 @@
 #include <vector>
 
 namespace yac::chat {
+
+static_assert(sizeof(ModelInfo) > 0);
 
 inline constexpr int kDefaultToolRoundLimit = 32;
 inline constexpr int kMinToolRoundLimit = 1;
@@ -65,6 +66,9 @@ enum class ChatEventType {
   SubAgentError,
   SubAgentCancelled,
   AgentModeChanged,
+  McpServerStateChanged,
+  McpAuthRequired,
+  McpProgressUpdate,
 };
 
 struct StartedEvent {
@@ -284,6 +288,30 @@ struct AgentModeChangedEvent {
   AgentMode mode = AgentMode::Build;
 };
 
+struct McpServerStateChangedEvent {
+  static constexpr ChatEventType kType = ChatEventType::McpServerStateChanged;
+
+  std::string server_id;
+  std::string state;
+  std::string error;
+};
+
+struct McpAuthRequiredEvent {
+  static constexpr ChatEventType kType = ChatEventType::McpAuthRequired;
+
+  std::string server_id;
+  std::string hint_message;
+};
+
+struct McpProgressUpdateEvent {
+  static constexpr ChatEventType kType = ChatEventType::McpProgressUpdate;
+
+  ChatMessageId message_id = 0;
+  std::string text;
+  double progress = 0.0;
+  double total = 0.0;
+};
+
 struct ChatEvent {
   using Payload = std::variant<
       StartedEvent, TextDeltaEvent, AssistantMessageDoneEvent,
@@ -294,13 +322,14 @@ struct ChatEvent {
       ToolCallRequestedEvent, ToolCallArgumentDeltaEvent,
       ToolApprovalRequestedEvent, UsageReportedEvent, SubAgentProgressEvent,
       SubAgentCompletedEvent, SubAgentErrorEvent, SubAgentCancelledEvent,
-      AgentModeChangedEvent>;
+      AgentModeChangedEvent, McpServerStateChangedEvent, McpAuthRequiredEvent,
+      McpProgressUpdateEvent>;
 
   ChatEvent() = default;
 
   template <typename Event, typename = std::enable_if_t<!std::is_same_v<
                                 std::decay_t<Event>, ChatEvent>>>
-  ChatEvent(Event&& event) : payload(std::forward<Event>(event)) {}
+  explicit ChatEvent(Event&& event) : payload(std::forward<Event>(event)) {}
 
   [[nodiscard]] ChatEventType Type() const {
     return std::visit(
@@ -333,6 +362,28 @@ struct ChatEvent {
 
   Payload payload;
 };
+
+[[nodiscard]] inline ChatEvent MakeMcpServerStateChangedEvent(
+    std::string server_id, std::string state, std::string error) {
+  return ChatEvent{McpServerStateChangedEvent{.server_id = std::move(server_id),
+                                              .state = std::move(state),
+                                              .error = std::move(error)}};
+}
+
+[[nodiscard]] inline ChatEvent MakeMcpAuthRequiredEvent(
+    std::string server_id, std::string hint_message) {
+  return ChatEvent{
+      McpAuthRequiredEvent{.server_id = std::move(server_id),
+                           .hint_message = std::move(hint_message)}};
+}
+
+[[nodiscard]] inline ChatEvent MakeMcpProgressUpdateEvent(
+    ChatMessageId message_id, std::string text, double progress, double total) {
+  return ChatEvent{McpProgressUpdateEvent{.message_id = message_id,
+                                          .text = std::move(text),
+                                          .progress = progress,
+                                          .total = total}};
+}
 
 struct ProviderConfig {
   std::string id = "openai";
