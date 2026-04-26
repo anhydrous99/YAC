@@ -215,6 +215,7 @@ add_library(yac_service STATIC
   src/tool_call/executor.cpp
   src/tool_call/filesystem_tool_executor.cpp
   src/tool_call/grep_tool_executor.cpp
+  src/tool_call/json_rpc_stdio_base.cpp
   src/tool_call/lsp_client.cpp
   src/tool_call/lsp_tool_executor.cpp
   src/mcp/tool_naming.cpp

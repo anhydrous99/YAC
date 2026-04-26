@@ -1,25 +1,19 @@
 #include "tool_call/lsp_client.hpp"
 
+#include "tool_call/json_rpc_stdio_base.hpp"
+
 #include <algorithm>
-#include <array>
-#include <atomic>
-#include <cerrno>
 #include <chrono>
 #include <condition_variable>
-#include <csignal>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <mutex>
-#include <openai.hpp>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <sys/wait.h>
-#include <thread>
 #include <unistd.h>
 #include <utility>
 
@@ -27,7 +21,7 @@ namespace yac::tool_call {
 
 namespace {
 
-using Json = openai::_detail::Json;
+using Json = JsonRpcStdioBase::Json;
 
 std::string ReadWholeFile(const std::filesystem::path& path) {
   std::ifstream file(path, std::ios::binary);
@@ -162,14 +156,17 @@ int SymbolLine(const Json& item) {
 
 }  // namespace
 
-class JsonRpcLspClient::Impl {
+class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
  public:
+  static constexpr std::size_t kMaxLspMessageBytes = 64UL * 1024UL * 1024UL;
+
   explicit Impl(LspServerConfig config)
-      : config_(std::move(config)),
+      : JsonRpcStdioBase("LSP"),
+        config_(std::move(config)),
         workspace_root_(std::filesystem::absolute(config_.workspace_root)
                             .lexically_normal()) {}
 
-  ~Impl() { Stop(); }
+  ~Impl() override { Stop(); }
   Impl(const Impl&) = delete;
   Impl& operator=(const Impl&) = delete;
   Impl(Impl&&) = delete;
@@ -181,7 +178,7 @@ class JsonRpcLspClient::Impl {
       EnsureInitialized();
       SyncDocument(path);
       const auto uri = FileUri(path);
-      std::unique_lock lock(mutex_);
+      std::unique_lock lock(diagnostics_mutex_);
       diagnostics_wake_.wait_for(lock, config_.diagnostics_timeout,
                                  [&] { return diagnostics_.contains(uri); });
       auto diagnostics = diagnostics_.contains(uri)
@@ -202,11 +199,11 @@ class JsonRpcLspClient::Impl {
       const auto path = AbsolutePath(file_path);
       EnsureInitialized();
       SyncDocument(path);
-      auto response =
-          SendRequest("textDocument/references",
-                      {{"textDocument", {{"uri", FileUri(path)}}},
-                       {"position", Position(line, character)},
-                       {"context", {{"includeDeclaration", true}}}});
+      auto response = SendRequest("textDocument/references",
+                                  {{"textDocument", {{"uri", FileUri(path)}}},
+                                   {"position", Position(line, character)},
+                                   {"context", {{"includeDeclaration", true}}}},
+                                  config_.request_timeout);
       auto locations = ParseLocations(response["result"]);
       return LspReferencesCall{.symbol = symbol,
                                .file_path = DisplayPath(path),
@@ -228,7 +225,8 @@ class JsonRpcLspClient::Impl {
       SyncDocument(path);
       auto response = SendRequest("textDocument/definition",
                                   {{"textDocument", {{"uri", FileUri(path)}}},
-                                   {"position", Position(line, character)}});
+                                   {"position", Position(line, character)}},
+                                  config_.request_timeout);
       auto locations = ParseLocations(response["result"]);
       return LspGotoDefinitionCall{.symbol = symbol,
                                    .file_path = DisplayPath(path),
@@ -255,7 +253,8 @@ class JsonRpcLspClient::Impl {
       auto response = SendRequest("textDocument/rename",
                                   {{"textDocument", {{"uri", FileUri(path)}}},
                                    {"position", Position(line, character)},
-                                   {"newName", new_name}});
+                                   {"newName", new_name}},
+                                  config_.request_timeout);
       auto edits = ParseWorkspaceEdits(response["result"]);
       return LspRenameCall{.file_path = DisplayPath(path),
                            .line = line,
@@ -281,7 +280,8 @@ class JsonRpcLspClient::Impl {
       EnsureInitialized();
       SyncDocument(path);
       auto response = SendRequest("textDocument/documentSymbol",
-                                  {{"textDocument", {{"uri", FileUri(path)}}}});
+                                  {{"textDocument", {{"uri", FileUri(path)}}}},
+                                  config_.request_timeout);
       std::vector<LspSymbol> symbols;
       ParseSymbols(response["result"], symbols);
       return LspSymbolsCall{.file_path = DisplayPath(path),
@@ -298,77 +298,18 @@ class JsonRpcLspClient::Impl {
     if (initialized_) {
       return;
     }
-    Start();
-    SendRequest(
+    Start(config_.command, config_.args);
+    [[maybe_unused]] const auto initialize_response = SendRequest(
         "initialize",
         {{"processId", static_cast<int>(getpid())},
          {"rootUri", FileUri(workspace_root_)},
          {"capabilities", Json::object()},
          {"workspaceFolders",
           Json::array({{{"uri", FileUri(workspace_root_)},
-                        {"name", workspace_root_.filename().string()}}})}});
+                        {"name", workspace_root_.filename().string()}}})}},
+        config_.request_timeout);
     SendNotification("initialized", Json::object());
     initialized_ = true;
-  }
-
-  void Start() {
-    if (pid_ > 0) {
-      return;
-    }
-    std::array<int, 2> stdin_pipe{};
-    std::array<int, 2> stdout_pipe{};
-    if (pipe(stdin_pipe.data()) != 0 || pipe(stdout_pipe.data()) != 0) {
-      throw std::runtime_error("Unable to create LSP pipes.");
-    }
-    pid_ = fork();
-    if (pid_ < 0) {
-      throw std::runtime_error("Unable to fork LSP server.");
-    }
-    if (pid_ == 0) {
-      dup2(stdin_pipe[0], STDIN_FILENO);
-      dup2(stdout_pipe[1], STDOUT_FILENO);
-      close(stdin_pipe[0]);
-      close(stdin_pipe[1]);
-      close(stdout_pipe[0]);
-      close(stdout_pipe[1]);
-
-      std::vector<std::string> argv_storage;
-      argv_storage.push_back(config_.command);
-      argv_storage.insert(argv_storage.end(), config_.args.begin(),
-                          config_.args.end());
-      std::vector<char*> argv;
-      for (auto& item : argv_storage) {
-        argv.push_back(item.data());
-      }
-      argv.push_back(nullptr);
-      execvp(argv[0], argv.data());
-      _exit(127);
-    }
-
-    close(stdin_pipe[0]);
-    close(stdout_pipe[1]);
-    write_fd_ = stdin_pipe[1];
-    read_fd_ = stdout_pipe[0];
-    reader_ = std::jthread([this](std::stop_token st) { ReaderLoop(st); });
-  }
-
-  void Stop() {
-    if (reader_.joinable()) {
-      reader_.request_stop();
-    }
-    if (read_fd_ >= 0) {
-      close(read_fd_);
-      read_fd_ = -1;
-    }
-    if (write_fd_ >= 0) {
-      close(write_fd_);
-      write_fd_ = -1;
-    }
-    if (pid_ > 0) {
-      kill(pid_, SIGTERM);
-      waitpid(pid_, nullptr, 0);
-      pid_ = -1;
-    }
   }
 
   void SyncDocument(const std::filesystem::path& path) {
@@ -392,110 +333,14 @@ class JsonRpcLspClient::Impl {
                       {"contentChanges", Json::array({{{"text", text}}})}});
   }
 
-  Json SendRequest(const std::string& method, Json params) {
-    const auto id = next_id_.fetch_add(1);
-    SendMessage({{"jsonrpc", "2.0"},
-                 {"id", id},
-                 {"method", method},
-                 {"params", std::move(params)}});
-
-    std::unique_lock lock(mutex_);
-    const bool ready =
-        response_wake_.wait_for(lock, config_.request_timeout, [&] {
-          return responses_.find(id) != responses_.end() || !reader_alive_;
-        });
-    if (!ready) {
-      throw std::runtime_error("LSP request timed out: " + method);
-    }
-    auto it = responses_.find(id);
-    if (it == responses_.end()) {
-      // Reader exited before a response arrived (child disconnect, framing
-      // error, stop requested). Surface a prompt error to the caller instead
-      // of letting them block for the full request_timeout.
-      throw std::runtime_error("LSP request aborted: " + method + ": " +
-                               reader_death_reason_);
-    }
-    auto response = std::move(it->second);
-    responses_.erase(it);
-    if (response.contains("error")) {
-      throw std::runtime_error(response["error"].dump());
-    }
-    return response;
-  }
-
-  void SendNotification(const std::string& method, Json params) {
-    SendMessage({{"jsonrpc", "2.0"},
-                 {"method", method},
-                 {"params", std::move(params)}});
-  }
-
-  void SendMessage(const Json& message) {
-    const auto body = message.dump();
+  void WriteFrame(const std::string& body) override {
     const auto header =
         "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n";
     WriteBytes(header);
     WriteBytes(body);
   }
 
-  void WriteBytes(const std::string& bytes) const {
-    size_t written = 0;
-    while (written < bytes.size()) {
-      const auto result =
-          write(write_fd_, bytes.data() + written, bytes.size() - written);
-      if (result < 0) {
-        throw std::runtime_error("Failed to write to LSP server: " +
-                                 std::string(std::strerror(errno)));
-      }
-      written += static_cast<size_t>(result);
-    }
-  }
-
-  void ReaderLoop(std::stop_token stop_token) {
-    while (!stop_token.stop_requested()) {
-      auto message = ReadMessage();
-      if (!message.has_value()) {
-        FaultAllPending(stop_token.stop_requested()
-                            ? "LSP client shut down"
-                            : "LSP server disconnected");
-        return;
-      }
-      ProcessMessage(*message);
-    }
-    FaultAllPending("LSP client shut down");
-  }
-
-  void FaultAllPending(std::string_view reason) {
-    {
-      std::lock_guard lock(mutex_);
-      if (!reader_alive_) {
-        return;
-      }
-      reader_alive_ = false;
-      reader_death_reason_ = std::string(reason);
-    }
-    response_wake_.notify_all();
-    diagnostics_wake_.notify_all();
-  }
-
-  // Parses a "Content-Length: <n>" header value. Returns nullopt if the value
-  // is malformed or exceeds kMaxLspMessageBytes; caller treats either as a
-  // framing error and lets the reader fault pending requests.
-  static std::optional<size_t> ParseContentLength(std::string_view value) {
-    constexpr size_t kMaxLspMessageBytes = 64UL * 1024UL * 1024UL;  // 64 MiB
-    try {
-      size_t consumed = 0;
-      const std::string trimmed(value);
-      const auto parsed = std::stoul(trimmed, &consumed);
-      if (parsed > kMaxLspMessageBytes) {
-        return std::nullopt;
-      }
-      return static_cast<size_t>(parsed);
-    } catch (const std::exception&) {
-      return std::nullopt;
-    }
-  }
-
-  std::optional<std::string> ReadMessage() {
+  std::optional<std::string> ReadFrame() override {
     size_t content_length = 0;
     while (true) {
       auto line = ReadLine();
@@ -522,7 +367,7 @@ class JsonRpcLspClient::Impl {
     size_t read_count = 0;
     while (read_count < content_length) {
       const auto result =
-          read(read_fd_, body.data() + read_count, content_length - read_count);
+          read(ReadFd(), body.data() + read_count, content_length - read_count);
       if (result <= 0) {
         return std::nullopt;
       }
@@ -531,11 +376,17 @@ class JsonRpcLspClient::Impl {
     return body;
   }
 
+  void OnNotification(std::string_view method, const Json& params) override {
+    if (method == "textDocument/publishDiagnostics") {
+      ProcessDiagnostics(params);
+    }
+  }
+
   [[nodiscard]] std::optional<std::string> ReadLine() const {
     std::string line;
     char ch = '\0';
     while (true) {
-      const auto result = read(read_fd_, &ch, 1);
+      const auto result = read(ReadFd(), &ch, 1);
       if (result <= 0) {
         return std::nullopt;
       }
@@ -549,28 +400,21 @@ class JsonRpcLspClient::Impl {
     }
   }
 
-  void ProcessMessage(const std::string& body) {
-    Json message;
+  // Parses a "Content-Length: <n>" header value. Returns nullopt if the value
+  // is malformed or exceeds kMaxLspMessageBytes; caller treats either as a
+  // framing error and lets the reader fault pending requests.
+  [[nodiscard]] static std::optional<size_t> ParseContentLength(
+      std::string_view value) {
     try {
-      message = Json::parse(body);
-    } catch (const std::exception&) {
-      return;
-    }
-    if (message.contains("id")) {
-      const auto id = message["id"].get<int>();
-      {
-        std::lock_guard lock(mutex_);
-        responses_[id] = std::move(message);
+      size_t consumed = 0;
+      const std::string trimmed(value);
+      const auto parsed = std::stoul(trimmed, &consumed);
+      if (parsed > kMaxLspMessageBytes) {
+        return std::nullopt;
       }
-      response_wake_.notify_all();
-      return;
-    }
-    if (!message.contains("method") || !message["method"].is_string()) {
-      return;
-    }
-    if (message["method"].get<std::string>() ==
-        "textDocument/publishDiagnostics") {
-      ProcessDiagnostics(message["params"]);
+      return static_cast<size_t>(parsed);
+    } catch (const std::exception&) {
+      return std::nullopt;
     }
   }
 
@@ -594,7 +438,7 @@ class JsonRpcLspClient::Impl {
       }
     }
     {
-      std::lock_guard lock(mutex_);
+      std::lock_guard lock(diagnostics_mutex_);
       diagnostics_[params["uri"].get<std::string>()] = std::move(diagnostics);
     }
     diagnostics_wake_.notify_all();
@@ -735,25 +579,12 @@ class JsonRpcLspClient::Impl {
   LspServerConfig config_;
   std::filesystem::path workspace_root_;
   std::mutex start_mutex_;
-  std::mutex mutex_;
-  std::condition_variable_any response_wake_;
+  std::mutex diagnostics_mutex_;
   std::condition_variable_any diagnostics_wake_;
-  std::map<int, Json> responses_;
   std::map<std::string, std::vector<LspDiagnostic>> diagnostics_;
   std::set<std::string> opened_documents_;
   std::map<std::string, int> document_versions_;
-  std::atomic<int> next_id_{1};
-  std::jthread reader_;
-  pid_t pid_ = -1;
-  int read_fd_ = -1;
-  int write_fd_ = -1;
   bool initialized_ = false;
-  // Protected by mutex_. reader_alive_ flips to false when ReaderLoop exits
-  // (child disconnect, framing error, stop_token). Waiters on response_wake_
-  // / diagnostics_wake_ then observe it and return an error instead of
-  // waiting for their per-request timeout.
-  bool reader_alive_ = true;
-  std::string reader_death_reason_;
 };
 
 JsonRpcLspClient::JsonRpcLspClient(LspServerConfig config)
