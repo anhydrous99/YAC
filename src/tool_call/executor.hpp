@@ -1,8 +1,8 @@
 #pragma once
 
 #include "chat/types.hpp"
+#include "core_types/tool_call_types.hpp"
 #include "tool_call/lsp_client.hpp"
-#include "tool_call/types.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <memory>
@@ -30,11 +30,7 @@ struct PreparedToolCall {
   chat::ChatMessageId card_message_id = 0;
 };
 
-struct ToolExecutionResult {
-  ToolCallBlock block;
-  std::string result_json;
-  bool is_error = false;
-};
+using ToolExecutionResult = yac::core_types::ToolExecutionResult;
 
 class ToolExecutor {
  public:

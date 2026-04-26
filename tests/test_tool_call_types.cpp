@@ -1,5 +1,7 @@
+#include "tool_call/executor.hpp"
 #include "tool_call/types.hpp"
 
+#include <type_traits>
 #include <variant>
 
 #include <catch2/catch_test_macros.hpp>
@@ -132,4 +134,36 @@ TEST_CASE("ToolCallBlock stores all tool call variants") {
 
   block = LspSymbolsCall{"file", {}, false, ""};
   REQUIRE(std::holds_alternative<LspSymbolsCall>(block));
+
+  block = McpToolCall{};
+  REQUIRE(std::holds_alternative<McpToolCall>(block));
+}
+
+TEST_CASE("MCP core types default construct") {
+  McpResultBlock result_block;
+  REQUIRE(result_block.kind == McpResultBlockKind::Text);
+  REQUIRE(result_block.text.empty());
+  REQUIRE(result_block.mime_type.empty());
+  REQUIRE(result_block.uri.empty());
+  REQUIRE(result_block.name.empty());
+  REQUIRE(result_block.bytes == 0);
+
+  McpToolCall call;
+  REQUIRE(call.server_id.empty());
+  REQUIRE(call.tool_name.empty());
+  REQUIRE(call.original_tool_name.empty());
+  REQUIRE(call.arguments_json.empty());
+  REQUIRE(call.result_blocks.empty());
+  REQUIRE_FALSE(call.is_error);
+  REQUIRE(call.error.empty());
+  REQUIRE_FALSE(call.is_truncated);
+  REQUIRE(call.result_bytes == 0);
+}
+
+TEST_CASE("ToolExecutionResult is available through core types") {
+  static_assert(std::is_same_v<ToolExecutionResult,
+                               yac::core_types::ToolExecutionResult>);
+  ToolExecutionResult result{.block = McpToolCall{}, .result_json = "{}"};
+  REQUIRE(std::holds_alternative<McpToolCall>(result.block));
+  REQUIRE(result.result_json == "{}");
 }

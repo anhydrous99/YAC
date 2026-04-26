@@ -171,6 +171,10 @@ ftxui::Element RenderHighlightedLine(syntax::internal::Lexer* lexer,
   return row | ftxui::flex;
 }
 
+ftxui::Element RenderMcpPlaceholder() {
+  return ftxui::text("");
+}
+
 }  // namespace
 
 ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block) {
@@ -217,6 +221,9 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
           return RenderTodoWrite(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::AskUserCall>) {
           return RenderAskUser(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::McpToolCall>) {
+          // TODO(mcp): implement in T32
+          return RenderMcpPlaceholder();
         } else {
           return ftxui::text("");
         }

@@ -196,6 +196,13 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .label = "ask_user",
               .summary = "ask_user",
           };
+        } else if constexpr (std::is_same_v<T, tool_data::McpToolCall>) {
+          // TODO(mcp): implement in T32
+          return ToolCallDescriptor{
+              .tag = "mcp",
+              .label = "MCP tool",
+              .summary = "",
+          };
         } else {
           return ToolCallDescriptor{
               .tag = "tool",

@@ -24,6 +24,8 @@ inline constexpr std::string_view kBashToolName = "bash";
 inline constexpr std::string_view kFileEditToolName = "file_edit";
 inline constexpr std::string_view kGrepToolName = "grep";
 inline constexpr std::string_view kGlobToolName = "glob";
+inline constexpr std::string_view kMcpToolNamePrefix = "mcp_";
+inline constexpr std::string_view kMcpToolNameSeparator = "__";
 
 struct DiffLine {
   enum Type { Add, Remove, Context };
@@ -232,11 +234,58 @@ struct AskUserCall {
   std::string error;
 };
 
+enum class McpResultBlockKind {
+  Text,
+  Image,
+  Audio,
+  ResourceLink,
+  EmbeddedResource,
+};
+
+struct McpResultBlock {
+  McpResultBlockKind kind = McpResultBlockKind::Text;
+  std::string text;
+  std::string mime_type;
+  std::string uri;
+  std::string name;
+  uintmax_t bytes = 0;
+};
+
+struct McpToolCall {
+  std::string server_id;
+  std::string tool_name;
+  std::string original_tool_name;
+  std::string arguments_json;
+  std::vector<McpResultBlock> result_blocks;
+  bool is_error = false;
+  std::string error;
+  bool is_truncated = false;
+  uintmax_t result_bytes = 0;
+};
+
 using ToolCallBlock =
     std::variant<BashCall, FileEditCall, FileReadCall, FileWriteCall,
                  ListDirCall, GrepCall, GlobCall, WebFetchCall, WebSearchCall,
                  LspDiagnosticsCall, LspReferencesCall, LspGotoDefinitionCall,
                  LspRenameCall, LspSymbolsCall, SubAgentCall, TodoWriteCall,
-                 AskUserCall>;
+                 AskUserCall, McpToolCall>;
+
+namespace core_types {
+
+struct ToolExecutionResult {
+  ToolCallBlock block;
+  std::string result_json;
+  bool is_error = false;
+};
+
+}  // namespace core_types
+
+using ToolExecutionResult = core_types::ToolExecutionResult;
 
 }  // namespace yac::tool_call
+
+namespace yac::core_types {
+
+using ToolExecutionResult = ::yac::tool_call::core_types::ToolExecutionResult;
+
+}  // namespace yac::core_types
