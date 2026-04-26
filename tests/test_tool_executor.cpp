@@ -2,6 +2,7 @@
 #include "tool_call/todo_state.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -18,7 +19,9 @@ using namespace yac::tool_call;
 
 namespace yac::tool_call {
 bool HasToolExecutorDispatchEntry(std::string_view name);
-}
+bool HasToolExecutorPrepareRegistryEntry(std::string_view name);
+std::size_t ToolExecutorPrepareRegistrySize();
+}  // namespace yac::tool_call
 
 namespace {
 
@@ -146,6 +149,28 @@ TEST_CASE("ToolExecutor dispatch registry keys match tool definitions") {
   for (const auto& definition : ToolExecutor::Definitions()) {
     REQUIRE(HasToolExecutorDispatchEntry(definition.name));
   }
+}
+
+TEST_CASE("ToolExecutor prepare registry keys match tool definitions") {
+  REQUIRE(ToolExecutorPrepareRegistrySize() ==
+          ToolExecutor::Definitions().size());
+  for (const auto& definition : ToolExecutor::Definitions()) {
+    REQUIRE(HasToolExecutorPrepareRegistryEntry(definition.name));
+  }
+}
+
+TEST_CASE("ToolExecutor file_write requires approval") {
+  auto root = TempRoot("write_prepare");
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "file_write",
+      .arguments_json = R"({"filepath":"src/new.cpp","content":"one\ntwo\n"})"};
+
+  auto prepared = ToolExecutor::Prepare(request);
+
+  REQUIRE(prepared.requires_approval);
+  REQUIRE(prepared.approval_prompt == "Write src/new.cpp (2 lines).");
+  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor writes files inside the workspace") {

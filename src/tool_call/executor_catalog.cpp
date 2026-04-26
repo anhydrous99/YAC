@@ -3,11 +3,231 @@
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
+#include <cstddef>
 #include <exception>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace yac::tool_call {
+
+namespace {
+
+using PrepareFn = PreparedToolCall (*)(const chat::ToolCallRequest&,
+                                       const Json& args);
+
+PreparedToolCall PrepareFileWriteTool(const chat::ToolCallRequest& request,
+                                      const Json& args) {
+  const auto filepath = RequireString(args, "filepath");
+  const auto content = RequireString(args, "content");
+  auto block = FileWriteCall{.filepath = filepath,
+                             .content_preview = PreviewText(content),
+                             .content_tail = TailLines(content, 3),
+                             .lines_added = CountLines(content)};
+  return PreparedToolCall{
+      .request = request,
+      .preview = std::move(block),
+      .requires_approval = true,
+      .approval_prompt = "Write " + filepath + " (" +
+                         std::to_string(CountLines(content)) + " lines)."};
+}
+
+PreparedToolCall PrepareFileReadTool(const chat::ToolCallRequest& request,
+                                     const Json& args) {
+  const auto filepath = RequireString(args, "filepath");
+  return PreparedToolCall{.request = request,
+                          .preview = FileReadCall{.filepath = filepath}};
+}
+
+PreparedToolCall PrepareListDirTool(const chat::ToolCallRequest& request,
+                                    const Json& args) {
+  const auto path = RequireString(args, "path");
+  return PreparedToolCall{.request = request,
+                          .preview = ListDirCall{.path = path}};
+}
+
+PreparedToolCall PrepareLspDiagnosticsTool(const chat::ToolCallRequest& request,
+                                           const Json& args) {
+  const auto file_path = RequireString(args, "file_path");
+  return PreparedToolCall{
+      .request = request,
+      .preview = LspDiagnosticsCall{.file_path = file_path}};
+}
+
+PreparedToolCall PrepareLspReferencesTool(const chat::ToolCallRequest& request,
+                                          const Json& args) {
+  const auto file_path = RequireString(args, "file_path");
+  return PreparedToolCall{
+      .request = request,
+      .preview = LspReferencesCall{.symbol = OptionalString(args, "symbol"),
+                                   .file_path = file_path}};
+}
+
+PreparedToolCall PrepareLspGotoDefinitionTool(
+    const chat::ToolCallRequest& request, const Json& args) {
+  const auto file_path = RequireString(args, "file_path");
+  return PreparedToolCall{.request = request,
+                          .preview = LspGotoDefinitionCall{
+                              .symbol = OptionalString(args, "symbol"),
+                              .file_path = file_path,
+                              .line = RequireInt(args, "line"),
+                              .character = RequireInt(args, "character")}};
+}
+
+PreparedToolCall PrepareLspRenameTool(const chat::ToolCallRequest& request,
+                                      const Json& args) {
+  const auto file_path = RequireString(args, "file_path");
+  const auto new_name = RequireString(args, "new_name");
+  return PreparedToolCall{
+      .request = request,
+      .preview = LspRenameCall{.file_path = file_path,
+                               .line = RequireInt(args, "line"),
+                               .character = RequireInt(args, "character"),
+                               .old_name = OptionalString(args, "old_name"),
+                               .new_name = new_name},
+      .requires_approval = true,
+      .approval_prompt =
+          "Rename symbol in " + file_path + " to '" + new_name + "'."};
+}
+
+PreparedToolCall PrepareLspSymbolsTool(const chat::ToolCallRequest& request,
+                                       const Json& args) {
+  const auto file_path = RequireString(args, "file_path");
+  return PreparedToolCall{.request = request,
+                          .preview = LspSymbolsCall{.file_path = file_path}};
+}
+
+PreparedToolCall PrepareSubAgentTool(const chat::ToolCallRequest& request,
+                                     const Json& args) {
+  const auto task = RequireString(args, "task");
+  const auto mode_str = OptionalString(args, "mode");
+  const auto mode = (mode_str == "background") ? SubAgentMode::Background
+                                               : SubAgentMode::Foreground;
+  return PreparedToolCall{
+      .request = request,
+      .preview =
+          SubAgentCall{
+              .task = task, .mode = mode, .status = SubAgentStatus::Pending},
+      .requires_approval = false};
+}
+
+PreparedToolCall PrepareTodoWriteTool(const chat::ToolCallRequest& request,
+                                      const Json& args) {
+  const auto todos_json = args.contains("todos") && args["todos"].is_array()
+                              ? args["todos"]
+                              : Json::array();
+  std::vector<TodoItem> todos;
+  todos.reserve(todos_json.size());
+  for (const auto& item : todos_json) {
+    todos.push_back(
+        TodoItem{.content = item.value("content", std::string{}),
+                 .status = item.value("status", std::string{"pending"}),
+                 .priority = item.value("priority", std::string{"medium"})});
+  }
+  return PreparedToolCall{.request = request,
+                          .preview = TodoWriteCall{.todos = std::move(todos)},
+                          .requires_approval = false};
+}
+
+PreparedToolCall PrepareAskUserTool(const chat::ToolCallRequest& request,
+                                    const Json& args) {
+  const auto question = RequireString(args, "question");
+  const auto options_json =
+      args.contains("options") && args["options"].is_array() ? args["options"]
+                                                             : Json::array();
+  std::vector<std::string> options;
+  options.reserve(options_json.size());
+  for (const auto& opt : options_json) {
+    if (opt.is_string()) {
+      options.push_back(opt.get<std::string>());
+    }
+  }
+  return PreparedToolCall{.request = request,
+                          .preview = AskUserCall{.question = question,
+                                                 .options = std::move(options)},
+                          .requires_approval = true,
+                          .approval_prompt = question};
+}
+
+PreparedToolCall PrepareBashTool(const chat::ToolCallRequest& request,
+                                 const Json& args) {
+  const auto command = RequireString(args, "command");
+  std::string preview = command;
+  if (preview.size() > 120) {
+    preview.resize(120);
+    preview += "...";
+  }
+  return PreparedToolCall{.request = request,
+                          .preview = BashCall{.command = command},
+                          .requires_approval = true,
+                          .approval_prompt = "Execute: " + preview};
+}
+
+PreparedToolCall PrepareFileEditTool(const chat::ToolCallRequest& request,
+                                     const Json& args) {
+  const auto filepath = RequireString(args, "filepath");
+  const auto old_string = RequireString(args, "old_string");
+  const auto new_string = RequireString(args, "new_string");
+  std::string preview = "Edit " + filepath + ": replace \"";
+  preview +=
+      old_string.size() > 40 ? old_string.substr(0, 40) + "..." : old_string;
+  preview += "\" -> \"";
+  preview +=
+      new_string.size() > 40 ? new_string.substr(0, 40) + "..." : new_string;
+  preview += "\"";
+  return PreparedToolCall{.request = request,
+                          .preview = FileEditCall{.filepath = filepath},
+                          .requires_approval = true,
+                          .approval_prompt = std::move(preview)};
+}
+
+PreparedToolCall PrepareGrepTool(const chat::ToolCallRequest& request,
+                                 const Json& args) {
+  const auto pattern = RequireString(args, "pattern");
+  return PreparedToolCall{.request = request,
+                          .preview = GrepCall{.pattern = pattern},
+                          .requires_approval = false};
+}
+
+PreparedToolCall PrepareGlobTool(const chat::ToolCallRequest& request,
+                                 const Json& args) {
+  const auto pattern = RequireString(args, "pattern");
+  return PreparedToolCall{.request = request,
+                          .preview = GlobCall{.pattern = pattern},
+                          .requires_approval = false};
+}
+
+using PrepareRegistry = std::unordered_map<std::string_view, PrepareFn>;
+
+static const PrepareRegistry kPrepareRegistry = {
+    {kFileWriteToolName, &PrepareFileWriteTool},
+    {kFileReadToolName, &PrepareFileReadTool},
+    {kListDirToolName, &PrepareListDirTool},
+    {kLspDiagnosticsToolName, &PrepareLspDiagnosticsTool},
+    {kLspReferencesToolName, &PrepareLspReferencesTool},
+    {kLspGotoDefinitionToolName, &PrepareLspGotoDefinitionTool},
+    {kLspRenameToolName, &PrepareLspRenameTool},
+    {kLspSymbolsToolName, &PrepareLspSymbolsTool},
+    {kSubAgentToolName, &PrepareSubAgentTool},
+    {kTodoWriteToolName, &PrepareTodoWriteTool},
+    {kAskUserToolName, &PrepareAskUserTool},
+    {kBashToolName, &PrepareBashTool},
+    {kFileEditToolName, &PrepareFileEditTool},
+    {kGrepToolName, &PrepareGrepTool},
+    {kGlobToolName, &PrepareGlobTool},
+};
+
+}  // namespace
+
+bool HasToolExecutorPrepareRegistryEntry(std::string_view name) {
+  return kPrepareRegistry.find(name) != kPrepareRegistry.end();
+}
+
+std::size_t ToolExecutorPrepareRegistrySize() {
+  return kPrepareRegistry.size();
+}
 
 std::vector<chat::ToolDefinition> ToolDefinitions() {
   return {
@@ -88,160 +308,9 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
 PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
   try {
     const auto args = ParseArguments(request);
-    if (request.name == kFileWriteToolName) {
-      const auto filepath = RequireString(args, "filepath");
-      const auto content = RequireString(args, "content");
-      auto block = FileWriteCall{.filepath = filepath,
-                                 .content_preview = PreviewText(content),
-                                 .content_tail = TailLines(content, 3),
-                                 .lines_added = CountLines(content)};
-      return PreparedToolCall{
-          .request = request,
-          .preview = std::move(block),
-          .requires_approval = true,
-          .approval_prompt = "Write " + filepath + " (" +
-                             std::to_string(CountLines(content)) + " lines)."};
-    }
-    if (request.name == kFileReadToolName) {
-      const auto filepath = RequireString(args, "filepath");
-      return PreparedToolCall{.request = request,
-                              .preview = FileReadCall{.filepath = filepath}};
-    }
-    if (request.name == kListDirToolName) {
-      const auto path = RequireString(args, "path");
-      return PreparedToolCall{.request = request,
-                              .preview = ListDirCall{.path = path}};
-    }
-    if (request.name == kLspDiagnosticsToolName) {
-      const auto file_path = RequireString(args, "file_path");
-      return PreparedToolCall{
-          .request = request,
-          .preview = LspDiagnosticsCall{.file_path = file_path}};
-    }
-    if (request.name == kLspReferencesToolName) {
-      const auto file_path = RequireString(args, "file_path");
-      return PreparedToolCall{
-          .request = request,
-          .preview = LspReferencesCall{.symbol = OptionalString(args, "symbol"),
-                                       .file_path = file_path}};
-    }
-    if (request.name == kLspGotoDefinitionToolName) {
-      const auto file_path = RequireString(args, "file_path");
-      return PreparedToolCall{.request = request,
-                              .preview = LspGotoDefinitionCall{
-                                  .symbol = OptionalString(args, "symbol"),
-                                  .file_path = file_path,
-                                  .line = RequireInt(args, "line"),
-                                  .character = RequireInt(args, "character")}};
-    }
-    if (request.name == kLspRenameToolName) {
-      const auto file_path = RequireString(args, "file_path");
-      const auto new_name = RequireString(args, "new_name");
-      return PreparedToolCall{
-          .request = request,
-          .preview = LspRenameCall{.file_path = file_path,
-                                   .line = RequireInt(args, "line"),
-                                   .character = RequireInt(args, "character"),
-                                   .old_name = OptionalString(args, "old_name"),
-                                   .new_name = new_name},
-          .requires_approval = true,
-          .approval_prompt =
-              "Rename symbol in " + file_path + " to '" + new_name + "'."};
-    }
-    if (request.name == kLspSymbolsToolName) {
-      const auto file_path = RequireString(args, "file_path");
-      return PreparedToolCall{
-          .request = request,
-          .preview = LspSymbolsCall{.file_path = file_path}};
-    }
-    if (request.name == kSubAgentToolName) {
-      const auto task = RequireString(args, "task");
-      const auto mode_str = OptionalString(args, "mode");
-      const auto mode = (mode_str == "background") ? SubAgentMode::Background
-                                                   : SubAgentMode::Foreground;
-      return PreparedToolCall{
-          .request = request,
-          .preview = SubAgentCall{.task = task,
-                                  .mode = mode,
-                                  .status = SubAgentStatus::Pending},
-          .requires_approval = false};
-    }
-    if (request.name == kTodoWriteToolName) {
-      const auto todos_json = args.contains("todos") && args["todos"].is_array()
-                                  ? args["todos"]
-                                  : Json::array();
-      std::vector<TodoItem> todos;
-      todos.reserve(todos_json.size());
-      for (const auto& item : todos_json) {
-        todos.push_back(TodoItem{
-            .content = item.value("content", std::string{}),
-            .status = item.value("status", std::string{"pending"}),
-            .priority = item.value("priority", std::string{"medium"})});
-      }
-      return PreparedToolCall{
-          .request = request,
-          .preview = TodoWriteCall{.todos = std::move(todos)},
-          .requires_approval = false};
-    }
-    if (request.name == kAskUserToolName) {
-      const auto question = RequireString(args, "question");
-      const auto options_json =
-          args.contains("options") && args["options"].is_array()
-              ? args["options"]
-              : Json::array();
-      std::vector<std::string> options;
-      options.reserve(options_json.size());
-      for (const auto& opt : options_json) {
-        if (opt.is_string()) {
-          options.push_back(opt.get<std::string>());
-        }
-      }
-      return PreparedToolCall{
-          .request = request,
-          .preview =
-              AskUserCall{.question = question, .options = std::move(options)},
-          .requires_approval = true,
-          .approval_prompt = question};
-    }
-    if (request.name == kBashToolName) {
-      const auto command = RequireString(args, "command");
-      std::string preview = command;
-      if (preview.size() > 120) {
-        preview.resize(120);
-        preview += "...";
-      }
-      return PreparedToolCall{.request = request,
-                              .preview = BashCall{.command = command},
-                              .requires_approval = true,
-                              .approval_prompt = "Execute: " + preview};
-    }
-    if (request.name == kFileEditToolName) {
-      const auto filepath = RequireString(args, "filepath");
-      const auto old_string = RequireString(args, "old_string");
-      const auto new_string = RequireString(args, "new_string");
-      std::string preview = "Edit " + filepath + ": replace \"";
-      preview += old_string.size() > 40 ? old_string.substr(0, 40) + "..."
-                                        : old_string;
-      preview += "\" -> \"";
-      preview += new_string.size() > 40 ? new_string.substr(0, 40) + "..."
-                                        : new_string;
-      preview += "\"";
-      return PreparedToolCall{.request = request,
-                              .preview = FileEditCall{.filepath = filepath},
-                              .requires_approval = true,
-                              .approval_prompt = std::move(preview)};
-    }
-    if (request.name == kGrepToolName) {
-      const auto pattern = RequireString(args, "pattern");
-      return PreparedToolCall{.request = request,
-                              .preview = GrepCall{.pattern = pattern},
-                              .requires_approval = false};
-    }
-    if (request.name == kGlobToolName) {
-      const auto pattern = RequireString(args, "pattern");
-      return PreparedToolCall{.request = request,
-                              .preview = GlobCall{.pattern = pattern},
-                              .requires_approval = false};
+    const auto it = kPrepareRegistry.find(request.name);
+    if (it != kPrepareRegistry.end()) {
+      return it->second(request, args);
     }
     return PreparedToolCall{
         .request = request,
