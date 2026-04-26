@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <string_view>
 
 namespace yac::mcp::protocol {
@@ -104,6 +105,12 @@ inline constexpr std::string_view kFieldContents = "contents";
 inline constexpr std::string_view kCapabilityRoots = "roots";
 inline constexpr std::string_view kCapabilitySampling = "sampling";
 
+inline constexpr auto kReconnectInitialDelayMs =
+    std::chrono::milliseconds{1000};
+inline constexpr auto kReconnectMaxDelayMs = std::chrono::milliseconds{60000};
+inline constexpr int kReconnectMaxAttempts = 5;
+inline constexpr double kReconnectBackoffMultiplier = 2.0;
+
 static_assert(kMcpProtocolVersion.size() > 0);
 static_assert(kMethodInitialize.size() > 0);
 static_assert(kMethodInitialized.size() > 0);
@@ -183,5 +190,9 @@ static_assert(kFieldLogger.size() > 0);
 static_assert(kFieldContents.size() > 0);
 static_assert(kCapabilityRoots.size() > 0);
 static_assert(kCapabilitySampling.size() > 0);
+static_assert(kReconnectInitialDelayMs.count() > 0);
+static_assert(kReconnectMaxDelayMs > kReconnectInitialDelayMs);
+static_assert(kReconnectMaxAttempts > 0);
+static_assert(kReconnectBackoffMultiplier > 1.0);
 
 }  // namespace yac::mcp::protocol

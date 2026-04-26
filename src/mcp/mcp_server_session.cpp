@@ -6,6 +6,7 @@
 #include <chrono>
 #include <functional>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -14,6 +15,10 @@ namespace yac::mcp {
 namespace {
 
 namespace pc = protocol;
+
+struct NonRetriableError : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
 
 constexpr auto kInitializeTimeout = std::chrono::seconds(10);
 constexpr auto kListTimeout = std::chrono::seconds(10);
@@ -46,12 +51,14 @@ constexpr std::string_view kClientVersion = "0.1.0";
 
 }  // namespace
 
-McpServerSession::McpServerSession(McpServerConfig config,
-                                   IMcpTransport* transport,
-                                   McpDebugLog* debug_log)
+McpServerSession::McpServerSession(
+    McpServerConfig config, IMcpTransport* transport, McpDebugLog* debug_log,
+    std::chrono::milliseconds initial_reconnect_delay)
     : config_(std::move(config)),
       transport_(transport),
-      debug_log_(debug_log) {}
+      debug_log_(debug_log),
+      initial_reconnect_delay_(initial_reconnect_delay),
+      rng_(std::random_device{}()) {}
 
 McpServerSession::~McpServerSession() {
   Stop();
@@ -143,18 +150,55 @@ void McpServerSession::MarkResourcesDirty() {
   resources_dirty_ = true;
 }
 
+void McpServerSession::BackoffSleep(std::stop_token stop_token,
+                                    std::chrono::milliseconds delay) {
+  const long long jitter_max = delay.count() / 4;
+  const auto jitter = std::chrono::milliseconds(
+      jitter_max > 0
+          ? std::uniform_int_distribution<long long>{0LL, jitter_max}(rng_)
+          : 0LL);
+  std::unique_lock<std::mutex> lock(reconnect_mutex_);
+  (void)reconnect_cv_.wait_for(lock, std::move(stop_token), delay + jitter,
+                               [] { return false; });
+}
+
 void McpServerSession::Run(std::stop_token stop_token) {
-  try {
-    SetState(ServerState::Connecting);
-    transport_->SetNotificationCallback(
-        [this](std::string_view method, const Json& params) {
-          HandleNotification(method, params);
-        });
-    transport_->Start();
-    PerformHandshake(stop_token);
-    SetState(ServerState::Ready);
-  } catch (const std::exception& error) {
-    SetFailure(error.what());
+  transport_->SetNotificationCallback(
+      [this](std::string_view method, const Json& params) {
+        HandleNotification(method, params);
+      });
+
+  auto delay = initial_reconnect_delay_;
+  int attempt = 0;
+
+  while (!stop_token.stop_requested()) {
+    try {
+      SetState(ServerState::Connecting);
+      transport_->Start();
+      PerformHandshake(stop_token);
+      SetState(ServerState::Ready);
+      break;
+    } catch (const NonRetriableError& error) {
+      SetFailure(error.what());
+      return;
+    } catch (const std::exception& error) {
+      if (stop_token.stop_requested()) {
+        break;
+      }
+      ++attempt;
+      if (attempt >= pc::kReconnectMaxAttempts) {
+        SetFailure(error.what());
+        return;
+      }
+      SetState(ServerState::Reconnecting);
+      BackoffSleep(stop_token, delay);
+      if (stop_token.stop_requested()) {
+        break;
+      }
+      delay = std::min(std::chrono::duration_cast<std::chrono::milliseconds>(
+                           delay * pc::kReconnectBackoffMultiplier),
+                       pc::kReconnectMaxDelayMs);
+    }
   }
 }
 
@@ -229,7 +273,7 @@ void McpServerSession::ValidateProtocolVersion(
     const std::string& server_protocol_version) {
   const auto client_protocol_version = std::string(pc::kMcpProtocolVersion);
   if (server_protocol_version > client_protocol_version) {
-    throw std::runtime_error(
+    throw NonRetriableError(
         "Unsupported protocol version from server: " + server_protocol_version +
         " (client supports " + client_protocol_version + ")");
   }

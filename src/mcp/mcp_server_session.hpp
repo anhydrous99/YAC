@@ -2,10 +2,14 @@
 
 #include "mcp/mcp_server_config.hpp"
 #include "mcp/mcp_transport.hpp"
+#include "mcp/protocol_constants.hpp"
 #include "mcp/protocol_messages.hpp"
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -27,7 +31,9 @@ enum class ServerState {
 class McpServerSession {
  public:
   explicit McpServerSession(McpServerConfig config, IMcpTransport* transport,
-                            McpDebugLog* debug_log = nullptr);
+                            McpDebugLog* debug_log = nullptr,
+                            std::chrono::milliseconds initial_reconnect_delay =
+                                protocol::kReconnectInitialDelayMs);
   ~McpServerSession();
 
   McpServerSession(const McpServerSession&) = delete;
@@ -48,6 +54,8 @@ class McpServerSession {
 
  private:
   void Run(std::stop_token stop_token);
+  void BackoffSleep(std::stop_token stop_token,
+                    std::chrono::milliseconds delay);
   void HandleNotification(std::string_view method, const Json& params);
   void SetState(ServerState state);
   void SetFailure(std::string message);
@@ -62,7 +70,11 @@ class McpServerSession {
   McpServerConfig config_;
   IMcpTransport* transport_ = nullptr;
   McpDebugLog* debug_log_ = nullptr;
+  std::chrono::milliseconds initial_reconnect_delay_;
   mutable std::mutex mutex_;
+  std::mutex reconnect_mutex_;
+  std::condition_variable_any reconnect_cv_;
+  std::mt19937 rng_;
   ServerState state_ = ServerState::Disconnected;
   std::string last_error_;
   ServerCapabilities capabilities_;
