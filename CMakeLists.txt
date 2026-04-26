@@ -146,6 +146,7 @@ add_library(yac_keychain INTERFACE)
 target_link_libraries(yac_keychain INTERFACE keychain)
 
 find_package(CURL REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_library(yac_core_types INTERFACE)
 target_include_directories(yac_core_types INTERFACE src)
@@ -229,6 +230,8 @@ add_library(yac_service STATIC
   src/mcp/sse_parser.cpp
   src/mcp/stdio_mcp_transport.cpp
   src/mcp/streamable_http_mcp_transport.cpp
+  src/mcp/oauth/pkce.cpp
+  src/mcp/oauth/flow.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp
@@ -238,7 +241,7 @@ add_library(yac_service STATIC
 )
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service
-  PUBLIC yac_core_types openai_cpp CURL::libcurl
+  PUBLIC yac_core_types openai_cpp CURL::libcurl OpenSSL::Crypto
   PRIVATE tomlplusplus::tomlplusplus yac_keychain)
 
 include(src/chat/CMakeLists.txt)
