@@ -58,6 +58,7 @@ class StreamableHttpMcpTransport : public IMcpTransport {
   mutable std::mutex mutex_;
   NotificationCallback notification_callback_;
   TransportStatus status_ = TransportStatus::Stopped;
+  std::string auth_error_message_;
   std::optional<std::string> session_id_;
   std::mutex request_mutex_;
   std::atomic<std::int64_t> next_request_id_{1};

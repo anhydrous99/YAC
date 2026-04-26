@@ -182,6 +182,17 @@ void StreamableHttpMcpTransport::Start() {
     status_ = TransportStatus::Failed;
     throw std::runtime_error("MCP HTTP transport requires a URL");
   }
+  if (config_.auth.has_value()) {
+    if (const auto* bearer = std::get_if<McpAuthBearer>(&*config_.auth)) {
+      if (std::getenv(bearer->api_key_env.c_str()) == nullptr) {
+        auth_error_message_ =
+            "MCP bearer token env var not set: " + bearer->api_key_env +
+            " — set this environment variable to enable this MCP server";
+        status_ = TransportStatus::Failed;
+        return;
+      }
+    }
+  }
   status_ = TransportStatus::Ready;
 }
 
@@ -196,6 +207,12 @@ Json StreamableHttpMcpTransport::SendRequest(std::string_view method,
                                              const Json& params,
                                              std::chrono::milliseconds timeout,
                                              std::stop_token stop) {
+  {
+    std::lock_guard lock(mutex_);
+    if (status_ == TransportStatus::Failed && !auth_error_message_.empty()) {
+      throw std::runtime_error(auth_error_message_);
+    }
+  }
   Json message = {
       {std::string(pc::kFieldJsonRpc), std::string(pc::kJsonRpcVersion)},
       {std::string(pc::kFieldId), next_request_id_.fetch_add(1)},
@@ -372,8 +389,7 @@ std::string StreamableHttpMcpTransport::ResolveAuthorizationHeader() const {
     if (const char* env = std::getenv(bearer->api_key_env.c_str())) {
       return std::string(pc::kHeaderAuthorization) + ": Bearer " + env;
     }
-    throw std::runtime_error("Missing MCP bearer token env: " +
-                             bearer->api_key_env);
+    return {};
   }
   return {};
 }
