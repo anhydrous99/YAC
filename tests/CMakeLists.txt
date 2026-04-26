@@ -71,6 +71,7 @@ yac_add_test(yac_test_gitignore_filter test_gitignore_filter.cpp)
 yac_add_test(yac_test_glob_tool_executor test_glob_tool_executor.cpp)
 yac_add_test(yac_test_grep_tool_executor test_grep_tool_executor.cpp)
 yac_add_test(yac_test_mcp_protocol_constants test_mcp_protocol_constants.cpp)
+yac_add_test(yac_test_mcp_tool_naming test_mcp_tool_naming.cpp)
 
 add_executable(yac_test_keychain_smoke test_keychain_smoke.cpp)
 target_link_libraries(yac_test_keychain_smoke PRIVATE

@@ -217,6 +217,7 @@ add_library(yac_service STATIC
   src/tool_call/grep_tool_executor.cpp
   src/tool_call/lsp_client.cpp
   src/tool_call/lsp_tool_executor.cpp
+  src/mcp/tool_naming.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp
