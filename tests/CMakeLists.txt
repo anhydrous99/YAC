@@ -81,6 +81,14 @@ yac_add_test(yac_test_mcp_server_config test_mcp_server_config.cpp)
 yac_add_test(yac_test_mcp_env_override test_mcp_env_override.cpp)
 yac_add_test(yac_test_mcp_protocol_messages test_mcp_protocol_messages.cpp)
 
+add_executable(echo_jsonrpc_server echo_jsonrpc_server.cpp)
+target_link_libraries(echo_jsonrpc_server PRIVATE openai_cpp)
+
+yac_add_test(yac_test_mcp_stdio_transport test_mcp_stdio_transport.cpp)
+target_compile_definitions(yac_test_mcp_stdio_transport PRIVATE
+  ECHO_JSONRPC_SERVER_PATH="$<TARGET_FILE:echo_jsonrpc_server>"
+)
+
 add_executable(yac_test_mcp_cancellation
   mock_mcp_transport.cpp
   test_mcp_cancellation.cpp
