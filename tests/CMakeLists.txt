@@ -86,6 +86,7 @@ yac_add_test(yac_test_mcp_bearer_auth   test_mcp_bearer_auth.cpp)
 yac_add_test(yac_test_mcp_oauth_pkce    test_mcp_oauth_pkce.cpp)
 yac_add_test(yac_test_mcp_oauth_flow    test_mcp_oauth_flow.cpp)
 yac_add_test(yac_test_mcp_loopback_callback test_mcp_loopback_callback.cpp)
+yac_add_test(yac_test_mcp_oauth_discovery test_mcp_oauth_discovery.cpp)
 
 add_executable(echo_jsonrpc_server echo_jsonrpc_server.cpp)
 target_link_libraries(echo_jsonrpc_server PRIVATE openai_cpp)
