@@ -81,6 +81,23 @@ yac_add_test(yac_test_mcp_server_config test_mcp_server_config.cpp)
 yac_add_test(yac_test_mcp_env_override test_mcp_env_override.cpp)
 yac_add_test(yac_test_mcp_protocol_messages test_mcp_protocol_messages.cpp)
 
+add_executable(yac_test_mcp_server_session
+  mock_mcp_transport.cpp
+  test_mcp_server_session.cpp
+)
+target_include_directories(yac_test_mcp_server_session PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_mcp_server_session PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_server_session
+  TEST_PREFIX "yac_test_mcp_server_session::"
+)
+
 add_executable(yac_test_mcp_transport_mock
   mock_mcp_transport.cpp
   test_mcp_transport_mock.cpp

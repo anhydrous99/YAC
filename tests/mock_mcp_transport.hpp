@@ -3,7 +3,9 @@
 #include "mcp/mcp_transport.hpp"
 
 #include <chrono>
+#include <functional>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <stop_token>
 #include <string>
@@ -24,7 +26,13 @@ struct RecordedNotification {
 
 class MockMcpTransport : public IMcpTransport {
  public:
+  using RequestHandler = std::function<Json(
+      std::string_view method, const Json& params,
+      std::chrono::milliseconds timeout, std::stop_token stop)>;
+
   void AddCannedResponse(std::string method, Json response);
+  void SetRequestHandler(RequestHandler handler);
+  void EmitNotification(std::string_view method, const Json& params);
 
   void Start() override;
   void Stop(std::stop_token stop) override;
@@ -44,6 +52,8 @@ class MockMcpTransport : public IMcpTransport {
   std::vector<RecordedRequest> recorded_requests_;
   std::vector<RecordedNotification> recorded_notifications_;
   NotificationCallback notification_callback_;
+  RequestHandler request_handler_;
+  TransportStatus status_ = TransportStatus::Stopped;
 };
 
 }  // namespace yac::mcp::test

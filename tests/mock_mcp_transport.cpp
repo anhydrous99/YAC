@@ -10,10 +10,24 @@ void MockMcpTransport::AddCannedResponse(std::string method, Json response) {
   canned_responses_.emplace(std::move(method), std::move(response));
 }
 
-void MockMcpTransport::Start() {}
+void MockMcpTransport::SetRequestHandler(RequestHandler handler) {
+  request_handler_ = std::move(handler);
+}
+
+void MockMcpTransport::EmitNotification(std::string_view method,
+                                        const Json& params) {
+  if (notification_callback_) {
+    notification_callback_(method, params);
+  }
+}
+
+void MockMcpTransport::Start() {
+  status_ = TransportStatus::Ready;
+}
 
 void MockMcpTransport::Stop(std::stop_token stop) {
   (void)stop;
+  status_ = TransportStatus::Stopped;
 }
 
 Json MockMcpTransport::SendRequest(std::string_view method, const Json& params,
@@ -22,6 +36,9 @@ Json MockMcpTransport::SendRequest(std::string_view method, const Json& params,
   (void)timeout;
   (void)stop;
   recorded_requests_.push_back({std::string(method), params});
+  if (request_handler_) {
+    return request_handler_(method, params, timeout, stop);
+  }
   auto it = canned_responses_.find(method);
   if (it == canned_responses_.end()) {
     throw std::runtime_error("No canned response for method: " +
@@ -40,7 +57,7 @@ void MockMcpTransport::SetNotificationCallback(NotificationCallback callback) {
 }
 
 TransportStatus MockMcpTransport::Status() const {
-  return TransportStatus::Ready;
+  return status_;
 }
 
 const std::vector<RecordedRequest>& MockMcpTransport::RecordedRequests() const {
