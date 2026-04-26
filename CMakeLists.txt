@@ -219,6 +219,7 @@ add_library(yac_service STATIC
   src/tool_call/lsp_client.cpp
   src/tool_call/lsp_tool_executor.cpp
   src/mcp/mcp_server_config.cpp
+  src/mcp/debug_log.cpp
   src/mcp/tool_naming.cpp
   src/mcp/secret_redaction.cpp
   src/mcp/file_token_store.cpp
