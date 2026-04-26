@@ -4,9 +4,18 @@
 
 #include <filesystem>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace yac::chat {
+
+struct McpServerFieldSet {
+  bool command = false;
+  bool args = false;
+  bool url = false;
+  bool enabled = false;
+  bool api_key_env = false;
+};
 
 // Bitset tracking which fields a settings.toml file set explicitly. Used so
 // that provider presets only fill in fields the user did not override.
@@ -24,6 +33,7 @@ struct ChatConfigFieldSet {
   bool lsp_clangd_args = false;
   bool theme_name = false;
   bool theme_density = false;
+  std::unordered_map<std::string, McpServerFieldSet> mcp_servers;
 };
 
 // Parses settings.toml at the given path and overlays values onto `config`.

@@ -124,6 +124,7 @@ args    = []
 | `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
 | `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
 | `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
+| `mcp.servers[].{command,args,url,enabled,auth.api_key_env}` | `YAC_MCP_<ID>_COMMAND`, `YAC_MCP_<ID>_ARGS`, `YAC_MCP_<ID>_URL`, `YAC_MCP_<ID>_ENABLED`, `YAC_MCP_<ID>_API_KEY_ENV` | unset | Override an existing MCP server by ID (`<ID>` = upper snake case, non-alnum → `_`) |
 | `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
 | `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
 

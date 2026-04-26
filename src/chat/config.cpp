@@ -61,6 +61,20 @@ std::vector<std::string> SplitArgs(const std::string& value) {
   return args;
 }
 
+std::string UpperSnakeCase(const std::string& value) {
+  std::string result;
+  result.reserve(value.size());
+  for (unsigned char ch : value) {
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+        (ch >= '0' && ch <= '9')) {
+      result.push_back(static_cast<char>(std::toupper(ch)));
+    } else {
+      result.push_back('_');
+    }
+  }
+  return result;
+}
+
 struct ProviderPreset {
   std::string model;
   std::string base_url;
@@ -171,6 +185,35 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   if (auto val = GetEnv("YAC_THEME_DENSITY")) {
     config.theme_density = std::move(*val);
     fields.theme_density = true;
+  }
+
+  for (auto& server : config.mcp.servers) {
+    const std::string server_prefix =
+        "YAC_MCP_" + UpperSnakeCase(server.id) + "_";
+
+    if (auto val = GetEnv((server_prefix + "COMMAND").c_str())) {
+      server.command = std::move(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "ARGS").c_str())) {
+      server.args = SplitArgs(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "URL").c_str())) {
+      server.url = std::move(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "ENABLED").c_str())) {
+      std::string normalized = *val;
+      std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                     [](unsigned char ch) { return std::tolower(ch); });
+      server.enabled = !(normalized == "0" || normalized == "false" ||
+                         normalized == "no" || normalized == "off");
+    }
+    if (auto val = GetEnv((server_prefix + "API_KEY_ENV").c_str())) {
+      if (server.auth.has_value()) {
+        if (auto* bearer = std::get_if<mcp::McpAuthBearer>(&*server.auth)) {
+          bearer->api_key_env = std::move(*val);
+        }
+      }
+    }
   }
 }
 

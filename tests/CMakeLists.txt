@@ -77,6 +77,7 @@ yac_add_test(yac_test_mcp_secret_redaction test_mcp_secret_redaction.cpp)
 yac_add_test(yac_test_mcp_file_token_store test_mcp_file_token_store.cpp)
 yac_add_test(yac_test_mcp_keychain_token_store test_mcp_keychain_token_store.cpp)
 yac_add_test(yac_test_mcp_server_config test_mcp_server_config.cpp)
+yac_add_test(yac_test_mcp_env_override test_mcp_env_override.cpp)
 
 add_executable(yac_test_mcp_transport_mock
   mock_mcp_transport.cpp

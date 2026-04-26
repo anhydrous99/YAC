@@ -545,6 +545,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
           continue;
         }
         mcp::McpServerConfig srv;
+        McpServerFieldSet server_fields;
 
         if (auto* v = (*server_tbl)["id"].as_string()) {
           srv.id = v->get();
@@ -566,11 +567,16 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
         }
         if (auto* v = (*server_tbl)["command"].as_string()) {
           srv.command = v->get();
+          server_fields.command = true;
         }
         ApplyStringArray((*server_tbl)["args"], "mcp.servers.args", srv.args,
                          issues);
+        if ((*server_tbl)["args"]) {
+          server_fields.args = true;
+        }
         if (auto* v = (*server_tbl)["url"].as_string()) {
           srv.url = v->get();
+          server_fields.url = true;
         }
 
         if (auto* env_tbl = (*server_tbl)["env"].as_table()) {
@@ -622,6 +628,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
 
         if (auto* v = (*server_tbl)["enabled"].as_boolean()) {
           srv.enabled = v->get();
+          server_fields.enabled = true;
         }
         if (auto* v = (*server_tbl)["requires_approval"].as_boolean()) {
           srv.requires_approval = v->get();
@@ -640,6 +647,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
               mcp::McpAuthBearer bearer;
               if (auto* v = (*auth_tbl)["api_key_env"].as_string()) {
                 bearer.api_key_env = v->get();
+                server_fields.api_key_env = true;
               }
               srv.auth = std::move(bearer);
             } else if (auth_type == "oauth") {
@@ -688,6 +696,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
                    "Expected a table of string values.");
         }
 
+        fields.mcp_servers.emplace(srv.id, std::move(server_fields));
         config.mcp.servers.push_back(std::move(srv));
       }
     } else if (mcp_section["servers"]) {
