@@ -232,6 +232,8 @@ add_library(yac_service STATIC
   src/mcp/streamable_http_mcp_transport.cpp
   src/mcp/oauth/pkce.cpp
   src/mcp/oauth/flow.cpp
+  src/mcp/oauth/browser_launcher.cpp
+  src/mcp/oauth/loopback_callback.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp
