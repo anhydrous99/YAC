@@ -221,6 +221,7 @@ add_library(yac_service STATIC
   src/mcp/tool_naming.cpp
   src/mcp/secret_redaction.cpp
   src/mcp/file_token_store.cpp
+  src/mcp/keychain_token_store.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp
@@ -231,7 +232,7 @@ add_library(yac_service STATIC
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service
   PUBLIC yac_core_types openai_cpp CURL::libcurl
-  PRIVATE tomlplusplus::tomlplusplus)
+  PRIVATE tomlplusplus::tomlplusplus yac_keychain)
 
 include(src/chat/CMakeLists.txt)
 
