@@ -9,6 +9,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <string>
@@ -47,8 +48,10 @@ class McpServerSession {
   void Stop();
   [[nodiscard]] ServerState State() const;
   [[nodiscard]] std::string LastError() const;
-  [[nodiscard]] const std::vector<ToolDefinition>& Tools() const;
-  [[nodiscard]] const std::vector<ResourceDescriptor>& Resources() const;
+  [[nodiscard]] std::shared_ptr<const std::vector<ToolDefinition>> Tools()
+      const;
+  [[nodiscard]] std::shared_ptr<const std::vector<ResourceDescriptor>>
+  Resources() const;
   [[nodiscard]] const ServerCapabilities& Capabilities() const;
   void RefreshIfDirty();
   void MarkToolsDirty();
@@ -84,8 +87,8 @@ class McpServerSession {
   ServerState state_ = ServerState::Disconnected;
   std::string last_error_;
   ServerCapabilities capabilities_;
-  std::vector<ToolDefinition> tools_;
-  std::vector<ResourceDescriptor> resources_;
+  std::shared_ptr<const std::vector<ToolDefinition>> tools_;
+  std::shared_ptr<const std::vector<ResourceDescriptor>> resources_;
   std::atomic<bool> tools_dirty_{false};
   std::atomic<bool> resources_dirty_{false};
   std::atomic<std::int64_t> next_request_id_{0};

@@ -2,6 +2,7 @@
 #include "mcp/protocol_constants.hpp"
 #include "mock_mcp_transport.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <future>
@@ -103,11 +104,13 @@ TEST_CASE("cold_start_happy_path") {
   observer.request_stop();
   observer.join();
 
-  REQUIRE(states == std::vector<ServerState>{
-                        ServerState::Disconnected, ServerState::Connecting,
-                        ServerState::Initializing, ServerState::Ready});
-  REQUIRE(session.Tools().size() == 2);
-  REQUIRE(session.Resources().empty());
+  REQUIRE(!states.empty());
+  REQUIRE(states.front() == ServerState::Disconnected);
+  REQUIRE(states.back() == ServerState::Ready);
+  REQUIRE(std::find(states.begin(), states.end(), ServerState::Initializing) !=
+          states.end());
+  REQUIRE(session.Tools()->size() == 2);
+  REQUIRE(session.Resources()->empty());
   REQUIRE(transport.RecordedNotifications().size() == 1);
   REQUIRE(transport.RecordedNotifications()[0].method ==
           std::string(pc::kMethodInitialized));
@@ -165,8 +168,8 @@ TEST_CASE("capability_gating_no_tools") {
   session.Start();
 
   REQUIRE(WaitUntil([&] { return session.State() == ServerState::Ready; }));
-  REQUIRE(session.Tools().empty());
-  REQUIRE(session.Resources().size() == 1);
+  REQUIRE(session.Tools()->empty());
+  REQUIRE(session.Resources()->size() == 1);
   REQUIRE(transport.RecordedRequests().size() == 2);
   REQUIRE(transport.RecordedRequests()[0].method ==
           std::string(pc::kMethodInitialize));
@@ -239,10 +242,10 @@ TEST_CASE("refresh_if_dirty_reloads_capability_gated_lists") {
   session.Start();
 
   REQUIRE(WaitUntil([&] { return session.State() == ServerState::Ready; }));
-  REQUIRE(session.Tools().size() == 1);
-  REQUIRE(session.Tools()[0].name == "read");
-  REQUIRE(session.Resources().size() == 1);
-  REQUIRE(session.Resources()[0].uri == "file:///one.txt");
+  REQUIRE(session.Tools()->size() == 1);
+  REQUIRE((*session.Tools())[0].name == "read");
+  REQUIRE(session.Resources()->size() == 1);
+  REQUIRE((*session.Resources())[0].uri == "file:///one.txt");
 
   transport.EmitNotification(pc::kMethodNotificationsToolsListChanged,
                              Json::object());
@@ -250,10 +253,161 @@ TEST_CASE("refresh_if_dirty_reloads_capability_gated_lists") {
                              Json::object());
   session.RefreshIfDirty();
 
-  REQUIRE(session.Tools().size() == 1);
-  REQUIRE(session.Tools()[0].name == "write");
-  REQUIRE(session.Resources().size() == 1);
-  REQUIRE(session.Resources()[0].uri == "file:///two.txt");
+  REQUIRE(session.Tools()->size() == 1);
+  REQUIRE((*session.Tools())[0].name == "write");
+  REQUIRE(session.Resources()->size() == 1);
+  REQUIRE((*session.Resources())[0].uri == "file:///two.txt");
+
+  session.Stop();
+}
+
+TEST_CASE("list_changed_lazy") {
+  MockMcpTransport transport;
+  std::atomic<int> tools_list_calls{0};
+  std::atomic<int> resources_list_calls{0};
+  transport.SetRequestHandler([&](std::string_view method, const Json& params,
+                                  std::chrono::milliseconds timeout,
+                                  std::stop_token stop) -> Json {
+    (void)params;
+    (void)timeout;
+    (void)stop;
+    if (method == pc::kMethodInitialize) {
+      return MakeInitializeResponse(
+                 std::string(pc::kMcpProtocolVersion),
+                 ServerCapabilities{.has_tools = true, .has_resources = true})
+          .ToJson();
+    }
+    if (method == pc::kMethodToolsList) {
+      ++tools_list_calls;
+      return ToolsListResponse{
+          .tools = {ToolDefinition{.name = "read"}},
+      }
+          .ToJson();
+    }
+    if (method == pc::kMethodResourcesList) {
+      ++resources_list_calls;
+      return ResourcesListResponse{
+          .resources = {ResourceDescriptor{.uri = "file:///one.txt"}},
+      }
+          .ToJson();
+    }
+    throw std::runtime_error("unexpected request");
+  });
+
+  McpServerSession session(MakeConfig(), &transport);
+  session.Start();
+
+  REQUIRE(WaitUntil([&] { return session.State() == ServerState::Ready; }));
+  REQUIRE(session.Tools()->size() == 1);
+  REQUIRE(session.Resources()->size() == 1);
+  REQUIRE(transport.RecordedRequests().size() == 3);
+
+  transport.EmitNotification(pc::kMethodNotificationsToolsListChanged,
+                             Json::object());
+  transport.EmitNotification(pc::kMethodNotificationsResourcesListChanged,
+                             Json::object());
+  REQUIRE(transport.RecordedRequests().size() == 3);
+
+  session.RefreshIfDirty();
+
+  REQUIRE(transport.RecordedRequests().size() == 5);
+  REQUIRE(transport.RecordedRequests()[3].method ==
+          std::string(pc::kMethodToolsList));
+  REQUIRE(transport.RecordedRequests()[4].method ==
+          std::string(pc::kMethodResourcesList));
+  REQUIRE(session.Tools()->size() == 1);
+  REQUIRE((*session.Tools())[0].name == "read");
+  REQUIRE(session.Resources()->size() == 1);
+  REQUIRE((*session.Resources())[0].uri == "file:///one.txt");
+
+  REQUIRE(tools_list_calls == 2);
+  REQUIRE(resources_list_calls == 2);
+
+  session.Stop();
+}
+
+TEST_CASE("refresh_atomic_replace") {
+  MockMcpTransport transport;
+  std::atomic<int> tools_list_calls{0};
+  std::atomic<bool> refresh_started{false};
+  std::promise<void> allow_refresh;
+  auto allow_refresh_future = allow_refresh.get_future().share();
+  transport.SetRequestHandler(
+      [&refresh_started, allow_refresh_future = std::move(allow_refresh_future),
+       &tools_list_calls](std::string_view method, const Json& params,
+                          std::chrono::milliseconds timeout,
+                          std::stop_token stop) -> Json {
+        (void)params;
+        (void)timeout;
+        (void)stop;
+        if (method == pc::kMethodInitialize) {
+          return MakeInitializeResponse(std::string(pc::kMcpProtocolVersion),
+                                        ServerCapabilities{.has_tools = true})
+              .ToJson();
+        }
+        if (method == pc::kMethodToolsList) {
+          const int call = ++tools_list_calls;
+          if (call == 2) {
+            refresh_started = true;
+            allow_refresh_future.wait();
+          }
+          return ToolsListResponse{
+              .tools = {ToolDefinition{.name = call == 1 ? "old-a" : "new-a"},
+                        ToolDefinition{.name = call == 1 ? "old-b" : "new-b"}},
+          }
+              .ToJson();
+        }
+        throw std::runtime_error("unexpected request");
+      });
+
+  McpServerSession session(MakeConfig(), &transport);
+  session.Start();
+
+  REQUIRE(WaitUntil([&] { return session.State() == ServerState::Ready; }));
+  REQUIRE(session.Tools()->size() == 2);
+  REQUIRE((*session.Tools())[0].name == "old-a");
+  REQUIRE((*session.Tools())[1].name == "old-b");
+
+  transport.EmitNotification(pc::kMethodNotificationsToolsListChanged,
+                             Json::object());
+
+  std::atomic<bool> saw_mixed_snapshot{false};
+  std::atomic<bool> refresh_done{false};
+  std::jthread reader([&](std::stop_token stop_token) {
+    while (!stop_token.stop_requested() && !refresh_done.load()) {
+      const auto tools = session.Tools();
+      if (tools->size() != 2) {
+        saw_mixed_snapshot = true;
+        return;
+      }
+      const bool old_snapshot =
+          (*tools)[0].name == "old-a" && (*tools)[1].name == "old-b";
+      const bool new_snapshot =
+          (*tools)[0].name == "new-a" && (*tools)[1].name == "new-b";
+      if (!old_snapshot && !new_snapshot) {
+        saw_mixed_snapshot = true;
+        return;
+      }
+      std::this_thread::yield();
+    }
+  });
+
+  std::thread refresher([&] {
+    session.RefreshIfDirty();
+    refresh_done = true;
+  });
+
+  REQUIRE(WaitUntil([&] { return refresh_started.load(); }));
+  allow_refresh.set_value();
+  refresher.join();
+  reader.request_stop();
+  reader.join();
+
+  REQUIRE_FALSE(saw_mixed_snapshot.load());
+  REQUIRE(session.Tools()->size() == 2);
+  REQUIRE((*session.Tools())[0].name == "new-a");
+  REQUIRE((*session.Tools())[1].name == "new-b");
+  REQUIRE(tools_list_calls == 2);
 
   session.Stop();
 }

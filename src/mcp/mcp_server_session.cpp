@@ -4,7 +4,6 @@
 #include "mcp/protocol_constants.hpp"
 
 #include <chrono>
-#include <functional>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -81,8 +80,8 @@ void McpServerSession::Start() {
   state_ = ServerState::Disconnected;
   last_error_.clear();
   capabilities_ = ServerCapabilities{};
-  tools_.clear();
-  resources_.clear();
+  tools_ = std::make_shared<const std::vector<ToolDefinition>>();
+  resources_ = std::make_shared<const std::vector<ResourceDescriptor>>();
   tools_dirty_ = false;
   resources_dirty_ = false;
   worker_ =
@@ -133,11 +132,15 @@ std::string McpServerSession::LastError() const {
   return last_error_;
 }
 
-const std::vector<ToolDefinition>& McpServerSession::Tools() const {
+std::shared_ptr<const std::vector<ToolDefinition>> McpServerSession::Tools()
+    const {
+  std::lock_guard lock(mutex_);
   return tools_;
 }
 
-const std::vector<ResourceDescriptor>& McpServerSession::Resources() const {
+std::shared_ptr<const std::vector<ResourceDescriptor>>
+McpServerSession::Resources() const {
+  std::lock_guard lock(mutex_);
   return resources_;
 }
 
@@ -151,14 +154,26 @@ void McpServerSession::RefreshIfDirty() {
   }
 
   if (tools_dirty_.exchange(false)) {
-    auto refreshed_tools = FetchTools(std::stop_token{});
-    std::lock_guard lock(mutex_);
-    tools_ = std::move(refreshed_tools);
+    try {
+      auto refreshed_tools = FetchTools(std::stop_token{});
+      std::lock_guard lock(mutex_);
+      tools_ = std::make_shared<const std::vector<ToolDefinition>>(
+          std::move(refreshed_tools));
+    } catch (...) {
+      tools_dirty_ = true;
+      throw;
+    }
   }
   if (resources_dirty_.exchange(false)) {
-    auto refreshed_resources = FetchResources(std::stop_token{});
-    std::lock_guard lock(mutex_);
-    resources_ = std::move(refreshed_resources);
+    try {
+      auto refreshed_resources = FetchResources(std::stop_token{});
+      std::lock_guard lock(mutex_);
+      resources_ = std::make_shared<const std::vector<ResourceDescriptor>>(
+          std::move(refreshed_resources));
+    } catch (...) {
+      resources_dirty_ = true;
+      throw;
+    }
   }
 }
 
@@ -327,12 +342,14 @@ void McpServerSession::PerformHandshake(std::stop_token stop_token) {
   if (response.capabilities.has_tools) {
     auto fetched_tools = FetchTools(stop_token);
     std::lock_guard lock(mutex_);
-    tools_ = std::move(fetched_tools);
+    tools_ = std::make_shared<const std::vector<ToolDefinition>>(
+        std::move(fetched_tools));
   }
   if (response.capabilities.has_resources) {
     auto fetched_resources = FetchResources(stop_token);
     std::lock_guard lock(mutex_);
-    resources_ = std::move(fetched_resources);
+    resources_ = std::make_shared<const std::vector<ResourceDescriptor>>(
+        std::move(fetched_resources));
   }
 }
 
