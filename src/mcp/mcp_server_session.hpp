@@ -8,10 +8,12 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <random>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace yac::mcp {
@@ -63,9 +65,13 @@ class McpServerSession {
   void PerformHandshake(std::stop_token stop_token);
   void ValidateProtocolVersion(const std::string& server_protocol_version);
   [[nodiscard]] std::vector<ToolDefinition> FetchTools(
-      std::stop_token stop_token) const;
+      std::stop_token stop_token);
   [[nodiscard]] std::vector<ResourceDescriptor> FetchResources(
-      std::stop_token stop_token) const;
+      std::stop_token stop_token);
+  [[nodiscard]] Json SendTracked(std::string_view method, const Json& params,
+                                 std::chrono::milliseconds timeout,
+                                 std::stop_token stop_token);
+  void PurgeStaleCancelledIds();
 
   McpServerConfig config_;
   IMcpTransport* transport_ = nullptr;
@@ -82,6 +88,11 @@ class McpServerSession {
   std::vector<ResourceDescriptor> resources_;
   std::atomic<bool> tools_dirty_{false};
   std::atomic<bool> resources_dirty_{false};
+  std::atomic<std::int64_t> next_request_id_{0};
+  std::atomic<std::int64_t> inflight_request_id_{-1};
+  std::mutex cancelled_mutex_;
+  std::unordered_map<std::int64_t, std::chrono::steady_clock::time_point>
+      cancelled_ids_;
   std::jthread worker_;
 };
 

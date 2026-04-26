@@ -24,6 +24,9 @@ constexpr auto kInitializeTimeout = std::chrono::seconds(10);
 constexpr auto kListTimeout = std::chrono::seconds(10);
 constexpr std::string_view kClientName = "YAC";
 constexpr std::string_view kClientVersion = "0.1.0";
+constexpr auto kCancelGraceMs = std::chrono::milliseconds{1000};
+constexpr auto kCancelledIdTtl = std::chrono::seconds{5};
+constexpr std::int64_t kNoInflightId = -1;
 
 [[nodiscard]] std::string ToString(ServerState state) {
   switch (state) {
@@ -94,7 +97,24 @@ void McpServerSession::Stop() {
   }
 
   SetState(ServerState::ShuttingDown);
+
+  const std::int64_t inflight_id = inflight_request_id_.load();
   worker_.request_stop();
+
+  if (inflight_id != kNoInflightId) {
+    Json cancel_params = Json::object();
+    cancel_params[std::string(pc::kFieldRequestId)] = inflight_id;
+    cancel_params[std::string(pc::kFieldReason)] = "user cancelled";
+    transport_->SendNotification(pc::kMethodNotificationsCancelled,
+                                 cancel_params);
+    {
+      std::lock_guard<std::mutex> lock(cancelled_mutex_);
+      cancelled_ids_[inflight_id] =
+          std::chrono::steady_clock::now() + kCancelledIdTtl;
+    }
+    std::this_thread::sleep_for(kCancelGraceMs);
+  }
+
   transport_->Stop(worker_.get_stop_token());
   if (debug_log_ != nullptr) {
     debug_log_->LogShutdown();
@@ -232,6 +252,53 @@ void McpServerSession::SetFailure(std::string message) {
   state_ = ServerState::Failed;
 }
 
+Json McpServerSession::SendTracked(std::string_view method, const Json& params,
+                                   std::chrono::milliseconds timeout,
+                                   std::stop_token stop_token) {
+  const std::int64_t id = next_request_id_.fetch_add(1) + 1;
+  inflight_request_id_.store(id);
+  struct InflightGuard {
+    explicit InflightGuard(std::atomic<std::int64_t>* ptr) noexcept
+        : inflight(ptr) {}
+    InflightGuard(const InflightGuard&) = delete;
+    InflightGuard& operator=(const InflightGuard&) = delete;
+    InflightGuard(InflightGuard&&) = delete;
+    InflightGuard& operator=(InflightGuard&&) = delete;
+    ~InflightGuard() noexcept { inflight->store(kNoInflightId); }
+    std::atomic<std::int64_t>* inflight;
+  } guard{&inflight_request_id_};
+
+  Json result = transport_->SendRequest(method, params, timeout, stop_token);
+
+  if (stop_token.stop_requested()) {
+    throw std::runtime_error("request " + std::to_string(id) + " cancelled");
+  }
+  {
+    std::lock_guard<std::mutex> lock(cancelled_mutex_);
+    PurgeStaleCancelledIds();
+    if (cancelled_ids_.contains(id)) {
+      if (debug_log_ != nullptr) {
+        debug_log_->LogFrame("cancelled_response_discarded",
+                             std::to_string(id));
+      }
+      throw std::runtime_error("response discarded for cancelled request " +
+                               std::to_string(id));
+    }
+  }
+  return result;
+}
+
+void McpServerSession::PurgeStaleCancelledIds() {
+  const auto now = std::chrono::steady_clock::now();
+  for (auto it = cancelled_ids_.begin(); it != cancelled_ids_.end();) {
+    if (it->second <= now) {
+      it = cancelled_ids_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 InitializeRequest McpServerSession::BuildInitializeRequest() const {
   return InitializeRequest{
       .protocol_version = std::string(pc::kMcpProtocolVersion),
@@ -243,7 +310,7 @@ InitializeRequest McpServerSession::BuildInitializeRequest() const {
 
 void McpServerSession::PerformHandshake(std::stop_token stop_token) {
   SetState(ServerState::Initializing);
-  const auto response_json = transport_->SendRequest(
+  const auto response_json = SendTracked(
       pc::kMethodInitialize, BuildInitializeRequest().ToJson(),
       std::chrono::duration_cast<std::chrono::milliseconds>(kInitializeTimeout),
       stop_token);
@@ -280,7 +347,7 @@ void McpServerSession::ValidateProtocolVersion(
 }
 
 std::vector<ToolDefinition> McpServerSession::FetchTools(
-    std::stop_token stop_token) const {
+    std::stop_token stop_token) {
   std::vector<ToolDefinition> tools;
   std::optional<std::string> cursor;
   do {
@@ -288,7 +355,7 @@ std::vector<ToolDefinition> McpServerSession::FetchTools(
     if (cursor) {
       params[std::string(pc::kFieldCursor)] = *cursor;
     }
-    const auto response_json = transport_->SendRequest(
+    const auto response_json = SendTracked(
         pc::kMethodToolsList, params,
         std::chrono::duration_cast<std::chrono::milliseconds>(kListTimeout),
         stop_token);
@@ -300,7 +367,7 @@ std::vector<ToolDefinition> McpServerSession::FetchTools(
 }
 
 std::vector<ResourceDescriptor> McpServerSession::FetchResources(
-    std::stop_token stop_token) const {
+    std::stop_token stop_token) {
   std::vector<ResourceDescriptor> resources;
   std::optional<std::string> cursor;
   do {
@@ -308,7 +375,7 @@ std::vector<ResourceDescriptor> McpServerSession::FetchResources(
     if (cursor) {
       params[std::string(pc::kFieldCursor)] = *cursor;
     }
-    const auto response_json = transport_->SendRequest(
+    const auto response_json = SendTracked(
         pc::kMethodResourcesList, params,
         std::chrono::duration_cast<std::chrono::milliseconds>(kListTimeout),
         stop_token);
