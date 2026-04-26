@@ -224,6 +224,7 @@ add_library(yac_service STATIC
   src/mcp/secret_redaction.cpp
   src/mcp/file_token_store.cpp
   src/mcp/keychain_token_store.cpp
+  src/mcp/protocol_messages.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp

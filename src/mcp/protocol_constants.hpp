@@ -94,6 +94,16 @@ inline constexpr std::string_view kCapabilitySubscribe = "subscribe";
 inline constexpr std::string_view kFieldCursor = "cursor";
 inline constexpr std::string_view kFieldNextCursor = "nextCursor";
 
+inline constexpr std::string_view kFieldProgressToken = "progressToken";
+inline constexpr std::string_view kFieldProgress = "progress";
+inline constexpr std::string_view kFieldTotal = "total";
+inline constexpr std::string_view kFieldLevel = "level";
+inline constexpr std::string_view kFieldLogger = "logger";
+inline constexpr std::string_view kFieldContents = "contents";
+
+inline constexpr std::string_view kCapabilityRoots = "roots";
+inline constexpr std::string_view kCapabilitySampling = "sampling";
+
 static_assert(kMcpProtocolVersion.size() > 0);
 static_assert(kMethodInitialize.size() > 0);
 static_assert(kMethodInitialized.size() > 0);
@@ -165,5 +175,13 @@ static_assert(kCapabilityListChanged.size() > 0);
 static_assert(kCapabilitySubscribe.size() > 0);
 static_assert(kFieldCursor.size() > 0);
 static_assert(kFieldNextCursor.size() > 0);
+static_assert(kFieldProgressToken.size() > 0);
+static_assert(kFieldProgress.size() > 0);
+static_assert(kFieldTotal.size() > 0);
+static_assert(kFieldLevel.size() > 0);
+static_assert(kFieldLogger.size() > 0);
+static_assert(kFieldContents.size() > 0);
+static_assert(kCapabilityRoots.size() > 0);
+static_assert(kCapabilitySampling.size() > 0);
 
 }  // namespace yac::mcp::protocol
