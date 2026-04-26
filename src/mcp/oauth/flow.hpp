@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -55,6 +56,8 @@ class OAuthFlow {
                                          std::string_view refresh_token,
                                          std::string_view resource);
 
+  void ValidateState(std::string_view callback_state);
+
  private:
   enum class State {
     Idle,
@@ -67,8 +70,13 @@ class OAuthFlow {
       const std::vector<std::pair<std::string, std::string>>& form_fields);
 
   std::mutex mutex_;
-  std::mutex refresh_mutex_;
+  std::condition_variable refresh_cv_;
   State state_ = State::Idle;
+  std::string expected_state_;
+  bool state_validated_ = false;
+  bool refresh_in_progress_ = false;
+  std::optional<OAuthTokens> refresh_result_;
+  std::optional<std::string> refresh_error_;
 };
 
 }  // namespace yac::mcp::oauth

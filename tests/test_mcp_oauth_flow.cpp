@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstring>
 #include <functional>
+#include <future>
 #include <mutex>
 #include <netinet/in.h>
 #include <stdexcept>
@@ -268,6 +269,7 @@ TEST_CASE("happy_path") {
   const std::string authorization_url = flow.BuildAuthorizationUrl(
       config, "challenge-value", "state-value", "http://127.0.0.1/callback",
       config.resource_url);
+  flow.ValidateState("state-value");
 
   REQUIRE_THAT(authorization_url,
                ContainsSubstring("code_challenge=challenge-value"));
@@ -301,6 +303,77 @@ TEST_CASE("happy_path") {
   REQUIRE_THAT(
       requests[0].body,
       ContainsSubstring("resource=https%3A%2F%2Fresource.example%2Fapi"));
+}
+
+TEST_CASE("exchange_requires_state_validation") {
+  OAuthFlow flow;
+  OAuthConfig config{.authorization_url = "http://127.0.0.1/authorize",
+                     .token_url = "http://127.0.0.1/token",
+                     .client_id = "client-123",
+                     .scopes = {"alpha"},
+                     .resource_url = "https://resource.example/api"};
+
+  (void)flow.BuildAuthorizationUrl(config, "challenge-value", "state-value",
+                                   "http://127.0.0.1/callback",
+                                   config.resource_url);
+  REQUIRE_THROWS_WITH(
+      flow.ExchangeCode(config, "code-xyz", "verifier-xyz",
+                        "http://127.0.0.1/callback", config.resource_url),
+      ContainsSubstring("requires state validation"));
+  REQUIRE_THROWS_WITH(flow.ValidateState("wrong-state"),
+                      ContainsSubstring("state mismatch"));
+}
+
+TEST_CASE("refresh_token_is_single_flight") {
+  std::atomic<int> request_count{0};
+  TestHttpServer server([&request_count](const HttpRequest&, std::size_t) {
+    ++request_count;
+    std::this_thread::sleep_for(100ms);
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            R"({"access_token":"access-refresh","refresh_token":"refresh-456","token_type":"Bearer","scope":"alpha beta","expires_in":3600})",
+    };
+  });
+
+  OAuthConfig config{.authorization_url = server.Url("/authorize"),
+                     .token_url = server.Url("/token"),
+                     .client_id = "client-123",
+                     .scopes = {"alpha", "beta"},
+                     .resource_url = "https://resource.example/api"};
+  OAuthFlow flow;
+
+  auto call_refresh = [&flow, &config] {
+    return flow.RefreshToken(config, "refresh-456", config.resource_url);
+  };
+
+  auto first = std::async(std::launch::async, call_refresh);
+  auto second = std::async(std::launch::async, call_refresh);
+
+  const OAuthTokens first_tokens = first.get();
+  const OAuthTokens second_tokens = second.get();
+
+  REQUIRE(first_tokens.access_token == "access-refresh");
+  REQUIRE(second_tokens.access_token == "access-refresh");
+  REQUIRE(request_count == 1);
+
+  const auto requests = server.Requests();
+  REQUIRE(requests.size() == 1);
+  REQUIRE_THAT(requests[0].body, ContainsSubstring("grant_type=refresh_token"));
+}
+
+TEST_CASE("non_loopback_http_endpoints_are_rejected") {
+  OAuthFlow flow;
+  OAuthConfig config{.authorization_url = "http://example.com/authorize",
+                     .token_url = "http://example.com/token",
+                     .client_id = "client-123",
+                     .scopes = {"alpha"},
+                     .resource_url = "https://resource.example/api"};
+
+  REQUIRE_THROWS_WITH(flow.BuildAuthorizationUrl(
+                          config, "challenge-value", "state-value",
+                          "http://127.0.0.1/callback", config.resource_url),
+                      ContainsSubstring("authorization_url"));
 }
 
 }  // namespace yac::mcp::oauth::test

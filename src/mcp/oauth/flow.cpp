@@ -21,6 +21,22 @@ struct HttpResponse {
   std::string body;
 };
 
+[[nodiscard]] bool IsAllowedEndpointUrl(std::string_view url) {
+  if (url.starts_with("https://")) {
+    return true;
+  }
+
+  return url.starts_with("http://127.0.0.1") ||
+         url.starts_with("http://localhost");
+}
+
+void ValidateEndpointUrl(std::string_view url, std::string_view field_name) {
+  if (!IsAllowedEndpointUrl(url)) {
+    throw std::runtime_error(std::string(field_name) +
+                             " must use https:// or loopback http://");
+  }
+}
+
 std::size_t WriteCallback(char* ptr, std::size_t size, std::size_t nmemb,
                           void* userdata) {
   const std::size_t bytes = size * nmemb;
@@ -99,6 +115,7 @@ std::size_t WriteCallback(char* ptr, std::size_t size, std::size_t nmemb,
       headers, cleanup_headers);
 
   const std::string url_string(url);
+  ValidateEndpointUrl(url_string, "OAuth token_url");
   curl_easy_setopt(curl, CURLOPT_URL, url_string.c_str());
   curl_easy_setopt(curl, CURLOPT_POST, 1L);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
@@ -171,6 +188,8 @@ std::string OAuthFlow::BuildAuthorizationUrl(const OAuthConfig& config,
                                              std::string_view state,
                                              std::string_view redirect_uri,
                                              std::string_view resource) {
+  ValidateEndpointUrl(config.authorization_url, "OAuth authorization_url");
+
   std::vector<std::pair<std::string, std::string>> query = {
       {"response_type", "code"},
       {"client_id", config.client_id},
@@ -203,8 +222,22 @@ std::string OAuthFlow::BuildAuthorizationUrl(const OAuthConfig& config,
   {
     std::lock_guard lock(mutex_);
     state_ = State::AwaitingCallback;
+    expected_state_ = state;
+    state_validated_ = false;
   }
   return url.str();
+}
+
+void OAuthFlow::ValidateState(std::string_view callback_state) {
+  std::lock_guard lock(mutex_);
+  if (state_ != State::AwaitingCallback) {
+    throw std::runtime_error(
+        "OAuth state validation requested before authorization callback");
+  }
+  if (callback_state != expected_state_) {
+    throw std::runtime_error("OAuth callback state mismatch");
+  }
+  state_validated_ = true;
 }
 
 OAuthTokens OAuthFlow::ExchangeCode(const OAuthConfig& config,
@@ -217,6 +250,10 @@ OAuthTokens OAuthFlow::ExchangeCode(const OAuthConfig& config,
     if (state_ != State::AwaitingCallback) {
       throw std::runtime_error(
           "OAuth authorization code exchange requested before authorization");
+    }
+    if (!state_validated_) {
+      throw std::runtime_error(
+          "OAuth authorization code exchange requires state validation");
     }
   }
 
@@ -243,7 +280,18 @@ OAuthTokens OAuthFlow::ExchangeCode(const OAuthConfig& config,
 OAuthTokens OAuthFlow::RefreshToken(const OAuthConfig& config,
                                     std::string_view refresh_token,
                                     std::string_view resource) {
-  std::lock_guard refresh_lock(refresh_mutex_);
+  std::unique_lock lock(mutex_);
+  if (refresh_in_progress_) {
+    refresh_cv_.wait(lock, [this] { return !refresh_in_progress_; });
+    if (refresh_error_.has_value()) {
+      throw std::runtime_error(*refresh_error_);
+    }
+    return *refresh_result_;
+  }
+  refresh_in_progress_ = true;
+  refresh_result_.reset();
+  refresh_error_.reset();
+  lock.unlock();
 
   std::vector<std::pair<std::string, std::string>> form_fields = {
       {"grant_type", "refresh_token"},
@@ -255,12 +303,25 @@ OAuthTokens OAuthFlow::RefreshToken(const OAuthConfig& config,
     form_fields.emplace_back("resource", resolved_resource);
   }
 
-  OAuthTokens tokens = PerformTokenRequest(config, form_fields);
-  {
-    std::lock_guard lock(mutex_);
-    state_ = State::Authorized;
+  try {
+    OAuthTokens tokens = PerformTokenRequest(config, form_fields);
+    {
+      std::lock_guard completion_lock(mutex_);
+      state_ = State::Authorized;
+      refresh_result_ = tokens;
+      refresh_in_progress_ = false;
+    }
+    refresh_cv_.notify_all();
+    return tokens;
+  } catch (const std::exception& error) {
+    {
+      std::lock_guard completion_lock(mutex_);
+      refresh_error_ = error.what();
+      refresh_in_progress_ = false;
+    }
+    refresh_cv_.notify_all();
+    throw;
   }
-  return tokens;
 }
 
 OAuthTokens OAuthFlow::PerformTokenRequest(
