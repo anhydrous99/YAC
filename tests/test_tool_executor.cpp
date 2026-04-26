@@ -9,11 +9,16 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <string_view>
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
 using namespace yac::tool_call;
+
+namespace yac::tool_call {
+bool HasToolExecutorDispatchEntry(std::string_view name);
+}
 
 namespace {
 
@@ -118,6 +123,30 @@ std::string ReadFile(const std::filesystem::path& path) {
 }
 
 }  // namespace
+
+TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
+  auto root = TempRoot("unknown");
+  ToolExecutor executor = MakeExecutor(root);
+  PreparedToolCall prepared{
+      .request = {.id = "call_1", .name = "does_not_exist"},
+      .preview = FileWriteCall{.filepath = "x.txt"}};
+
+  auto result = executor.Execute(prepared, std::stop_token{});
+
+  REQUIRE(result.is_error);
+  REQUIRE(result.result_json == R"({"error":"Unknown tool: does_not_exist"})");
+  REQUIRE(std::holds_alternative<FileWriteCall>(result.block));
+  REQUIRE(std::get<FileWriteCall>(result.block).is_error);
+  REQUIRE(std::get<FileWriteCall>(result.block).error ==
+          "Unknown tool: does_not_exist");
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ToolExecutor dispatch registry keys match tool definitions") {
+  for (const auto& definition : ToolExecutor::Definitions()) {
+    REQUIRE(HasToolExecutorDispatchEntry(definition.name));
+  }
+}
 
 TEST_CASE("ToolExecutor writes files inside the workspace") {
   auto root = TempRoot("write");
