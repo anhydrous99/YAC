@@ -3,6 +3,7 @@
 #include "chat/agent_mode.hpp"
 #include "core_types/chat_ids.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "mcp/mcp_server_config.hpp"
 #include "model_info.hpp"
 
 #include <chrono>
@@ -367,6 +368,7 @@ struct ChatConfig {
   bool sync_terminal_background = true;
   std::string theme_name = "vivid";
   std::string theme_density = "comfortable";
+  mcp::McpConfig mcp;
 };
 
 struct ChatConfigResult {
