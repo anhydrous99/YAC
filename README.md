@@ -284,6 +284,7 @@ flowchart TD
 - Dependencies are fetched by CMake with `FetchContent`.
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
+- `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
 - libcurl is required for the OpenAI-compatible streaming provider.
 - `build/compile_commands.json` is generated during configure and is used by
   `.clangd`.

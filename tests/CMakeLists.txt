@@ -70,3 +70,10 @@ yac_add_test(yac_test_glob_matcher    test_glob_matcher.cpp)
 yac_add_test(yac_test_gitignore_filter test_gitignore_filter.cpp)
 yac_add_test(yac_test_glob_tool_executor test_glob_tool_executor.cpp)
 yac_add_test(yac_test_grep_tool_executor test_grep_tool_executor.cpp)
+
+add_executable(yac_test_keychain_smoke test_keychain_smoke.cpp)
+target_link_libraries(yac_test_keychain_smoke PRIVATE
+  Catch2::Catch2WithMain
+  yac_keychain
+)
+catch_discover_tests(yac_test_keychain_smoke TEST_PREFIX "yac_test_keychain_smoke::")

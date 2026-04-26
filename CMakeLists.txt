@@ -45,6 +45,106 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
+FetchContent_Declare(
+  keychain
+  GIT_REPOSITORY https://github.com/hrantzsch/keychain.git
+  GIT_TAG v1.3.1
+)
+
+FetchContent_Populate(keychain)
+
+if(APPLE OR WIN32)
+  add_subdirectory(${keychain_SOURCE_DIR} ${keychain_BINARY_DIR} EXCLUDE_FROM_ALL)
+else()
+  find_package(PkgConfig QUIET)
+  set(YAC_KEYCHAIN_HAS_BACKEND OFF)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(YAC_KEYCHAIN_GLIB QUIET glib-2.0)
+    pkg_check_modules(YAC_KEYCHAIN_LIBSECRET QUIET libsecret-1)
+    if(YAC_KEYCHAIN_GLIB_FOUND AND YAC_KEYCHAIN_LIBSECRET_FOUND)
+      set(YAC_KEYCHAIN_HAS_BACKEND ON)
+    endif()
+  endif()
+
+  if(YAC_KEYCHAIN_HAS_BACKEND)
+    add_subdirectory(${keychain_SOURCE_DIR} ${keychain_BINARY_DIR} EXCLUDE_FROM_ALL)
+  else()
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/keychain_shim.cpp" CONTENT [[
+#include <cstdlib>
+#include <string>
+
+#include "keychain.h"
+
+namespace keychain {
+namespace {
+
+bool DbusUnavailable() {
+  return std::getenv("DBUS_SESSION_BUS_ADDRESS") == nullptr;
+}
+
+void ClearError(Error& err) {
+  err.type = ErrorType::NoError;
+  err.message.clear();
+  err.code = 0;
+}
+
+}  // namespace
+
+std::string getPassword(const std::string&, const std::string&, const std::string&, Error& err) {
+  if (DbusUnavailable()) {
+    err.type = ErrorType::GenericError;
+    err.message = "DBus unavailable";
+    err.code = 0;
+    return {};
+  }
+
+  err.type = ErrorType::NotFound;
+  err.message.clear();
+  err.code = 0;
+  return {};
+}
+
+void setPassword(const std::string&, const std::string&, const std::string&, const std::string&, Error& err) {
+  if (DbusUnavailable()) {
+    err.type = ErrorType::GenericError;
+    err.message = "DBus unavailable";
+    err.code = 0;
+    return;
+  }
+
+  ClearError(err);
+}
+
+void deletePassword(const std::string&, const std::string&, const std::string&, Error& err) {
+  if (DbusUnavailable()) {
+    err.type = ErrorType::GenericError;
+    err.message = "DBus unavailable";
+    err.code = 0;
+    return;
+  }
+
+  ClearError(err);
+}
+
+}  // namespace keychain
+]])
+
+    add_library(yac_keychain_impl STATIC "${CMAKE_BINARY_DIR}/keychain_shim.cpp")
+    target_include_directories(yac_keychain_impl PRIVATE
+      ${keychain_SOURCE_DIR}/include/keychain
+    )
+
+    add_library(keychain INTERFACE)
+    target_include_directories(keychain INTERFACE
+      ${keychain_SOURCE_DIR}/include
+    )
+    target_link_libraries(keychain INTERFACE yac_keychain_impl)
+  endif()
+endif()
+
+add_library(yac_keychain INTERFACE)
+target_link_libraries(yac_keychain INTERFACE keychain)
+
 find_package(CURL REQUIRED)
 
 add_library(yac_core_types INTERFACE)
