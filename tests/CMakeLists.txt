@@ -77,6 +77,23 @@ yac_add_test(yac_test_mcp_secret_redaction test_mcp_secret_redaction.cpp)
 yac_add_test(yac_test_mcp_file_token_store test_mcp_file_token_store.cpp)
 yac_add_test(yac_test_mcp_keychain_token_store test_mcp_keychain_token_store.cpp)
 
+add_executable(yac_test_mcp_transport_mock
+  mock_mcp_transport.cpp
+  test_mcp_transport_mock.cpp
+)
+target_include_directories(yac_test_mcp_transport_mock PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_mcp_transport_mock PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_transport_mock
+  TEST_PREFIX "yac_test_mcp_transport_mock::"
+)
+
 add_executable(yac_test_keychain_smoke test_keychain_smoke.cpp)
 target_link_libraries(yac_test_keychain_smoke PRIVATE
   Catch2::Catch2WithMain

@@ -5,8 +5,8 @@
 #include <condition_variable>
 #include <map>
 #include <mutex>
-#include <optional>
 #include <openai.hpp>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
