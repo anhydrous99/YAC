@@ -82,6 +82,12 @@ yac_add_test(yac_test_chat_service_mcp       test_chat_service_mcp.cpp)
 target_include_directories(yac_test_chat_service_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+yac_add_test(yac_test_chat_service_prompt_processor_mcp
+  test_chat_service_prompt_processor_mcp.cpp
+)
+target_include_directories(yac_test_chat_service_prompt_processor_mcp PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 yac_add_test(yac_test_bootstrap_mcp          test_bootstrap_mcp.cpp)
 target_include_directories(yac_test_bootstrap_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}

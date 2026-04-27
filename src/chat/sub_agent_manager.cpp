@@ -178,9 +178,9 @@ void SubAgentManager::AttachPromptProcessor(SubAgentSession& session) {
   };
   session.prompt_processor =
       std::make_unique<internal::ChatServicePromptProcessor>(
-          *registry_, *tool_executor_, *tool_approval_, session.history_mutex,
-          session.history, filtered_emit, next_message_id, config_snapshot,
-          generation_value,
+          *registry_, *tool_executor_, *tool_approval_, nullptr,
+          session.history_mutex, session.history, filtered_emit,
+          next_message_id, config_snapshot, generation_value,
           std::set<std::string>{std::string(tool_call::kSubAgentToolName)},
           &approval_gate_);
 }

@@ -15,6 +15,8 @@
 
 namespace yac::chat::internal {
 
+class ChatServiceMcp;
+
 class ChatServicePromptProcessor {
  public:
   using EmitEventFn = std::function<void(ChatEvent)>;
@@ -22,19 +24,24 @@ class ChatServicePromptProcessor {
   using ConfigSnapshotFn = std::function<ChatConfig()>;
   using GenerationValueFn = std::function<uint64_t()>;
   using ModeExcludedToolsFn = std::function<std::set<std::string>()>;
+  using PrepareBuiltInToolCallFn =
+      std::function<::yac::tool_call::PreparedToolCall(const ToolCallRequest&)>;
+  using ExecuteBuiltInToolCallFn =
+      std::function<::yac::tool_call::ToolExecutionResult(
+          const ::yac::tool_call::PreparedToolCall&, std::stop_token)>;
 
-  ChatServicePromptProcessor(provider::ProviderRegistry& registry,
-                             ::yac::tool_call::ToolExecutor& tool_executor,
-                             ChatServiceToolApproval& tool_approval,
-                             std::mutex& history_mutex,
-                             std::vector<ChatMessage>& history,
-                             EmitEventFn emit_event,
-                             NextMessageIdFn next_message_id,
-                             ConfigSnapshotFn config_snapshot,
-                             GenerationValueFn generation_value,
-                             std::set<std::string> excluded_tools = {},
-                             std::mutex* approval_gate = nullptr,
-                             ModeExcludedToolsFn mode_excluded_tools = {});
+  ChatServicePromptProcessor(
+      provider::ProviderRegistry& registry,
+      ::yac::tool_call::ToolExecutor& tool_executor,
+      ChatServiceToolApproval& tool_approval, ChatServiceMcp* chat_service_mcp,
+      std::mutex& history_mutex, std::vector<ChatMessage>& history,
+      EmitEventFn emit_event, NextMessageIdFn next_message_id,
+      ConfigSnapshotFn config_snapshot, GenerationValueFn generation_value,
+      std::set<std::string> excluded_tools = {},
+      std::mutex* approval_gate = nullptr,
+      ModeExcludedToolsFn mode_excluded_tools = {},
+      PrepareBuiltInToolCallFn prepare_built_in_tool_call = {},
+      ExecuteBuiltInToolCallFn execute_built_in_tool_call = {});
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
@@ -52,6 +59,7 @@ class ChatServicePromptProcessor {
   provider::ProviderRegistry* registry_;
   ::yac::tool_call::ToolExecutor* tool_executor_;
   ChatServiceToolApproval* tool_approval_;
+  ChatServiceMcp* chat_service_mcp_;
   std::mutex* history_mutex_;
   std::vector<ChatMessage>* history_;
   EmitEventFn emit_event_;
@@ -61,6 +69,8 @@ class ChatServicePromptProcessor {
   std::set<std::string> excluded_tools_;
   std::mutex* approval_gate_;
   ModeExcludedToolsFn mode_excluded_tools_;
+  PrepareBuiltInToolCallFn prepare_built_in_tool_call_;
+  ExecuteBuiltInToolCallFn execute_built_in_tool_call_;
 };
 
 }  // namespace yac::chat::internal
