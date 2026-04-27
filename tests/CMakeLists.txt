@@ -145,6 +145,21 @@ target_compile_definitions(yac_test_mcp_stdio_transport PRIVATE
   ECHO_JSONRPC_SERVER_PATH="$<TARGET_FILE:echo_jsonrpc_server>"
 )
 
+add_executable(fake_mcp_server fake_mcp_server.cpp)
+target_link_libraries(fake_mcp_server PRIVATE openai_cpp)
+
+add_executable(yac_test_fake_mcp_server_smoke test_fake_mcp_server_smoke.cpp)
+target_link_libraries(yac_test_fake_mcp_server_smoke PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+target_compile_definitions(yac_test_fake_mcp_server_smoke PRIVATE
+  FAKE_MCP_SERVER_PATH="$<TARGET_FILE:fake_mcp_server>"
+)
+catch_discover_tests(yac_test_fake_mcp_server_smoke
+  TEST_PREFIX "yac_test_fake_mcp_server_smoke::"
+)
+
 add_executable(yac_test_mcp_cancellation
   mock_mcp_transport.cpp
   test_mcp_cancellation.cpp
