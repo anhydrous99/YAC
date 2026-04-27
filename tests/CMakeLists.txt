@@ -231,3 +231,35 @@ target_compile_definitions(yac_test_mock_oauth_server_smoke PRIVATE
 catch_discover_tests(yac_test_mock_oauth_server_smoke
   TEST_PREFIX "yac_test_mock_oauth_server_smoke::"
 )
+
+add_executable(yac_test_e2e_runner
+  mock_response_provider.cpp
+  yac_test_e2e_runner.cpp
+)
+target_include_directories(yac_test_e2e_runner PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_e2e_runner PRIVATE
+  yac_app
+  yac_service
+  yac_presentation
+  openai_cpp
+)
+
+add_executable(yac_test_mock_response_provider
+  mock_response_provider.cpp
+  test_mock_response_provider.cpp
+)
+target_include_directories(yac_test_mock_response_provider PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_mock_response_provider PRIVATE
+  yac_app
+  yac_service
+  yac_presentation
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mock_response_provider
+  TEST_PREFIX "yac_test_mock_response_provider::"
+)

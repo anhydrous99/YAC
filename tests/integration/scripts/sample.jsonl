@@ -1,0 +1,2 @@
+{"on_user_prompt_contains":"hello","emit_text":"Hi there! This is a canned response from the mock provider.","finish_reason":"stop"}
+{"on_user_prompt_contains":"","emit_text":"Default mock response.","finish_reason":"stop"}
