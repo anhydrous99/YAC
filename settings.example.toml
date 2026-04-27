@@ -47,3 +47,32 @@ name = "vivid"
 # color (via OSC 11) and restore the terminal default on exit. Has
 # no effect when name = "system".
 sync_terminal_background = true
+
+[mcp]
+# Maximum bytes for MCP tool result payloads (default: 262144 = 256 KB).
+# result_max_bytes = 262144
+
+# MCP server examples (all commented; uncomment to enable).
+#
+# Stdio example: Context7 via npx (requires Node.js).
+# [[mcp.servers]]
+# id = "context7"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@upstash/context7-mcp"]
+# enabled = true
+# auto_start = true
+#
+# HTTP+OAuth example: Generic OAuth2 server.
+# [[mcp.servers]]
+# id = "example-oauth"
+# transport = "http"
+# url = "https://mcp.example.com/api"
+# enabled = true
+# auto_start = false
+# requires_approval = false
+# [mcp.servers.auth.oauth2]
+# authorization_url = "https://auth.example.com/authorize"
+# token_url = "https://auth.example.com/token"
+# client_id = "your-client-id"
+# scopes = ["read", "write"]
