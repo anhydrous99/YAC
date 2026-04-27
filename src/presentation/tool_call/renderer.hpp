@@ -65,6 +65,8 @@ class ToolCallRenderer {
       const tool_data::TodoWriteCall& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderAskUser(
       const tool_data::AskUserCall& call, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderMcpToolCall(
+      const tool_data::McpToolCall& call, const RenderContext& context);
 };
 
 }  // namespace yac::presentation::tool_call
