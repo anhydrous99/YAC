@@ -1,8 +1,12 @@
 #include "chat/sub_agent_manager.hpp"
 
+#include "chat/chat_service_mcp.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_tool_approval.hpp"
 #include "chat/sub_agent_event_adapter.hpp"
+#include "core_types/mcp_manager_interface.hpp"
+#include "core_types/mcp_resource_types.hpp"
+#include "core_types/mcp_tool_catalog_snapshot.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -15,6 +19,44 @@
 namespace yac::chat {
 
 namespace {
+
+class SubAgentMcpAdapter : public core_types::IMcpManager {
+ public:
+  SubAgentMcpAdapter(core_types::McpToolCatalogSnapshot snapshot,
+                     core_types::IMcpManager* parent)
+      : snapshot_(std::move(snapshot)), parent_(parent) {}
+
+  [[nodiscard]] core_types::McpToolCatalogSnapshot GetToolCatalogSnapshot()
+      const override {
+    return snapshot_;
+  }
+
+  core_types::ToolExecutionResult InvokeTool(std::string_view qualified_name,
+                                             std::string_view arguments_json,
+                                             std::stop_token stop) override {
+    return parent_->InvokeTool(qualified_name, arguments_json, stop);
+  }
+
+  [[nodiscard]] std::vector<core_types::McpServerStatus>
+  GetServerStatusSnapshot() const override {
+    return {};
+  }
+
+  std::vector<core_types::McpResourceDescriptor> ListResources(
+      std::string_view server_id, std::stop_token stop) override {
+    return parent_->ListResources(server_id, stop);
+  }
+
+  core_types::McpResourceContent ReadResource(std::string_view server_id,
+                                              std::string_view uri,
+                                              std::stop_token stop) override {
+    return parent_->ReadResource(server_id, uri, stop);
+  }
+
+ private:
+  core_types::McpToolCatalogSnapshot snapshot_;
+  core_types::IMcpManager* parent_;
+};
 
 constexpr std::string_view kSubAgentSystemPrompt =
     "You are a focused assistant completing a specific task. Execute the task "
@@ -83,6 +125,8 @@ struct SubAgentManager::SubAgentSession {
   std::atomic<ChatMessageId> next_id{1};
   std::atomic<uint64_t> generation{0};
   std::atomic<int> completed_tool_count{0};
+  std::unique_ptr<core_types::IMcpManager> mcp_adapter;
+  std::unique_ptr<internal::ChatServiceMcp> chat_service_mcp;
   std::unique_ptr<internal::ChatServicePromptProcessor> prompt_processor;
   std::chrono::steady_clock::time_point deadline;
   std::chrono::steady_clock::time_point started_at;
@@ -120,6 +164,10 @@ void SubAgentManager::SetBackgroundResultCallback(BackgroundResultFn callback) {
   background_result_ = std::move(callback);
 }
 
+void SubAgentManager::SetMcpManager(core_types::IMcpManager* mcp_manager) {
+  mcp_manager_ = mcp_manager;
+}
+
 std::shared_ptr<SubAgentManager::SubAgentSession>
 SubAgentManager::CreateSession(const std::string& task,
                                tool_call::SubAgentMode mode,
@@ -134,6 +182,12 @@ SubAgentManager::CreateSession(const std::string& task,
   const auto now = std::chrono::steady_clock::now();
   session->deadline = now + std::chrono::seconds(timeout_seconds_);
   session->started_at = now;
+  if (mcp_manager_ != nullptr) {
+    session->mcp_adapter = std::make_unique<SubAgentMcpAdapter>(
+        mcp_manager_->GetToolCatalogSnapshot(), mcp_manager_);
+    session->chat_service_mcp =
+        std::make_unique<internal::ChatServiceMcp>(session->mcp_adapter.get());
+  }
   AttachPromptProcessor(*session);
   return session;
 }
@@ -178,9 +232,10 @@ void SubAgentManager::AttachPromptProcessor(SubAgentSession& session) {
   };
   session.prompt_processor =
       std::make_unique<internal::ChatServicePromptProcessor>(
-          *registry_, *tool_executor_, *tool_approval_, nullptr,
-          session.history_mutex, session.history, filtered_emit,
-          next_message_id, config_snapshot, generation_value,
+          *registry_, *tool_executor_, *tool_approval_,
+          session.chat_service_mcp.get(), session.history_mutex,
+          session.history, filtered_emit, next_message_id, config_snapshot,
+          generation_value,
           std::set<std::string>{std::string(tool_call::kSubAgentToolName)},
           &approval_gate_);
 }

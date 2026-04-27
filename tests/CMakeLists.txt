@@ -56,6 +56,10 @@ yac_add_test(yac_test_config_paths     test_config_paths.cpp)
 yac_add_test(yac_test_prompt_library   test_prompt_library.cpp)
 yac_add_test(yac_test_ask_user         test_ask_user.cpp)
 yac_add_test(yac_test_sub_agent_manager test_sub_agent_manager.cpp)
+yac_add_test(yac_test_sub_agent_mcp     test_sub_agent_mcp.cpp)
+target_include_directories(yac_test_sub_agent_mcp PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 yac_add_test(yac_test_sub_agent_event_adapter test_sub_agent_event_adapter.cpp)
 yac_add_test(yac_test_sub_agent_events test_sub_agent_events.cpp)
 yac_add_test(yac_test_sub_agent_executor test_sub_agent_executor.cpp)

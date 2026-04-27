@@ -12,6 +12,10 @@
 #include <unordered_map>
 #include <vector>
 
+namespace yac::core_types {
+class IMcpManager;
+}  // namespace yac::core_types
+
 namespace yac::chat {
 
 namespace internal {
@@ -46,6 +50,7 @@ class SubAgentManager {
   SubAgentManager& operator=(SubAgentManager&&) = delete;
 
   void SetBackgroundResultCallback(BackgroundResultFn callback);
+  void SetMcpManager(core_types::IMcpManager* mcp_manager);
 
   [[nodiscard]] std::string SpawnForeground(
       const std::string& task, ChatMessageId card_message_id,
@@ -86,6 +91,7 @@ class SubAgentManager {
   internal::ChatServiceToolApproval* tool_approval_;
   EmitEventFn parent_emit_;
   ConfigSnapshotFn parent_config_snapshot_;
+  core_types::IMcpManager* mcp_manager_ = nullptr;
   int timeout_seconds_;
 
   std::mutex approval_gate_;

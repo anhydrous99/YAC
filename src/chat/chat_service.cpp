@@ -35,6 +35,7 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
           [this] { return ExcludedToolsForMode(config_.agent_mode); })) {
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   tool_executor_->SetToolApproval(tool_approval_.get());
+  sub_agent_manager_->SetMcpManager(mcp_manager_.get());
   sub_agent_manager_->SetBackgroundResultCallback(
       [this](std::string tool_call_id, std::string task, std::string result,
              bool is_error) {
