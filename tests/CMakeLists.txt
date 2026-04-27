@@ -82,6 +82,10 @@ yac_add_test(yac_test_chat_service_mcp       test_chat_service_mcp.cpp)
 target_include_directories(yac_test_chat_service_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+yac_add_test(yac_test_bootstrap_mcp          test_bootstrap_mcp.cpp)
+target_include_directories(yac_test_bootstrap_mcp PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 yac_add_test(yac_test_mcp_keychain_token_store test_mcp_keychain_token_store.cpp)
 yac_add_test(yac_test_mcp_server_config test_mcp_server_config.cpp)
 yac_add_test(yac_test_mcp_env_override test_mcp_env_override.cpp)

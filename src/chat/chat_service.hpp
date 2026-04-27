@@ -1,7 +1,9 @@
 #pragma once
 
+#include "chat/chat_service_mcp.hpp"
 #include "chat/sub_agent_manager.hpp"
 #include "chat/types.hpp"
+#include "core_types/mcp_manager_interface.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
 #include "tool_call/todo_state.hpp"
@@ -31,8 +33,9 @@ class ChatServiceToolApproval;
 
 class ChatService {
  public:
-  explicit ChatService(provider::ProviderRegistry registry,
-                       ChatConfig config = {});
+  explicit ChatService(
+      provider::ProviderRegistry registry, ChatConfig config = {},
+      std::unique_ptr<core_types::IMcpManager> mcp_manager = nullptr);
   ~ChatService();
 
   ChatService(const ChatService&) = delete;
@@ -51,6 +54,7 @@ class ChatService {
   void ResetConversation();
   void CompactConversation(decltype(sizeof(0)) keep_last = 10);
   SubAgentManager& GetSubAgentManager() { return *sub_agent_manager_; }
+  internal::ChatServiceMcp* GetMcpHelper() { return mcp_helper_.get(); }
   // Spawns a background sub-agent initiated by the user (e.g., /task).
   // Creates the UI card via a synthetic ToolCallStarted event and returns
   // the agent id. On completion the result is delivered via
@@ -81,6 +85,8 @@ class ChatService {
 
   provider::ProviderRegistry registry_;
   ChatConfig config_;
+  std::unique_ptr<core_types::IMcpManager> mcp_manager_;
+  std::unique_ptr<internal::ChatServiceMcp> mcp_helper_;
   ::yac::tool_call::TodoState todo_state_;
   std::shared_ptr<::yac::tool_call::ToolExecutor> tool_executor_;
   std::unique_ptr<internal::ChatServiceToolApproval> tool_approval_;

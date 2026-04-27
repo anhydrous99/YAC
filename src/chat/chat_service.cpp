@@ -10,9 +10,14 @@
 
 namespace yac::chat {
 
-ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config)
+ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
+                         std::unique_ptr<core_types::IMcpManager> mcp_manager)
     : registry_(std::move(registry)),
       config_(std::move(config)),
+      mcp_manager_(std::move(mcp_manager)),
+      mcp_helper_(mcp_manager_ ? std::make_unique<internal::ChatServiceMcp>(
+                                     mcp_manager_.get())
+                               : nullptr),
       tool_executor_(internal::MakeChatToolExecutor(config_, todo_state_)),
       tool_approval_(std::make_unique<internal::ChatServiceToolApproval>()),
       sub_agent_manager_(std::make_unique<SubAgentManager>(

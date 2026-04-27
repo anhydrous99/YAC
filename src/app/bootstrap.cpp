@@ -10,6 +10,7 @@
 #include "chat/config_paths.hpp"
 #include "chat/prompt_library.hpp"
 #include "chat/settings_toml.hpp"
+#include "mcp/mcp_manager.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
@@ -536,11 +537,18 @@ int RunApp() {
 
   ChatEventBridge bridge(chat_ui);
 
+  StreamingCoalescer event_coalescer(screen, bridge);
+
+  auto mcp_mgr = std::make_unique<mcp::McpManager>(
+      config.mcp, [&event_coalescer](chat::ChatEvent event) {
+        event_coalescer.Dispatch(std::move(event));
+      });
+
   provider::ProviderRegistry registry;
   registry.Register(provider);
-  chat::ChatService chat_service(std::move(registry), config);
+  chat::ChatService chat_service(std::move(registry), config,
+                                 std::move(mcp_mgr));
 
-  StreamingCoalescer event_coalescer(screen, bridge);
   ConfigureServiceEventCallback(event_coalescer, chat_service);
   ConfigureChatUiCallbacks({}, config, terminal_bg_guard, screen, chat_service,
                            chat_ui);
