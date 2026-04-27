@@ -1,11 +1,15 @@
 #include "app/bootstrap.hpp"
 #include "app/headless.hpp"
+#include "cli/mcp_cli_dispatch.hpp"
 
 #include <iostream>
 #include <string>
 #include <string_view>
 
 int main(int argc, char* argv[]) {
+  if (argc >= 2 && std::string_view(argv[1]) == "mcp") {
+    return yac::cli::RunMcpCli(argc - 2, argv + 2);
+  }
   if (argc >= 3 && std::string_view(argv[1]) == "run") {
     std::string prompt;
     bool auto_approve = false;
