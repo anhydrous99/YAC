@@ -107,6 +107,10 @@ yac_add_test(yac_test_mcp_oauth_flow    test_mcp_oauth_flow.cpp)
 yac_add_test(yac_test_mcp_loopback_callback test_mcp_loopback_callback.cpp)
 yac_add_test(yac_test_mcp_oauth_discovery test_mcp_oauth_discovery.cpp)
 yac_add_test(yac_test_mcp_status_panel test_mcp_status_panel.cpp)
+yac_add_test(yac_test_mcp_resources_slash test_mcp_resources_slash.cpp)
+target_include_directories(yac_test_mcp_resources_slash PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 add_executable(yac_test_mcp_manager
   mock_mcp_transport.cpp

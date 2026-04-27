@@ -191,6 +191,7 @@ add_library(yac_presentation STATIC
   src/presentation/tool_call/descriptor.cpp
   src/presentation/tool_call/renderer.cpp
   src/presentation/mcp/mcp_status_panel.cpp
+  src/presentation/mcp/mcp_resources_command.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
 target_link_libraries(yac_presentation PUBLIC yac_core_types ftxui::screen ftxui::dom ftxui::component)
