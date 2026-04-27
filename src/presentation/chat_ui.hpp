@@ -13,6 +13,7 @@
 #include "composer_state.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
+#include "mcp/mcp_status_panel.hpp"
 #include "message.hpp"
 #include "message_render_cache.hpp"
 #include "message_renderer.hpp"
@@ -102,6 +103,8 @@ class ChatUI : public ChatEventSink {
   void SetToolExpanded(MessageId tool_id, bool expanded);
   void ClearMessages() override;
 
+  McpStatusSink& McpStatus() { return mcp_status_; }
+
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
   [[nodiscard]] bool HasMessage(MessageId id) const override;
   [[nodiscard]] bool HasToolSegment(MessageId tool_id) const override;
@@ -163,6 +166,7 @@ class ChatUI : public ChatEventSink {
   mutable int content_height_cache_width_ = -1;
   mutable int content_height_cache_value_ = 0;
   mutable bool content_height_cache_valid_ = false;
+  McpStatusSink mcp_status_;
 };
 
 }  // namespace yac::presentation

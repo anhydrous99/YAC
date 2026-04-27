@@ -398,10 +398,12 @@ void ChatUI::SetUiTaskRunner(UiTaskRunner ui_task_runner) {
 ftxui::Component ChatUI::Build() {
   auto message_list = BuildMessageList();
   auto input = BuildInput();
+  auto mcp_panel = McpStatusPanelComponent(mcp_status_);
 
-  auto container = ftxui::Container::Stacked({message_list, input});
+  auto container = ftxui::Container::Stacked({message_list, input, mcp_panel});
 
-  auto main_ui = ftxui::Renderer(container, [this, message_list, input] {
+  auto main_ui = ftxui::Renderer(container, [this, message_list, input,
+                                             mcp_panel] {
     const auto& colors = render_context_.Colors();
     const int term_width = ftxui::Terminal::Size().dimx;
 
@@ -460,6 +462,15 @@ ftxui::Component ChatUI::Build() {
       if (const auto& notice = overlay_state_.TransientStatus()) {
         rail_center.push_back(ftxui::text(" " + NoticeText(*notice)) |
                               ftxui::color(SeverityColor(notice->severity)));
+      }
+    }
+
+    auto mcp_element = mcp_panel->Render();
+    mcp_element->ComputeRequirement();
+    if (mcp_element->requirement().min_y > 0) {
+      const auto servers = mcp_status_.GetSnapshot();
+      if (!servers.empty()) {
+        rail_center.push_back(mcp_element);
       }
     }
 
