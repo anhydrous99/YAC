@@ -15,6 +15,7 @@ namespace yac::core_types {
 
 class IMcpManager {
  public:
+  IMcpManager() = default;
   virtual ~IMcpManager() = default;
   IMcpManager(const IMcpManager&) = delete;
   IMcpManager& operator=(const IMcpManager&) = delete;

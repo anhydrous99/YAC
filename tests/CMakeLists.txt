@@ -90,6 +90,23 @@ yac_add_test(yac_test_mcp_oauth_flow    test_mcp_oauth_flow.cpp)
 yac_add_test(yac_test_mcp_loopback_callback test_mcp_loopback_callback.cpp)
 yac_add_test(yac_test_mcp_oauth_discovery test_mcp_oauth_discovery.cpp)
 
+add_executable(yac_test_mcp_manager
+  mock_mcp_transport.cpp
+  test_mcp_manager.cpp
+)
+target_include_directories(yac_test_mcp_manager PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_mcp_manager PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_manager
+  TEST_PREFIX "yac_test_mcp_manager::"
+)
+
 add_executable(echo_jsonrpc_server echo_jsonrpc_server.cpp)
 target_link_libraries(echo_jsonrpc_server PRIVATE openai_cpp)
 
