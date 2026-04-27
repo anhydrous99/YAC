@@ -12,6 +12,8 @@ namespace yac::core_types {
 
 struct McpToolApprovalPolicy {
   bool requires_approval = false;
+  bool server_requires_approval = false;
+  std::vector<std::string> approval_required_tools;
 };
 
 struct McpToolCatalogSnapshot {

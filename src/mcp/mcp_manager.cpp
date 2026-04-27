@@ -453,9 +453,12 @@ core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
                     record.config.approval_required_tools.end(),
                     tool.name) != record.config.approval_required_tools.end();
       snapshot.approval_policy.emplace(
-          qualified_name, core_types::McpToolApprovalPolicy{
-                              .requires_approval = requires_approval,
-                          });
+          qualified_name,
+          core_types::McpToolApprovalPolicy{
+              .requires_approval = requires_approval,
+              .server_requires_approval = record.config.requires_approval,
+              .approval_required_tools = record.config.approval_required_tools,
+          });
     }
   }
   return snapshot;

@@ -261,6 +261,9 @@ struct McpToolCall {
   std::string error;
   bool is_truncated = false;
   uintmax_t result_bytes = 0;
+  // Approval context (populated before approval display).
+  bool server_requires_approval = false;
+  std::vector<std::string> approval_required_tools;
 };
 
 using ToolCallBlock =

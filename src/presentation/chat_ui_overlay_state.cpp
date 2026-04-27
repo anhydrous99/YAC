@@ -5,6 +5,7 @@
 #include "tool_call/renderer.hpp"
 #include "ui_spacing.hpp"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -29,6 +30,107 @@ ftxui::Element ApprovalArgumentsBlock(const std::string& prompt) {
          }) |
          ftxui::bgcolor(theme::CurrentTheme().code.bg) |
          ftxui::color(theme::CurrentTheme().code.fg);
+}
+
+std::string PrettyPrintJson(std::string_view json, size_t max_bytes) {
+  std::string out;
+  out.reserve(json.size());
+  int depth = 0;
+  bool in_string = false;
+  for (size_t i = 0; i < json.size(); ++i) {
+    const char c = json[i];
+    if (out.size() >= max_bytes) {
+      const auto excess = json.size() - i;
+      out += "\n[+" + std::to_string(excess) + " bytes truncated]";
+      return out;
+    }
+    if (in_string) {
+      out += c;
+      if (c == '\\' && i + 1 < json.size()) {
+        out += json[++i];
+      } else if (c == '"') {
+        in_string = false;
+      }
+      continue;
+    }
+    if (c == '"') {
+      in_string = true;
+      out += c;
+      continue;
+    }
+    switch (c) {
+      case '{':
+      case '[':
+        out += c;
+        out += '\n';
+        ++depth;
+        out.append(depth * 2, ' ');
+        break;
+      case '}':
+      case ']':
+        out += '\n';
+        --depth;
+        out.append(depth * 2, ' ');
+        out += c;
+        break;
+      case ',':
+        out += c;
+        out += '\n';
+        out.append(depth * 2, ' ');
+        break;
+      case ':':
+        out += ": ";
+        break;
+      case ' ':
+      case '\n':
+      case '\r':
+      case '\t':
+        break;
+      default:
+        out += c;
+        break;
+    }
+  }
+  return out;
+}
+
+ftxui::Element McpServerBanner(const std::string& server_id) {
+  const auto& t = theme::CurrentTheme();
+  return ftxui::hbox({
+      ftxui::text("MCP: ") | ftxui::bold | ftxui::color(t.role.agent),
+      ftxui::text(server_id) | ftxui::bold |
+          ftxui::color(t.semantic.text_strong),
+  });
+}
+
+ftxui::Element McpArgsBlock(const std::string& arguments_json) {
+  constexpr size_t kArgsCap = 2048;
+  auto formatted = PrettyPrintJson(arguments_json, kArgsCap);
+  return ApprovalArgumentsBlock(formatted);
+}
+
+ftxui::Element McpTrustPolicyLine(
+    bool server_requires_approval,
+    const std::vector<std::string>& approval_required_tools) {
+  const auto& t = theme::CurrentTheme();
+  std::string policy_text;
+  if (server_requires_approval) {
+    policy_text = "Approval required (per-server)";
+  } else if (!approval_required_tools.empty()) {
+    policy_text = "Approval required (per-tool:";
+    for (const auto& tool : approval_required_tools) {
+      policy_text += " " + tool + ",";
+    }
+    if (!policy_text.empty() && policy_text.back() == ',') {
+      policy_text.pop_back();
+    }
+    policy_text += ")";
+  } else {
+    policy_text = "Default-allow";
+  }
+  return ftxui::hbox({
+      ftxui::text(policy_text) | ftxui::color(t.semantic.text_muted),
+  });
 }
 
 ftxui::Element ApprovalActions() {
@@ -132,7 +234,7 @@ void ChatUiOverlayState::ShowHelp() {
 
 void ChatUiOverlayState::ShowToolApproval(
     std::string approval_id, std::string tool_name, std::string prompt,
-    std::optional< ::yac::tool_call::ToolCallBlock> preview) {
+    std::optional<::yac::tool_call::ToolCallBlock> preview) {
   approval_id_ = std::move(approval_id);
   approval_tool_name_ = std::move(tool_name);
   approval_prompt_ = std::move(prompt);
@@ -188,9 +290,23 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
     ftxui::Elements rows{
         ApprovalToolLabel(approval_tool_name_),
         ftxui::text(""),
-        ApprovalArgumentsBlock(approval_prompt_),
-        ftxui::text(""),
     };
+    const auto* mcp =
+        approval_preview_.has_value()
+            ? std::get_if<::yac::tool_call::McpToolCall>(&*approval_preview_)
+            : nullptr;
+    if (mcp != nullptr) {
+      rows.push_back(McpServerBanner(mcp->server_id));
+      rows.push_back(ftxui::text(""));
+      rows.push_back(McpArgsBlock(mcp->arguments_json));
+      rows.push_back(ftxui::text(""));
+      rows.push_back(McpTrustPolicyLine(mcp->server_requires_approval,
+                                        mcp->approval_required_tools));
+      rows.push_back(ftxui::text(""));
+    } else {
+      rows.push_back(ApprovalArgumentsBlock(approval_prompt_));
+      rows.push_back(ftxui::text(""));
+    }
     if (approval_preview_.has_value()) {
       rows.push_back(tool_call::ToolCallRenderer::Render(
           *approval_preview_, RenderContext{.terminal_width = 72}));

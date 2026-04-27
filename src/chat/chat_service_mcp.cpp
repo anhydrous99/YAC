@@ -60,6 +60,11 @@ tool_call::PreparedToolCall ChatServiceMcp::PrepareMcpToolCall(
                                .original_tool_name = original_tool_name,
                                .arguments_json = request.arguments_json};
 
+  if (policy_it != snapshot.approval_policy.end()) {
+    block.server_requires_approval = policy_it->second.server_requires_approval;
+    block.approval_required_tools = policy_it->second.approval_required_tools;
+  }
+
   return tool_call::PreparedToolCall{
       .request = request,
       .preview = std::move(block),
