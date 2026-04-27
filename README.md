@@ -184,6 +184,43 @@ name and description. It includes `New Chat`, `Clear Messages`,
 `Cancel Response`, and `Help`; `Switch Model` appears when model discovery has
 at least one model.
 
+## MCP Integration
+
+YAC supports the [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25/)
+(version 2025-11-25), letting you connect external tool servers over stdio or
+HTTP. Connected servers expose their tools directly to the assistant, which
+calls them the same way it calls built-in tools.
+
+See **[docs/mcp.md](docs/mcp.md)** for the full reference: config schema,
+OAuth flow, token storage, approval policy, resource lookup, and
+troubleshooting.
+
+### Quick setup
+
+Add a stdio server (e.g. Context7 via npx) to `~/.yac/settings.toml`:
+
+```toml
+[[mcp.servers]]
+id        = "context7"
+transport = "stdio"
+command   = "npx"
+args      = ["-y", "@upstash/context7-mcp"]
+enabled   = true
+```
+
+Or register it from the CLI without editing the file:
+
+```bash
+yac mcp add context7 --transport stdio --command npx --args '-y,@upstash/context7-mcp'
+```
+
+From inside the TUI, use `/mcp add` instead. List configured servers with
+`yac mcp list` (CLI) or `/mcp list` (TUI). Authenticate an OAuth server with
+`yac mcp auth <server-id>`.
+
+Tool names follow the pattern `mcp_<server-id>__<tool-name>` (double
+underscore). The assistant picks them up automatically once the server starts.
+
 ## Tests
 
 List discovered tests first:
