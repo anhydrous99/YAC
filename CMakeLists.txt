@@ -238,6 +238,7 @@ add_library(yac_service STATIC
   src/mcp/oauth/loopback_callback.cpp
   src/mcp/oauth/metadata_discovery.cpp
   src/mcp/mcp_manager.cpp
+  src/cli/mcp_admin_command.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp

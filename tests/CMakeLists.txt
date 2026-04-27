@@ -113,6 +113,7 @@ yac_add_test(yac_test_mcp_loopback_callback test_mcp_loopback_callback.cpp)
 yac_add_test(yac_test_mcp_oauth_discovery test_mcp_oauth_discovery.cpp)
 yac_add_test(yac_test_mcp_status_panel test_mcp_status_panel.cpp)
 yac_add_test(yac_test_mcp_resources_slash test_mcp_resources_slash.cpp)
+yac_add_test(yac_test_mcp_admin test_mcp_admin.cpp)
 target_include_directories(yac_test_mcp_resources_slash PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
