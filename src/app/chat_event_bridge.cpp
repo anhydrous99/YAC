@@ -325,16 +325,34 @@ void ChatEventBridge::Handle(chat::SubAgentCancelledEvent event) {
                                        MessageStatus::Cancelled);
 }
 
+void ChatEventBridge::SetPostFn(PostFn fn) {
+  post_fn_ = std::move(fn);
+}
+
+presentation::McpStatusSink& ChatEventBridge::GetMcpStatusSink() {
+  return mcp_sink_;
+}
+
 void ChatEventBridge::Handle(chat::McpServerStateChangedEvent event) {
-  (void)event;
+  mcp_sink_.UpdateServer(event.server_id, event.state, event.error);
+  if (post_fn_) {
+    post_fn_([] {});
+  }
 }
 
 void ChatEventBridge::Handle(chat::McpAuthRequiredEvent event) {
-  (void)event;
+  mcp_sink_.UpdateServer(event.server_id, "auth_required", event.hint_message);
+  if (post_fn_) {
+    post_fn_([] {});
+  }
 }
 
 void ChatEventBridge::Handle(chat::McpProgressUpdateEvent event) {
-  (void)event;
+  mcp_sink_.UpdateProgress(event.message_id, std::move(event.text),
+                           event.progress, event.total);
+  if (post_fn_) {
+    post_fn_([] {});
+  }
 }
 
 }  // namespace yac::app

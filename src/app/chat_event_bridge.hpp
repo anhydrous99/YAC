@@ -2,6 +2,7 @@
 
 #include "chat/types.hpp"
 #include "presentation/chat_event_sink.hpp"
+#include "presentation/mcp/mcp_status_sink.hpp"
 
 #include <functional>
 #include <vector>
@@ -11,11 +12,14 @@ namespace yac::app {
 class ChatEventBridge {
  public:
   using HistoryProvider = std::function<std::vector<chat::ChatMessage>()>;
+  using PostFn = std::function<void(std::function<void()>)>;
 
   explicit ChatEventBridge(presentation::ChatEventSink& chat_ui,
                            HistoryProvider history_provider = {});
 
   void HandleEvent(chat::ChatEvent event);
+  void SetPostFn(PostFn fn);
+  presentation::McpStatusSink& GetMcpStatusSink();
 
  private:
   void Handle(chat::StartedEvent event);
@@ -42,13 +46,15 @@ class ChatEventBridge {
   void Handle(chat::SubAgentErrorEvent event);
   void Handle(chat::SubAgentCancelledEvent event);
   static void Handle(chat::ToolCallRequestedEvent event);
-  static void Handle(chat::McpServerStateChangedEvent event);
-  static void Handle(chat::McpAuthRequiredEvent event);
-  static void Handle(chat::McpProgressUpdateEvent event);
+  void Handle(chat::McpServerStateChangedEvent event);
+  void Handle(chat::McpAuthRequiredEvent event);
+  void Handle(chat::McpProgressUpdateEvent event);
   void RefreshFromHistory();
 
   std::reference_wrapper<presentation::ChatEventSink> chat_ui_;
   HistoryProvider history_provider_;
+  presentation::McpStatusSink mcp_sink_;
+  PostFn post_fn_;
 };
 
 }  // namespace yac::app
