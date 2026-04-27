@@ -217,3 +217,17 @@ target_link_libraries(yac_test_keychain_smoke PRIVATE
   yac_keychain
 )
 catch_discover_tests(yac_test_keychain_smoke TEST_PREFIX "yac_test_keychain_smoke::")
+
+add_executable(mock_oauth_server mock_oauth_server.cpp)
+target_link_libraries(mock_oauth_server PRIVATE OpenSSL::Crypto)
+
+add_executable(yac_test_mock_oauth_server_smoke test_mock_oauth_server_smoke.cpp)
+target_link_libraries(yac_test_mock_oauth_server_smoke PRIVATE
+  Catch2::Catch2WithMain
+)
+target_compile_definitions(yac_test_mock_oauth_server_smoke PRIVATE
+  MOCK_OAUTH_SERVER_PATH="$<TARGET_FILE:mock_oauth_server>"
+)
+catch_discover_tests(yac_test_mock_oauth_server_smoke
+  TEST_PREFIX "yac_test_mock_oauth_server_smoke::"
+)
