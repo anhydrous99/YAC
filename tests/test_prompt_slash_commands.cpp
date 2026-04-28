@@ -131,8 +131,7 @@ TEST_CASE("RegisterPromptSlashCommands overrides non-protected built-ins") {
   REQUIRE(submitted == std::vector<std::string>{"Prompt"});
 }
 
-TEST_CASE(
-    "RegisterPromptSlashCommands protects task from prompt override") {
+TEST_CASE("RegisterPromptSlashCommands protects task from prompt override") {
   SlashCommandRegistry registry;
   registry.Define("task", "task", "Spawn a background sub-agent");
   std::vector<PromptDefinition> prompts = {
