@@ -51,6 +51,19 @@ constexpr std::int64_t kNoInflightId = -1;
   return value.dump();
 }
 
+// Extract result field from JSON-RPC envelope.
+// SendRequest returns the full envelope:
+// {"jsonrpc":"2.0","id":1,"result":{...}} But FromJson methods expect just the
+// result object: {...} This helper handles both cases for backward
+// compatibility with MockTransport.
+[[nodiscard]] Json ExtractResultField(const Json& response) {
+  if (response.contains("result")) {
+    return response["result"];
+  }
+  // Fallback for MockTransport which returns just the result object
+  return response;
+}
+
 }  // namespace
 
 McpServerSession::McpServerSession(
@@ -329,7 +342,8 @@ void McpServerSession::PerformHandshake(std::stop_token stop_token) {
       pc::kMethodInitialize, BuildInitializeRequest().ToJson(),
       std::chrono::duration_cast<std::chrono::milliseconds>(kInitializeTimeout),
       stop_token);
-  const auto response = InitializeResponse::FromJson(response_json);
+  const auto response =
+      InitializeResponse::FromJson(ExtractResultField(response_json));
   ValidateProtocolVersion(response.protocol_version);
 
   {
@@ -376,7 +390,7 @@ std::vector<ToolDefinition> McpServerSession::FetchTools(
         pc::kMethodToolsList, params,
         std::chrono::duration_cast<std::chrono::milliseconds>(kListTimeout),
         stop_token);
-    auto page = ToolsListResponse::FromJson(response_json);
+    auto page = ToolsListResponse::FromJson(ExtractResultField(response_json));
     tools.insert(tools.end(), page.tools.begin(), page.tools.end());
     cursor = std::move(page.next_cursor);
   } while (cursor.has_value());
@@ -396,7 +410,8 @@ std::vector<ResourceDescriptor> McpServerSession::FetchResources(
         pc::kMethodResourcesList, params,
         std::chrono::duration_cast<std::chrono::milliseconds>(kListTimeout),
         stop_token);
-    auto page = ResourcesListResponse::FromJson(response_json);
+    auto page =
+        ResourcesListResponse::FromJson(ExtractResultField(response_json));
     resources.insert(resources.end(), page.resources.begin(),
                      page.resources.end());
     cursor = std::move(page.next_cursor);
