@@ -246,6 +246,24 @@ target_link_libraries(yac_test_e2e_runner PRIVATE
   openai_cpp
 )
 
+add_executable(yac_test_mcp_oauth_e2e
+  integration/test_mcp_oauth_e2e.cpp
+)
+target_compile_definitions(yac_test_mcp_oauth_e2e PRIVATE
+  MOCK_OAUTH_SERVER_PATH="$<TARGET_FILE:mock_oauth_server>"
+  YAC_BINARY_PATH="$<TARGET_FILE:yac>"
+  YAC_TEST_E2E_RUNNER_PATH="$<TARGET_FILE:yac_test_e2e_runner>"
+  MOCK_OAUTH_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/mock_oauth.toml"
+  OAUTH_E2E_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/oauth_e2e.jsonl"
+)
+target_link_libraries(yac_test_mcp_oauth_e2e PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_oauth_e2e
+  TEST_PREFIX "yac_test_mcp_oauth_e2e::"
+)
+
 add_executable(yac_test_mcp_cold_start_integration
   integration/test_mcp_cold_start.cpp
 )

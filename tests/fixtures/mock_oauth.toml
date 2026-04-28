@@ -1,0 +1,17 @@
+[provider]
+id          = "mock"
+model       = "mock-model"
+base_url    = "http://localhost/"
+api_key_env = "MOCK_API_KEY"
+
+[[mcp.servers]]
+id        = "mock_oauth"
+transport = "http"
+url       = "http://127.0.0.1:19877/mcp"
+enabled   = true
+
+[mcp.servers.auth]
+type              = "oauth"
+authorization_url = "http://127.0.0.1:19877/authorize"
+token_url         = "http://127.0.0.1:19877/token"
+client_id         = "test-client"
