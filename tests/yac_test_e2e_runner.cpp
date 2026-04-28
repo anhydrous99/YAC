@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <csignal>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -58,6 +59,9 @@ bool WaitForMcpReady(yac::mcp::McpManager& manager) {
 
 int main(int argc, char* argv[]) {
   try {
+    // NOLINTNEXTLINE(concurrency-mt-unsafe)
+    signal(SIGPIPE, SIG_IGN);
+
     if (argc < 3 || std::string_view(argv[1]) != "run") {
       PrintUsage(argv[0]);
       return 1;

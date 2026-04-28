@@ -281,6 +281,40 @@ catch_discover_tests(yac_test_mcp_warm_cancel_integration
   TEST_PREFIX "yac_test_mcp_warm_cancel_integration::"
 )
 
+add_executable(yac_test_mcp_shutdown_integration
+  integration/test_mcp_shutdown.cpp
+)
+target_compile_definitions(yac_test_mcp_shutdown_integration PRIVATE
+  FAKE_MCP_SERVER_PATH="$<TARGET_FILE:fake_mcp_server>"
+  YAC_TEST_E2E_RUNNER_PATH="$<TARGET_FILE:yac_test_e2e_runner>"
+  SHUTDOWN_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/shutdown.jsonl"
+  TWO_STDIO_SERVERS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/two_stdio_servers.toml"
+)
+target_link_libraries(yac_test_mcp_shutdown_integration PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_shutdown_integration
+  TEST_PREFIX "yac_test_mcp_shutdown_integration::"
+)
+
+add_executable(yac_test_mcp_crash_integration
+  integration/test_mcp_crash.cpp
+)
+target_compile_definitions(yac_test_mcp_crash_integration PRIVATE
+  FAKE_MCP_SERVER_PATH="$<TARGET_FILE:fake_mcp_server>"
+  YAC_TEST_E2E_RUNNER_PATH="$<TARGET_FILE:yac_test_e2e_runner>"
+  CRASH_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/crash.jsonl"
+  CRASHING_SERVER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/crashing_server.toml"
+)
+target_link_libraries(yac_test_mcp_crash_integration PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_crash_integration
+  TEST_PREFIX "yac_test_mcp_crash_integration::"
+)
+
 add_executable(yac_test_mock_response_provider
   mock_response_provider.cpp
   test_mock_response_provider.cpp
