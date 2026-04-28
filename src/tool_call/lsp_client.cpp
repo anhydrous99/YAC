@@ -1,6 +1,7 @@
 #include "tool_call/lsp_client.hpp"
 
 #include "tool_call/json_rpc_stdio_base.hpp"
+#include "tool_call/lsp_error.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -173,123 +174,117 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
   Impl& operator=(Impl&&) = delete;
 
   [[nodiscard]] LspDiagnosticsCall Diagnostics(const std::string& file_path) {
-    try {
-      const auto path = AbsolutePath(file_path);
-      EnsureInitialized();
-      SyncDocument(path);
-      const auto uri = FileUri(path);
-      std::unique_lock lock(diagnostics_mutex_);
-      diagnostics_wake_.wait_for(lock, config_.diagnostics_timeout,
-                                 [&] { return diagnostics_.contains(uri); });
-      auto diagnostics = diagnostics_.contains(uri)
-                             ? diagnostics_[uri]
-                             : std::vector<LspDiagnostic>{};
-      return LspDiagnosticsCall{.file_path = DisplayPath(path),
-                                .diagnostics = std::move(diagnostics)};
-    } catch (const std::exception& error) {
-      return LspDiagnosticsCall{
-          .file_path = file_path, .is_error = true, .error = error.what()};
-    }
+    return CallWithLspErrorTo(
+        LspDiagnosticsCall{.file_path = file_path}, [&] {
+          const auto path = AbsolutePath(file_path);
+          EnsureInitialized();
+          SyncDocument(path);
+          const auto uri = FileUri(path);
+          std::unique_lock lock(diagnostics_mutex_);
+          diagnostics_wake_.wait_for(
+              lock, config_.diagnostics_timeout,
+              [&] { return diagnostics_.contains(uri); });
+          auto diagnostics = diagnostics_.contains(uri)
+                                 ? diagnostics_[uri]
+                                 : std::vector<LspDiagnostic>{};
+          return LspDiagnosticsCall{.file_path = DisplayPath(path),
+                                     .diagnostics = std::move(diagnostics)};
+        });
   }
 
   [[nodiscard]] LspReferencesCall References(const std::string& file_path,
                                              int line, int character,
                                              const std::string& symbol) {
-    try {
-      const auto path = AbsolutePath(file_path);
-      EnsureInitialized();
-      SyncDocument(path);
-      auto response = SendRequest("textDocument/references",
-                                  {{"textDocument", {{"uri", FileUri(path)}}},
-                                   {"position", Position(line, character)},
-                                   {"context", {{"includeDeclaration", true}}}},
-                                  config_.request_timeout);
-      auto locations = ParseLocations(response["result"]);
-      return LspReferencesCall{.symbol = symbol,
-                               .file_path = DisplayPath(path),
-                               .references = std::move(locations)};
-    } catch (const std::exception& error) {
-      return LspReferencesCall{.symbol = symbol,
-                               .file_path = file_path,
-                               .is_error = true,
-                               .error = error.what()};
-    }
+    return CallWithLspErrorTo(
+        LspReferencesCall{.symbol = symbol, .file_path = file_path}, [&] {
+          const auto path = AbsolutePath(file_path);
+          EnsureInitialized();
+          SyncDocument(path);
+          auto response = SendRequest(
+              "textDocument/references",
+              {{"textDocument", {{"uri", FileUri(path)}}},
+               {"position", Position(line, character)},
+               {"context", {{"includeDeclaration", true}}}},
+              config_.request_timeout);
+          auto locations = ParseLocations(response["result"]);
+          return LspReferencesCall{.symbol = symbol,
+                                    .file_path = DisplayPath(path),
+                                    .references = std::move(locations)};
+        });
   }
 
   [[nodiscard]] LspGotoDefinitionCall GotoDefinition(
       const std::string& file_path, int line, int character,
       const std::string& symbol) {
-    try {
-      const auto path = AbsolutePath(file_path);
-      EnsureInitialized();
-      SyncDocument(path);
-      auto response = SendRequest("textDocument/definition",
-                                  {{"textDocument", {{"uri", FileUri(path)}}},
-                                   {"position", Position(line, character)}},
-                                  config_.request_timeout);
-      auto locations = ParseLocations(response["result"]);
-      return LspGotoDefinitionCall{.symbol = symbol,
-                                   .file_path = DisplayPath(path),
-                                   .line = line,
-                                   .character = character,
-                                   .definitions = std::move(locations)};
-    } catch (const std::exception& error) {
-      return LspGotoDefinitionCall{.symbol = symbol,
-                                   .file_path = file_path,
-                                   .line = line,
-                                   .character = character,
-                                   .is_error = true,
-                                   .error = error.what()};
-    }
+    return CallWithLspErrorTo(
+        LspGotoDefinitionCall{.symbol = symbol,
+                               .file_path = file_path,
+                               .line = line,
+                               .character = character},
+        [&] {
+          const auto path = AbsolutePath(file_path);
+          EnsureInitialized();
+          SyncDocument(path);
+          auto response = SendRequest(
+              "textDocument/definition",
+              {{"textDocument", {{"uri", FileUri(path)}}},
+               {"position", Position(line, character)}},
+              config_.request_timeout);
+          auto locations = ParseLocations(response["result"]);
+          return LspGotoDefinitionCall{.symbol = symbol,
+                                        .file_path = DisplayPath(path),
+                                        .line = line,
+                                        .character = character,
+                                        .definitions = std::move(locations)};
+        });
   }
 
   [[nodiscard]] LspRenameCall Rename(const std::string& file_path, int line,
                                      int character, const std::string& old_name,
                                      const std::string& new_name) {
-    try {
-      const auto path = AbsolutePath(file_path);
-      EnsureInitialized();
-      SyncDocument(path);
-      auto response = SendRequest("textDocument/rename",
-                                  {{"textDocument", {{"uri", FileUri(path)}}},
-                                   {"position", Position(line, character)},
-                                   {"newName", new_name}},
-                                  config_.request_timeout);
-      auto edits = ParseWorkspaceEdits(response["result"]);
-      return LspRenameCall{.file_path = DisplayPath(path),
-                           .line = line,
-                           .character = character,
-                           .old_name = old_name,
-                           .new_name = new_name,
-                           .changes_count = static_cast<int>(edits.size()),
-                           .changes = std::move(edits)};
-    } catch (const std::exception& error) {
-      return LspRenameCall{.file_path = file_path,
-                           .line = line,
-                           .character = character,
-                           .old_name = old_name,
-                           .new_name = new_name,
-                           .is_error = true,
-                           .error = error.what()};
-    }
+    return CallWithLspErrorTo(
+        LspRenameCall{.file_path = file_path,
+                       .line = line,
+                       .character = character,
+                       .old_name = old_name,
+                       .new_name = new_name},
+        [&] {
+          const auto path = AbsolutePath(file_path);
+          EnsureInitialized();
+          SyncDocument(path);
+          auto response = SendRequest(
+              "textDocument/rename",
+              {{"textDocument", {{"uri", FileUri(path)}}},
+               {"position", Position(line, character)},
+               {"newName", new_name}},
+              config_.request_timeout);
+          auto edits = ParseWorkspaceEdits(response["result"]);
+          return LspRenameCall{
+              .file_path = DisplayPath(path),
+              .line = line,
+              .character = character,
+              .old_name = old_name,
+              .new_name = new_name,
+              .changes_count = static_cast<int>(edits.size()),
+              .changes = std::move(edits)};
+        });
   }
 
   [[nodiscard]] LspSymbolsCall Symbols(const std::string& file_path) {
-    try {
-      const auto path = AbsolutePath(file_path);
-      EnsureInitialized();
-      SyncDocument(path);
-      auto response = SendRequest("textDocument/documentSymbol",
-                                  {{"textDocument", {{"uri", FileUri(path)}}}},
-                                  config_.request_timeout);
-      std::vector<LspSymbol> symbols;
-      ParseSymbols(response["result"], symbols);
-      return LspSymbolsCall{.file_path = DisplayPath(path),
-                            .symbols = std::move(symbols)};
-    } catch (const std::exception& error) {
-      return LspSymbolsCall{
-          .file_path = file_path, .is_error = true, .error = error.what()};
-    }
+    return CallWithLspErrorTo(
+        LspSymbolsCall{.file_path = file_path}, [&] {
+          const auto path = AbsolutePath(file_path);
+          EnsureInitialized();
+          SyncDocument(path);
+          auto response = SendRequest(
+              "textDocument/documentSymbol",
+              {{"textDocument", {{"uri", FileUri(path)}}}},
+              config_.request_timeout);
+          std::vector<LspSymbol> symbols;
+          ParseSymbols(response["result"], symbols);
+          return LspSymbolsCall{.file_path = DisplayPath(path),
+                                 .symbols = std::move(symbols)};
+        });
   }
 
  private:
