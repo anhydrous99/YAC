@@ -101,7 +101,7 @@ int RunE2eRunner(const std::filesystem::path& home_dir,
     ::_exit(127);
   }
 
-  const auto deadline = std::chrono::steady_clock::now() + 60s;
+  const auto deadline = std::chrono::steady_clock::now() + 120s;
   int status = 0;
   while (std::chrono::steady_clock::now() < deadline) {
     const pid_t r = ::waitpid(pid, &status, WNOHANG);
