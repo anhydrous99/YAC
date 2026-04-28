@@ -7,6 +7,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -41,7 +42,8 @@ constexpr std::string_view kFallbackDescription = "Run predefined prompt";
 // ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 constexpr std::string_view kDefaultInitPrompt =
-    R"(Create or update `AGENTS.md` for this repository.
+    R"($REPO_CONTEXT
+Create or update `AGENTS.md` for this repository.
 
 The goal is a compact instruction file that helps future OpenCode sessions avoid mistakes and ramp up quickly. Every line should answer: "Would an agent likely miss this without help?" If not, leave it out.
 
@@ -106,7 +108,7 @@ When in doubt, omit.
 
 Prefer short sections and bullets. If the repo is simple, keep the file simple. If the repo is large, summarize the few structural facts that actually change how an agent should work.
 
-If `AGENTS.md` already exists at `${path}`, improve it in place rather than rewriting blindly. Preserve verified useful guidance, delete fluff or stale claims, and reconcile it with the current codebase.)";
+If `AGENTS.md` already exists at `$WORKSPACE_ROOT`, improve it in place rather than rewriting blindly. Preserve verified useful guidance, delete fluff or stale claims, and reconcile it with the current codebase.)";
 
 constexpr std::string_view kDefaultReviewPrompt =
     R"(You are a code reviewer. Your job is to review code changes and provide actionable feedback.
@@ -215,15 +217,18 @@ struct DefaultPromptSeed {
   std::string_view name;
   std::string_view description;
   std::string_view prompt;
+  int revision;
 };
 
 constexpr DefaultPromptSeed kDefaultPromptSeeds[] = {
     {.name = "init",
      .description = "Create or update repository agent instructions",
-     .prompt = kDefaultInitPrompt},
+     .prompt = kDefaultInitPrompt,
+     .revision = 2},
     {.name = "review",
      .description = "Review code changes and report actionable feedback",
-     .prompt = kDefaultReviewPrompt},
+     .prompt = kDefaultReviewPrompt,
+     .revision = 2},
 };
 
 void AddWarning(std::vector<ConfigIssue>& issues, std::string message,
@@ -275,19 +280,60 @@ bool EnsurePromptDirectory(const std::filesystem::path& prompts_dir,
   return true;
 }
 
+std::string BuildSeedContent(const DefaultPromptSeed& seed) {
+  std::string content;
+  content.reserve(256 + seed.prompt.size());
+  content += "description = \"";
+  content += seed.description;
+  content += "\"\n";
+  content += "revision = ";
+  content += std::to_string(seed.revision);
+  content += "\n";
+  content += "prompt = '''\n";
+  content += seed.prompt;
+  if (!seed.prompt.empty() && seed.prompt.back() != '\n') {
+    content += '\n';
+  }
+  content += "'''\n";
+  return content;
+}
+
+bool IsUnmodifiedSeed(const std::filesystem::path& path,
+                      const DefaultPromptSeed& seed) {
+  std::ifstream input(path);
+  if (!input) {
+    return false;
+  }
+  std::string existing((std::istreambuf_iterator<char>(input)),
+                       std::istreambuf_iterator<char>());
+  return existing == BuildSeedContent(seed);
+}
+
 void WriteSeedPrompt(const std::filesystem::path& prompts_dir,
                      const DefaultPromptSeed& seed,
                      std::vector<ConfigIssue>& issues) {
   const auto path = prompts_dir / (std::string(seed.name) + ".toml");
   std::error_code ec;
   if (std::filesystem::exists(path, ec)) {
-    return;
+    try {
+      const auto table = toml::parse_file(path.string());
+      const auto stored_revision = table["revision"].value<int>();
+      if (stored_revision.has_value() && *stored_revision >= seed.revision) {
+        return;
+      }
+      if (!IsUnmodifiedSeed(path, seed)) {
+        return;
+      }
+    } catch (...) {
+      return;
+    }
   }
   if (ec) {
     AddWarning(issues, "Failed to check " + path.string(), ec.message());
     return;
   }
 
+  const auto content = BuildSeedContent(seed);
   std::ofstream output(path, std::ios::trunc);
   if (!output) {
     AddWarning(issues, "Failed to create " + path.string(),
@@ -295,13 +341,7 @@ void WriteSeedPrompt(const std::filesystem::path& prompts_dir,
     return;
   }
 
-  output << "description = \"" << seed.description << "\"\n";
-  output << "prompt = '''\n";
-  output << seed.prompt;
-  if (!seed.prompt.empty() && seed.prompt.back() != '\n') {
-    output << '\n';
-  }
-  output << "'''\n";
+  output << content;
   output.close();
   if (!output) {
     AddWarning(issues, "Failed to write " + path.string(),
@@ -425,6 +465,24 @@ PromptLibraryResult LoadPromptLibrary(bool seed_defaults) {
   }
 }
 
+std::string BuildRepoContext() {
+  std::string context = "=== Repo Context ===\n";
+  try {
+    const auto root = std::filesystem::current_path();
+    context += "Workspace: " + root.string() + "\nTop-level entries:\n";
+    for (const auto& entry : std::filesystem::directory_iterator(root)) {
+      context += "  " + entry.path().filename().string();
+      if (entry.is_directory()) {
+        context += "/";
+      }
+      context += "\n";
+    }
+  } catch (...) {
+  }
+  context += "\n";
+  return context;
+}
+
 std::string RenderPrompt(const PromptDefinition& prompt,
                          const std::string& arguments) {
   return RenderPrompt(prompt.prompt, arguments);
@@ -433,20 +491,53 @@ std::string RenderPrompt(const PromptDefinition& prompt,
 std::string RenderPrompt(const std::string& prompt,
                          const std::string& arguments) {
   constexpr std::string_view kArgumentsToken = "$ARGUMENTS";
+  constexpr std::string_view kRepoContextToken = "$REPO_CONTEXT";
+  constexpr std::string_view kWorkspaceRootToken = "$WORKSPACE_ROOT";
   const auto rendered_arguments = TrimAsciiWhitespace(arguments);
+
+  struct TokenReplacement {
+    std::string_view token;
+    std::string value;
+  };
+  const TokenReplacement replacements[] = {
+      {kArgumentsToken, rendered_arguments},
+      {kRepoContextToken, BuildRepoContext()},
+      {kWorkspaceRootToken,
+       [] {
+         try {
+           return std::filesystem::current_path().string();
+         } catch (...) {
+           return std::string{};
+         }
+       }()},
+  };
+
   std::string rendered;
   rendered.reserve(prompt.size());
 
   std::size_t start = 0;
   while (start < prompt.size()) {
-    const auto pos = prompt.find(kArgumentsToken, start);
-    if (pos == std::string::npos) {
+    auto best_pos = std::string::npos;
+    std::string_view best_token;
+    for (const auto& replacement : replacements) {
+      const auto pos = prompt.find(replacement.token, start);
+      if (pos < best_pos) {
+        best_pos = pos;
+        best_token = replacement.token;
+      }
+    }
+    if (best_pos == std::string::npos) {
       rendered.append(prompt, start, std::string::npos);
       break;
     }
-    rendered.append(prompt, start, pos - start);
-    rendered.append(rendered_arguments);
-    start = pos + kArgumentsToken.size();
+    rendered.append(prompt, start, best_pos - start);
+    for (const auto& replacement : replacements) {
+      if (replacement.token == best_token) {
+        rendered.append(replacement.value);
+        break;
+      }
+    }
+    start = best_pos + best_token.size();
   }
   return rendered;
 }
