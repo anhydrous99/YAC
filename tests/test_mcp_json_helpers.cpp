@@ -24,14 +24,14 @@ TEST_CASE("ParseJsonOrThrow handles JSON arrays and primitives") {
 
 TEST_CASE("ParseJsonOrThrow throws McpProtocolError with context prefix") {
   REQUIRE_THROWS_AS(ParseJsonOrThrow("not json", "OAuth token response"),
-                     McpProtocolError);
+                    McpProtocolError);
   try {
     (void)ParseJsonOrThrow("not json", "OAuth token response");
     FAIL("expected McpProtocolError");
   } catch (const McpProtocolError& e) {
     using Catch::Matchers::ContainsSubstring;
     REQUIRE_THAT(std::string(e.what()),
-                  ContainsSubstring("OAuth token response"));
+                 ContainsSubstring("OAuth token response"));
     REQUIRE_THAT(std::string(e.what()), ContainsSubstring("Invalid JSON"));
   }
 }

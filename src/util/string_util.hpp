@@ -31,16 +31,14 @@ namespace yac::util {
          u == '\f';
 }
 
-[[nodiscard]] inline std::string_view TrimLeftSv(
-    std::string_view s) noexcept {
+[[nodiscard]] inline std::string_view TrimLeftSv(std::string_view s) noexcept {
   while (!s.empty() && IsAsciiSpace(s.front())) {
     s.remove_prefix(1);
   }
   return s;
 }
 
-[[nodiscard]] inline std::string_view TrimRightSv(
-    std::string_view s) noexcept {
+[[nodiscard]] inline std::string_view TrimRightSv(std::string_view s) noexcept {
   while (!s.empty() && IsAsciiSpace(s.back())) {
     s.remove_suffix(1);
   }
@@ -67,8 +65,8 @@ namespace yac::util {
   std::string result;
   result.reserve(s.size());
   for (char c : s) {
-    result.push_back(static_cast<char>(
-        std::tolower(static_cast<unsigned char>(c))));
+    result.push_back(
+        static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   }
   return result;
 }

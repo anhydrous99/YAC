@@ -85,12 +85,12 @@ std::size_t StreamableHttpMcpTransport::HeaderCallback(char* buffer,
 
   const std::string header_name =
       ::yac::util::ToLowerAscii(line.substr(0, colon_pos));
-  std::string header_value =
-      ::yac::util::Trim(line.substr(colon_pos + 1));
+  std::string header_value = ::yac::util::Trim(line.substr(colon_pos + 1));
 
   if (header_name == ::yac::util::ToLowerAscii(pc::kHeaderContentType)) {
     state->content_type = NormalizeContentType(std::move(header_value));
-  } else if (header_name == ::yac::util::ToLowerAscii(pc::kHeaderMcpSessionId)) {
+  } else if (header_name ==
+             ::yac::util::ToLowerAscii(pc::kHeaderMcpSessionId)) {
     state->response_session_id = std::move(header_value);
   }
 

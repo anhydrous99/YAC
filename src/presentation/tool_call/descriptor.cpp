@@ -66,8 +66,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "read",
               .label = "Read " + TruncateString(Basename(call.filepath), 30),
-              .summary =
-                  util::CountSummary(call.lines_loaded, "line", "lines"),
+              .summary = util::CountSummary(call.lines_loaded, "line", "lines"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::FileWriteCall>) {
           std::string summary;
@@ -88,10 +87,9 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "list",
               .label = "List directory",
-              .summary = call.is_error
-                             ? "failed"
-                             : util::CountSummary(call.entries.size(), "entry",
-                                                   "entries"),
+              .summary = call.is_error ? "failed"
+                                       : util::CountSummary(call.entries.size(),
+                                                            "entry", "entries"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::GrepCall>) {
           return ToolCallDescriptor{
@@ -106,7 +104,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .tag = "glob",
               .label = "Find files",
               .summary = util::CountSummary(call.matched_files.size(), "file",
-                                              "files"),
+                                            "files"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::WebFetchCall>) {
           return ToolCallDescriptor{
@@ -119,8 +117,8 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           return ToolCallDescriptor{
               .tag = "search",
               .label = "Web search",
-              .summary = util::CountSummary(call.results.size(), "result",
-                                              "results"),
+              .summary =
+                  util::CountSummary(call.results.size(), "result", "results"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::LspDiagnosticsCall>) {
           return ToolCallDescriptor{
@@ -129,7 +127,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = call.is_error
                              ? "failed"
                              : util::CountSummary(call.diagnostics.size(),
-                                                   "diagnostic", "diagnostics"),
+                                                  "diagnostic", "diagnostics"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::LspReferencesCall>) {
           return ToolCallDescriptor{
@@ -138,7 +136,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = call.is_error
                              ? "failed"
                              : util::CountSummary(call.references.size(),
-                                                   "reference", "references"),
+                                                  "reference", "references"),
           };
         } else if constexpr (std::is_same_v<T,
                                             tool_data::LspGotoDefinitionCall>) {
@@ -148,7 +146,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = call.is_error
                              ? "failed"
                              : util::CountSummary(call.definitions.size(),
-                                                   "definition", "definitions"),
+                                                  "definition", "definitions"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::LspRenameCall>) {
           return ToolCallDescriptor{
@@ -157,15 +155,16 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = call.is_error
                              ? "failed"
                              : util::CountSummary(call.changes_count, "change",
-                                                   "changes"),
+                                                  "changes"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::LspSymbolsCall>) {
           return ToolCallDescriptor{
               .tag = "lsp",
               .label = "List symbols",
-              .summary = call.is_error ? "failed"
-                                        : util::CountSummary(call.symbols.size(),
-                                                              "symbol", "symbols"),
+              .summary = call.is_error
+                             ? "failed"
+                             : util::CountSummary(call.symbols.size(), "symbol",
+                                                  "symbols"),
           };
         } else if constexpr (std::is_same_v<T, tool_data::SubAgentCall>) {
           return ToolCallDescriptor{

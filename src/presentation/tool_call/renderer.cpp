@@ -458,9 +458,9 @@ ftxui::Element ToolCallRenderer::RenderFileRead(
   ftxui::Elements content;
   content.push_back(ftxui::text(call.filepath) |
                     ftxui::color(theme.semantic.text_strong));
-  content.push_back(RenderWrappedLine(
-      util::CountSummary(call.lines_loaded, "line", "lines"),
-      theme.semantic.text_muted));
+  content.push_back(
+      RenderWrappedLine(util::CountSummary(call.lines_loaded, "line", "lines"),
+                        theme.semantic.text_muted));
   if (!call.excerpt.empty()) {
     auto language = syntax::LanguageForExtension(call.filepath);
     if (!language.empty()) {
@@ -684,10 +684,10 @@ ftxui::Element ToolCallRenderer::RenderLspDiagnostics(
     content.push_back(ftxui::text("No diagnostics") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
-    content.push_back(RenderWrappedLine(
-        util::CountSummary(call.diagnostics.size(), "diagnostic",
-                            "diagnostics"),
-        theme.semantic.text_muted));
+    content.push_back(
+        RenderWrappedLine(util::CountSummary(call.diagnostics.size(),
+                                             "diagnostic", "diagnostics"),
+                          theme.semantic.text_muted));
     const auto limit = std::min(call.diagnostics.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& diag = call.diagnostics[index];
@@ -764,10 +764,10 @@ ftxui::Element ToolCallRenderer::RenderLspGotoDefinition(
     content.push_back(ftxui::text("No definitions") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
-    content.push_back(RenderWrappedLine(
-        util::CountSummary(call.definitions.size(), "definition",
-                            "definitions"),
-        theme.semantic.text_muted));
+    content.push_back(
+        RenderWrappedLine(util::CountSummary(call.definitions.size(),
+                                             "definition", "definitions"),
+                          theme.semantic.text_muted));
     const auto limit = std::min(call.definitions.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& def = call.definitions[index];

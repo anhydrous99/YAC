@@ -180,8 +180,8 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
 
       auto lowered_filter = ::yac::util::ToLowerAscii(filter_text_);
       for (int i = 0; i < static_cast<int>(commands_.size()); ++i) {
-        auto haystack =
-            ::yac::util::ToLowerAscii(commands_[i].name + " " + commands_[i].description);
+        auto haystack = ::yac::util::ToLowerAscii(commands_[i].name + " " +
+                                                  commands_[i].description);
         if (lowered_filter.empty() ||
             haystack.find(lowered_filter) != std::string::npos) {
           filtered_indices_.push_back(i);

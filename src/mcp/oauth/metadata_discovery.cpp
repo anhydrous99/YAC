@@ -130,8 +130,8 @@ void ValidateAsUrl(std::string_view url) {
 
 [[nodiscard]] std::string ExtractAuthorizationServer(
     const std::string& resource_metadata_body) {
-  Json json = ::yac::mcp::ParseJsonOrThrow(resource_metadata_body,
-                                            "resource metadata");
+  Json json =
+      ::yac::mcp::ParseJsonOrThrow(resource_metadata_body, "resource metadata");
 
   if (!json.contains("authorization_servers") ||
       !json["authorization_servers"].is_array() ||
