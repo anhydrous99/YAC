@@ -8,6 +8,7 @@
 #include "../syntax/language_registry.hpp"
 #include "../theme.hpp"
 #include "../ui_spacing.hpp"
+#include "../util/count_summary.hpp"
 #include "../util/string_util.hpp"
 #include "descriptor.hpp"
 
@@ -458,7 +459,8 @@ ftxui::Element ToolCallRenderer::RenderFileRead(
   content.push_back(ftxui::text(call.filepath) |
                     ftxui::color(theme.semantic.text_strong));
   content.push_back(RenderWrappedLine(
-      std::to_string(call.lines_loaded) + " lines", theme.semantic.text_muted));
+      util::CountSummary(call.lines_loaded, "line", "lines"),
+      theme.semantic.text_muted));
   if (!call.excerpt.empty()) {
     auto language = syntax::LanguageForExtension(call.filepath);
     if (!language.empty()) {
@@ -554,9 +556,9 @@ ftxui::Element ToolCallRenderer::RenderListDir(
     content.push_back(ftxui::text("No entries") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
-    content.push_back(
-        RenderWrappedLine(std::to_string(call.entries.size()) + " entries",
-                          theme.semantic.text_muted));
+    content.push_back(RenderWrappedLine(
+        util::CountSummary(call.entries.size(), "entry", "entries"),
+        theme.semantic.text_muted));
     const auto limit = std::min(call.entries.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& entry = call.entries[index];
@@ -589,9 +591,9 @@ ftxui::Element ToolCallRenderer::RenderGrep(const tool_data::GrepCall& call,
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else {
-    content.push_back(
-        RenderWrappedLine(std::to_string(call.match_count) + " matches",
-                          theme.semantic.text_muted));
+    content.push_back(RenderWrappedLine(
+        util::CountSummary(call.match_count, "match", "matches"),
+        theme.semantic.text_muted));
 
     for (const auto& match : call.matches) {
       content.push_back(
@@ -619,7 +621,7 @@ ftxui::Element ToolCallRenderer::RenderGlob(const tool_data::GlobCall& call,
                       ftxui::color(theme.semantic.text_muted));
   } else {
     content.push_back(RenderWrappedLine(
-        std::to_string(call.matched_files.size()) + " matches",
+        util::CountSummary(call.matched_files.size(), "match", "matches"),
         theme.semantic.text_muted));
     for (const auto& filepath : call.matched_files) {
       content.push_back(RenderWrappedLine(filepath, theme.semantic.text_body));
@@ -683,7 +685,8 @@ ftxui::Element ToolCallRenderer::RenderLspDiagnostics(
                       ftxui::color(theme.semantic.text_muted));
   } else {
     content.push_back(RenderWrappedLine(
-        std::to_string(call.diagnostics.size()) + " diagnostics",
+        util::CountSummary(call.diagnostics.size(), "diagnostic",
+                            "diagnostics"),
         theme.semantic.text_muted));
     const auto limit = std::min(call.diagnostics.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
@@ -723,7 +726,7 @@ ftxui::Element ToolCallRenderer::RenderLspReferences(
                       ftxui::color(theme.semantic.text_muted));
   } else {
     content.push_back(RenderWrappedLine(
-        std::to_string(call.references.size()) + " references",
+        util::CountSummary(call.references.size(), "reference", "references"),
         theme.semantic.text_muted));
     const auto limit = std::min(call.references.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
@@ -762,7 +765,8 @@ ftxui::Element ToolCallRenderer::RenderLspGotoDefinition(
                       ftxui::color(theme.semantic.text_muted));
   } else {
     content.push_back(RenderWrappedLine(
-        std::to_string(call.definitions.size()) + " definitions",
+        util::CountSummary(call.definitions.size(), "definition",
+                            "definitions"),
         theme.semantic.text_muted));
     const auto limit = std::min(call.definitions.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
@@ -798,9 +802,9 @@ ftxui::Element ToolCallRenderer::RenderLspRename(
   if (call.is_error) {
     content.push_back(RenderError(call.error, theme));
   } else {
-    content.push_back(
-        RenderWrappedLine(std::to_string(call.changes_count) + " changes",
-                          theme.semantic.text_muted));
+    content.push_back(RenderWrappedLine(
+        util::CountSummary(call.changes_count, "change", "changes"),
+        theme.semantic.text_muted));
     const auto limit = std::min(call.changes.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& edit = call.changes[index];
@@ -829,9 +833,9 @@ ftxui::Element ToolCallRenderer::RenderLspSymbols(
     content.push_back(ftxui::text("No symbols") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
-    content.push_back(
-        RenderWrappedLine(std::to_string(call.symbols.size()) + " symbols",
-                          theme.semantic.text_muted));
+    content.push_back(RenderWrappedLine(
+        util::CountSummary(call.symbols.size(), "symbol", "symbols"),
+        theme.semantic.text_muted));
     const auto limit = std::min(call.symbols.size(), kMaxPreviewRows);
     for (size_t index = 0; index < limit; ++index) {
       const auto& symbol = call.symbols[index];

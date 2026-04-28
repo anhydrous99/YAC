@@ -1,10 +1,10 @@
 #include "mcp/streamable_http_mcp_transport.hpp"
 
+#include "mcp/json_helpers.hpp"
 #include "mcp/protocol_constants.hpp"
 #include "mcp/sse_parser.hpp"
+#include "util/string_util.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <curl/curl.h>
 #include <memory>
@@ -21,28 +21,12 @@ namespace pc = protocol;
 
 constexpr auto kDefaultNotificationTimeout = std::chrono::seconds(10);
 
-[[nodiscard]] std::string Trim(std::string value) {
-  const auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
-  value.erase(value.begin(),
-              std::find_if(value.begin(), value.end(), not_space));
-  value.erase(std::find_if(value.rbegin(), value.rend(), not_space).base(),
-              value.end());
-  return value;
-}
-
-[[nodiscard]] std::string ToLower(std::string value) {
-  std::transform(
-      value.begin(), value.end(), value.begin(),
-      [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-  return value;
-}
-
 [[nodiscard]] std::string NormalizeContentType(std::string value) {
   const std::size_t semicolon_pos = value.find(';');
   if (semicolon_pos != std::string::npos) {
     value.erase(semicolon_pos);
   }
-  return ToLower(Trim(std::move(value)));
+  return ::yac::util::ToLowerAscii(::yac::util::TrimSv(value));
 }
 
 int ProgressCallback(void* clientp, curl_off_t download_total,
@@ -100,15 +84,13 @@ std::size_t StreamableHttpMcpTransport::HeaderCallback(char* buffer,
   }
 
   const std::string header_name =
-      ToLower(std::string(line.substr(0, colon_pos)));
-  std::string header_value = Trim(std::string(line.substr(colon_pos + 1)));
-  if (!header_value.empty() && header_value.back() == '\r') {
-    header_value.pop_back();
-  }
+      ::yac::util::ToLowerAscii(line.substr(0, colon_pos));
+  std::string header_value =
+      ::yac::util::Trim(line.substr(colon_pos + 1));
 
-  if (header_name == ToLower(std::string(pc::kHeaderContentType))) {
+  if (header_name == ::yac::util::ToLowerAscii(pc::kHeaderContentType)) {
     state->content_type = NormalizeContentType(std::move(header_value));
-  } else if (header_name == ToLower(std::string(pc::kHeaderMcpSessionId))) {
+  } else if (header_name == ::yac::util::ToLowerAscii(pc::kHeaderMcpSessionId)) {
     state->response_session_id = std::move(header_value);
   }
 
@@ -372,12 +354,7 @@ StreamableHttpMcpTransport::PerformHttpRequest(
     return response;
   }
 
-  try {
-    response.payload = Json::parse(state.response_body);
-  } catch (const std::exception& error) {
-    throw std::runtime_error(std::string("Invalid JSON response: ") +
-                             error.what());
-  }
+  response.payload = ParseJsonOrThrow(state.response_body, "JSON response");
   return response;
 }
 

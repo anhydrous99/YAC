@@ -1,5 +1,7 @@
 #include "mcp/oauth/flow.hpp"
 
+#include "mcp/json_helpers.hpp"
+
 #include <array>
 #include <chrono>
 #include <curl/curl.h>
@@ -145,13 +147,8 @@ std::size_t WriteCallback(char* ptr, std::size_t size, std::size_t nmemb,
 }
 
 [[nodiscard]] OAuthTokens ParseTokens(std::string_view response_body) {
-  Json payload;
-  try {
-    payload = Json::parse(response_body);
-  } catch (const std::exception& error) {
-    throw std::runtime_error(std::string("Invalid OAuth token response: ") +
-                             error.what());
-  }
+  Json payload =
+      ::yac::mcp::ParseJsonOrThrow(response_body, "OAuth token response");
 
   if (!payload.contains("access_token") ||
       !payload["access_token"].is_string()) {

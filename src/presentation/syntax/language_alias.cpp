@@ -1,20 +1,13 @@
 #include "language_alias.hpp"
 
-#include <algorithm>
-#include <cctype>
+#include "util/string_util.hpp"
+
 #include <string>
 #include <unordered_map>
 
 namespace yac::presentation::syntax {
 
 namespace {
-
-std::string ToLower(std::string_view s) {
-  std::string out(s);
-  std::transform(out.begin(), out.end(), out.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
-  return out;
-}
 
 const std::unordered_map<std::string, std::string> kAliasMap = {
     {"cpp", "cpp"},
@@ -90,7 +83,7 @@ std::string CanonicalLanguage(std::string_view name) {
   if (name.empty()) {
     return {};
   }
-  auto lower = ToLower(name);
+  auto lower = ::yac::util::ToLowerAscii(name);
   auto it = kAliasMap.find(lower);
   if (it == kAliasMap.end()) {
     return {};
@@ -103,7 +96,7 @@ std::string LanguageForExtension(std::string_view path) {
   if (dot == std::string_view::npos || dot + 1 >= path.size()) {
     return {};
   }
-  auto ext = ToLower(path.substr(dot + 1));
+  auto ext = ::yac::util::ToLowerAscii(path.substr(dot + 1));
   auto it = kExtensionMap.find(ext);
   if (it == kExtensionMap.end()) {
     return {};
