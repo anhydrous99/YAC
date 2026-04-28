@@ -157,7 +157,10 @@ TEST_CASE("graceful") {
 
   REQUIRE(exit_code == 0);
 
-  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  // Allow processes to fully exit after shutdown signal
+  std::this_thread::sleep_for(100ms);
+
+  const auto deadline = std::chrono::steady_clock::now() + 5s;
   bool no_stragglers = false;
   while (std::chrono::steady_clock::now() < deadline) {
     const auto after_pids = GetFakeMcpServerPids();

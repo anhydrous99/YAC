@@ -104,7 +104,7 @@ TEST_CASE("Prompt slash commands can execute from the slash menu") {
   REQUIRE(submitted == std::vector<std::string>{"Initialize repo"});
 }
 
-TEST_CASE("RegisterPromptSlashCommands lets built-ins win prompt conflicts") {
+TEST_CASE("RegisterPromptSlashCommands overrides non-protected built-ins") {
   SlashCommandRegistry registry;
   RegisterBuiltinSlashCommands(registry);
   int clear_count = 0;
@@ -127,6 +127,29 @@ TEST_CASE("RegisterPromptSlashCommands lets built-ins win prompt conflicts") {
   REQUIRE(HasIssueContaining(issues, "/clear"));
   REQUIRE(HasIssueContaining(issues, "/exit"));
   REQUIRE(registry.TryDispatch("/clear"));
-  REQUIRE(clear_count == 1);
+  REQUIRE(clear_count == 0);
+  REQUIRE(submitted == std::vector<std::string>{"Prompt"});
+}
+
+TEST_CASE(
+    "RegisterPromptSlashCommands protects task from prompt override") {
+  SlashCommandRegistry registry;
+  registry.Define("task", "task", "Spawn a background sub-agent");
+  std::vector<PromptDefinition> prompts = {
+      {.name = "task", .description = "Prompt task", .prompt = "Override"},
+  };
+  std::vector<std::string> submitted;
+  std::vector<ConfigIssue> issues;
+
+  RegisterPromptSlashCommands(
+      registry, prompts,
+      [&submitted](std::string prompt) {
+        submitted.push_back(std::move(prompt));
+      },
+      issues);
+
+  REQUIRE(issues.size() == 1);
+  REQUIRE(HasIssueContaining(issues, "/task"));
+  REQUIRE(HasIssueContaining(issues, "cannot be overridden"));
   REQUIRE(submitted.empty());
 }

@@ -84,26 +84,36 @@ InitializeResponse MakeInitializeResponse() {
 std::unique_ptr<IMcpTransport> MakeTransportForServer(
     const McpServerConfig& config) {
   auto transport = std::make_unique<MockMcpTransport>();
-  transport->SetRequestHandler([server_id = config.id](
-                                   std::string_view method, const Json& params,
-                                   std::chrono::milliseconds timeout,
-                                   std::stop_token stop) -> Json {
-    (void)params;
-    (void)timeout;
-    (void)stop;
-    if (method == protocol::kMethodInitialize) {
-      return MakeInitializeResponse().ToJson();
-    }
-    if (method == protocol::kMethodToolsList) {
-      if (server_id == "alpha") {
-        return ToolsListResponse{.tools = {ToolDefinition{.name = "tool_a"}}}
-            .ToJson();
-      }
-      return ToolsListResponse{.tools = {ToolDefinition{.name = "tool_b"}}}
-          .ToJson();
-    }
-    throw std::runtime_error("unexpected request");
-  });
+  transport->SetRequestHandler(
+      [server_id = config.id](std::string_view method, const Json& params,
+                              std::chrono::milliseconds timeout,
+                              std::stop_token stop) -> Json {
+        (void)params;
+        (void)timeout;
+        (void)stop;
+        if (method == protocol::kMethodInitialize) {
+          return MakeInitializeResponse().ToJson();
+        }
+        if (method == protocol::kMethodToolsList) {
+          if (server_id == "alpha") {
+            return ToolsListResponse{
+                .tools = {ToolDefinition{.name = "tool_a",
+                                         .description = "Tool A description"}}}
+                .ToJson();
+          }
+          if (server_id == "test_server") {
+            return ToolsListResponse{
+                .tools = {ToolDefinition{.name = "tool_a",
+                                         .description = "Tool A description"}}}
+                .ToJson();
+          }
+          return ToolsListResponse{
+              .tools = {ToolDefinition{.name = "tool_b",
+                                       .description = "Tool B description"}}}
+              .ToJson();
+        }
+        throw std::runtime_error("unexpected request");
+      });
   return transport;
 }
 
@@ -136,6 +146,34 @@ TEST_CASE("snapshot_merge_two_servers") {
   REQUIRE(snapshot.tools.size() == 2);
   REQUIRE(snapshot.name_to_server_tool.contains("mcp_alpha__tool_a"));
   REQUIRE(snapshot.name_to_server_tool.contains("mcp_beta__tool_b"));
+}
+
+TEST_CASE("tool_description_source_attribution") {
+  std::vector<chat::ChatEvent> events;
+  McpManager manager(
+      McpConfig{.servers = {{.id = "test_server", .transport = "stdio"}}},
+      [&events](chat::ChatEvent event) { events.push_back(std::move(event)); },
+      McpManager::Dependencies{
+          .transport_factory = MakeTransportForServer,
+          .authenticate_fn = {},
+          .keychain_token_store = std::make_shared<ThrowingTokenStore>(),
+          .file_token_store = std::make_shared<ThrowingTokenStore>(),
+          .emit_issue = {},
+      });
+
+  manager.Start();
+  REQUIRE(WaitUntil([&manager] {
+    const auto status = manager.GetServerStatusSnapshot();
+    return status.size() == 1 && status[0].state == "Ready";
+  }));
+
+  const auto snapshot = manager.GetToolCatalogSnapshot();
+
+  REQUIRE(snapshot.tools.size() == 1);
+  const auto& tool = snapshot.tools[0];
+  REQUIRE(tool.name == "mcp_test_server__tool_a");
+  REQUIRE(tool.description.find("[via MCP server 'test_server']") == 0);
+  REQUIRE(tool.description.find("Tool A description") != std::string::npos);
 }
 
 TEST_CASE("auth_fallback") {

@@ -446,7 +446,8 @@ core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
           SanitizeMcpToolName(record.config.id, tool.name);
       snapshot.tools.push_back(chat::ToolDefinition{
           .name = qualified_name,
-          .description = tool.description.value_or(std::string{}),
+          .description = "[via MCP server '" + record.config.id + "'] " +
+                         tool.description.value_or(std::string{}),
           .parameters_schema_json = tool.input_schema.dump(),
       });
       snapshot.name_to_server_tool.emplace(
