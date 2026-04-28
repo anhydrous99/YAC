@@ -246,6 +246,24 @@ target_link_libraries(yac_test_e2e_runner PRIVATE
   openai_cpp
 )
 
+add_executable(yac_test_mcp_cold_start_integration
+  integration/test_mcp_cold_start.cpp
+)
+target_compile_definitions(yac_test_mcp_cold_start_integration PRIVATE
+  FAKE_MCP_SERVER_PATH="$<TARGET_FILE:fake_mcp_server>"
+  YAC_TEST_E2E_RUNNER_PATH="$<TARGET_FILE:yac_test_e2e_runner>"
+  COLD_START_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/cold_start.jsonl"
+  TWO_STDIO_SERVERS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/two_stdio_servers.toml"
+  ONE_STDIO_SERVER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/one_stdio_server.toml"
+)
+target_link_libraries(yac_test_mcp_cold_start_integration PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_cold_start_integration
+  TEST_PREFIX "yac_test_mcp_cold_start_integration::"
+)
+
 add_executable(yac_test_mock_response_provider
   mock_response_provider.cpp
   test_mock_response_provider.cpp

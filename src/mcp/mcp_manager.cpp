@@ -1,5 +1,6 @@
 #include "mcp/mcp_manager.hpp"
 
+#include "mcp/debug_log.hpp"
 #include "mcp/file_token_store.hpp"
 #include "mcp/keychain_token_store.hpp"
 #include "mcp/mcp_server_session.hpp"
@@ -272,6 +273,7 @@ class McpManager::ObservedTransport : public IMcpTransport {
 struct McpManager::SessionRecord {
   McpServerConfig config;
   std::unique_ptr<ObservedTransport> transport;
+  std::unique_ptr<McpDebugLog> debug_log;
   std::unique_ptr<McpServerSession> session;
   std::string last_emitted_state = "Disconnected";
 };
@@ -331,11 +333,14 @@ void McpManager::EnsureSessionsCreated() const {
                                   std::string_view method, const Json& params) {
           HandleNotification(server_id, method, params);
         });
-    auto session =
-        std::make_unique<McpServerSession>(server, observed_transport.get());
+    auto debug_log = std::make_unique<McpDebugLog>(server.id);
+    auto session = std::make_unique<McpServerSession>(server,
+                                                      observed_transport.get(),
+                                                      debug_log.get());
     sessions_.push_back(
         SessionRecord{.config = server,
                       .transport = std::move(observed_transport),
+                      .debug_log = std::move(debug_log),
                       .session = std::move(session)});
   }
 }

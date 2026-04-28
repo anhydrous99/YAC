@@ -1,22 +1,27 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "core_types/mcp_manager_interface.hpp"
+#include "mcp/mcp_manager.hpp"
 #include "mock_response_provider.hpp"
 #include "provider/provider_registry.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace {
 
 constexpr std::string_view kMockScriptFlag = "--mock-llm-script=";
 constexpr std::string_view kMockRequestLogFlag = "--mock-request-log=";
+constexpr auto kMcpReadyTimeout = std::chrono::seconds(30);
 
 void PrintUsage(const char* argv0) {
   std::cerr << "Usage: " << argv0
@@ -24,6 +29,29 @@ void PrintUsage(const char* argv0) {
                " --mock-llm-script=<PATH>"
                " [--mock-request-log=<PATH>]"
                " [--cancel-after-ms=<N>]\n";
+}
+
+bool WaitForMcpReady(yac::mcp::McpManager& manager) {
+  const auto deadline = std::chrono::steady_clock::now() + kMcpReadyTimeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto status = manager.GetServerStatusSnapshot();
+    if (!status.empty()) {
+      for (const auto& s : status) {
+        std::cerr << "[mcp] " << s.id << " state=" << s.state
+                  << " tool_count=" << s.tool_count << " error=" << s.error
+                  << '\n';
+      }
+      const bool all_ready =
+          std::all_of(status.begin(), status.end(), [](const auto& s) {
+            return s.state == "Ready" || s.state == "Failed";
+          });
+      if (all_ready) {
+        return true;
+      }
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  return false;
 }
 
 }  // namespace
@@ -82,7 +110,25 @@ int main(int argc, char* argv[]) {
     yac::provider::ProviderRegistry registry;
     registry.Register(provider);
 
-    yac::chat::ChatService service(std::move(registry), config);
+    std::unique_ptr<yac::mcp::McpManager> mcp_manager;
+    if (!config.mcp.servers.empty()) {
+      mcp_manager = std::make_unique<yac::mcp::McpManager>(
+          config.mcp, [](yac::chat::ChatEvent event) { (void)event; });
+      mcp_manager->Start();
+      const bool mcp_ok = WaitForMcpReady(*mcp_manager);
+      if (!mcp_ok) {
+        std::cerr << "Warning: MCP servers did not reach Ready state within "
+                     "timeout\n";
+      }
+      const auto final_status = mcp_manager->GetServerStatusSnapshot();
+      for (const auto& s : final_status) {
+        std::cerr << "[mcp-final] id=" << s.id << " state=" << s.state
+                  << " tools=" << s.tool_count << " error=" << s.error << '\n';
+      }
+    }
+
+    yac::chat::ChatService service(std::move(registry), config,
+                                   std::move(mcp_manager));
 
     std::atomic<int> exit_code{0};
     std::mutex done_mutex;

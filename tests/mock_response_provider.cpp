@@ -74,6 +74,11 @@ void MockResponseProvider::CompleteStream(const chat::ChatRequest& request,
       messages.push_back(std::move(m));
     }
     j["messages"] = std::move(messages);
+    auto tools = nlohmann::json::array();
+    for (const auto& tool : request.tools) {
+      tools.push_back(nlohmann::json{{"name", tool.name}});
+    }
+    j["tools"] = std::move(tools);
     std::ofstream log(request_log_path_, std::ios::app);
     log << j.dump() << '\n';
   }
