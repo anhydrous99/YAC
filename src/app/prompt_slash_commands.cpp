@@ -29,8 +29,8 @@ bool IsProtectedCommand(const std::string& name) {
   return false;
 }
 
-void AddPromptInfo(std::vector<chat::ConfigIssue>& issues,
-                   std::string message, std::string detail) {
+void AddPromptInfo(std::vector<chat::ConfigIssue>& issues, std::string message,
+                   std::string detail) {
   issues.push_back({.severity = chat::ConfigIssueSeverity::Info,
                     .message = std::move(message),
                     .detail = std::move(detail)});
@@ -53,14 +53,12 @@ void RegisterPromptSlashCommands(
   for (const auto& prompt : prompts) {
     if (CommandNameExists(registry, prompt.name)) {
       if (IsProtectedCommand(prompt.name)) {
-        AddPromptWarning(issues,
-                         "Skipped prompt command /" + prompt.name,
+        AddPromptWarning(issues, "Skipped prompt command /" + prompt.name,
                          "This built-in command cannot be overridden.");
         continue;
       }
       registry.Undefine(prompt.name);
-      AddPromptInfo(issues,
-                    "Overriding built-in /" + prompt.name,
+      AddPromptInfo(issues, "Overriding built-in /" + prompt.name,
                     "Replaced with prompt from ~/.yac/prompts/.");
     }
 
