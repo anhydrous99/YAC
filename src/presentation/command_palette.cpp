@@ -6,9 +6,8 @@
 #include "ftxui/dom/elements.hpp"
 #include "theme.hpp"
 #include "ui_spacing.hpp"
+#include "util/string_util.hpp"
 
-#include <algorithm>
-#include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
@@ -16,13 +15,6 @@
 namespace yac::presentation {
 
 namespace {
-
-std::string ToLower(std::string value) {
-  std::transform(
-      value.begin(), value.end(), value.begin(),
-      [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-  return value;
-}
 
 bool CommandsEqual(const std::vector<Command>& lhs,
                    const std::vector<Command>& rhs) {
@@ -186,10 +178,10 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
           filtered_indices_.empty() ? -1 : filtered_indices_[selected_index_];
       filtered_indices_.clear();
 
-      auto lowered_filter = ToLower(filter_text_);
+      auto lowered_filter = ::yac::util::ToLowerAscii(filter_text_);
       for (int i = 0; i < static_cast<int>(commands_.size()); ++i) {
         auto haystack =
-            ToLower(commands_[i].name + " " + commands_[i].description);
+            ::yac::util::ToLowerAscii(commands_[i].name + " " + commands_[i].description);
         if (lowered_filter.empty() ||
             haystack.find(lowered_filter) != std::string::npos) {
           filtered_indices_.push_back(i);

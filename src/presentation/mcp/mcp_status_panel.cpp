@@ -5,8 +5,9 @@
 #include "ftxui/component/mouse.hpp"
 #include "ftxui/dom/elements.hpp"
 
-#include <algorithm>
+#include <array>
 #include <string>
+#include <string_view>
 
 namespace yac::presentation {
 
@@ -18,20 +19,55 @@ constexpr char kIconReconnecting[] = "\xe2\x9f\xb3";
 constexpr char kArrowCollapsed[] = " \xe2\x96\xb6 ";
 constexpr char kArrowExpanded[] = " \xe2\x96\xbc ";
 
-std::string StateIcon(const std::string& state) {
-  if (state == "ready") return kIconReady;
-  if (state == "failed") return kIconFailed;
-  if (state == "reconnecting") return kIconReconnecting;
-  if (state == "connecting") return kIconReconnecting;
+enum class StateColorRole {
+  Ready,
+  Failed,
+  Pending,
+  Unknown,
+};
+
+struct StateMetadata {
+  std::string_view state;
+  std::string_view icon;
+  StateColorRole color;
+};
+
+constexpr std::array<StateMetadata, 4> kStateTable = {{
+    {"ready", kIconReady, StateColorRole::Ready},
+    {"failed", kIconFailed, StateColorRole::Failed},
+    {"reconnecting", kIconReconnecting, StateColorRole::Pending},
+    {"connecting", kIconReconnecting, StateColorRole::Pending},
+}};
+
+[[nodiscard]] const StateMetadata* FindState(std::string_view state) {
+  for (const auto& entry : kStateTable) {
+    if (entry.state == state) {
+      return &entry;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string StateIcon(const std::string& state) {
+  if (const auto* meta = FindState(state)) {
+    return std::string(meta->icon);
+  }
   return "?";
 }
 
-ftxui::Color StateColor(const std::string& state) {
+[[nodiscard]] ftxui::Color StateColor(const std::string& state) {
   const auto& t = theme::CurrentTheme();
-  if (state == "ready") return t.role.agent;
-  if (state == "failed") return t.role.error;
-  if (state == "reconnecting" || state == "connecting") {
-    return ftxui::Color::Yellow;
+  if (const auto* meta = FindState(state)) {
+    switch (meta->color) {
+      case StateColorRole::Ready:
+        return t.role.agent;
+      case StateColorRole::Failed:
+        return t.role.error;
+      case StateColorRole::Pending:
+        return ftxui::Color::Yellow;
+      case StateColorRole::Unknown:
+        break;
+    }
   }
   return t.semantic.text_muted;
 }

@@ -1,5 +1,7 @@
 #include "tool_call/gitignore_filter.hpp"
 
+#include "util/string_util.hpp"
+
 #include <filesystem>
 #include <fnmatch.h>
 #include <fstream>
@@ -11,20 +13,13 @@ namespace yac::tool_call {
 
 namespace {
 
-std::string Trim(std::string_view sv) {
-  size_t start = sv.find_first_not_of(" \t\r\n");
-  if (start == std::string_view::npos) return "";
-  size_t end = sv.find_last_not_of(" \t\r\n");
-  return std::string(sv.substr(start, end - start + 1));
-}
-
 void PushPattern(std::vector<std::string>& target, std::string pattern) {
   target.push_back(std::move(pattern));
 }
 
 void ParseLine(std::string_view line_view, std::vector<std::string>& patterns,
                std::vector<std::string>& negations) {
-  std::string line = Trim(line_view);
+  std::string line = ::yac::util::Trim(line_view);
   if (line.empty() || line[0] == '#') return;
 
   bool is_negation = line[0] == '!';

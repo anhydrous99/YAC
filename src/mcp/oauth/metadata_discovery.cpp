@@ -1,5 +1,7 @@
 #include "mcp/oauth/metadata_discovery.hpp"
 
+#include "mcp/json_helpers.hpp"
+
 #include <curl/curl.h>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -128,13 +130,8 @@ void ValidateAsUrl(std::string_view url) {
 
 [[nodiscard]] std::string ExtractAuthorizationServer(
     const std::string& resource_metadata_body) {
-  Json json;
-  try {
-    json = Json::parse(resource_metadata_body);
-  } catch (const std::exception& error) {
-    throw std::runtime_error(std::string("Invalid resource metadata JSON: ") +
-                             error.what());
-  }
+  Json json = ::yac::mcp::ParseJsonOrThrow(resource_metadata_body,
+                                            "resource metadata");
 
   if (!json.contains("authorization_servers") ||
       !json["authorization_servers"].is_array() ||
@@ -152,13 +149,7 @@ void ValidateAsUrl(std::string_view url) {
 }
 
 [[nodiscard]] OAuthDiscoveryResult ParseAsMetadata(const std::string& body) {
-  Json json;
-  try {
-    json = Json::parse(body);
-  } catch (const std::exception& error) {
-    throw std::runtime_error(std::string("Invalid AS metadata JSON: ") +
-                             error.what());
-  }
+  Json json = ::yac::mcp::ParseJsonOrThrow(body, "AS metadata");
 
   if (!json.contains("authorization_endpoint") ||
       !json["authorization_endpoint"].is_string()) {

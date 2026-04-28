@@ -2,8 +2,8 @@
 
 #include "chat/settings_toml_template.hpp"
 #include "mcp/mcp_server_config.hpp"
+#include "util/string_util.hpp"
 
-#include <cctype>
 #include <cstddef>
 #include <exception>
 #include <fstream>
@@ -157,26 +157,6 @@ struct TextLine {
   std::string newline;
 };
 
-std::string_view TrimLeft(std::string_view value) {
-  while (!value.empty() &&
-         std::isspace(static_cast<unsigned char>(value.front())) != 0) {
-    value.remove_prefix(1);
-  }
-  return value;
-}
-
-std::string_view TrimRight(std::string_view value) {
-  while (!value.empty() &&
-         std::isspace(static_cast<unsigned char>(value.back())) != 0) {
-    value.remove_suffix(1);
-  }
-  return value;
-}
-
-std::string_view Trim(std::string_view value) {
-  return TrimRight(TrimLeft(value));
-}
-
 std::vector<TextLine> SplitPreservingNewlines(std::string_view content) {
   std::vector<TextLine> lines;
   size_t pos = 0;
@@ -212,7 +192,7 @@ std::string DetectNewline(const std::vector<TextLine>& lines) {
 }
 
 std::optional<std::string> ParseTableHeader(std::string_view line) {
-  line = Trim(line);
+  line = ::yac::util::TrimSv(line);
   if (line.empty() || line.front() != '[' || line.starts_with("[[")) {
     return std::nullopt;
   }
@@ -220,19 +200,19 @@ std::optional<std::string> ParseTableHeader(std::string_view line) {
   if (close == std::string_view::npos) {
     return std::nullopt;
   }
-  const auto rest = Trim(line.substr(close + 1));
+  const auto rest = ::yac::util::TrimSv(line.substr(close + 1));
   if (!rest.empty() && rest.front() != '#') {
     return std::nullopt;
   }
-  return std::string(Trim(line.substr(1, close - 1)));
+  return std::string(::yac::util::TrimSv(line.substr(1, close - 1)));
 }
 
 bool IsKeyAssignment(std::string_view line, std::string_view key) {
-  line = TrimLeft(line);
+  line = ::yac::util::TrimLeftSv(line);
   if (line.empty() || line.front() == '#' || !line.starts_with(key)) {
     return false;
   }
-  const auto rest = TrimLeft(line.substr(key.size()));
+  const auto rest = ::yac::util::TrimLeftSv(line.substr(key.size()));
   return !rest.empty() && rest.front() == '=';
 }
 
