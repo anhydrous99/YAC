@@ -334,9 +334,8 @@ void McpManager::EnsureSessionsCreated() const {
           HandleNotification(server_id, method, params);
         });
     auto debug_log = std::make_unique<McpDebugLog>(server.id);
-    auto session = std::make_unique<McpServerSession>(server,
-                                                      observed_transport.get(),
-                                                      debug_log.get());
+    auto session = std::make_unique<McpServerSession>(
+        server, observed_transport.get(), debug_log.get());
     sessions_.push_back(
         SessionRecord{.config = server,
                       .transport = std::move(observed_transport),

@@ -1,0 +1,12 @@
+[provider]
+id          = "mock"
+model       = "mock-model"
+base_url    = "http://localhost/"
+api_key_env = "MOCK_API_KEY"
+
+[[mcp.servers]]
+id        = "slow_server"
+transport = "stdio"
+command   = "@FAKE_MCP_SERVER_PATH@"
+args      = ["--advertise-tools=2", "--tool-call-blocks-for=2000", "--log-frames-to=@FRAME_LOG_PATH@"]
+enabled   = true

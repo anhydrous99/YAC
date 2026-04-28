@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chat/types.hpp"
+#include "core_types/chat_ids.hpp"
 #include "provider/language_model_provider.hpp"
 
 #include <stop_token>
@@ -13,6 +14,7 @@ struct MockScriptEntry {
   std::string on_user_prompt_contains;
   std::string emit_text;
   std::string finish_reason;
+  std::vector<chat::ToolCallRequest> tool_calls;
 };
 
 // MockResponseProvider reads a JSONL script file at construction time.

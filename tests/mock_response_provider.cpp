@@ -54,6 +54,23 @@ MockResponseProvider::MockResponseProvider(std::string script_path,
     entry.on_user_prompt_contains = j.value("on_user_prompt_contains", "");
     entry.emit_text = j.value("emit_text", "");
     entry.finish_reason = j.value("finish_reason", "stop");
+    if (j.contains("tool_calls") && j["tool_calls"].is_array()) {
+      for (const auto& tc : j["tool_calls"]) {
+        chat::ToolCallRequest req;
+        req.id = tc.value("id", "");
+        req.name = tc.value("name", "");
+        if (tc.contains("arguments")) {
+          if (tc["arguments"].is_string()) {
+            req.arguments_json = tc["arguments"].get<std::string>();
+          } else {
+            req.arguments_json = tc["arguments"].dump();
+          }
+        } else {
+          req.arguments_json = "{}";
+        }
+        entry.tool_calls.push_back(std::move(req));
+      }
+    }
     entries_.push_back(std::move(entry));
   }
 }
@@ -93,6 +110,10 @@ void MockResponseProvider::CompleteStream(const chat::ChatRequest& request,
     if (user_content.find(entry.on_user_prompt_contains) != std::string::npos) {
       if (!entry.emit_text.empty()) {
         sink(chat::ChatEvent{chat::TextDeltaEvent{.text = entry.emit_text}});
+      }
+      if (entry.finish_reason == "tool_calls" && !entry.tool_calls.empty()) {
+        sink(chat::ChatEvent{
+            chat::ToolCallRequestedEvent{.tool_calls = entry.tool_calls}});
       }
       return;
     }

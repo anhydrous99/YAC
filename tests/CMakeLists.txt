@@ -264,6 +264,23 @@ catch_discover_tests(yac_test_mcp_cold_start_integration
   TEST_PREFIX "yac_test_mcp_cold_start_integration::"
 )
 
+add_executable(yac_test_mcp_warm_cancel_integration
+  integration/test_mcp_warm_cancel.cpp
+)
+target_compile_definitions(yac_test_mcp_warm_cancel_integration PRIVATE
+  FAKE_MCP_SERVER_PATH="$<TARGET_FILE:fake_mcp_server>"
+  YAC_TEST_E2E_RUNNER_PATH="$<TARGET_FILE:yac_test_e2e_runner>"
+  WARM_CANCEL_SCRIPT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/warm_cancel.jsonl"
+  SLOW_SERVER_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/slow_server.toml"
+)
+target_link_libraries(yac_test_mcp_warm_cancel_integration PRIVATE
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mcp_warm_cancel_integration
+  TEST_PREFIX "yac_test_mcp_warm_cancel_integration::"
+)
+
 add_executable(yac_test_mock_response_provider
   mock_response_provider.cpp
   test_mock_response_provider.cpp
