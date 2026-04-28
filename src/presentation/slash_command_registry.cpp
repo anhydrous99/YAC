@@ -100,6 +100,22 @@ const std::vector<SlashCommand>& SlashCommandRegistry::Commands() const {
   return commands_;
 }
 
+bool SlashCommandRegistry::Undefine(const std::string& name) {
+  for (auto it = commands_.begin(); it != commands_.end(); ++it) {
+    if (it->name == name) {
+      commands_.erase(it);
+      return true;
+    }
+    for (const auto& alias : it->aliases) {
+      if (alias == name) {
+        commands_.erase(it);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 std::string SlashCommandRegistry::ExtractCommandName(const std::string& input) {
   auto start = input.find_first_not_of('/');
   if (start == std::string::npos) {

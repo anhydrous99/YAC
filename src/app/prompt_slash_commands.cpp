@@ -20,6 +20,22 @@ bool CommandNameExists(const presentation::SlashCommandRegistry& registry,
   return false;
 }
 
+bool IsProtectedCommand(const std::string& name) {
+  for (const auto* protected_name : {"task"}) {
+    if (name == protected_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void AddPromptInfo(std::vector<chat::ConfigIssue>& issues,
+                   std::string message, std::string detail) {
+  issues.push_back({.severity = chat::ConfigIssueSeverity::Info,
+                    .message = std::move(message),
+                    .detail = std::move(detail)});
+}
+
 void AddPromptWarning(std::vector<chat::ConfigIssue>& issues,
                       std::string message, std::string detail) {
   issues.push_back({.severity = chat::ConfigIssueSeverity::Warning,
@@ -36,10 +52,16 @@ void RegisterPromptSlashCommands(
     std::vector<chat::ConfigIssue>& issues) {
   for (const auto& prompt : prompts) {
     if (CommandNameExists(registry, prompt.name)) {
-      AddPromptWarning(issues, "Skipped prompt command /" + prompt.name,
-                       "A built-in or earlier slash command already uses this "
-                       "name.");
-      continue;
+      if (IsProtectedCommand(prompt.name)) {
+        AddPromptWarning(issues,
+                         "Skipped prompt command /" + prompt.name,
+                         "This built-in command cannot be overridden.");
+        continue;
+      }
+      registry.Undefine(prompt.name);
+      AddPromptInfo(issues,
+                    "Overriding built-in /" + prompt.name,
+                    "Replaced with prompt from ~/.yac/prompts/.");
     }
 
     const auto id = "prompt:" + prompt.name;

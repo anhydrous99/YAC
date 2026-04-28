@@ -30,6 +30,10 @@ class SlashCommandRegistry {
   [[nodiscard]] bool TryDispatch(const std::string& input) const;
   [[nodiscard]] const std::vector<SlashCommand>& Commands() const;
 
+  // Remove a previously-defined command by name or alias.
+  // Returns true if a command was removed.
+  [[nodiscard]] bool Undefine(const std::string& name);
+
  private:
   static std::string ExtractCommandName(const std::string& input);
 
