@@ -5,9 +5,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <stdexcept>
 #include <stop_token>
 #include <string>
-#include <thread>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,10 +26,16 @@ ToolCallRequest MakeGrepRequest(const std::string& args_json) {
 class TempWorkspace {
  public:
   TempWorkspace() {
-    path_ = std::filesystem::temp_directory_path() /
-            ("yac_test_grep_" + std::to_string(std::hash<std::thread::id>{}(
-                                    std::this_thread::get_id())));
-    std::filesystem::create_directories(path_);
+    const auto tmpl_str =
+        (std::filesystem::temp_directory_path() / "yac_test_grep_XXXXXX")
+            .string();
+    std::vector<char> tmpl(tmpl_str.begin(), tmpl_str.end());
+    tmpl.push_back('\0');
+    const char* dir = ::mkdtemp(tmpl.data());
+    if (dir == nullptr) {
+      throw std::runtime_error("mkdtemp failed in TempWorkspace");
+    }
+    path_ = std::filesystem::path(dir);
   }
   ~TempWorkspace() {
     std::error_code ec;
@@ -59,6 +67,7 @@ TEST_CASE("GrepTool: finds known string in fixture file") {
                                 wfs, ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
   REQUIRE_FALSE(block.is_error);
   REQUIRE(block.match_count >= 1);
   REQUIRE_FALSE(block.matches.empty());
@@ -78,6 +87,7 @@ TEST_CASE("GrepTool: no matches returns empty result without error") {
                       wfs, ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
   REQUIRE_FALSE(block.is_error);
   REQUIRE(block.match_count == 0);
   REQUIRE(block.matches.empty());
@@ -91,14 +101,17 @@ TEST_CASE("GrepTool: rg not in PATH returns error with ripgrep message") {
   WorkspaceFilesystem wfs(ws.Path());
   std::stop_source ss;
 
-  const char* original_path = std::getenv("PATH");
+  const char* env_path_raw = std::getenv("PATH");
+  const std::optional<std::string> original_path =
+      env_path_raw ? std::make_optional<std::string>(env_path_raw)
+                   : std::nullopt;
   setenv("PATH", "/nonexistent_path_for_test_only", 1);
 
   auto result = ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"content"})"),
                                 wfs, ss.get_token());
 
-  if (original_path) {
-    setenv("PATH", original_path, 1);
+  if (original_path.has_value()) {
+    setenv("PATH", original_path->c_str(), 1);
   } else {
     unsetenv("PATH");
   }
@@ -122,6 +135,7 @@ TEST_CASE("GrepTool: include_ignored=false skips node_modules by default") {
                                 ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
   REQUIRE_FALSE(block.is_error);
   for (const auto& m : block.matches) {
     REQUIRE(m.filepath.find("node_modules") == std::string::npos);
@@ -140,6 +154,7 @@ TEST_CASE("GrepTool: include_ignored=true finds matches in node_modules") {
       ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
   REQUIRE_FALSE(block.is_error);
   REQUIRE(block.match_count >= 1);
   bool found_in_node_modules = false;
@@ -164,6 +179,7 @@ TEST_CASE("GrepTool: include glob filters by extension") {
       ss.get_token());
 
   const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
   REQUIRE_FALSE(block.is_error);
   REQUIRE(block.match_count >= 1);
   for (const auto& m : block.matches) {
@@ -182,6 +198,9 @@ TEST_CASE("GrepTool: result_json contains expected fields") {
       ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"unique_xyz_token_abc"})"),
                       wfs, ss.get_token());
 
+  const auto& block = std::get<GrepCall>(result.block);
+  CAPTURE(block.error);
+  CAPTURE(result.result_json);
   REQUIRE_FALSE(result.result_json.empty());
   REQUIRE(result.result_json.find("pattern") != std::string::npos);
   REQUIRE(result.result_json.find("match_count") != std::string::npos);
