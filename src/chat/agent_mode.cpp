@@ -12,14 +12,4 @@ std::set<std::string> ExcludedToolsForMode(AgentMode mode) {
   return {};
 }
 
-std::string_view AgentModeLabel(AgentMode mode) {
-  switch (mode) {
-    case AgentMode::Build:
-      return "BUILD";
-    case AgentMode::Plan:
-      return "PLAN";
-  }
-  return "BUILD";
-}
-
 }  // namespace yac::chat

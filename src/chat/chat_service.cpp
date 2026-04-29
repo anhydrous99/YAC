@@ -1,5 +1,6 @@
 #include "chat/chat_service.hpp"
 
+#include "chat/agent_mode.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"

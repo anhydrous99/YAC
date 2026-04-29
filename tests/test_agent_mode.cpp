@@ -6,7 +6,7 @@
 
 using namespace yac::chat;
 
-TEST_CASE("Agent mode tool filtering and labels", "[agent_mode]") {
+TEST_CASE("Agent mode tool filtering", "[agent_mode]") {
   SECTION("Build mode excludes no tools") {
     const auto excluded = ExcludedToolsForMode(AgentMode::Build);
 
@@ -23,10 +23,5 @@ TEST_CASE("Agent mode tool filtering and labels", "[agent_mode]") {
     };
 
     REQUIRE(excluded == expected);
-  }
-
-  SECTION("Labels correct") {
-    REQUIRE(AgentModeLabel(AgentMode::Build) == "BUILD");
-    REQUIRE(AgentModeLabel(AgentMode::Plan) == "PLAN");
   }
 }

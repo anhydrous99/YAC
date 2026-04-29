@@ -1,5 +1,6 @@
 #include "slash_command_registry.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace yac::presentation {
@@ -20,10 +21,9 @@ void SlashCommandRegistry::Define(std::string id, std::string name,
 
 void SlashCommandRegistry::SetHandler(const std::string& id,
                                       std::function<void()> handler) {
-  for (std::size_t i = 0; i < commands_.size();
-       ++i) {  // NOLINT(modernize-loop-convert)
-    if (commands_[i].id == id) {
-      commands_[i].handler = std::move(handler);
+  for (auto& command : commands_) {
+    if (command.id == id) {
+      command.handler = std::move(handler);
       break;
     }
   }
@@ -31,10 +31,9 @@ void SlashCommandRegistry::SetHandler(const std::string& id,
 
 void SlashCommandRegistry::SetArgumentsHandler(
     const std::string& id, std::function<void(std::string)> handler) {
-  for (std::size_t i = 0; i < commands_.size();
-       ++i) {  // NOLINT(modernize-loop-convert)
-    if (commands_[i].id == id) {
-      commands_[i].arguments_handler = std::move(handler);
+  for (auto& command : commands_) {
+    if (command.id == id) {
+      command.arguments_handler = std::move(handler);
       break;
     }
   }
@@ -59,20 +58,13 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
     return false;
   }
 
-  for (std::size_t i = 0; i < commands_.size();
-       ++i) {  // NOLINT(modernize-loop-convert)
-    const auto& command = commands_[i];
-    auto alias_match = false;
-    for (std::size_t j = 0; j < command.aliases.size();
-         ++j) {  // NOLINT(modernize-loop-convert)
-      if (command.aliases[j] == name) {
-        alias_match = true;
-        break;
-      }
-    }
+  for (const auto& command : commands_) {
+    const auto alias_match =
+        std::find(command.aliases.begin(), command.aliases.end(), name) !=
+        command.aliases.end();
 
     if (command.name == name || alias_match) {
-      if (command.arguments_handler.has_value()) {
+      if (command.arguments_handler) {
         auto args_start = name.length() + 1;
         while (args_start < input.size() &&
                (input[args_start] == ' ' || input[args_start] == '\t' ||
@@ -81,13 +73,12 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
           ++args_start;
         }
         auto args = input.substr(args_start);
-        (*command.arguments_handler)(
-            std::move(args));  // NOLINT(bugprone-unchecked-optional-access)
+        command.arguments_handler.value()(std::move(args));
         return true;
       }
       const auto& handler = command.handler;
-      if (handler.has_value()) {
-        (*handler)();
+      if (handler) {
+        handler.value()();
         return true;
       }
     }

@@ -204,11 +204,21 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
               .summary = "ask_user",
           };
         } else if constexpr (std::is_same_v<T, tool_data::McpToolCall>) {
-          // TODO(mcp): implement in T32
+          std::string summary;
+          if (call.is_error) {
+            summary = "failed";
+          } else if (call.is_truncated) {
+            summary = "truncated";
+          } else if (call.result_blocks.empty()) {
+            summary = "no result";
+          } else {
+            summary = util::CountSummary(call.result_blocks.size(), "result",
+                                         "results");
+          }
           return ToolCallDescriptor{
               .tag = "mcp",
-              .label = "MCP tool",
-              .summary = "",
+              .label = "[MCP: " + call.server_id + "] " + call.tool_name,
+              .summary = std::move(summary),
           };
         } else {
           return ToolCallDescriptor{

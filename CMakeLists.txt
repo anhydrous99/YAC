@@ -190,6 +190,10 @@ add_library(yac_presentation STATIC
   src/presentation/theme.cpp
   src/presentation/tool_call/descriptor.cpp
   src/presentation/tool_call/renderer.cpp
+  src/presentation/tool_call/renderer_basic.cpp
+  src/presentation/tool_call/renderer_helpers.cpp
+  src/presentation/tool_call/renderer_lsp.cpp
+  src/presentation/tool_call/renderer_mcp.cpp
   src/presentation/mcp/mcp_status_panel.cpp
   src/presentation/mcp/mcp_resources_command.cpp
   src/presentation/mcp/mcp_slash_commands.cpp
@@ -259,9 +263,11 @@ add_library(yac_app STATIC
   src/app/bootstrap.cpp
   src/app/chat_event_bridge.cpp
   src/app/headless.cpp
+  src/app/mcp_command_handlers.cpp
   src/app/model_context_windows.cpp
   src/app/model_discovery.cpp
   src/app/prompt_slash_commands.cpp
+  src/app/streaming_coalescer.cpp
 )
 target_include_directories(yac_app PUBLIC src)
 target_link_libraries(yac_app PUBLIC yac_presentation yac_service)

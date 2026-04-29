@@ -1,10 +1,11 @@
 #include "app/bootstrap.hpp"
 
 #include "app/chat_event_bridge.hpp"
+#include "app/mcp_command_handlers.hpp"
 #include "app/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
-#include "chat/agent_mode.hpp"
+#include "app/streaming_coalescer.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/config_paths.hpp"
@@ -12,7 +13,6 @@
 #include "chat/settings_toml.hpp"
 #include "cli/mcp_admin_command.hpp"
 #include "mcp/mcp_manager.hpp"
-#include "mcp/oauth/flow.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/mcp/mcp_slash_commands.hpp"
 #include "presentation/slash_command_registry.hpp"
@@ -21,50 +21,21 @@
 #include "provider/openai_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
-#include <chrono>
-#include <condition_variable>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
-#include <thread>
-#include <unordered_map>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <ftxui/component/app.hpp>
 
 namespace yac::app {
 namespace {
-
-std::pair<std::string, std::string> ParseMcpSubcmd(const std::string& args) {
-  const auto sep = args.find(' ');
-  if (sep == std::string::npos) {
-    return {args, {}};
-  }
-  const auto rest_start = args.find_first_not_of(' ', sep);
-  return {args.substr(0, sep), rest_start == std::string::npos
-                                   ? std::string{}
-                                   : args.substr(rest_start)};
-}
-
-std::string FormatMcpServerList(
-    const std::vector<core_types::McpServerStatus>& servers) {
-  if (servers.empty()) {
-    return "(no MCP servers configured)";
-  }
-  std::string out;
-  for (const auto& s : servers) {
-    out += s.id + "  [" + s.state + "]  " + s.transport + "\n";
-  }
-  return out;
-}
 
 std::shared_ptr<provider::OpenAiChatProvider> BuildProvider(
     const chat::ChatConfig& config) {
@@ -273,90 +244,6 @@ void ConfigureUiTaskRunner(ftxui::App& screen, presentation::ChatUI& chat_ui) {
   });
 }
 
-class StreamingCoalescer {
- public:
-  StreamingCoalescer(ftxui::App& screen, ChatEventBridge& bridge)
-      : screen_(screen), bridge_(bridge) {
-    worker_ = std::jthread([this](std::stop_token stop_token) {
-      while (!stop_token.stop_requested()) {
-        std::unique_lock lock(mutex_);
-        cv_.wait_for(lock, kFlushInterval, [this, &stop_token] {
-          return stop_token.stop_requested() || flush_now_;
-        });
-        if (stop_token.stop_requested()) {
-          return;
-        }
-        flush_now_ = false;
-        FlushLocked(lock);
-      }
-    });
-  }
-
-  ~StreamingCoalescer() {
-    worker_.request_stop();
-    {
-      std::lock_guard lock(mutex_);
-      flush_now_ = true;
-    }
-    cv_.notify_all();
-  }
-
-  StreamingCoalescer(const StreamingCoalescer&) = delete;
-  StreamingCoalescer& operator=(const StreamingCoalescer&) = delete;
-  StreamingCoalescer(StreamingCoalescer&&) = delete;
-  StreamingCoalescer& operator=(StreamingCoalescer&&) = delete;
-
-  void Dispatch(chat::ChatEvent event) {
-    if (auto* delta = std::get_if<chat::TextDeltaEvent>(&event.payload)) {
-      std::lock_guard lock(mutex_);
-      auto [it, inserted] =
-          pending_deltas_.try_emplace(delta->message_id, *delta);
-      if (!inserted) {
-        it->second.text += delta->text;
-      }
-      return;
-    }
-    {
-      std::unique_lock lock(mutex_);
-      FlushLocked(lock);
-    }
-    PostEvent(std::move(event));
-  }
-
- private:
-  static constexpr auto kFlushInterval = std::chrono::milliseconds(33);
-
-  void FlushLocked(std::unique_lock<std::mutex>& lock) {
-    if (pending_deltas_.empty()) {
-      return;
-    }
-    auto drained = std::move(pending_deltas_);
-    pending_deltas_.clear();
-    lock.unlock();
-    for (auto& [id, delta] : drained) {
-      PostEvent(chat::ChatEvent{std::move(delta)});
-    }
-    lock.lock();
-  }
-
-  void PostEvent(chat::ChatEvent event) {
-    auto& bridge = bridge_;
-    auto& screen = screen_;
-    screen.Post([&bridge, &screen, event = std::move(event)] {
-      bridge.HandleEvent(event);
-      screen.PostEvent(ftxui::Event::Custom);
-    });
-  }
-
-  ftxui::App& screen_;
-  ChatEventBridge& bridge_;
-  std::mutex mutex_;
-  std::condition_variable cv_;
-  std::unordered_map<chat::ChatMessageId, chat::TextDeltaEvent> pending_deltas_;
-  bool flush_now_ = false;
-  std::jthread worker_;
-};
-
 void ConfigureServiceEventCallback(StreamingCoalescer& coalescer,
                                    chat::ChatService& chat_service) {
   chat_service.SetEventCallback([&coalescer](chat::ChatEvent event) {
@@ -421,23 +308,9 @@ void ConfigureChatUiCallbacks(
       }
       screen.PostEvent(ftxui::Event::Custom);
     } else if (command == "mcp_list") {
-      try {
-        const auto servers = mcp_admin->ListServers();
-        chat_ui.AddMessage(presentation::Sender::Agent,
-                           FormatMcpServerList(servers));
-      } catch (const std::exception& e) {
-        chat_ui.SetTransientStatus(presentation::UiNotice{
-            .severity = presentation::UiSeverity::Error,
-            .title = "mcp list failed",
-            .detail = e.what(),
-        });
-      }
+      HandleMcpListCommand(chat_ui, mcp_admin);
     } else if (command == "mcp_add") {
-      chat_ui.SetTransientStatus(presentation::UiNotice{
-          .severity = presentation::UiSeverity::Info,
-          .title = "Usage: /mcp add <id> <transport> ...",
-          .detail = "transport: stdio (+ command) or http (+ url)",
-      });
+      ShowMcpAddUsage(chat_ui);
     }
   });
   chat_ui.SetOnToolApproval(
@@ -548,157 +421,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
       },
       startup_issues);
 
-  presentation::RegisterMcpSlashCommands(slash_registry);
-  slash_registry.SetArgumentsHandler(
-      "mcp", [&chat_ui, &screen, mcp_admin](std::string args) {
-        const auto [subcmd, rest] = ParseMcpSubcmd(args);
-
-        if (subcmd.empty()) {
-          chat_ui.SetTransientStatus(presentation::UiNotice{
-              .severity = presentation::UiSeverity::Info,
-              .title = "Usage: /mcp <subcommand>",
-              .detail = "add | list | auth | logout | debug | resources",
-          });
-          return;
-        }
-
-        if (subcmd == "list") {
-          try {
-            const auto servers = mcp_admin->ListServers();
-            chat_ui.AddMessage(presentation::Sender::Agent,
-                               FormatMcpServerList(servers));
-          } catch (const std::exception& e) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Error,
-                .title = "mcp list failed",
-                .detail = e.what(),
-            });
-          }
-          return;
-        }
-
-        if (subcmd == "logout") {
-          if (rest.empty()) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Warning,
-                .title = "Usage: /mcp logout <server-id>",
-            });
-            return;
-          }
-          try {
-            mcp_admin->Logout(rest);
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Info,
-                .title = "Logged out",
-                .detail = rest,
-            });
-          } catch (const std::exception& e) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Error,
-                .title = "mcp logout failed",
-                .detail = e.what(),
-            });
-          }
-          return;
-        }
-
-        if (subcmd == "debug") {
-          if (rest.empty()) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Warning,
-                .title = "Usage: /mcp debug <server-id>",
-            });
-            return;
-          }
-          try {
-            const auto r = mcp_admin->Debug(rest);
-            const std::string text =
-                "=== MCP Debug: " + r.server_id + " ===\n" + "\nStatus:\n" +
-                r.status + "\nAuth:\n" + r.auth +
-                "\nConnectivity: " + r.connectivity + "\nLog:\n" + r.log;
-            chat_ui.AddMessage(presentation::Sender::Agent, text);
-          } catch (const std::exception& e) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Error,
-                .title = "mcp debug failed",
-                .detail = e.what(),
-            });
-          }
-          return;
-        }
-
-        if (subcmd == "resources") {
-          if (rest.empty()) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Warning,
-                .title = "Usage: /mcp resources <server-id>",
-            });
-            return;
-          }
-          chat_ui.SetTransientStatus(presentation::UiNotice{
-              .severity = presentation::UiSeverity::Info,
-              .title = "MCP resources: " + rest,
-              .detail = "Requires an active server connection.",
-          });
-          return;
-        }
-
-        if (subcmd == "add") {
-          chat_ui.SetTransientStatus(presentation::UiNotice{
-              .severity = presentation::UiSeverity::Info,
-              .title = "Usage: /mcp add <id> <transport> ...",
-              .detail = "transport: stdio (+ command) or http (+ url)",
-          });
-          return;
-        }
-
-        if (subcmd == "auth") {
-          if (rest.empty()) {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Warning,
-                .title = "Usage: /mcp auth <server-id>",
-            });
-            return;
-          }
-          const std::string server_id = rest;
-          chat_ui.SetTransientStatus(presentation::UiNotice{
-              .severity = presentation::UiSeverity::Info,
-              .title = "Starting MCP auth...",
-              .detail = server_id,
-          });
-          std::thread([mcp_admin, server_id, &chat_ui, &screen]() {
-            try {
-              mcp_admin->Authenticate(server_id,
-                                      mcp::oauth::OAuthInteractionMode{});
-              screen.Post([&chat_ui, &screen, server_id]() {
-                chat_ui.SetTransientStatus(presentation::UiNotice{
-                    .severity = presentation::UiSeverity::Info,
-                    .title = "MCP auth complete",
-                    .detail = server_id,
-                });
-                screen.PostEvent(ftxui::Event::Custom);
-              });
-            } catch (const std::exception& e) {
-              std::string err = e.what();
-              screen.Post([&chat_ui, &screen, server_id, err]() mutable {
-                chat_ui.SetTransientStatus(presentation::UiNotice{
-                    .severity = presentation::UiSeverity::Error,
-                    .title = "MCP auth failed: " + server_id,
-                    .detail = err,
-                });
-                screen.PostEvent(ftxui::Event::Custom);
-              });
-            }
-          }).detach();
-          return;
-        }
-
-        chat_ui.SetTransientStatus(presentation::UiNotice{
-            .severity = presentation::UiSeverity::Warning,
-            .title = "Unknown /mcp subcommand: " + subcmd,
-            .detail = "Available: add, list, auth, logout, debug, resources",
-        });
-      });
+  RegisterMcpSlashCommandHandlers(slash_registry, chat_ui, screen,
+                                  std::move(mcp_admin));
 
   return slash_registry;
 }

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "chat/agent_mode.hpp"
 #include "chat_event_sink.hpp"
 #include "chat_session.hpp"
 #include "chat_ui_clock_ticker.hpp"
@@ -11,6 +10,7 @@
 #include "chat_ui_thinking_animation.hpp"
 #include "command_palette.hpp"
 #include "composer_state.hpp"
+#include "core_types/agent_mode.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "mcp/mcp_status_panel.hpp"

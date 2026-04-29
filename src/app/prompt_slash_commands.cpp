@@ -57,7 +57,7 @@ void RegisterPromptSlashCommands(
                          "This built-in command cannot be overridden.");
         continue;
       }
-      registry.Undefine(prompt.name);
+      static_cast<void>(registry.Undefine(prompt.name));
       AddPromptInfo(issues, "Overriding built-in /" + prompt.name,
                     "Replaced with prompt from ~/.yac/prompts/.");
     }

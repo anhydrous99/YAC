@@ -148,8 +148,9 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
     }
 
     [[nodiscard]] ftxui::Element RenderRow(int filtered_index) const {
-      const auto& command =
-          commands_[filtered_indices_[filtered_index]];  // NOLINT
+      const auto command_index =
+          filtered_indices_.at(static_cast<size_t>(filtered_index));
+      const auto& command = commands_.at(command_index);
       bool selected = filtered_index == selected_index_;
 
       auto name = ftxui::text(command.name) | ftxui::bold;
