@@ -4,12 +4,9 @@
 #include "core_types/mcp_tool_catalog_snapshot.hpp"
 #include "core_types/tool_call_types.hpp"
 
+#include <stop_token>
 #include <string_view>
 #include <vector>
-
-namespace std {
-class stop_token;
-}
 
 namespace yac::core_types {
 

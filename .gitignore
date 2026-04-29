@@ -3,6 +3,7 @@ cmake-*/
 .cache/
 compile_commands.json
 .sisyphus/
+.yolo-sisyphus/
 .idea/
 .env
 .planning/
