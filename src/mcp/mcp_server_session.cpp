@@ -27,26 +27,6 @@ constexpr auto kCancelGraceMs = std::chrono::milliseconds{1000};
 constexpr auto kCancelledIdTtl = std::chrono::seconds{5};
 constexpr std::int64_t kNoInflightId = -1;
 
-[[nodiscard]] std::string ToString(ServerState state) {
-  switch (state) {
-    case ServerState::Disconnected:
-      return "Disconnected";
-    case ServerState::Connecting:
-      return "Connecting";
-    case ServerState::Initializing:
-      return "Initializing";
-    case ServerState::Ready:
-      return "Ready";
-    case ServerState::Reconnecting:
-      return "Reconnecting";
-    case ServerState::Failed:
-      return "Failed";
-    case ServerState::ShuttingDown:
-      return "ShuttingDown";
-  }
-  return "Unknown";
-}
-
 [[nodiscard]] std::string Serialize(const Json& value) {
   return value.dump();
 }

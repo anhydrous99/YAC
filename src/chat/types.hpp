@@ -22,6 +22,9 @@ inline constexpr int kDefaultToolRoundLimit = 32;
 inline constexpr int kMinToolRoundLimit = 1;
 inline constexpr int kMaxToolRoundLimit = 256;
 
+inline constexpr double kMinTemperature = 0.0;
+inline constexpr double kMaxTemperature = 2.0;
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;

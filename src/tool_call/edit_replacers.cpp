@@ -1,5 +1,7 @@
 #include "tool_call/edit_replacers.hpp"
 
+#include "util/string_util.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
@@ -32,14 +34,6 @@ struct MatchRange {
 
 [[nodiscard]] bool IsWhitespace(unsigned char ch) {
   return std::isspace(ch) != 0;
-}
-
-[[nodiscard]] std::string_view TrimTrailingWhitespace(std::string_view text) {
-  size_t end = text.size();
-  while (end > 0 && IsWhitespace(static_cast<unsigned char>(text[end - 1]))) {
-    --end;
-  }
-  return text.substr(0, end);
 }
 
 [[nodiscard]] std::string CollapseWhitespaceRuns(std::string_view text) {
@@ -212,7 +206,8 @@ std::optional<std::string> LineTrimmedReplacer(std::string_view content,
       content,
       FindLineWindowMatches(content, old_string,
                             [](std::string_view line) {
-                              return std::string(TrimTrailingWhitespace(line));
+                              return std::string(
+                                  ::yac::util::TrimRightSv(line));
                             }),
       new_string);
 }

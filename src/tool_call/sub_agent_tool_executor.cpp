@@ -3,35 +3,12 @@
 #include "chat/sub_agent_manager.hpp"
 #include "core_types/tool_call_types.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/tool_error_result.hpp"
 
 #include <utility>
 #include <variant>
 
 namespace yac::tool_call {
-
-namespace {
-
-[[nodiscard]] ToolExecutionResult ErrorResult(ToolCallBlock block,
-                                              const std::string& message) {
-  std::visit(
-      [&message](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
-          call.is_error = true;
-          call.error = message;
-        }
-      },
-      block);
-  return ToolExecutionResult{
-      .block = std::move(block),
-      .result_json = Json{{"error", message}}.dump(),
-      .is_error = true,
-  };
-}
-
-}  // namespace
 
 ToolExecutionResult ExecuteSubAgentTool(
     const PreparedToolCall& prepared, chat::SubAgentManager* sub_agent_manager,

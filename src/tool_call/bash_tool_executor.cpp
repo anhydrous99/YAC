@@ -1,6 +1,7 @@
 #include "tool_call/bash_tool_executor.hpp"
 
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/process_limits.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,8 +20,6 @@ namespace {
 
 constexpr int kDefaultTimeoutMs = 30000;
 constexpr int kMaxTimeoutMs = 300000;
-constexpr size_t kMaxOutputBytes = 16384;
-constexpr int kKillGraceMs = 2000;
 constexpr std::string_view kTruncationMarker = "\n[output truncated at 16KB]";
 
 }  // namespace
@@ -130,10 +129,10 @@ ToolExecutionResult ExecuteBashTool(const chat::ToolCallRequest& request,
       if (waitpid(pid, &status, WNOHANG) > 0) {
         ssize_t n = 0;
         while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
             break;
           }
@@ -161,11 +160,11 @@ ToolExecutionResult ExecuteBashTool(const chat::ToolCallRequest& request,
     if ((pfd.revents & POLLIN) != 0) {
       const ssize_t n = read(read_fd, buf.data(), buf.size());
       if (n > 0) {
-        if (output.size() < kMaxOutputBytes) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+        if (output.size() < kMaxToolOutputBytes) {
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
           }
         }
@@ -177,11 +176,11 @@ ToolExecutionResult ExecuteBashTool(const chat::ToolCallRequest& request,
     if ((pfd.revents & (POLLHUP | POLLERR)) != 0) {
       ssize_t n = 0;
       while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-        if (output.size() < kMaxOutputBytes) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+        if (output.size() < kMaxToolOutputBytes) {
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
           }
         }
@@ -201,7 +200,7 @@ ToolExecutionResult ExecuteBashTool(const chat::ToolCallRequest& request,
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::steady_clock::now() - grace_start)
               .count();
-      if (grace_elapsed >= kKillGraceMs) {
+      if (grace_elapsed >= kSubprocessKillGraceMs) {
         kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
         break;

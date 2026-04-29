@@ -8,6 +8,7 @@
 #include "mcp/oauth/pkce.hpp"
 #include "mcp/protocol_constants.hpp"
 #include "mcp/protocol_messages.hpp"
+#include "mcp/server_state.hpp"
 #include "mcp/stdio_mcp_transport.hpp"
 #include "mcp/streamable_http_mcp_transport.hpp"
 #include "mcp/tool_naming.hpp"
@@ -29,26 +30,6 @@ namespace yac::mcp {
 namespace {
 
 constexpr auto kRequestTimeout = std::chrono::seconds(15);
-
-std::string ToString(ServerState state) {
-  switch (state) {
-    case ServerState::Disconnected:
-      return "Disconnected";
-    case ServerState::Connecting:
-      return "Connecting";
-    case ServerState::Initializing:
-      return "Initializing";
-    case ServerState::Ready:
-      return "Ready";
-    case ServerState::Reconnecting:
-      return "Reconnecting";
-    case ServerState::Failed:
-      return "Failed";
-    case ServerState::ShuttingDown:
-      return "ShuttingDown";
-  }
-  return "Unknown";
-}
 
 std::string SerializeOAuthTokens(const oauth::OAuthTokens& tokens) {
   const auto expires_at = std::chrono::duration_cast<std::chrono::seconds>(

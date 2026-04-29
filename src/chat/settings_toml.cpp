@@ -29,9 +29,6 @@ namespace yac::chat {
 
 namespace {
 
-constexpr double kMinTemperature = 0.0;
-constexpr double kMaxTemperature = 2.0;
-
 void AddError(std::vector<ConfigIssue>& issues, std::string message,
               std::string detail) {
   issues.push_back({.severity = ConfigIssueSeverity::Error,

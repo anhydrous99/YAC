@@ -1,6 +1,7 @@
 #include "tool_call/grep_tool_executor.hpp"
 
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/process_limits.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,9 +19,7 @@ namespace yac::tool_call {
 
 namespace {
 
-constexpr size_t kMaxOutputBytes = 16384;
 constexpr int kMaxMatches = 100;
-constexpr int kKillGraceMs = 2000;
 
 struct GrepArgs {
   std::string pattern;
@@ -233,10 +232,10 @@ ToolExecutionResult ExecuteGrepTool(
       if (waitpid(pid, &status, WNOHANG) > 0) {
         ssize_t n = 0;
         while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
             break;
           }
@@ -280,11 +279,11 @@ ToolExecutionResult ExecuteGrepTool(
     if ((pfd.revents & POLLIN) != 0) {
       const ssize_t n = read(read_fd, buf.data(), buf.size());
       if (n > 0) {
-        if (output.size() < kMaxOutputBytes) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+        if (output.size() < kMaxToolOutputBytes) {
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
           }
         }
@@ -296,11 +295,11 @@ ToolExecutionResult ExecuteGrepTool(
     if ((pfd.revents & (POLLHUP | POLLERR)) != 0) {
       ssize_t n = 0;
       while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-        if (output.size() < kMaxOutputBytes) {
-          const size_t to_add =
-              std::min(static_cast<size_t>(n), kMaxOutputBytes - output.size());
+        if (output.size() < kMaxToolOutputBytes) {
+          const size_t to_add = std::min(static_cast<size_t>(n),
+                                         kMaxToolOutputBytes - output.size());
           output.append(buf.data(), to_add);
-          if (output.size() >= kMaxOutputBytes) {
+          if (output.size() >= kMaxToolOutputBytes) {
             truncated = true;
           }
         }
@@ -320,7 +319,7 @@ ToolExecutionResult ExecuteGrepTool(
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::steady_clock::now() - grace_start)
               .count();
-      if (grace_elapsed >= kKillGraceMs) {
+      if (grace_elapsed >= kSubprocessKillGraceMs) {
         kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
         break;

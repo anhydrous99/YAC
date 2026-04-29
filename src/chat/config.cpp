@@ -28,10 +28,8 @@ std::optional<std::string> GetEnv(const char* name) {
 }
 
 double ParseTemperature(const std::string& value) {
-  constexpr double kMinTemp = 0.0;
-  constexpr double kMaxTemp = 2.0;
   const double temp = std::stod(value);
-  if (temp < kMinTemp || temp > kMaxTemp) {
+  if (temp < kMinTemperature || temp > kMaxTemperature) {
     throw std::out_of_range("YAC_TEMPERATURE must be between 0.0 and 2.0");
   }
   return temp;

@@ -11,6 +11,7 @@
 #include "tool_call/lsp_tool_executor.hpp"
 #include "tool_call/sub_agent_tool_executor.hpp"
 #include "tool_call/todo_state.hpp"
+#include "tool_call/tool_error_result.hpp"
 
 #include <stdexcept>
 #include <string_view>
@@ -212,25 +213,6 @@ static const std::unordered_map<std::string_view, ExecuteFn> kExecuteRegistry =
         {kGrepToolName, &ExecuteGrepDispatch},
         {kGlobToolName, &ExecuteGlobDispatch},
 };
-
-ToolExecutionResult ErrorResult(ToolCallBlock block, std::string message) {
-  std::visit(
-      [&message](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
-          call.is_error = true;
-          call.error = message;
-        }
-      },
-      block);
-  return ToolExecutionResult{
-      .block = std::move(block),
-      .result_json = Json{{"error", message}}.dump(),
-      .is_error = true,
-  };
-}
 
 }  // namespace
 
