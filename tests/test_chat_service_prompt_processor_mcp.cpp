@@ -1,6 +1,7 @@
 #include "chat/chat_service_mcp.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_tool_approval.hpp"
+#include "lambda_mock_provider.hpp"
 #include "mock_mcp_manager.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
@@ -23,57 +24,46 @@ using namespace yac::chat::internal;
 using namespace yac::provider;
 using namespace yac::tool_call;
 using yac::test::MockMcpManager;
+using yac::testing::LambdaMockProvider;
 
 namespace {
 
-class TwoRoundToolProvider : public LanguageModelProvider {
- public:
-  TwoRoundToolProvider(std::string tool_name, std::string arguments_json,
-                       std::string expected_catalog_tool)
-      : tool_name_(std::move(tool_name)),
-        arguments_json_(std::move(arguments_json)),
-        expected_catalog_tool_(std::move(expected_catalog_tool)) {}
-
-  [[nodiscard]] std::string Id() const override { return "test-provider"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    REQUIRE_FALSE(stop_token.stop_requested());
-    ++request_count_;
-    if (request_count_ == 1) {
-      saw_expected_catalog_tool_ =
-          std::any_of(request.tools.begin(), request.tools.end(),
-                      [&](const ToolDefinition& definition) {
-                        return definition.name == expected_catalog_tool_;
-                      });
-      sink(ChatEvent{
-          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
-                                     .id = "tool-1",
-                                     .name = tool_name_,
-                                     .arguments_json = arguments_json_,
-                                 }}}});
-      return;
-    }
-
-    REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
-                        [](const ChatMessage& message) {
-                          return message.role == ChatRole::Tool &&
-                                 message.tool_call_id == "tool-1";
-                        }));
-    sink(ChatEvent{TextDeltaEvent{.text = "done"}});
-  }
-
-  [[nodiscard]] bool SawExpectedCatalogTool() const {
-    return saw_expected_catalog_tool_;
-  }
-
- private:
-  std::string tool_name_;
-  std::string arguments_json_;
-  std::string expected_catalog_tool_;
-  int request_count_ = 0;
-  bool saw_expected_catalog_tool_ = false;
-};
+std::shared_ptr<LambdaMockProvider> MakeTwoRoundToolProvider(
+    std::string tool_name, std::string arguments_json,
+    std::string expected_catalog_tool, std::shared_ptr<bool> saw_catalog_tool,
+    std::shared_ptr<int> request_count) {
+  return std::make_shared<LambdaMockProvider>(
+      "test-provider",
+      [tool_name = std::move(tool_name),
+       arguments_json = std::move(arguments_json),
+       expected_catalog_tool = std::move(expected_catalog_tool),
+       saw_catalog_tool,
+       request_count](const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) {
+        REQUIRE_FALSE(stop_token.stop_requested());
+        ++(*request_count);
+        if (*request_count == 1) {
+          *saw_catalog_tool =
+              std::any_of(request.tools.begin(), request.tools.end(),
+                          [&](const ToolDefinition& definition) {
+                            return definition.name == expected_catalog_tool;
+                          });
+          sink(ChatEvent{
+              ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                         .id = "tool-1",
+                                         .name = tool_name,
+                                         .arguments_json = arguments_json,
+                                     }}}});
+          return;
+        }
+        REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
+                            [](const ChatMessage& message) {
+                              return message.role == ChatRole::Tool &&
+                                     message.tool_call_id == "tool-1";
+                            }));
+        sink(ChatEvent{TextDeltaEvent{.text = "done"}});
+      });
+}
 
 struct CountingBuiltInExecutor {
   int prepare_count = 0;
@@ -165,8 +155,11 @@ struct PromptProcessorHarness {
 }  // namespace
 
 TEST_CASE("mcp_route") {
-  auto provider = std::make_shared<TwoRoundToolProvider>(
-      "mcp_alpha__tool_a", R"({"value":1})", "mcp_alpha__tool_a");
+  auto saw_catalog_tool = std::make_shared<bool>(false);
+  auto request_count = std::make_shared<int>(0);
+  auto provider = MakeTwoRoundToolProvider(
+      "mcp_alpha__tool_a", R"({"value":1})", "mcp_alpha__tool_a",
+      saw_catalog_tool, request_count);
   MockMcpManager mock_mcp_manager;
   mock_mcp_manager.AddTool("alpha", "tool_a");
   CountingBuiltInExecutor built_in_executor;
@@ -176,14 +169,16 @@ TEST_CASE("mcp_route") {
   harness.processor.ProcessPrompt(1, "run mcp tool", 1,
                                   std::stop_source{}.get_token());
 
-  REQUIRE(provider->SawExpectedCatalogTool());
+  REQUIRE(*saw_catalog_tool);
   CHECK(mock_mcp_manager.invoke_count == 1);
   CHECK(built_in_executor.execute_count == 0);
 }
 
 TEST_CASE("builtin_unchanged") {
-  auto provider = std::make_shared<TwoRoundToolProvider>(
-      "bash", R"({"command":"pwd"})", "bash");
+  auto saw_catalog_tool = std::make_shared<bool>(false);
+  auto request_count = std::make_shared<int>(0);
+  auto provider = MakeTwoRoundToolProvider(
+      "bash", R"({"command":"pwd"})", "bash", saw_catalog_tool, request_count);
   MockMcpManager mock_mcp_manager;
   mock_mcp_manager.AddTool("alpha", "tool_a");
   CountingBuiltInExecutor built_in_executor;
@@ -193,14 +188,17 @@ TEST_CASE("builtin_unchanged") {
   harness.processor.ProcessPrompt(1, "run bash tool", 1,
                                   std::stop_source{}.get_token());
 
-  REQUIRE(provider->SawExpectedCatalogTool());
+  REQUIRE(*saw_catalog_tool);
   CHECK(built_in_executor.execute_count == 1);
   CHECK(mock_mcp_manager.invoke_count == 0);
 }
 
 TEST_CASE("approval_from_snapshot") {
-  auto provider = std::make_shared<TwoRoundToolProvider>(
-      "mcp_alpha__tool_a", R"({"value":2})", "mcp_alpha__tool_a");
+  auto saw_catalog_tool = std::make_shared<bool>(false);
+  auto request_count = std::make_shared<int>(0);
+  auto provider = MakeTwoRoundToolProvider(
+      "mcp_alpha__tool_a", R"({"value":2})", "mcp_alpha__tool_a",
+      saw_catalog_tool, request_count);
   MockMcpManager mock_mcp_manager;
   mock_mcp_manager.AddTool("alpha", "tool_a", true);
   CountingBuiltInExecutor built_in_executor;

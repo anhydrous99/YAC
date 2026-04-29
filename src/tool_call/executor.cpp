@@ -142,27 +142,13 @@ ToolExecutionResult ExecuteAskUserDispatch(
     chat::internal::ChatServiceToolApproval* tool_approval) {
   auto call = std::get<AskUserCall>(prepared.preview);
   if (tool_approval == nullptr || prepared.approval_id.empty()) {
-    constexpr auto kAskUserPipelineError =
-        "Ask user approval pipeline unavailable.";
-    call.is_error = true;
-    call.error = kAskUserPipelineError;
-    return ToolExecutionResult{
-        .block = std::move(call),
-        .result_json = Json{{"error", kAskUserPipelineError}}.dump(),
-        .is_error = true,
-    };
+    return ErrorResult(std::move(call),
+                       "Ask user approval pipeline unavailable.");
   }
   auto resolution =
       tool_approval->WaitForResolution(prepared.approval_id, stop_token);
   if (!resolution.approved) {
-    constexpr auto kCancelledByUser = "Cancelled by user";
-    call.is_error = true;
-    call.error = kCancelledByUser;
-    return ToolExecutionResult{
-        .block = std::move(call),
-        .result_json = Json{{"error", kCancelledByUser}}.dump(),
-        .is_error = true,
-    };
+    return ErrorResult(std::move(call), "Cancelled by user");
   }
   call.response = std::move(resolution.response);
   return ToolExecutionResult{

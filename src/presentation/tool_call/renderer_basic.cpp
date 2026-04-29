@@ -1,7 +1,5 @@
 #include "../syntax/highlighter.hpp"
-#include "../syntax/internal/lexer.hpp"
 #include "../syntax/language_alias.hpp"
-#include "../syntax/language_registry.hpp"
 #include "../ui_spacing.hpp"
 #include "../util/count_summary.hpp"
 #include "../util/string_util.hpp"
@@ -9,7 +7,6 @@
 #include "renderer_helpers.hpp"
 
 #include <algorithm>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -66,14 +63,8 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
     content.push_back(ftxui::text("No diff lines") |
                       ftxui::color(theme.semantic.text_muted));
   } else {
-    auto language = syntax::LanguageForExtension(call.filepath);
-    const auto* lang_def =
-        language.empty() ? nullptr : syntax::FindLanguage(language);
-    std::optional<syntax::internal::Lexer> lexer;
-    if (lang_def != nullptr) {
-      lexer.emplace(*lang_def);
-    }
-    auto* lexer_ptr = lexer.has_value() ? &*lexer : nullptr;
+    auto lexer_handle = MakeLexerForFile(call.filepath);
+    auto* lexer_ptr = lexer_handle.Get();
 
     for (const auto& line : call.diff) {
       ftxui::Color gutter_fg = theme.tool.edit_context;
@@ -152,14 +143,8 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
     content.push_back(ftxui::text("Preview:") |
                       ftxui::color(theme.semantic.text_muted));
     const auto lines = util::SplitLines(call.content_preview);
-    auto language = syntax::LanguageForExtension(call.filepath);
-    const auto* lang_def =
-        language.empty() ? nullptr : syntax::FindLanguage(language);
-    std::optional<syntax::internal::Lexer> lexer;
-    if (lang_def != nullptr) {
-      lexer.emplace(*lang_def);
-    }
-    auto* lexer_ptr = lexer.has_value() ? &*lexer : nullptr;
+    auto lexer_handle = MakeLexerForFile(call.filepath);
+    auto* lexer_ptr = lexer_handle.Get();
 
     auto render_at = [&](size_t index) -> ftxui::Element {
       return RenderHighlightedLine(lexer_ptr, lines[index], context,

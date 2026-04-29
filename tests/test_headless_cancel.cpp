@@ -1,12 +1,13 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 
-#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -17,24 +18,24 @@
 
 using namespace yac::chat;
 using namespace yac::provider;
+using yac::testing::LambdaMockProvider;
 
 namespace {
 
-class SlowProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "fake"; }
-  void CompleteStream(const ChatRequest&, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    for (int i = 0; i < 100; ++i) {
-      if (stop_token.stop_requested()) {
-        return;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      sink(ChatEvent{TextDeltaEvent{.text = "x"}});
-    }
-    sink(ChatEvent{FinishedEvent{}});
-  }
-};
+std::shared_ptr<LambdaMockProvider> MakeSlowProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "fake",
+      [](const ChatRequest&, ChatEventSink sink, std::stop_token stop_token) {
+        for (int i = 0; i < 100; ++i) {
+          if (stop_token.stop_requested()) {
+            return;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          sink(ChatEvent{TextDeltaEvent{.text = "x"}});
+        }
+        sink(ChatEvent{FinishedEvent{}});
+      });
+}
 
 struct CancelTestResult {
   std::string output;
@@ -44,7 +45,7 @@ struct CancelTestResult {
 
 CancelTestResult RunWithCancelTimer(int cancel_after_ms) {
   ProviderRegistry registry;
-  registry.Register(std::make_shared<SlowProvider>());
+  registry.Register(MakeSlowProvider());
   ChatConfig config;
   config.provider_id = "fake";
   config.model = "fake-model";

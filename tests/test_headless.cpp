@@ -1,42 +1,20 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 
-#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
 using namespace yac::provider;
-
-namespace {
-
-class TextProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "fake"; }
-  void CompleteStream(const ChatRequest&, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    if (stop_token.stop_requested()) return;
-    sink(ChatEvent{TextDeltaEvent{.text = "hello"}});
-    sink(ChatEvent{TextDeltaEvent{.text = " world"}});
-  }
-};
-
-class ErrorProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "fake"; }
-  void CompleteStream(const ChatRequest&, ChatEventSink sink,
-                      std::stop_token) override {
-    sink(ChatEvent{ErrorEvent{.text = "provider error"}});
-  }
-};
+using yac::testing::LambdaMockProvider;
 
 struct HeadlessResult {
   std::string output;
@@ -95,17 +73,26 @@ HeadlessResult RunWithProvider(std::shared_ptr<LanguageModelProvider> provider,
   return result;
 }
 
-}  // namespace
-
 TEST_CASE("Headless event handler: text deltas accumulate to output") {
-  auto result = RunWithProvider(std::make_shared<TextProvider>(), "hello");
+  auto provider = std::make_shared<LambdaMockProvider>(
+      "fake",
+      [](const ChatRequest&, ChatEventSink sink, std::stop_token stop_token) {
+        if (stop_token.stop_requested()) return;
+        sink(ChatEvent{TextDeltaEvent{.text = "hello"}});
+        sink(ChatEvent{TextDeltaEvent{.text = " world"}});
+      });
+  auto result = RunWithProvider(std::move(provider), "hello");
   REQUIRE(result.output == "hello world");
   REQUIRE(result.exit_code == 0);
   REQUIRE(result.error_output.empty());
 }
 
 TEST_CASE("Headless event handler: error provider sets exit code 1") {
-  auto result = RunWithProvider(std::make_shared<ErrorProvider>(), "hello");
+  auto provider = std::make_shared<LambdaMockProvider>(
+      "fake", [](const ChatRequest&, ChatEventSink sink, std::stop_token) {
+        sink(ChatEvent{ErrorEvent{.text = "provider error"}});
+      });
+  auto result = RunWithProvider(std::move(provider), "hello");
   REQUIRE(result.exit_code == 1);
   REQUIRE(!result.error_output.empty());
 }

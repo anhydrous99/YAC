@@ -1,5 +1,6 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
+#include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -20,6 +22,7 @@
 
 using namespace yac::chat;
 using namespace yac::provider;
+using yac::testing::LambdaMockProvider;
 
 namespace {
 
@@ -62,107 +65,65 @@ class ScopedEnvClear {
   std::vector<std::pair<std::string, std::string>> saved_;
 };
 
-class FakeProvider : public LanguageModelProvider {
- public:
-  explicit FakeProvider(std::string expected_model = "fake-model")
-      : expected_model_(std::move(expected_model)) {}
+std::shared_ptr<LambdaMockProvider> MakeFakeProvider(
+    std::string expected_model = "fake-model") {
+  return std::make_shared<LambdaMockProvider>(
+      "fake", [expected_model = std::move(expected_model)](
+                  const ChatRequest& request, ChatEventSink sink,
+                  std::stop_token stop_token) {
+        REQUIRE(request.model == expected_model);
+        REQUIRE(request.stream);
+        REQUIRE(!request.messages.empty());
+        REQUIRE(request.messages.back().role == ChatRole::User);
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        sink(ChatEvent{TextDeltaEvent{.text = "hi"}});
+        sink(ChatEvent{TextDeltaEvent{.text = " there"}});
+      });
+}
 
-  [[nodiscard]] std::string Id() const override { return "fake"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    {
-      std::lock_guard lock(mutex_);
-      requests_.push_back(request);
-    }
-    REQUIRE(request.model == expected_model_);
-    REQUIRE(request.stream);
-    REQUIRE(!request.messages.empty());
-    REQUIRE(request.messages.back().role == ChatRole::User);
-
-    if (stop_token.stop_requested()) {
-      return;
-    }
-    sink(ChatEvent{TextDeltaEvent{.text = "hi"}});
-    sink(ChatEvent{TextDeltaEvent{.text = " there"}});
-  }
-
-  [[nodiscard]] ChatRequest LastRequest() const {
-    std::lock_guard lock(mutex_);
-    REQUIRE_FALSE(requests_.empty());
-    return requests_.back();
-  }
-
- private:
-  std::string expected_model_;
-  mutable std::mutex mutex_;
-  std::vector<ChatRequest> requests_;
-};
-
-class ToolRoundProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "tool-round"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    if (stop_token.stop_requested()) {
-      return;
-    }
-    int call_index = 0;
-    {
-      std::lock_guard lock(mutex_);
-      requests_.push_back(request);
-      call_index = static_cast<int>(requests_.size());
-    }
-
-    if (call_index == 1) {
-      REQUIRE_FALSE(request.tools.empty());
-      sink(ChatEvent{
-          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
-                                     .id = "tool_1",
-                                     .name = "list_dir",
-                                     .arguments_json = R"({"path":"."})"}}}});
-      return;
-    }
-
-    REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
+std::shared_ptr<LambdaMockProvider> MakeToolRoundProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "tool-round", [](const ChatRequest& request, ChatEventSink sink,
+                       std::stop_token stop_token) {
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        // Branch on whether the prior round already returned a tool result.
+        const bool has_tool_result =
+            std::any_of(request.messages.begin(), request.messages.end(),
                         [](const ChatMessage& message) {
                           return message.role == ChatRole::Tool &&
                                  message.tool_call_id == "tool_1";
-                        }));
-    sink(ChatEvent{TextDeltaEvent{.text = "listed"}});
-  }
+                        });
+        if (!has_tool_result) {
+          REQUIRE_FALSE(request.tools.empty());
+          sink(ChatEvent{ToolCallRequestedEvent{
+              .tool_calls = {
+                  ToolCallRequest{.id = "tool_1",
+                                  .name = "list_dir",
+                                  .arguments_json = R"({"path":"."})"}}}});
+          return;
+        }
+        sink(ChatEvent{TextDeltaEvent{.text = "listed"}});
+      });
+}
 
-  [[nodiscard]] size_t RequestCount() const {
-    std::lock_guard lock(mutex_);
-    return requests_.size();
-  }
-
- private:
-  mutable std::mutex mutex_;
-  std::vector<ChatRequest> requests_;
-};
-
-class InfiniteToolLoopProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "infinite-tools"; }
-
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      ChatEventSink sink,
-                      [[maybe_unused]] std::stop_token stop_token) override {
-    const int call_index = call_count_.fetch_add(1);
-    sink(ChatEvent{
-        ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
-                                   .id = "tool_" + std::to_string(call_index),
-                                   .name = "list_dir",
-                                   .arguments_json = R"({"path":"."})"}}}});
-  }
-
-  [[nodiscard]] int CallCount() const { return call_count_.load(); }
-
- private:
-  std::atomic<int> call_count_{0};
-};
+std::shared_ptr<LambdaMockProvider> MakeInfiniteToolLoopProvider(
+    std::shared_ptr<std::atomic<int>> call_count) {
+  return std::make_shared<LambdaMockProvider>(
+      "infinite-tools",
+      [call_count = std::move(call_count)](
+          const ChatRequest&, ChatEventSink sink, std::stop_token) {
+        const int call_index = call_count->fetch_add(1);
+        sink(ChatEvent{ToolCallRequestedEvent{
+            .tool_calls = {
+                ToolCallRequest{.id = "tool_" + std::to_string(call_index),
+                                .name = "list_dir",
+                                .arguments_json = R"({"path":"."})"}}}});
+      });
+}
 
 class BlockingFakeProvider : public LanguageModelProvider {
  public:
@@ -244,100 +205,84 @@ class CancellableFakeProvider : public LanguageModelProvider {
   bool stop_observed_ = false;
 };
 
-class ErrorFakeProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "error-fake"; }
+std::shared_ptr<LambdaMockProvider> MakeErrorFakeProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "error-fake",
+      [](const ChatRequest&, ChatEventSink sink, std::stop_token) {
+        sink(ChatEvent{ErrorEvent{.text = "stream failed"}});
+      });
+}
 
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      ChatEventSink sink,
-                      [[maybe_unused]] std::stop_token stop_token) override {
-    sink(ChatEvent{ErrorEvent{.text = "stream failed"}});
-  }
-};
+std::shared_ptr<LambdaMockProvider> MakeEmptyDeltaProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "empty-delta",
+      [](const ChatRequest&, ChatEventSink sink, std::stop_token) {
+        sink(ChatEvent{TextDeltaEvent{}});
+        sink(ChatEvent{TextDeltaEvent{.text = "ok"}});
+        sink(ChatEvent{TextDeltaEvent{}});
+      });
+}
 
-class EmptyDeltaProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "empty-delta"; }
+std::shared_ptr<LambdaMockProvider> MakeApprovalRejectionProvider() {
+  auto request_count = std::make_shared<int>(0);
+  return std::make_shared<LambdaMockProvider>(
+      "approval-rejection",
+      [request_count](const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) {
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        ++(*request_count);
+        if (*request_count == 1) {
+          sink(ChatEvent{ToolCallRequestedEvent{
+              .tool_calls = {ToolCallRequest{
+                  .id = "tool_1",
+                  .name = "file_write",
+                  .arguments_json =
+                      R"({"filepath":"notes.txt","content":"denied\n"})"}}}});
+          return;
+        }
+        REQUIRE(std::any_of(
+            request.messages.begin(), request.messages.end(),
+            [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == "tool_1" &&
+                     message.content ==
+                         R"({"error":"User rejected tool execution."})";
+            }));
+        sink(ChatEvent{TextDeltaEvent{.text = "continued after rejection"}});
+      });
+}
 
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      ChatEventSink sink,
-                      [[maybe_unused]] std::stop_token stop_token) override {
-    sink(ChatEvent{TextDeltaEvent{}});
-    sink(ChatEvent{TextDeltaEvent{.text = "ok"}});
-    sink(ChatEvent{TextDeltaEvent{}});
-  }
-};
-
-class ApprovalRejectionProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "approval-rejection"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    if (stop_token.stop_requested()) {
-      return;
-    }
-
-    ++request_count_;
-    if (request_count_ == 1) {
-      sink(ChatEvent{ToolCallRequestedEvent{
-          .tool_calls = {ToolCallRequest{
-              .id = "tool_1",
-              .name = "file_write",
-              .arguments_json =
-                  R"({"filepath":"notes.txt","content":"denied\n"})"}}}});
-      return;
-    }
-
-    REQUIRE(
-        std::any_of(request.messages.begin(), request.messages.end(),
-                    [](const ChatMessage& message) {
-                      return message.role == ChatRole::Tool &&
-                             message.tool_call_id == "tool_1" &&
-                             message.content ==
-                                 R"({"error":"User rejected tool execution."})";
-                    }));
-    sink(ChatEvent{TextDeltaEvent{.text = "continued after rejection"}});
-  }
-
- private:
-  int request_count_ = 0;
-};
-
-class ToolErrorProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "tool-error"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop_token) override {
-    if (stop_token.stop_requested()) {
-      return;
-    }
-
-    ++request_count_;
-    if (request_count_ == 1) {
-      sink(ChatEvent{
-          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
-                                     .id = "tool_1",
-                                     .name = "list_dir",
-                                     .arguments_json = R"({"path":"../"})"}}}});
-      return;
-    }
-
-    REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
-                        [](const ChatMessage& message) {
-                          return message.role == ChatRole::Tool &&
-                                 message.tool_call_id == "tool_1" &&
-                                 message.content.find(
-                                     "Path is outside the workspace") !=
-                                     std::string::npos;
-                        }));
-    sink(ChatEvent{TextDeltaEvent{.text = "recovered"}});
-  }
-
- private:
-  int request_count_ = 0;
-};
+std::shared_ptr<LambdaMockProvider> MakeToolErrorProvider() {
+  auto request_count = std::make_shared<int>(0);
+  return std::make_shared<LambdaMockProvider>(
+      "tool-error",
+      [request_count](const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) {
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        ++(*request_count);
+        if (*request_count == 1) {
+          sink(ChatEvent{ToolCallRequestedEvent{
+              .tool_calls = {
+                  ToolCallRequest{.id = "tool_1",
+                                  .name = "list_dir",
+                                  .arguments_json = R"({"path":"../"})"}}}});
+          return;
+        }
+        REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
+                            [](const ChatMessage& message) {
+                              return message.role == ChatRole::Tool &&
+                                     message.tool_call_id == "tool_1" &&
+                                     message.content.find(
+                                         "Path is outside the workspace") !=
+                                         std::string::npos;
+                            }));
+        sink(ChatEvent{TextDeltaEvent{.text = "recovered"}});
+      });
+}
 
 class SequentialApprovalProvider : public LanguageModelProvider {
  public:
@@ -412,7 +357,7 @@ ChatService MakeService(
     }
     registry.Register(std::move(provider));
   } else {
-    registry.Register(std::make_shared<FakeProvider>());
+    registry.Register(MakeFakeProvider());
     config.provider_id = "fake";
     config.model = "fake-model";
   }
@@ -470,7 +415,7 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
     file << "hello\n";
   }
 
-  auto provider = std::make_shared<ToolRoundProvider>();
+  auto provider = MakeToolRoundProvider();
   ChatConfig config;
   config.provider_id = "tool-round";
   config.model = "fake-model";
@@ -497,7 +442,8 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
 
-  auto provider = std::make_shared<InfiniteToolLoopProvider>();
+  auto call_count = std::make_shared<std::atomic<int>>(0);
+  auto provider = MakeInfiniteToolLoopProvider(call_count);
   ChatConfig config;
   config.provider_id = "infinite-tools";
   config.model = "fake-model";
@@ -510,7 +456,7 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
   // When the model never stops requesting tools, the service should run
   // exactly the configured number of completions + tool rounds, then surface
   // a single "Tool round limit reached" error.
-  REQUIRE(provider->CallCount() == config.max_tool_rounds);
+  REQUIRE(call_count->load() == config.max_tool_rounds);
 
   const auto tool_done_count =
       std::count_if(events.begin(), events.end(), [](const ChatEvent& e) {
@@ -538,7 +484,7 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
 
-  auto provider = std::make_shared<ApprovalRejectionProvider>();
+  auto provider = MakeApprovalRejectionProvider();
   ChatConfig config;
   config.provider_id = "approval-rejection";
   config.model = "fake-model";
@@ -656,7 +602,7 @@ TEST_CASE(
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
 
-  auto provider = std::make_shared<ToolErrorProvider>();
+  auto provider = MakeToolErrorProvider();
   ChatConfig config;
   config.provider_id = "tool-error";
   config.model = "fake-model";
@@ -674,7 +620,7 @@ TEST_CASE(
 }
 
 TEST_CASE("ChatService drops empty streaming deltas") {
-  auto service = MakeService(std::make_shared<EmptyDeltaProvider>());
+  auto service = MakeService(MakeEmptyDeltaProvider());
   const auto events = CollectEvents(service, "hello");
 
   const auto text_delta_count =
@@ -724,7 +670,7 @@ TEST_CASE("ChatService emits error for missing provider") {
 }
 
 TEST_CASE("ChatService preserves provider stream error status") {
-  auto service = MakeService(std::make_shared<ErrorFakeProvider>());
+  auto service = MakeService(MakeErrorFakeProvider());
   const auto events = CollectEvents(service, "hello");
 
   REQUIRE(HasEvent(events, ChatEventType::Error));
@@ -740,7 +686,7 @@ TEST_CASE("ChatService preserves provider stream error status") {
 }
 
 TEST_CASE("ChatService includes system prompt before history in requests") {
-  auto provider = std::make_shared<FakeProvider>();
+  auto provider = MakeFakeProvider();
   ChatConfig config;
   config.provider_id = "fake";
   config.model = "fake-model";
@@ -758,7 +704,7 @@ TEST_CASE("ChatService includes system prompt before history in requests") {
 }
 
 TEST_CASE("ChatService SetModel updates future requests and emits event") {
-  auto provider = std::make_shared<FakeProvider>("glm-5.1");
+  auto provider = MakeFakeProvider("glm-5.1");
   ChatConfig config;
   config.provider_id = "fake";
   config.model = "fake-model";

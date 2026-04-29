@@ -1,6 +1,7 @@
 #include "renderer_helpers.hpp"
 
-#include "../syntax/internal/lexer.hpp"
+#include "../syntax/language_alias.hpp"
+#include "../syntax/language_registry.hpp"
 #include "../theme.hpp"
 #include "../ui_spacing.hpp"
 
@@ -8,6 +9,19 @@
 #include <utility>
 
 namespace yac::presentation::tool_call {
+
+LexerHandle MakeLexerForFile(std::string_view filepath) {
+  LexerHandle handle;
+  auto language = syntax::LanguageForExtension(filepath);
+  if (language.empty()) {
+    return handle;
+  }
+  const auto* lang_def = syntax::FindLanguage(language);
+  if (lang_def != nullptr) {
+    handle.lexer.emplace(*lang_def);
+  }
+  return handle;
+}
 
 ftxui::Element RenderCodeText(const std::string& text,
                               const theme::Theme& theme) {

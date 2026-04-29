@@ -246,6 +246,7 @@ add_library(yac_service STATIC
   src/cli/mcp_admin_command.cpp
   src/cli/mcp_cli_dispatch.cpp
   src/tool_call/sub_agent_tool_executor.cpp
+  src/tool_call/subprocess_runner.cpp
   src/tool_call/todo_state.cpp
   src/tool_call/glob_matcher.cpp
   src/tool_call/workspace_filesystem.cpp

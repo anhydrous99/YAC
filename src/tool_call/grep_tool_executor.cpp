@@ -1,18 +1,12 @@
 #include "tool_call/grep_tool_executor.hpp"
 
 #include "tool_call/executor_arguments.hpp"
-#include "tool_call/process_limits.hpp"
+#include "tool_call/subprocess_runner.hpp"
+#include "tool_call/tool_error_result.hpp"
 
 #include <algorithm>
-#include <array>
-#include <chrono>
-#include <fcntl.h>
-#include <poll.h>
-#include <signal.h>
 #include <sstream>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <vector>
 
 namespace yac::tool_call {
@@ -42,14 +36,9 @@ GrepArgs ParseGrepArgs(const chat::ToolCallRequest& request) {
 
 ToolExecutionResult MakeErrorResult(const std::string& pattern,
                                     const std::string& error_msg) {
-  auto block =
-      GrepCall{.pattern = pattern, .is_error = true, .error = error_msg};
-  return ToolExecutionResult{
-      .block = std::move(block),
-      .result_json =
-          Json{{"pattern", pattern}, {"error", error_msg}, {"is_error", true}}
-              .dump(),
-      .is_error = true};
+  return ErrorResult(
+      GrepCall{.pattern = pattern}, error_msg,
+      Json{{"pattern", pattern}, {"error", error_msg}, {"is_error", true}});
 }
 
 ToolExecutionResult BuildGrepResult(const std::string& pattern,
@@ -170,184 +159,32 @@ ToolExecutionResult ExecuteGrepTool(
   argv.push_back(path_str.c_str());
   argv.push_back(nullptr);
 
-  int pipe_fds[2];
-  if (pipe(pipe_fds) != 0) {
-    return MakeErrorResult(grep_args.pattern, "pipe() failed");
+  SubprocessOptions opts{
+      .argv = std::move(argv),
+      .cwd = workspace_filesystem.Root(),
+  };
+  const auto run = RunSubprocessCapture(opts, stop_token);
+
+  if (run.spawn_failed) {
+    return MakeErrorResult(grep_args.pattern, run.spawn_error);
   }
-
-  const pid_t pid = fork();
-  if (pid < 0) {
-    close(pipe_fds[0]);
-    close(pipe_fds[1]);
-    return MakeErrorResult(grep_args.pattern, "fork() failed");
-  }
-
-  if (pid == 0) {
-    close(pipe_fds[0]);
-    dup2(pipe_fds[1], STDOUT_FILENO);
-    dup2(pipe_fds[1], STDERR_FILENO);
-    close(pipe_fds[1]);
-
-    const int dev_null = open("/dev/null", O_RDONLY);
-    if (dev_null >= 0) {
-      dup2(dev_null, STDIN_FILENO);
-      close(dev_null);
-    }
-
-    const std::filesystem::path& root = workspace_filesystem.Root();
-    if (!root.empty()) {
-      chdir(root.c_str());
-    }
-
-    execvp("rg", const_cast<char* const*>(argv.data()));
-    _exit(127);
-  }
-
-  close(pipe_fds[1]);
-
-  const int read_fd = pipe_fds[0];
-  fcntl(read_fd, F_SETFL, fcntl(read_fd, F_GETFL) | O_NONBLOCK);
-
-  std::string output;
-  output.reserve(4096);
-  bool truncated = false;
-
-  std::array<char, 4096> buf{};
-
-  while (true) {
-    if (stop_token.stop_requested()) {
-      break;
-    }
-
-    struct pollfd pfd {};
-    pfd.fd = read_fd;
-    pfd.events = POLLIN;
-    const int ready = poll(&pfd, 1, 50);
-
-    if (ready < 0) {
-      break;
-    }
-    if (ready == 0) {
-      int status = 0;
-      if (waitpid(pid, &status, WNOHANG) > 0) {
-        ssize_t n = 0;
-        while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-          const size_t to_add = std::min(static_cast<size_t>(n),
-                                         kMaxToolOutputBytes - output.size());
-          output.append(buf.data(), to_add);
-          if (output.size() >= kMaxToolOutputBytes) {
-            truncated = true;
-            break;
-          }
-        }
-        close(read_fd);
-
-        const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-
-        if (exit_code == 127) {
-          return MakeErrorResult(
-              grep_args.pattern,
-              "ripgrep (rg) not found in PATH. Install: 'apt install ripgrep' "
-              "or 'brew install ripgrep'.");
-        }
-
-        if (exit_code != 0 && exit_code != 1) {
-          const std::string err_msg =
-              output.empty()
-                  ? "rg exited with code " + std::to_string(exit_code)
-                  : output;
-          return MakeErrorResult(grep_args.pattern, err_msg);
-        }
-
-        if (exit_code == 1) {
-          auto block = GrepCall{.pattern = grep_args.pattern, .match_count = 0};
-          return ToolExecutionResult{.block = std::move(block),
-                                     .result_json = Json{
-                                         {"pattern", grep_args.pattern},
-                                         {"match_count", 0},
-                                         {"file_count", 0},
-                                         {"matches", Json::array()},
-                                         {"truncated",
-                                          false}}.dump()};
-        }
-
-        return BuildGrepResult(grep_args.pattern, output, truncated);
-      }
-      continue;
-    }
-
-    if ((pfd.revents & POLLIN) != 0) {
-      const ssize_t n = read(read_fd, buf.data(), buf.size());
-      if (n > 0) {
-        if (output.size() < kMaxToolOutputBytes) {
-          const size_t to_add = std::min(static_cast<size_t>(n),
-                                         kMaxToolOutputBytes - output.size());
-          output.append(buf.data(), to_add);
-          if (output.size() >= kMaxToolOutputBytes) {
-            truncated = true;
-          }
-        }
-      } else if (n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR)) {
-        break;
-      }
-    }
-
-    if ((pfd.revents & (POLLHUP | POLLERR)) != 0) {
-      ssize_t n = 0;
-      while ((n = read(read_fd, buf.data(), buf.size())) > 0) {
-        if (output.size() < kMaxToolOutputBytes) {
-          const size_t to_add = std::min(static_cast<size_t>(n),
-                                         kMaxToolOutputBytes - output.size());
-          output.append(buf.data(), to_add);
-          if (output.size() >= kMaxToolOutputBytes) {
-            truncated = true;
-          }
-        }
-      }
-      break;
-    }
-  }
-
-  close(read_fd);
-
-  if (stop_token.stop_requested()) {
-    kill(pid, SIGTERM);
-    const auto grace_start = std::chrono::steady_clock::now();
-    int status = 0;
-    while (waitpid(pid, &status, WNOHANG) == 0) {
-      const auto grace_elapsed =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::steady_clock::now() - grace_start)
-              .count();
-      if (grace_elapsed >= kSubprocessKillGraceMs) {
-        kill(pid, SIGKILL);
-        waitpid(pid, &status, 0);
-        break;
-      }
-      usleep(10000);
-    }
+  if (run.cancelled) {
     return MakeErrorResult(grep_args.pattern, "Cancelled");
   }
-
-  int status = 0;
-  waitpid(pid, &status, 0);
-  const int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-
-  if (exit_code == 127) {
+  if (run.exit_code == 127) {
     return MakeErrorResult(
         grep_args.pattern,
         "ripgrep (rg) not found in PATH. Install: 'apt install ripgrep' or "
         "'brew install ripgrep'.");
   }
-
-  if (exit_code != 0 && exit_code != 1) {
+  if (run.exit_code != 0 && run.exit_code != 1) {
     const std::string err_msg =
-        output.empty() ? "rg exited with code " + std::to_string(exit_code)
-                       : output;
+        run.output.empty()
+            ? "rg exited with code " + std::to_string(run.exit_code)
+            : run.output;
     return MakeErrorResult(grep_args.pattern, err_msg);
   }
-
-  if (exit_code == 1) {
+  if (run.exit_code == 1) {
     auto block = GrepCall{.pattern = grep_args.pattern, .match_count = 0};
     return ToolExecutionResult{.block = std::move(block),
                                .result_json = Json{
@@ -359,7 +196,7 @@ ToolExecutionResult ExecuteGrepTool(
                                     false}}.dump()};
   }
 
-  return BuildGrepResult(grep_args.pattern, output, truncated);
+  return BuildGrepResult(grep_args.pattern, run.output, run.truncated);
 }
 
 }  // namespace yac::tool_call

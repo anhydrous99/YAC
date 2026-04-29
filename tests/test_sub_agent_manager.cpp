@@ -1,5 +1,6 @@
 #include "chat/chat_service_tool_approval.hpp"
 #include "chat/sub_agent_manager.hpp"
+#include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
@@ -22,91 +23,67 @@
 using namespace yac::chat;
 using namespace yac::provider;
 using namespace yac::tool_call;
+using yac::testing::LambdaMockProvider;
 
 namespace {
 
-class InstantMockProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "instant-mock"; }
+std::shared_ptr<LambdaMockProvider> MakeBlockingProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "blocking-mock",
+      [](const ChatRequest&, ChatEventSink, std::stop_token stop) {
+        while (!stop.stop_requested()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+      });
+}
 
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      ChatEventSink sink,
-                      [[maybe_unused]] std::stop_token stop) override {
-    sink(ChatEvent{TextDeltaEvent{.text = "done"}});
-  }
-};
+std::shared_ptr<LambdaMockProvider> MakeSleepingProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "sleeping-mock",
+      [](const ChatRequest&, ChatEventSink, std::stop_token stop) {
+        for (int i = 0; i < 20 && !stop.stop_requested(); ++i) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+      });
+}
 
-class BlockingMockProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "blocking-mock"; }
+std::shared_ptr<LambdaMockProvider> MakePeriodicEventProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "periodic-event-mock",
+      [](const ChatRequest&, ChatEventSink sink, std::stop_token stop) {
+        while (!stop.stop_requested()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+          if (stop.stop_requested()) {
+            break;
+          }
+          sink(ChatEvent{TextDeltaEvent{.text = "tick"}});
+        }
+      });
+}
 
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      [[maybe_unused]] ChatEventSink sink,
-                      std::stop_token stop) override {
-    while (!stop.stop_requested()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-  }
-};
-
-class SleepingMockProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "sleeping-mock"; }
-
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      [[maybe_unused]] ChatEventSink sink,
-                      std::stop_token stop) override {
-    for (int i = 0; i < 20 && !stop.stop_requested(); ++i) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-  }
-};
-
-class PeriodicEventMockProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override {
-    return "periodic-event-mock";
-  }
-
-  void CompleteStream([[maybe_unused]] const ChatRequest& request,
-                      ChatEventSink sink, std::stop_token stop) override {
-    while (!stop.stop_requested()) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
-      if (stop.stop_requested()) {
-        break;
-      }
-      sink(ChatEvent{TextDeltaEvent{.text = "tick"}});
-    }
-  }
-};
-
-class ToolRequestMockProvider : public LanguageModelProvider {
- public:
-  [[nodiscard]] std::string Id() const override { return "tool-request-mock"; }
-
-  void CompleteStream(const ChatRequest& request, ChatEventSink sink,
-                      std::stop_token stop) override {
-    if (stop.stop_requested()) {
-      return;
-    }
-
-    const bool has_tool_result =
-        std::any_of(request.messages.begin(), request.messages.end(),
-                    [](const ChatMessage& message) {
-                      return message.role == ChatRole::Tool;
-                    });
-    if (!has_tool_result) {
-      sink(ChatEvent{
-          ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
-                                     .id = "tool-1",
-                                     .name = std::string(kListDirToolName),
-                                     .arguments_json = R"({"path":"."})"}}}});
-      return;
-    }
-
-    sink(ChatEvent{TextDeltaEvent{.text = "final answer"}});
-  }
-};
+std::shared_ptr<LambdaMockProvider> MakeToolRequestProvider() {
+  return std::make_shared<LambdaMockProvider>(
+      "tool-request-mock",
+      [](const ChatRequest& request, ChatEventSink sink, std::stop_token stop) {
+        if (stop.stop_requested()) {
+          return;
+        }
+        const bool has_tool_result =
+            std::any_of(request.messages.begin(), request.messages.end(),
+                        [](const ChatMessage& message) {
+                          return message.role == ChatRole::Tool;
+                        });
+        if (!has_tool_result) {
+          sink(ChatEvent{ToolCallRequestedEvent{
+              .tool_calls = {
+                  ToolCallRequest{.id = "tool-1",
+                                  .name = std::string(kListDirToolName),
+                                  .arguments_json = R"({"path":"."})"}}}});
+          return;
+        }
+        sink(ChatEvent{TextDeltaEvent{.text = "final answer"}});
+      });
+}
 
 template <typename Predicate>
 bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
@@ -176,7 +153,7 @@ struct SubAgentTestContext {
 }  // namespace
 
 TEST_CASE("SubAgentManager enforces concurrency limit") {
-  SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
+  SubAgentTestContext ctx(MakeBlockingProvider());
 
   for (int i = 0; i < kMaxConcurrentSubAgents; ++i) {
     const auto id = ctx.Spawn("task " + std::to_string(i));
@@ -191,7 +168,7 @@ TEST_CASE("SubAgentManager enforces concurrency limit") {
 }
 
 TEST_CASE("SubAgentManager generates unique agent IDs") {
-  SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
+  SubAgentTestContext ctx(MakeBlockingProvider());
 
   const auto id1 = ctx.Spawn("task 1");
   const auto id2 = ctx.Spawn("task 2");
@@ -205,7 +182,7 @@ TEST_CASE("SubAgentManager generates unique agent IDs") {
 }
 
 TEST_CASE("SpawnBackground returns immediately") {
-  SubAgentTestContext ctx(std::make_shared<SleepingMockProvider>());
+  SubAgentTestContext ctx(MakeSleepingProvider());
 
   const auto before = std::chrono::steady_clock::now();
   const auto id = ctx.Spawn("sleeping task");
@@ -222,7 +199,7 @@ TEST_CASE("SpawnBackground returns immediately") {
 }
 
 TEST_CASE("CancelAll stops all active sessions") {
-  SubAgentTestContext ctx(std::make_shared<BlockingMockProvider>());
+  SubAgentTestContext ctx(MakeBlockingProvider());
 
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto a = ctx.Spawn("task 1");
@@ -236,8 +213,7 @@ TEST_CASE("CancelAll stops all active sessions") {
 
 TEST_CASE("Background timeout triggers cancellation") {
   constexpr int kTimeoutSeconds = 2;
-  SubAgentTestContext ctx(std::make_shared<PeriodicEventMockProvider>(),
-                          kTimeoutSeconds);
+  SubAgentTestContext ctx(MakePeriodicEventProvider(), kTimeoutSeconds);
 
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto agent = ctx.Spawn("long running task");
@@ -248,7 +224,7 @@ TEST_CASE("Background timeout triggers cancellation") {
 }
 
 TEST_CASE("Background sub-agent reports tool progress") {
-  SubAgentTestContext ctx(std::make_shared<ToolRequestMockProvider>());
+  SubAgentTestContext ctx(MakeToolRequestProvider());
 
   const auto agent = ctx.Spawn("inspect workspace");
   REQUIRE(agent.find("capacity") == std::string::npos);

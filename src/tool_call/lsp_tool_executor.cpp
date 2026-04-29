@@ -1,6 +1,7 @@
 #include "tool_call/lsp_tool_executor.hpp"
 
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/tool_error_result.hpp"
 
 #include <filesystem>
 #include <map>
@@ -113,10 +114,7 @@ ToolExecutionResult ExecuteLspRenameTool(
       RequireInt(args, "line"), RequireInt(args, "character"),
       OptionalString(args, "old_name"), RequireString(args, "new_name"));
   if (call.is_error) {
-    return ToolExecutionResult{
-        .block = call,
-        .result_json = Json{{"error", call.error}}.dump(),
-        .is_error = true};
+    return ErrorResult(call, call.error);
   }
 
   std::map<std::filesystem::path, std::vector<LspTextEdit>> edits_by_file;

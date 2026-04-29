@@ -1,6 +1,9 @@
 #pragma once
 
+#include "../syntax/internal/lexer.hpp"
+
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,10 +14,6 @@ namespace yac::presentation {
 
 struct RenderContext;
 
-namespace syntax::internal {
-class Lexer;
-}
-
 namespace theme {
 struct Theme;
 }
@@ -22,6 +21,15 @@ struct Theme;
 namespace tool_call {
 
 inline constexpr size_t kMaxPreviewRows = 20;
+
+struct LexerHandle {
+  std::optional<syntax::internal::Lexer> lexer;
+  [[nodiscard]] syntax::internal::Lexer* Get() {
+    return lexer.has_value() ? &*lexer : nullptr;
+  }
+};
+
+[[nodiscard]] LexerHandle MakeLexerForFile(std::string_view filepath);
 
 [[nodiscard]] ftxui::Element RenderCodeText(const std::string& text,
                                             const theme::Theme& theme);
