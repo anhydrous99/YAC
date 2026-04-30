@@ -2,6 +2,8 @@
 #include "tool_call/grep_tool_executor.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
+#include <unistd.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
