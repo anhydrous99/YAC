@@ -85,7 +85,7 @@ std::string Capture(std::string_view text, const regmatch_t* matches,
 
 template <typename Builder>
 std::string ReplaceAll(std::string_view raw, const regex_t& regex,
-                       Builder&& build_replacement) {
+                       Builder build_replacement) {
   std::string output;
   output.reserve(raw.size());
 

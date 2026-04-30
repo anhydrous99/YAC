@@ -36,6 +36,10 @@ class TempWorkspace {
     std::error_code ec;
     std::filesystem::remove_all(path_, ec);
   }
+  TempWorkspace(const TempWorkspace&) = delete;
+  TempWorkspace(TempWorkspace&&) = delete;
+  TempWorkspace& operator=(const TempWorkspace&) = delete;
+  TempWorkspace& operator=(TempWorkspace&&) = delete;
   [[nodiscard]] const std::filesystem::path& Path() const { return path_; }
 
  private:

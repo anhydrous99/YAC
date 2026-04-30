@@ -97,13 +97,13 @@ ftxui::Element NoticeLine(const UiNotice& notice) {
          ftxui::color(SeverityColor(notice.severity));
 }
 
-constexpr char kComposerPrompt[] = " \xe2\x9d\xaf ";
+constexpr std::string_view kComposerPrompt = " \xe2\x9d\xaf ";
 
 int ComposerInputWrapWidth(int terminal_width, int max_input_lines) {
   const std::string counter = " " + std::to_string(max_input_lines) + "/" +
                               std::to_string(max_input_lines) + " ";
   const int reserved_width = (2 * layout::kComposerPadX) +
-                             ftxui::string_width(kComposerPrompt) +
+                             ftxui::string_width(std::string(kComposerPrompt)) +
                              ftxui::string_width(counter);
   return std::max(1, terminal_width - reserved_width);
 }
@@ -513,7 +513,7 @@ ftxui::Component ChatUI::Build() {
         composer_.CalculateHeight(kMaxInputLines, input_wrap_width);
     auto composer_content = ftxui::hbox({
         ftxui::text(std::string(layout::kComposerPadX, ' ')),
-        ftxui::text(kComposerPrompt) |
+        ftxui::text(std::string(kComposerPrompt)) |
             ftxui::color(colors.semantic.accent_primary) | ftxui::bold,
         input->Render() | ftxui::flex,
         ftxui::text(" " + std::to_string(line_count) + "/" +

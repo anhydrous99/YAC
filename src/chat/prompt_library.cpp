@@ -3,6 +3,7 @@
 #include "chat/config_paths.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <exception>
 #include <filesystem>
@@ -221,7 +222,7 @@ struct DefaultPromptSeed {
   int revision;
 };
 
-constexpr DefaultPromptSeed kDefaultPromptSeeds[] = {
+constexpr std::array<DefaultPromptSeed, 2> kDefaultPromptSeeds = {{
     {.name = "init",
      .description = "Create or update repository agent instructions",
      .prompt = kDefaultInitPrompt,
@@ -230,7 +231,7 @@ constexpr DefaultPromptSeed kDefaultPromptSeeds[] = {
      .description = "Review code changes and report actionable feedback",
      .prompt = kDefaultReviewPrompt,
      .revision = 2},
-};
+}};
 
 void AddWarning(std::vector<ConfigIssue>& issues, std::string message,
                 std::string detail) {
@@ -259,7 +260,7 @@ std::string TrimAsciiWhitespace(std::string value) {
   if (begin >= end) {
     return {};
   }
-  return std::string(begin, end);
+  return {begin, end};
 }
 
 bool EnsurePromptDirectory(const std::filesystem::path& prompts_dir,
@@ -481,6 +482,8 @@ std::string BuildRepoContext() {
       context += "\n";
     }
   } catch (...) {
+    // Best-effort directory listing; missing/unreadable entries don't
+    // belong in the prompt context.
   }
   context += "\n";
   return context;
@@ -502,7 +505,7 @@ std::string RenderPrompt(const std::string& prompt,
     std::string_view token;
     std::string value;
   };
-  const TokenReplacement replacements[] = {
+  const std::array<TokenReplacement, 3> replacements = {{
       {.token = kArgumentsToken, .value = rendered_arguments},
       {.token = kRepoContextToken, .value = BuildRepoContext()},
       {.token = kWorkspaceRootToken,
@@ -514,7 +517,7 @@ std::string RenderPrompt(const std::string& prompt,
                return std::string{};
              }
            }()},
-  };
+  }};
 
   std::string rendered;
   rendered.reserve(prompt.size());
@@ -531,6 +534,7 @@ std::string RenderPrompt(const std::string& prompt,
       }
     }
     if (best_pos == std::string::npos) {
+      // NOLINTNEXTLINE(readability-suspicious-call-argument)
       rendered.append(prompt, start, std::string::npos);
       break;
     }

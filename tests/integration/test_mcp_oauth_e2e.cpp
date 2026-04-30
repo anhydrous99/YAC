@@ -27,8 +27,8 @@ constexpr const char* kCannedCode = "test_code";
 struct TempDir {
   std::filesystem::path path;
   TempDir() {
-    char tmpl[] = "/tmp/yac_oauth_e2e_XXXXXX";
-    const char* result = ::mkdtemp(tmpl);
+    std::string tmpl = "/tmp/yac_oauth_e2e_XXXXXX";
+    const char* result = ::mkdtemp(tmpl.data());
     if (result == nullptr) {
       throw std::runtime_error("mkdtemp failed");
     }

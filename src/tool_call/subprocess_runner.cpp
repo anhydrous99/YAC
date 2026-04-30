@@ -51,8 +51,8 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
                                       std::stop_token stop_token) {
   SubprocessResult result;
 
-  int pipe_fds[2];
-  if (pipe(pipe_fds) != 0) {
+  std::array<int, 2> pipe_fds{};
+  if (pipe(pipe_fds.data()) != 0) {
     result.spawn_failed = true;
     result.spawn_error = "pipe() failed";
     return result;
@@ -83,6 +83,9 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
       chdir(opts.cwd.c_str());
     }
 
+    // execvp's POSIX signature takes char* const argv[]; the const_cast is
+    // required to bridge from our std::vector<const char*> argument storage.
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     execvp(opts.argv[0], const_cast<char* const*>(opts.argv.data()));
     _exit(127);
   }

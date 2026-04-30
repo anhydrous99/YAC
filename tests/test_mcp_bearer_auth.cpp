@@ -4,6 +4,7 @@
 #include "mcp/streamable_http_mcp_transport.hpp"
 
 #include <arpa/inet.h>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -168,6 +169,7 @@ class TestHttpServer {
         const HttpResponse response = handler_(request, request_index);
         WriteResponse(client_fd, response);
       } catch (const std::exception&) {
+        // Mock server: drop malformed request, accept the next one.
       }
 
       close(client_fd);
@@ -176,14 +178,14 @@ class TestHttpServer {
 
   [[nodiscard]] static HttpRequest ReadRequest(int client_fd) {
     std::string buffer;
-    char chunk[1024];
+    std::array<char, 1024> chunk{};
     std::size_t header_end = std::string::npos;
     while ((header_end = buffer.find("\r\n\r\n")) == std::string::npos) {
-      const ssize_t bytes = recv(client_fd, chunk, sizeof(chunk), 0);
+      const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
       if (bytes <= 0) {
         throw std::runtime_error("recv header failed");
       }
-      buffer.append(chunk, static_cast<std::size_t>(bytes));
+      buffer.append(chunk.data(), static_cast<std::size_t>(bytes));
     }
 
     HttpRequest request;
@@ -223,11 +225,11 @@ class TestHttpServer {
 
     request.body = buffer.substr(header_end + 4);
     while (request.body.size() < content_length) {
-      const ssize_t bytes = recv(client_fd, chunk, sizeof(chunk), 0);
+      const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
       if (bytes <= 0) {
         throw std::runtime_error("recv body failed");
       }
-      request.body.append(chunk, static_cast<std::size_t>(bytes));
+      request.body.append(chunk.data(), static_cast<std::size_t>(bytes));
     }
     return request;
   }

@@ -99,6 +99,7 @@ TEST_CASE("cancellation_emits_notification") {
       (void)transport.SendRequest(pc::kMethodPing, Json::object(), 5s,
                                   std::stop_token{});
     } catch (const std::exception&) {
+      // Test cancellation path: SendRequest is expected to throw on stop.
     }
   });
 

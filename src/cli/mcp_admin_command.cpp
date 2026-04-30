@@ -77,6 +77,7 @@ bool ServerIdExistsInToml(std::string_view toml_text, std::string_view id) {
       }
     }
   } catch (...) {
+    // Filesystem probing is best-effort; treat any failure as "not found".
   }
   return false;
 }

@@ -1,5 +1,8 @@
 #include "app/prompt_slash_commands.hpp"
 
+#include <algorithm>
+#include <array>
+#include <string_view>
 #include <utility>
 
 namespace yac::app {
@@ -21,12 +24,9 @@ bool CommandNameExists(const presentation::SlashCommandRegistry& registry,
 }
 
 bool IsProtectedCommand(const std::string& name) {
-  for (const auto* protected_name : {"task"}) {
-    if (name == protected_name) {
-      return true;
-    }
-  }
-  return false;
+  static constexpr std::array<std::string_view, 1> kProtectedNames{"task"};
+  return std::ranges::any_of(kProtectedNames,
+                             [&name](std::string_view p) { return name == p; });
 }
 
 void AddPromptInfo(std::vector<chat::ConfigIssue>& issues, std::string message,

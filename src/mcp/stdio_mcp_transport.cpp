@@ -137,7 +137,12 @@ StdioMcpTransport::StdioMcpTransport(McpServerConfig config)
     : config_(std::move(config)), client_(std::make_unique<Client>(this)) {}
 
 StdioMcpTransport::~StdioMcpTransport() {
-  Stop(std::stop_token{});
+  try {
+    Stop(std::stop_token{});
+  } catch (...) {
+    // Destructors must not propagate exceptions; child-process teardown is
+    // best-effort during destruction.
+  }
 }
 
 void StdioMcpTransport::Start() {
@@ -205,6 +210,7 @@ Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
     try {
       SendCancelledNotification(request_id, "request cancelled");
     } catch (const std::exception&) {
+      // Best-effort cancellation notice; the request is being torn down.
     }
   });
 

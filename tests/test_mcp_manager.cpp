@@ -38,6 +38,11 @@ class TempDir {
     std::filesystem::remove_all(path_, ec);
   }
 
+  TempDir(const TempDir&) = delete;
+  TempDir(TempDir&&) = delete;
+  TempDir& operator=(const TempDir&) = delete;
+  TempDir& operator=(TempDir&&) = delete;
+
   [[nodiscard]] const std::filesystem::path& Path() const { return path_; }
 
  private:

@@ -231,6 +231,7 @@ class TestHttpServer {
         const HttpResponse response = handler_(request, request_index);
         WriteResponse(client_fd, response);
       } catch (const std::exception&) {
+        // Mock server: drop malformed request, accept the next one.
       }
 
       close(client_fd);

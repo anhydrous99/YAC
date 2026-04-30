@@ -56,8 +56,8 @@ class TempWorkspace {
 
   [[nodiscard]] std::string Read(const std::string& relative_path) const {
     std::ifstream file(root_ / relative_path, std::ios::binary);
-    return std::string(std::istreambuf_iterator<char>(file),
-                       std::istreambuf_iterator<char>());
+    return {std::istreambuf_iterator<char>(file),
+            std::istreambuf_iterator<char>()};
   }
 
  private:

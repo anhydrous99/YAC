@@ -1,9 +1,11 @@
+#include <algorithm>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <sys/wait.h>
@@ -22,8 +24,8 @@ struct TempDir {
   std::filesystem::path path;
 
   TempDir() {
-    char tmpl[] = "/tmp/yac_crash_XXXXXX";
-    const char* result = ::mkdtemp(tmpl);
+    std::string tmpl = "/tmp/yac_crash_XXXXXX";
+    const char* result = ::mkdtemp(tmpl.data());
     if (result == nullptr) {
       throw std::runtime_error("mkdtemp failed");
     }
@@ -133,12 +135,9 @@ int RunE2eRunnerWithStderrLog(const std::filesystem::path& home_dir,
 
 bool StringContainsAny(const std::string& text,
                        std::initializer_list<const char*> needles) {
-  for (const char* needle : needles) {
-    if (text.find(needle) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(needles, [&text](const char* needle) {
+    return text.find(needle) != std::string::npos;
+  });
 }
 
 bool ToolPresentInLog(const std::string& log_content,

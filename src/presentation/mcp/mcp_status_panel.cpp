@@ -13,11 +13,11 @@ namespace yac::presentation {
 
 namespace {
 
-constexpr char kIconReady[] = "\xe2\x9c\x93";
-constexpr char kIconFailed[] = "\xe2\x9c\x97";
-constexpr char kIconReconnecting[] = "\xe2\x9f\xb3";
-constexpr char kArrowCollapsed[] = " \xe2\x96\xb6 ";
-constexpr char kArrowExpanded[] = " \xe2\x96\xbc ";
+constexpr std::string_view kIconReady = "\xe2\x9c\x93";
+constexpr std::string_view kIconFailed = "\xe2\x9c\x97";
+constexpr std::string_view kIconReconnecting = "\xe2\x9f\xb3";
+constexpr std::string_view kArrowCollapsed = " \xe2\x96\xb6 ";
+constexpr std::string_view kArrowExpanded = " \xe2\x96\xbc ";
 
 enum class StateColorRole {
   Ready,
@@ -95,7 +95,7 @@ ftxui::Element McpStatusPanel::OnRender() {
     }
   }
 
-  const std::string arrow = expanded_ ? kArrowExpanded : kArrowCollapsed;
+  const std::string arrow{expanded_ ? kArrowExpanded : kArrowCollapsed};
   const std::string header_text = "MCP (" + std::to_string(active) +
                                   " active, " + std::to_string(errors) +
                                   " error" + (errors != 1 ? "s" : "") + ")";

@@ -56,7 +56,12 @@ McpServerSession::McpServerSession(
       rng_(std::random_device{}()) {}
 
 McpServerSession::~McpServerSession() {
-  Stop();
+  try {
+    Stop();
+  } catch (...) {
+    // Destructors must not propagate exceptions; transport teardown is
+    // best-effort during destruction anyway.
+  }
 }
 
 void McpServerSession::Start() {

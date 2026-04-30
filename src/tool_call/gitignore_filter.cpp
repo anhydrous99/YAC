@@ -2,6 +2,7 @@
 
 #include "util/string_util.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fnmatch.h>
 #include <fstream>
@@ -88,12 +89,9 @@ bool GitignoreFilter::ShouldSkip(std::string_view relative_path) const {
   if (!matched) {
     return false;
   }
-  for (const auto& neg : negations_) {
-    if (fnmatch(neg.c_str(), path.c_str(), 0) == 0) {
-      return false;
-    }
-  }
-  return true;
+  return std::ranges::all_of(negations_, [&path](const auto& neg) {
+    return fnmatch(neg.c_str(), path.c_str(), 0) != 0;
+  });
 }
 
 }  // namespace yac::tool_call

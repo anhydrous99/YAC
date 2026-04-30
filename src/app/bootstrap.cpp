@@ -383,6 +383,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
         context += "\n";
       }
     } catch (...) {
+      // Best-effort directory listing; missing/unreadable entries don't
+      // belong in the prompt context.
     }
     context += "\n";
     const std::string prompt =

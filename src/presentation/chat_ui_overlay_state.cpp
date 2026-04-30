@@ -65,19 +65,19 @@ std::string PrettyPrintJson(std::string_view json, size_t max_bytes) {
         out += c;
         out += '\n';
         ++depth;
-        out.append(static_cast<std::size_t>(depth * 2), ' ');
+        out.append(static_cast<std::size_t>(depth) * 2, ' ');
         break;
       case '}':
       case ']':
         out += '\n';
         --depth;
-        out.append(static_cast<std::size_t>(depth * 2), ' ');
+        out.append(static_cast<std::size_t>(depth) * 2, ' ');
         out += c;
         break;
       case ',':
         out += c;
         out += '\n';
-        out.append(static_cast<std::size_t>(depth * 2), ' ');
+        out.append(static_cast<std::size_t>(depth) * 2, ' ');
         break;
       case ':':
         out += ": ";
@@ -346,6 +346,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   auto ask_user_panel =
       DialogPanel("Ask User", ask_user_content, &show_ask_user_);
   auto ask_user_modal =
+      // NOLINTNEXTLINE(readability-suspicious-call-argument)
       DialogModal(approval_modal, ask_user_panel, &show_ask_user_);
 
   return ftxui::CatchEvent(ask_user_modal, [this](const ftxui::Event& event) {

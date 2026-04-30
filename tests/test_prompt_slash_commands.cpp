@@ -3,6 +3,7 @@
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,13 +28,10 @@ void TypeText(const ftxui::Component& component, const std::string& text) {
 
 bool HasIssueContaining(const std::vector<ConfigIssue>& issues,
                         const std::string& text) {
-  for (const auto& issue : issues) {
-    if (issue.message.find(text) != std::string::npos ||
-        issue.detail.find(text) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(issues, [&text](const ConfigIssue& issue) {
+    return issue.message.find(text) != std::string::npos ||
+           issue.detail.find(text) != std::string::npos;
+  });
 }
 
 }  // namespace

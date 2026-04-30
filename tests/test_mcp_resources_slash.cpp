@@ -33,8 +33,11 @@ class ResourceMockMcpManager : public yac::test::MockMcpManager {
     return read_result_;
   }
 
+  // NOLINTBEGIN(cppcoreguidelines-non-private-member-variables-in-classes)
+  // Test mock: counters intentionally exposed for direct assertion.
   int list_count = 0;
   int read_count = 0;
+  // NOLINTEND(cppcoreguidelines-non-private-member-variables-in-classes)
 
  private:
   std::vector<yac::core_types::McpResourceDescriptor> list_result_;

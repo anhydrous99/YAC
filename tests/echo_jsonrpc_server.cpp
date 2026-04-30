@@ -55,7 +55,7 @@ void WriteResponse(std::mutex* write_mutex, const Json& response) {
 
 }  // namespace
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
   const Options options = ParseOptions(argc, argv);
 
   std::ofstream log_stream;
@@ -108,4 +108,7 @@ int main(int argc, char** argv) {
   }
 
   return 0;
+} catch (const std::exception& ex) {
+  std::cerr << "echo_jsonrpc_server: fatal: " << ex.what() << '\n';
+  return 1;
 }
