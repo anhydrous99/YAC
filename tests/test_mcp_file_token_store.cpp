@@ -71,7 +71,7 @@ TEST_CASE("round_trip", "[mcp_file_token_store]") {
 
 #ifndef _WIN32
   const auto file_path = tmp.Path() / "test-server.json";
-  struct ::stat st {};
+  struct ::stat st{};
   REQUIRE(::stat(file_path.c_str(), &st) == 0);
   REQUIRE((st.st_mode & 0777) == 0600);
 #endif

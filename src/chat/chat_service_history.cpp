@@ -16,8 +16,8 @@ void CompactHistory(std::vector<ChatMessage>& history,
   }
 
   const decltype(sizeof(0)) to_remove = non_system - keep_last;
-  const auto first_non_system = std::find_if(
-      history.begin(), history.end(), [](const ChatMessage& message) {
+  const auto first_non_system =
+      std::ranges::find_if(history, [](const ChatMessage& message) {
         return message.role != ChatRole::System;
       });
 

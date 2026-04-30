@@ -389,7 +389,7 @@ std::string WithThemeName(std::string_view content,
   }
 
   lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(*theme_start + 1),
-               TextLine{assignment, newline});
+               TextLine{.text = assignment, .newline = newline});
   return JoinLines(lines);
 }
 

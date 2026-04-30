@@ -171,8 +171,9 @@ void ChatEventBridge::Handle(chat::AgentModeChangedEvent event) {
 
 void ChatEventBridge::Handle(chat::UsageReportedEvent event) {
   chat_ui_.get().SetLastUsage(presentation::UsageStats{
-      event.usage.prompt_tokens, event.usage.completion_tokens,
-      event.usage.total_tokens});
+      .prompt_tokens = event.usage.prompt_tokens,
+      .completion_tokens = event.usage.completion_tokens,
+      .total_tokens = event.usage.total_tokens});
 }
 
 void ChatEventBridge::Handle(chat::QueueDepthChangedEvent event) {

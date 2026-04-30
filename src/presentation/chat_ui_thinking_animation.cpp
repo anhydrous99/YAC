@@ -60,34 +60,33 @@ void ChatUiThinkingAnimation::Start(
 
   auto ui_task_runner = ui_task_runner_;
   auto animation_state = animation_state_;
-  worker_ = std::jthread(
-      [this, ui_task_runner = std::move(ui_task_runner),
-       animation_state = std::move(animation_state),
-       has_pending_agent_message](std::stop_token stop_token) mutable {
-        // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
-        std::stop_callback wake_on_stop(stop_token,
-                                        [this] { wake_.notify_all(); });
-        while (!stop_token.stop_requested()) {
-          std::unique_lock lock(mutex_);
-          wake_.wait_for(lock, kThinkingFrameDuration,
-                         [&] { return stop_token.stop_requested(); });
-          if (stop_token.stop_requested()) {
-            return;
-          }
-          lock.unlock();
+  worker_ = std::jthread([this, ui_task_runner = std::move(ui_task_runner),
+                          animation_state = std::move(animation_state),
+                          has_pending_agent_message](
+                             std::stop_token stop_token) mutable {
+    // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
+    std::stop_callback wake_on_stop(stop_token, [this] { wake_.notify_all(); });
+    while (!stop_token.stop_requested()) {
+      std::unique_lock lock(mutex_);
+      wake_.wait_for(lock, kThinkingFrameDuration,
+                     [&] { return stop_token.stop_requested(); });
+      if (stop_token.stop_requested()) {
+        return;
+      }
+      lock.unlock();
 
-          ui_task_runner([this, animation_state, has_pending_agent_message] {
-            if (!animation_state->alive.load(std::memory_order_acquire)) {
-              return;
-            }
-            if (!has_pending_agent_message()) {
-              Sync(has_pending_agent_message);
-              return;
-            }
-            AdvanceFrame();
-          });
+      ui_task_runner([this, animation_state, has_pending_agent_message] {
+        if (!animation_state->alive.load(std::memory_order_acquire)) {
+          return;
         }
+        if (!has_pending_agent_message()) {
+          Sync(has_pending_agent_message);
+          return;
+        }
+        AdvanceFrame();
       });
+    }
+  });
 }
 
 void ChatUiThinkingAnimation::Stop() {

@@ -155,7 +155,7 @@ StreamableHttpMcpTransport::~StreamableHttpMcpTransport() {
 }
 
 void StreamableHttpMcpTransport::Start() {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (status_ == TransportStatus::Ready ||
       status_ == TransportStatus::Starting) {
     return;
@@ -180,7 +180,7 @@ void StreamableHttpMcpTransport::Start() {
 
 void StreamableHttpMcpTransport::Stop(std::stop_token stop) {
   (void)stop;
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   session_id_.reset();
   status_ = TransportStatus::Stopped;
 }
@@ -190,7 +190,7 @@ Json StreamableHttpMcpTransport::SendRequest(std::string_view method,
                                              std::chrono::milliseconds timeout,
                                              std::stop_token stop) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (status_ == TransportStatus::Failed && !auth_error_message_.empty()) {
       throw std::runtime_error(auth_error_message_);
     }
@@ -215,23 +215,23 @@ void StreamableHttpMcpTransport::SendNotification(std::string_view method,
 
 void StreamableHttpMcpTransport::SetNotificationCallback(
     NotificationCallback callback) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   notification_callback_ = std::move(callback);
 }
 
 TransportStatus StreamableHttpMcpTransport::Status() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return status_;
 }
 
 Json StreamableHttpMcpTransport::PerformJsonRpcRequest(
     const Json& message, std::chrono::milliseconds timeout,
     std::stop_token stop, bool allow_session_retry) {
-  std::lock_guard request_lock(request_mutex_);
+  std::scoped_lock request_lock(request_mutex_);
   HttpResponse response = PerformHttpRequest(message, timeout, stop);
   if (response.status_code == 404 && allow_session_retry && SessionId()) {
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       status_ = TransportStatus::Reconnecting;
     }
     SetSessionId(std::nullopt);
@@ -250,7 +250,7 @@ Json StreamableHttpMcpTransport::PerformJsonRpcRequest(
   }
 
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     status_ = TransportStatus::Ready;
   }
   return response.payload;
@@ -372,13 +372,13 @@ std::string StreamableHttpMcpTransport::ResolveAuthorizationHeader() const {
 }
 
 std::optional<std::string> StreamableHttpMcpTransport::SessionId() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return session_id_;
 }
 
 void StreamableHttpMcpTransport::SetSessionId(
     std::optional<std::string> session_id) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   session_id_ = std::move(session_id);
 }
 
@@ -386,7 +386,7 @@ void StreamableHttpMcpTransport::DispatchNotification(
     std::string_view method, const Json& params) const {
   NotificationCallback callback;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     callback = notification_callback_;
   }
   if (callback) {

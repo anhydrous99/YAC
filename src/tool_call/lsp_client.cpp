@@ -284,7 +284,7 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
 
  private:
   void EnsureInitialized() {
-    std::lock_guard lock(start_mutex_);
+    std::scoped_lock lock(start_mutex_);
     if (initialized_) {
       return;
     }
@@ -341,7 +341,7 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
         break;
       }
       constexpr std::string_view kHeader = "Content-Length:";
-      if (line->rfind(kHeader, 0) == 0) {
+      if (line->starts_with(kHeader)) {
         auto parsed =
             ParseContentLength(std::string_view(*line).substr(kHeader.size()));
         if (!parsed.has_value()) {
@@ -428,7 +428,7 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
       }
     }
     {
-      std::lock_guard lock(diagnostics_mutex_);
+      std::scoped_lock lock(diagnostics_mutex_);
       diagnostics_[params["uri"].get<std::string>()] = std::move(diagnostics);
     }
     diagnostics_wake_.notify_all();

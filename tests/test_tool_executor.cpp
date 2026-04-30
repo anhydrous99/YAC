@@ -389,7 +389,9 @@ TEST_CASE("WorkspaceFilesystem::WriteFile rejects content over the size cap") {
 TEST_CASE("WorkspaceFilesystem::ReadFile rejects files over the size cap") {
   auto root = TempRoot("read_cap");
   const auto path = root / "big.bin";
-  { std::ofstream(path, std::ios::binary).put('\0'); }
+  {
+    std::ofstream(path, std::ios::binary).put('\0');
+  }
   std::error_code ec;
   std::filesystem::resize_file(path, kMaxFileBytes + 1, ec);
   REQUIRE_FALSE(ec);

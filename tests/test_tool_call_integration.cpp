@@ -48,14 +48,18 @@ Message MakeAgentWithTool(ToolCallBlock block,
                           MessageStatus tool_status = MessageStatus::Complete) {
   Message msg{Sender::Agent, ""};
   msg.segments.clear();
-  msg.segments.emplace_back(ToolSegment{1, std::move(block), tool_status});
+  msg.segments.emplace_back(
+      ToolSegment{.id = 1, .block = std::move(block), .status = tool_status});
   return msg;
 }
 
 }  // namespace
 
 TEST_CASE("MessageRenderer renders agent message containing a bash tool") {
-  auto message = MakeAgentWithTool(BashCall{"ls", "main.cpp", 0, false});
+  auto message = MakeAgentWithTool(BashCall{.command = "ls",
+                                            .output = "main.cpp",
+                                            .exit_code = 0,
+                                            .is_error = false});
 
   auto output = RenderElement(MessageRenderer::Render(message, 80));
 
@@ -67,8 +71,10 @@ TEST_CASE(
     "in order") {
   std::vector<Message> messages;
   messages.emplace_back(Sender::User, "hello from user");
-  messages.push_back(
-      MakeAgentWithTool(BashCall{"pwd", "/tmp/project", 0, false}));
+  messages.push_back(MakeAgentWithTool(BashCall{.command = "pwd",
+                                                .output = "/tmp/project",
+                                                .exit_code = 0,
+                                                .is_error = false}));
   messages.emplace_back(Sender::Agent, "agent response");
 
   auto output = RenderElement(MessageRenderer::RenderAll(messages, 80));
@@ -81,7 +87,10 @@ TEST_CASE(
 
 TEST_CASE("ChatUI tool messages render collapsed chevron by default") {
   ChatUI ui;
-  ui.AddToolCallMessage(BashCall{"git status", "working tree clean", 0, false});
+  ui.AddToolCallMessage(BashCall{.command = "git status",
+                                 .output = "working tree clean",
+                                 .exit_code = 0,
+                                 .is_error = false});
 
   auto component = ui.Build();
   auto output = RenderComponent(component);
@@ -92,8 +101,10 @@ TEST_CASE("ChatUI tool messages render collapsed chevron by default") {
 
 TEST_CASE("ChatUI SetToolExpanded collapsed hides tool content") {
   ChatUI ui;
-  auto tool_id = ui.AddToolCallMessage(
-      BashCall{"git status", "working tree clean", 0, false});
+  auto tool_id = ui.AddToolCallMessage(BashCall{.command = "git status",
+                                                .output = "working tree clean",
+                                                .exit_code = 0,
+                                                .is_error = false});
   ui.SetToolExpanded(tool_id, false);
 
   auto component = ui.Build();
@@ -106,8 +117,14 @@ TEST_CASE("ChatUI SetToolExpanded collapsed hides tool content") {
 
 TEST_CASE("AddToolCallMessage increases tool block count") {
   ChatUI ui;
-  ui.AddToolCallMessage(BashCall{"pwd", "/tmp/one", 0, false});
-  ui.AddToolCallMessage(BashCall{"pwd", "/tmp/two", 0, false});
+  ui.AddToolCallMessage(BashCall{.command = "pwd",
+                                 .output = "/tmp/one",
+                                 .exit_code = 0,
+                                 .is_error = false});
+  ui.AddToolCallMessage(BashCall{.command = "pwd",
+                                 .output = "/tmp/two",
+                                 .exit_code = 0,
+                                 .is_error = false});
 
   auto component = ui.Build();
   auto output = RenderComponent(component);
@@ -119,7 +136,8 @@ TEST_CASE("ChatUI renders tool segment after streamed text in emission order") {
   ChatUI ui;
   auto agent_id = ui.StartAgentMessage();
   ui.AppendToAgentMessage(agent_id, "running the command");
-  ui.AddToolCallMessage(BashCall{"ls", "/tmp", 0, false});
+  ui.AddToolCallMessage(BashCall{
+      .command = "ls", .output = "/tmp", .exit_code = 0, .is_error = false});
   ui.AppendToAgentMessage(agent_id, "all done");
 
   const auto& msg = ui.GetMessages()[0];

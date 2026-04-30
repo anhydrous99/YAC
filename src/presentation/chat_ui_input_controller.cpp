@@ -2,6 +2,8 @@
 
 #include "slash_command_menu.hpp"
 
+#include <utility>
+
 namespace yac::presentation {
 
 namespace {
@@ -148,7 +150,7 @@ bool ChatUiInputController::HandleSlashMenuEvent(const ftxui::Event& event) {
 void ChatUiInputController::DispatchSlashMenuSelection() {
   auto filtered = composer_->FilteredSlashIndices(slash_commands_->Commands());
   int selected = composer_->SlashMenuSelectedIndex();
-  if (selected < 0 || selected >= static_cast<int>(filtered.size())) {
+  if (selected < 0 || std::cmp_greater_equal(selected, filtered.size())) {
     composer_->DismissSlashMenu();
     return;
   }

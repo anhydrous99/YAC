@@ -284,10 +284,10 @@ void ConfigureChatUiCallbacks(
       presentation::theme::ReinitializeTheme(std::move(theme));
       if (config.sync_terminal_background) {
         if (theme_name == "system") {
-          terminal_bg_guard->reset();
+          (*terminal_bg_guard).reset();
         } else {
           const auto rgb = presentation::theme::CurrentCanvasRgb();
-          terminal_bg_guard->reset();
+          (*terminal_bg_guard).reset();
           if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
             terminal_bg_guard->emplace(rgb.r, rgb.g, rgb.b);
           }

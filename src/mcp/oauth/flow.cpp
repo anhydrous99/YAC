@@ -217,7 +217,7 @@ std::string OAuthFlow::BuildAuthorizationUrl(const OAuthConfig& config,
   }
 
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     state_ = State::AwaitingCallback;
     expected_state_ = state;
     state_validated_ = false;
@@ -226,7 +226,7 @@ std::string OAuthFlow::BuildAuthorizationUrl(const OAuthConfig& config,
 }
 
 void OAuthFlow::ValidateState(std::string_view callback_state) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (state_ != State::AwaitingCallback) {
     throw std::runtime_error(
         "OAuth state validation requested before authorization callback");
@@ -243,7 +243,7 @@ OAuthTokens OAuthFlow::ExchangeCode(const OAuthConfig& config,
                                     std::string_view redirect_uri,
                                     std::string_view resource) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (state_ != State::AwaitingCallback) {
       throw std::runtime_error(
           "OAuth authorization code exchange requested before authorization");
@@ -268,7 +268,7 @@ OAuthTokens OAuthFlow::ExchangeCode(const OAuthConfig& config,
 
   OAuthTokens tokens = PerformTokenRequest(config, form_fields);
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     state_ = State::Authorized;
   }
   return tokens;
@@ -303,7 +303,7 @@ OAuthTokens OAuthFlow::RefreshToken(const OAuthConfig& config,
   try {
     OAuthTokens tokens = PerformTokenRequest(config, form_fields);
     {
-      std::lock_guard completion_lock(mutex_);
+      std::scoped_lock completion_lock(mutex_);
       state_ = State::Authorized;
       refresh_result_ = tokens;
       refresh_in_progress_ = false;
@@ -312,7 +312,7 @@ OAuthTokens OAuthFlow::RefreshToken(const OAuthConfig& config,
     return tokens;
   } catch (const std::exception& error) {
     {
-      std::lock_guard completion_lock(mutex_);
+      std::scoped_lock completion_lock(mutex_);
       refresh_error_ = error.what();
       refresh_in_progress_ = false;
     }

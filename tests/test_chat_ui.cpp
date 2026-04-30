@@ -248,7 +248,7 @@ TEST_CASE("ChatUI schedules pending thinking animation ticks") {
 
   ui.SetUiTaskRunner([&](ChatUI::UiTask task) {
     {
-      std::lock_guard lock(mutex);
+      std::scoped_lock lock(mutex);
       tasks.push_back(std::move(task));
     }
     cv.notify_one();
@@ -269,7 +269,7 @@ TEST_CASE("ChatUI keeps thinking animation active after text streams") {
 
   ui.SetUiTaskRunner([&](ChatUI::UiTask task) {
     {
-      std::lock_guard lock(mutex);
+      std::scoped_lock lock(mutex);
       tasks.push_back(std::move(task));
     }
     cv.notify_one();

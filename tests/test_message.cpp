@@ -40,8 +40,10 @@ TEST_CASE("Default-constructed Message has non-zero created_at") {
 
 TEST_CASE("AppendText opens a new text segment after a tool segment") {
   Message msg{Sender::Agent, "first"};
-  msg.segments.emplace_back(ToolSegment{42, ::yac::tool_call::ToolCallBlock{},
-                                        MessageStatus::Complete});
+  msg.segments.emplace_back(
+      ToolSegment{.id = 42,
+                  .block = ::yac::tool_call::ToolCallBlock{},
+                  .status = MessageStatus::Complete});
   msg.AppendText("second");
 
   REQUIRE(msg.segments.size() == 3);
@@ -62,8 +64,10 @@ TEST_CASE("AppendText extends the trailing text segment when present") {
 
 TEST_CASE("CombinedText concatenates every text segment in order") {
   Message msg{Sender::Agent, "alpha"};
-  msg.segments.emplace_back(ToolSegment{1, ::yac::tool_call::ToolCallBlock{},
-                                        MessageStatus::Complete});
+  msg.segments.emplace_back(
+      ToolSegment{.id = 1,
+                  .block = ::yac::tool_call::ToolCallBlock{},
+                  .status = MessageStatus::Complete});
   msg.AppendText("beta");
 
   REQUIRE(msg.CombinedText() == "alphabeta");
@@ -71,10 +75,14 @@ TEST_CASE("CombinedText concatenates every text segment in order") {
 
 TEST_CASE("FindToolSegment locates a segment by id") {
   Message msg{Sender::Agent, ""};
-  msg.segments.emplace_back(ToolSegment{7, ::yac::tool_call::ToolCallBlock{},
-                                        MessageStatus::Complete});
-  msg.segments.emplace_back(ToolSegment{8, ::yac::tool_call::ToolCallBlock{},
-                                        MessageStatus::Complete});
+  msg.segments.emplace_back(
+      ToolSegment{.id = 7,
+                  .block = ::yac::tool_call::ToolCallBlock{},
+                  .status = MessageStatus::Complete});
+  msg.segments.emplace_back(
+      ToolSegment{.id = 8,
+                  .block = ::yac::tool_call::ToolCallBlock{},
+                  .status = MessageStatus::Complete});
 
   REQUIRE(msg.FindToolSegment(8) != nullptr);
   REQUIRE(msg.FindToolSegment(7)->id == 7);

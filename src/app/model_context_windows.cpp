@@ -49,8 +49,7 @@ int LookupContextWindow(std::string_view model_id) {
     return it->second;
   }
   for (const auto& [prefix, tokens] : PrefixTable()) {
-    if (key.size() >= prefix.size() &&
-        key.compare(0, prefix.size(), prefix) == 0) {
+    if (key.size() >= prefix.size() && key.starts_with(prefix)) {
       return tokens;
     }
   }

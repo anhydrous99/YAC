@@ -179,7 +179,7 @@ std::string TailLines(const std::string& text, size_t max_lines) {
     }
     end = newline;
   }
-  std::reverse(collected.begin(), collected.end());
+  std::ranges::reverse(collected);
   std::string result;
   for (const auto& line : collected) {
     if (!result.empty()) {

@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-#if defined(_WIN32)
+#ifdef _WIN32
 #include <windows.h>
 #elif defined(__APPLE__) || defined(__linux__)
 #include <array>
@@ -13,7 +13,7 @@
 
 namespace yac::mcp::oauth {
 
-#if defined(_WIN32)
+#ifdef _WIN32
 
 bool LaunchBrowser(std::string_view url) {
   const std::string url_str(url);
@@ -52,7 +52,7 @@ bool ForkExec(const char* cmd, std::string url_str) {
 }  // namespace
 
 bool LaunchBrowser(std::string_view url) {
-#if defined(__APPLE__)
+#ifdef __APPLE__
   return ForkExec("open", std::string(url));
 #else
   return ForkExec("xdg-open", std::string(url));

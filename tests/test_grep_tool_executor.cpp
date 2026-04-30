@@ -2,8 +2,6 @@
 #include "tool_call/grep_tool_executor.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
-#include <unistd.h>
-
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +9,7 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -105,8 +104,8 @@ TEST_CASE("GrepTool: rg not in PATH returns error with ripgrep message") {
 
   const char* env_path_raw = std::getenv("PATH");
   const std::optional<std::string> original_path =
-      env_path_raw ? std::make_optional<std::string>(env_path_raw)
-                   : std::nullopt;
+      (env_path_raw != nullptr) ? std::make_optional<std::string>(env_path_raw)
+                                : std::nullopt;
   setenv("PATH", "/nonexistent_path_for_test_only", 1);
 
   auto result = ExecuteGrepTool(MakeGrepRequest(R"({"pattern":"content"})"),

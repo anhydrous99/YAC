@@ -166,7 +166,7 @@ TEST_CASE("graceful") {
     const auto after_pids = GetFakeMcpServerPids();
     bool found_new = false;
     for (const auto& p : after_pids) {
-      if (before_pids.find(p) == before_pids.end()) {
+      if (!before_pids.contains(p)) {
         found_new = true;
         break;
       }

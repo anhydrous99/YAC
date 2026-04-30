@@ -20,12 +20,16 @@ void PushPattern(std::vector<std::string>& target, std::string pattern) {
 void ParseLine(std::string_view line_view, std::vector<std::string>& patterns,
                std::vector<std::string>& negations) {
   std::string line = ::yac::util::Trim(line_view);
-  if (line.empty() || line[0] == '#') return;
+  if (line.empty() || line[0] == '#') {
+    return;
+  }
 
   bool is_negation = line[0] == '!';
   if (is_negation) {
     line = line.substr(1);
-    if (line.empty()) return;
+    if (line.empty()) {
+      return;
+    }
   }
 
   auto& target = is_negation ? negations : patterns;
@@ -44,7 +48,7 @@ void ParseLine(std::string_view line_view, std::vector<std::string>& patterns,
 }
 
 const std::vector<std::string>& FallbackDenyList() {
-  static const std::vector<std::string> kList = {
+  static const std::vector<std::string> k_list = {
       ".git",        ".git/**",        "node_modules", "node_modules/**",
       "build",       "build/**",       "dist",         "dist/**",
       "__pycache__", "__pycache__/**", ".cache",       ".cache/**",
@@ -53,7 +57,7 @@ const std::vector<std::string>& FallbackDenyList() {
       ".nuxt",       ".nuxt/**",       "*.o",          "*.so",
       "*.dylib",     "*.exe",          "*.pyc",        "*.class",
   };
-  return kList;
+  return k_list;
 }
 
 }  // namespace
@@ -81,7 +85,9 @@ bool GitignoreFilter::ShouldSkip(std::string_view relative_path) const {
       break;
     }
   }
-  if (!matched) return false;
+  if (!matched) {
+    return false;
+  }
   for (const auto& neg : negations_) {
     if (fnmatch(neg.c_str(), path.c_str(), 0) == 0) {
       return false;

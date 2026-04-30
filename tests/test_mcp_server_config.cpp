@@ -81,7 +81,7 @@ TEST_CASE("rejects_duplicate_ids") {
   std::vector<ConfigIssue> issues;
   LoadSettingsFromToml(file.Path(), config, issues);
   const bool has_error =
-      std::any_of(issues.begin(), issues.end(), [](const ConfigIssue& issue) {
+      std::ranges::any_of(issues, [](const ConfigIssue& issue) {
         return issue.severity == ConfigIssueSeverity::Error &&
                (issue.message.find("duplicate") != std::string::npos ||
                 issue.message.find("Duplicate") != std::string::npos ||

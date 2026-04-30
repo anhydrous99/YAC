@@ -124,7 +124,7 @@ class TestHttpServer {
   }
 
   [[nodiscard]] std::vector<HttpRequest> Requests() const {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return requests_;
   }
 
@@ -224,7 +224,7 @@ class TestHttpServer {
       try {
         HttpRequest request = ReadRequest(client_fd);
         const std::size_t request_index = [&] {
-          std::lock_guard lock(mutex_);
+          std::scoped_lock lock(mutex_);
           requests_.push_back(request);
           return requests_.size() - 1;
         }();
@@ -265,7 +265,7 @@ TEST_CASE("uses_www_authenticate") {
       [&server_base_url](const HttpRequest& req, std::size_t) {
         if (req.path == "/resource-metadata") {
           const std::string body =
-              "{\"authorization_servers\":[\"" + server_base_url + "\"]}";
+              R"({"authorization_servers":[")" + server_base_url + "\"]}";
           return HttpResponse{
               .headers = {{"Content-Type", "application/json"}},
               .body = body,
@@ -328,7 +328,7 @@ TEST_CASE("fallback_chain") {
       [&server_base_url](const HttpRequest& req, std::size_t) {
         if (req.path == "/.well-known/oauth-protected-resource") {
           const std::string body =
-              "{\"authorization_servers\":[\"" + server_base_url + "\"]}";
+              R"({"authorization_servers":[")" + server_base_url + "\"]}";
           return HttpResponse{
               .headers = {{"Content-Type", "application/json"}},
               .body = body,

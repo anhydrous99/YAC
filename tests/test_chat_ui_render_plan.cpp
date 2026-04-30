@@ -13,10 +13,10 @@ using namespace yac::tool_call;
 TEST_CASE(
     "BuildMessageRenderPlan emits a 1:1 user/agent plan in original order") {
   std::vector<Message> messages;
-  messages.push_back(Message(Sender::User, "hi"));
-  messages.push_back(Message(Sender::Agent, "answer"));
-  messages.push_back(Message(Sender::User, "thanks"));
-  messages.push_back(Message(Sender::Agent, "you're welcome"));
+  messages.emplace_back(Sender::User, "hi");
+  messages.emplace_back(Sender::Agent, "answer");
+  messages.emplace_back(Sender::User, "thanks");
+  messages.emplace_back(Sender::Agent, "you're welcome");
 
   const auto plan = BuildMessageRenderPlan(messages);
 
@@ -35,8 +35,12 @@ TEST_CASE(
     "BuildMessageRenderPlan reflects an agent message regardless of its "
     "segment composition") {
   Message agent(Sender::Agent, "leading text");
-  agent.segments.emplace_back(
-      ToolSegment{99, BashCall{"ls", "", 0, false}, MessageStatus::Complete});
+  agent.segments.emplace_back(ToolSegment{
+      .id = 99,
+      .block =
+          BashCall{
+              .command = "ls", .output = "", .exit_code = 0, .is_error = false},
+      .status = MessageStatus::Complete});
   agent.AppendText("trailing");
 
   std::vector<Message> messages;

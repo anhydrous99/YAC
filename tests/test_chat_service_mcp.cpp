@@ -60,8 +60,8 @@ TEST_CASE("merge_builtins_and_mcp") {
     for (const auto& d : merged) {
       names.push_back(d.name);
     }
-    std::sort(names.begin(), names.end());
-    REQUIRE(std::adjacent_find(names.begin(), names.end()) == names.end());
+    std::ranges::sort(names);
+    REQUIRE(std::ranges::adjacent_find(names) == names.end());
   }
 
   SECTION("collision raises validation error") {

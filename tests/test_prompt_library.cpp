@@ -49,7 +49,7 @@ std::string ReadFile(const std::filesystem::path& path) {
 
 bool HasIssueContaining(const std::vector<ConfigIssue>& issues,
                         const std::string& text) {
-  return std::any_of(issues.begin(), issues.end(), [&](const auto& issue) {
+  return std::ranges::any_of(issues, [&](const auto& issue) {
     return issue.message.find(text) != std::string::npos ||
            issue.detail.find(text) != std::string::npos;
   });
@@ -94,9 +94,8 @@ TEST_CASE("LoadPromptLibrary does not overwrite existing seeded prompts") {
   REQUIRE(ReadFile(dir.Path() / "init.toml").find("custom $ARGUMENTS") !=
           std::string::npos);
   REQUIRE(std::filesystem::exists(dir.Path() / "review.toml"));
-  auto init =
-      std::find_if(result.prompts.begin(), result.prompts.end(),
-                   [](const auto& prompt) { return prompt.name == "init"; });
+  auto init = std::ranges::find_if(
+      result.prompts, [](const auto& prompt) { return prompt.name == "init"; });
   REQUIRE(init != result.prompts.end());
   REQUIRE(init->description == "Custom init");
   REQUIRE(init->prompt == "custom $ARGUMENTS");

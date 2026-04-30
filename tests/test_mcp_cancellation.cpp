@@ -2,6 +2,7 @@
 #include "mcp/protocol_constants.hpp"
 #include "mock_mcp_transport.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -57,9 +58,8 @@ TEST_CASE("emits_notification_on_cancel") {
   session.Stop();
 
   const auto& notifications = transport.RecordedNotifications();
-  const auto cancel_it = std::find_if(
-      notifications.begin(), notifications.end(),
-      [](const RecordedNotification& n) {
+  const auto cancel_it =
+      std::ranges::find_if(notifications, [](const RecordedNotification& n) {
         return n.method == std::string(pc::kMethodNotificationsCancelled);
       });
   REQUIRE(cancel_it != notifications.end());

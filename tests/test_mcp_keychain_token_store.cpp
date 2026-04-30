@@ -40,7 +40,7 @@ TEST_CASE("round_trip") {
 TEST_CASE("detection_when_unavailable") {
   const bool available = yac::mcp::KeychainTokenStore::IsKeychainAvailable();
 
-#if defined(__linux__)
+#ifdef __linux__
   if (!IsDbusAvailable()) {
     REQUIRE_FALSE(available);
   } else {

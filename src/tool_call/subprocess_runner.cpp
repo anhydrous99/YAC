@@ -4,9 +4,9 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <fcntl.h>
 #include <poll.h>
-#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -119,7 +119,7 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
       poll_ms = std::min(remaining_ms, 50);
     }
 
-    struct pollfd pfd {};
+    struct pollfd pfd{};
     pfd.fd = read_fd;
     pfd.events = POLLIN;
     const int ready = poll(&pfd, 1, poll_ms);

@@ -90,8 +90,7 @@ ToolExecutionResult BuildGrepResult(const std::string& pattern,
         continue;
       }
       std::string fp = p["data"]["path"].value("text", std::string{});
-      if (std::find(seen_files.begin(), seen_files.end(), fp) ==
-          seen_files.end()) {
+      if (std::ranges::find(seen_files, fp) == seen_files.end()) {
         seen_files.push_back(fp);
         file_count++;
       }

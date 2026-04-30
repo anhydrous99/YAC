@@ -87,7 +87,7 @@ void ChatSession::AddToolCallSegment(MessageId tool_id,
   size_t agent_index = EnsureAgentTurn();
   auto& agent_message = messages_[agent_index];
   agent_message.segments.emplace_back(
-      ToolSegment{tool_id, std::move(block), status});
+      ToolSegment{.id = tool_id, .block = std::move(block), .status = status});
   size_t segment_index = agent_message.segments.size() - 1;
   tool_location_[tool_id] = {agent_index, segment_index};
   tool_expanded_.emplace(tool_id, std::make_unique<bool>(false));
@@ -176,11 +176,10 @@ bool ChatSession::UpsertSubAgentToolCall(MessageId parent_id,
                        : tool_name;
   }
 
-  auto existing =
-      std::find_if(child_tools.begin(), child_tools.end(),
-                   [&tool_call_id](const SubAgentToolMessage& child) {
-                     return child.tool_call_id == tool_call_id;
-                   });
+  auto existing = std::ranges::find_if(
+      child_tools, [&tool_call_id](const SubAgentToolMessage& child) {
+        return child.tool_call_id == tool_call_id;
+      });
   if (existing != child_tools.end()) {
     existing->tool_name = std::move(tool_name);
     existing->block = std::move(block);
@@ -228,11 +227,11 @@ const std::vector<Message>& ChatSession::Messages() const {
 }
 
 bool ChatSession::HasMessage(MessageId id) const {
-  return id_to_index_.find(id) != id_to_index_.end();
+  return id_to_index_.contains(id);
 }
 
 bool ChatSession::HasToolSegment(MessageId tool_id) const {
-  return tool_location_.find(tool_id) != tool_location_.end();
+  return tool_location_.contains(tool_id);
 }
 
 const ToolSegment* ChatSession::FindToolSegment(MessageId tool_id) const {

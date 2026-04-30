@@ -6,6 +6,7 @@
 #include "ui_spacing.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -64,19 +65,19 @@ std::string PrettyPrintJson(std::string_view json, size_t max_bytes) {
         out += c;
         out += '\n';
         ++depth;
-        out.append(depth * 2, ' ');
+        out.append(static_cast<std::size_t>(depth * 2), ' ');
         break;
       case '}':
       case ']':
         out += '\n';
         --depth;
-        out.append(depth * 2, ' ');
+        out.append(static_cast<std::size_t>(depth * 2), ' ');
         out += c;
         break;
       case ',':
         out += c;
         out += '\n';
-        out.append(depth * 2, ' ');
+        out.append(static_cast<std::size_t>(depth * 2), ' ');
         break;
       case ':':
         out += ": ";

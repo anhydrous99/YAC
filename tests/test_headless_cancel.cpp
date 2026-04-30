@@ -39,7 +39,7 @@ std::shared_ptr<LambdaMockProvider> MakeSlowProvider() {
 
 struct CancelTestResult {
   std::string output;
-  std::chrono::milliseconds elapsed;
+  std::chrono::milliseconds elapsed{};
   bool was_cancelled = false;
 };
 

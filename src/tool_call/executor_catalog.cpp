@@ -201,7 +201,7 @@ PreparedToolCall PrepareGlobTool(const chat::ToolCallRequest& request,
 
 using PrepareRegistry = std::unordered_map<std::string_view, PrepareFn>;
 
-static const PrepareRegistry kPrepareRegistry = {
+const PrepareRegistry kPrepareRegistry = {
     {kFileWriteToolName, &PrepareFileWriteTool},
     {kFileReadToolName, &PrepareFileReadTool},
     {kListDirToolName, &PrepareListDirTool},
@@ -222,7 +222,7 @@ static const PrepareRegistry kPrepareRegistry = {
 }  // namespace
 
 bool HasToolExecutorPrepareRegistryEntry(std::string_view name) {
-  return kPrepareRegistry.find(name) != kPrepareRegistry.end();
+  return kPrepareRegistry.contains(name);
 }
 
 std::size_t ToolExecutorPrepareRegistrySize() {

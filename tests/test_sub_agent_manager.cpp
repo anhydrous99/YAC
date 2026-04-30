@@ -68,11 +68,10 @@ std::shared_ptr<LambdaMockProvider> MakeToolRequestProvider() {
         if (stop.stop_requested()) {
           return;
         }
-        const bool has_tool_result =
-            std::any_of(request.messages.begin(), request.messages.end(),
-                        [](const ChatMessage& message) {
-                          return message.role == ChatRole::Tool;
-                        });
+        const bool has_tool_result = std::ranges::any_of(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool;
+            });
         if (!has_tool_result) {
           sink(ChatEvent{ToolCallRequestedEvent{
               .tool_calls = {
@@ -123,7 +122,7 @@ struct SubAgentTestContext {
     manager = std::make_unique<SubAgentManager>(
         registry, executor, tool_approval,
         [this](ChatEvent event) {
-          std::lock_guard lock(events_mutex);
+          std::scoped_lock lock(events_mutex);
           events.push_back(std::move(event));
         },
         [this]() { return config; }, timeout_seconds);
@@ -145,7 +144,7 @@ struct SubAgentTestContext {
   SubAgentTestContext& operator=(SubAgentTestContext&&) = delete;
 
   std::vector<ChatEvent> SnapshotEvents() {
-    std::lock_guard lock(events_mutex);
+    std::scoped_lock lock(events_mutex);
     return events;
   }
 };
@@ -232,23 +231,22 @@ TEST_CASE("Background sub-agent reports tool progress") {
   REQUIRE(WaitUntil(
       [&ctx] {
         const auto events = ctx.SnapshotEvents();
-        return std::any_of(
-            events.begin(), events.end(), [](const ChatEvent& event) {
-              return event.Type() == ChatEventType::SubAgentCompleted;
-            });
+        return std::ranges::any_of(events, [](const ChatEvent& event) {
+          return event.Type() == ChatEventType::SubAgentCompleted;
+        });
       },
       std::chrono::milliseconds(1000)));
 
   const auto events = ctx.SnapshotEvents();
   const auto progress =
-      std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
+      std::ranges::find_if(events, [](const ChatEvent& event) {
         const auto* progress = event.As<SubAgentProgressEvent>();
         return progress != nullptr && progress->sub_agent_tool_count == 1;
       });
   REQUIRE(progress != events.end());
 
   const auto completion =
-      std::find_if(events.begin(), events.end(), [](const ChatEvent& event) {
+      std::ranges::find_if(events, [](const ChatEvent& event) {
         return event.Type() == ChatEventType::SubAgentCompleted;
       });
   REQUIRE(completion != events.end());

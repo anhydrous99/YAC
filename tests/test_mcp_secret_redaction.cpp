@@ -15,18 +15,24 @@ struct GoldenCase {
 };
 
 const std::array<GoldenCase, 6> kGoldenCases = {{
-    {"redacts_bearer_in_json", R"({"Authorization":"Bearer abc.def_123"})",
-     R"({"Authorization":"[REDACTED]"})"},
-    {"redacts_access_token_field", R"({"access_token":"at-123"})",
-     R"({"access_token":"[REDACTED]"})"},
-    {"redacts_oauth_code_in_url",
-     R"(https://example.test/callback?code=abc123&state=ok)",
-     R"(https://example.test/callback?code=[REDACTED]&state=ok)"},
-    {"redacts_bearer_plain_text", R"(Bearer xyz)", R"(Bearer [REDACTED])"},
-    {"keeps_non_secret_json", R"({"name":"alice","status":"ok"})",
-     R"({"name":"alice","status":"ok"})"},
-    {"does_not_redact_tokenize", R"({"tokenize":"keep me"})",
-     R"({"tokenize":"keep me"})"},
+    {.name = "redacts_bearer_in_json",
+     .input = R"({"Authorization":"Bearer abc.def_123"})",
+     .expected = R"({"Authorization":"[REDACTED]"})"},
+    {.name = "redacts_access_token_field",
+     .input = R"({"access_token":"at-123"})",
+     .expected = R"({"access_token":"[REDACTED]"})"},
+    {.name = "redacts_oauth_code_in_url",
+     .input = R"(https://example.test/callback?code=abc123&state=ok)",
+     .expected = R"(https://example.test/callback?code=[REDACTED]&state=ok)"},
+    {.name = "redacts_bearer_plain_text",
+     .input = R"(Bearer xyz)",
+     .expected = R"(Bearer [REDACTED])"},
+    {.name = "keeps_non_secret_json",
+     .input = R"({"name":"alice","status":"ok"})",
+     .expected = R"({"name":"alice","status":"ok"})"},
+    {.name = "does_not_redact_tokenize",
+     .input = R"({"tokenize":"keep me"})",
+     .expected = R"({"tokenize":"keep me"})"},
 }};
 
 }  // namespace

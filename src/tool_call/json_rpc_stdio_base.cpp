@@ -82,7 +82,7 @@ void JsonRpcStdioBase::Start(const std::string& command,
   write_fd_ = stdin_pipe[1];
   read_fd_ = stdout_pipe[0];
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     reader_alive_ = true;
     reader_death_reason_.clear();
     responses_.clear();
@@ -119,9 +119,8 @@ JsonRpcStdioBase::Json JsonRpcStdioBase::SendRequest(
                {"params", std::move(params)}});
 
   std::unique_lock lock(mutex_);
-  const bool ready = response_wake_.wait_for(lock, timeout, [&] {
-    return responses_.find(id) != responses_.end() || !reader_alive_;
-  });
+  const bool ready = response_wake_.wait_for(
+      lock, timeout, [&] { return responses_.contains(id) || !reader_alive_; });
   if (!ready) {
     throw std::runtime_error(std::string(error_label_) +
                              " request timed out: " + std::string(method));
@@ -148,7 +147,7 @@ void JsonRpcStdioBase::SendNotification(std::string_view method, Json params) {
 
 void JsonRpcStdioBase::FaultAllPending(std::string_view reason) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!reader_alive_) {
       return;
     }
@@ -201,7 +200,7 @@ void JsonRpcStdioBase::ProcessMessage(const std::string& body) {
   if (message.contains("id")) {
     const auto id = message["id"].get<int>();
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       responses_[id] = std::move(message);
     }
     response_wake_.notify_all();

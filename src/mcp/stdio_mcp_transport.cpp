@@ -141,7 +141,7 @@ StdioMcpTransport::~StdioMcpTransport() {
 }
 
 void StdioMcpTransport::Start() {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (status_ == TransportStatus::Ready ||
       status_ == TransportStatus::Starting) {
     return;
@@ -161,7 +161,7 @@ void StdioMcpTransport::Start() {
 void StdioMcpTransport::Stop(std::stop_token stop) {
   std::vector<std::int64_t> inflight_ids;
   {
-    std::lock_guard lock(request_mutex_);
+    std::scoped_lock lock(request_mutex_);
     inflight_ids.assign(inflight_request_ids_.begin(),
                         inflight_request_ids_.end());
   }
@@ -176,7 +176,7 @@ void StdioMcpTransport::Stop(std::stop_token stop) {
     std::this_thread::sleep_for(kCancellationFlushDelay);
   }
 
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (status_ == TransportStatus::Stopped) {
     return;
   }
@@ -196,7 +196,7 @@ Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
                                     std::stop_token stop) {
   const std::int64_t request_id = next_request_id_.fetch_add(1);
   {
-    std::lock_guard lock(request_mutex_);
+    std::scoped_lock lock(request_mutex_);
     inflight_request_ids_.insert(request_id);
     cancelled_request_ids_.erase(request_id);
   }
@@ -211,20 +211,20 @@ Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
   try {
     auto response = client_->SendRequestMessage(method, params, timeout);
     {
-      std::lock_guard lock(request_mutex_);
+      std::scoped_lock lock(request_mutex_);
       inflight_request_ids_.erase(request_id);
       cancelled_request_ids_.erase(request_id);
     }
     return response;
   } catch (...) {
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       if (status_ != TransportStatus::Stopped) {
         status_ = TransportStatus::Failed;
       }
     }
     {
-      std::lock_guard lock(request_mutex_);
+      std::scoped_lock lock(request_mutex_);
       inflight_request_ids_.erase(request_id);
       cancelled_request_ids_.erase(request_id);
     }
@@ -238,12 +238,12 @@ void StdioMcpTransport::SendNotification(std::string_view method,
 }
 
 void StdioMcpTransport::SetNotificationCallback(NotificationCallback callback) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   notification_callback_ = std::move(callback);
 }
 
 TransportStatus StdioMcpTransport::Status() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return status_;
 }
 
@@ -251,7 +251,7 @@ void StdioMcpTransport::HandleNotification(std::string_view method,
                                            const Json& params) {
   NotificationCallback callback;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     callback = notification_callback_;
   }
   if (callback) {
@@ -262,7 +262,7 @@ void StdioMcpTransport::HandleNotification(std::string_view method,
 void StdioMcpTransport::SendCancelledNotification(std::int64_t request_id,
                                                   std::string_view reason) {
   {
-    std::lock_guard lock(request_mutex_);
+    std::scoped_lock lock(request_mutex_);
     if (!inflight_request_ids_.contains(request_id) ||
         cancelled_request_ids_.contains(request_id)) {
       return;

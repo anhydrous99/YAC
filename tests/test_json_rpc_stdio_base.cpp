@@ -58,7 +58,7 @@ class ContentLengthClient : public JsonRpcStdioBase {
         break;
       }
       constexpr std::string_view kHeader = "Content-Length:";
-      if (line->rfind(kHeader, 0) == 0) {
+      if (line->starts_with(kHeader)) {
         try {
           const auto parsed =
               std::stoul(std::string(line->substr(kHeader.size())));

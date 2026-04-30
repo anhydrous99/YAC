@@ -92,8 +92,8 @@ std::string ToolCallRenderer::BuildGroupSummary(
       continue;
     }
     auto tag = DescribeToolCall(*block).tag;
-    auto it = std::find_if(tallies.begin(), tallies.end(),
-                           [&tag](const Tally& t) { return t.tag == tag; });
+    auto it = std::ranges::find_if(
+        tallies, [&tag](const Tally& t) { return t.tag == tag; });
     if (it == tallies.end()) {
       tallies.push_back({std::move(tag), 1});
     } else {
@@ -105,7 +105,7 @@ std::string ToolCallRenderer::BuildGroupSummary(
     return {};
   }
 
-  std::sort(tallies.begin(), tallies.end(), [](const Tally& a, const Tally& b) {
+  std::ranges::sort(tallies, [](const Tally& a, const Tally& b) {
     if (a.count != b.count) {
       return a.count > b.count;
     }

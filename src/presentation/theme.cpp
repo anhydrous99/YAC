@@ -126,7 +126,7 @@ Theme VividPreset() {
   t.chrome.body_text = ftxui::Color::RGB(220, 220, 240);
   t.chrome.prompt = ftxui::Color::RGB(0, 230, 255);
   t.chrome.canvas_bg = ftxui::Color::RGB(10, 10, 18);
-  t.chrome.canvas_bg_rgb = {10, 10, 18};
+  t.chrome.canvas_bg_rgb = {.r = 10, .g = 10, .b = 18};
 
   t.cards.user_bg = ftxui::Color::RGB(16, 16, 40);
   t.cards.agent_bg = ftxui::Color::RGB(10, 10, 18);
@@ -192,7 +192,7 @@ Theme SystemPreset() {
   t.chrome.body_text = ftxui::Color::Default;
   t.chrome.prompt = ftxui::Color::Blue;
   t.chrome.canvas_bg = ftxui::Color::Default;
-  t.chrome.canvas_bg_rgb = {0, 0, 0};  // Sentinel: skip OSC 11
+  t.chrome.canvas_bg_rgb = {.r = 0, .g = 0, .b = 0};  // Sentinel: skip OSC 11
 
   t.cards.user_bg = ftxui::Color::Default;
   t.cards.agent_bg = ftxui::Color::Default;

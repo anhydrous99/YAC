@@ -107,8 +107,7 @@ TEST_CASE("cold_start_happy_path") {
   REQUIRE(!states.empty());
   REQUIRE(states.front() == ServerState::Disconnected);
   REQUIRE(states.back() == ServerState::Ready);
-  REQUIRE(std::find(states.begin(), states.end(), ServerState::Initializing) !=
-          states.end());
+  REQUIRE(std::ranges::find(states, ServerState::Initializing) != states.end());
   REQUIRE(session.Tools()->size() == 2);
   REQUIRE(session.Resources()->empty());
   REQUIRE(transport.RecordedNotifications().size() == 1);
@@ -425,7 +424,7 @@ TEST_CASE("reconnect_backoff_schedule") {
     (void)timeout;
     (void)stop;
     if (method == pc::kMethodInitialize) {
-      std::lock_guard lock(times_mutex);
+      std::scoped_lock lock(times_mutex);
       attempt_times.push_back(std::chrono::steady_clock::now());
       ++attempt_count;
       throw std::runtime_error("connection refused");
@@ -433,8 +432,8 @@ TEST_CASE("reconnect_backoff_schedule") {
     throw std::runtime_error("unexpected request");
   });
 
-  const auto kInitialDelay = std::chrono::milliseconds{100};
-  McpServerSession session(MakeConfig(), &transport, nullptr, kInitialDelay);
+  const auto k_initial_delay = std::chrono::milliseconds{100};
+  McpServerSession session(MakeConfig(), &transport, nullptr, k_initial_delay);
   session.Start();
 
   REQUIRE(
@@ -442,7 +441,7 @@ TEST_CASE("reconnect_backoff_schedule") {
   REQUIRE(attempt_count == pc::kReconnectMaxAttempts);
   REQUIRE(static_cast<int>(attempt_times.size()) == pc::kReconnectMaxAttempts);
 
-  auto expected_delay = kInitialDelay;
+  auto expected_delay = k_initial_delay;
   for (size_t i = 1; i < attempt_times.size(); ++i) {
     const auto actual_ms =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -478,8 +477,8 @@ TEST_CASE("cancel_aborts_backoff") {
     throw std::runtime_error("unexpected request");
   });
 
-  const auto kLongDelay = std::chrono::milliseconds{5000};
-  McpServerSession session(MakeConfig(), &transport, nullptr, kLongDelay);
+  const auto k_long_delay = std::chrono::milliseconds{5000};
+  McpServerSession session(MakeConfig(), &transport, nullptr, k_long_delay);
   session.Start();
 
   REQUIRE(WaitUntil(

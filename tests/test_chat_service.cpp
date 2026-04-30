@@ -91,12 +91,11 @@ std::shared_ptr<LambdaMockProvider> MakeToolRoundProvider() {
           return;
         }
         // Branch on whether the prior round already returned a tool result.
-        const bool has_tool_result =
-            std::any_of(request.messages.begin(), request.messages.end(),
-                        [](const ChatMessage& message) {
-                          return message.role == ChatRole::Tool &&
-                                 message.tool_call_id == "tool_1";
-                        });
+        const bool has_tool_result = std::ranges::any_of(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == "tool_1";
+            });
         if (!has_tool_result) {
           REQUIRE_FALSE(request.tools.empty());
           sink(ChatEvent{ToolCallRequestedEvent{
@@ -148,13 +147,13 @@ class BlockingFakeProvider : public LanguageModelProvider {
   }
 
   void Release() {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     release_ = true;
     cv_.notify_one();
   }
 
   [[nodiscard]] std::string LastRequestModel() const {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return request_model_;
   }
 
@@ -174,7 +173,7 @@ class CancellableFakeProvider : public LanguageModelProvider {
                       [[maybe_unused]] ChatEventSink sink,
                       std::stop_token stop_token) override {
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       started_ = true;
       cv_.notify_one();
     }
@@ -183,7 +182,7 @@ class CancellableFakeProvider : public LanguageModelProvider {
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     stop_observed_ = true;
     cv_.notify_one();
   }
@@ -242,9 +241,8 @@ std::shared_ptr<LambdaMockProvider> MakeApprovalRejectionProvider() {
                       R"({"filepath":"notes.txt","content":"denied\n"})"}}}});
           return;
         }
-        REQUIRE(std::any_of(
-            request.messages.begin(), request.messages.end(),
-            [](const ChatMessage& message) {
+        REQUIRE(std::ranges::any_of(
+            request.messages, [](const ChatMessage& message) {
               return message.role == ChatRole::Tool &&
                      message.tool_call_id == "tool_1" &&
                      message.content ==
@@ -272,14 +270,13 @@ std::shared_ptr<LambdaMockProvider> MakeToolErrorProvider() {
                                   .arguments_json = R"({"path":"../"})"}}}});
           return;
         }
-        REQUIRE(std::any_of(request.messages.begin(), request.messages.end(),
-                            [](const ChatMessage& message) {
-                              return message.role == ChatRole::Tool &&
-                                     message.tool_call_id == "tool_1" &&
-                                     message.content.find(
-                                         "Path is outside the workspace") !=
-                                         std::string::npos;
-                            }));
+        REQUIRE(std::ranges::any_of(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == "tool_1" &&
+                     message.content.find("Path is outside the workspace") !=
+                         std::string::npos;
+            }));
         sink(ChatEvent{TextDeltaEvent{.text = "recovered"}});
       });
 }
@@ -332,7 +329,7 @@ std::vector<ChatEvent> CollectEvents(ChatService& service,
   std::vector<ChatEvent> events;
   bool finished = false;
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     events.push_back(std::move(event));
     if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
@@ -365,14 +362,14 @@ ChatService MakeService(
 }
 
 bool HasEvent(const std::vector<ChatEvent>& events, ChatEventType type) {
-  return std::any_of(events.begin(), events.end(),
-                     [type](const auto& e) { return e.Type() == type; });
+  return std::ranges::any_of(
+      events, [type](const auto& e) { return e.Type() == type; });
 }
 
 const ChatEvent& FindEvent(const std::vector<ChatEvent>& events,
                            ChatEventType type) {
-  auto it = std::find_if(events.begin(), events.end(),
-                         [type](const auto& e) { return e.Type() == type; });
+  auto it = std::ranges::find_if(
+      events, [type](const auto& e) { return e.Type() == type; });
   REQUIRE(it != events.end());
   return *it;
 }
@@ -430,7 +427,7 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
   REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
 
   const auto history = service.History();
-  REQUIRE(std::any_of(history.begin(), history.end(), [](const auto& message) {
+  REQUIRE(std::ranges::any_of(history, [](const auto& message) {
     return message.role == ChatRole::Tool && message.tool_call_id == "tool_1" &&
            message.content.find("note.txt") != std::string::npos;
   }));
@@ -466,9 +463,9 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
 
   REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
 
-  const auto error_it = std::find_if(
-      events.begin(), events.end(),
-      [](const ChatEvent& e) { return e.Type() == ChatEventType::Error; });
+  const auto error_it = std::ranges::find_if(events, [](const ChatEvent& e) {
+    return e.Type() == ChatEventType::Error;
+  });
   REQUIRE(error_it != events.end());
   const auto* err = error_it->As<ErrorEvent>();
   REQUIRE(err != nullptr);
@@ -499,7 +496,7 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
   bool finished = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
       approval_id = approval->approval_id;
       approval_requested = true;
@@ -555,7 +552,7 @@ TEST_CASE("ChatService sequences approval requests one tool at a time") {
   bool finished = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mutex);
+    std::scoped_lock lock(mutex);
     if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
       approval_ids.push_back(approval->approval_id);
       cv.notify_all();
@@ -647,7 +644,7 @@ TEST_CASE("ChatService emits error for missing provider") {
   bool done = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(event);
     if (event.Type() == ChatEventType::Finished) {
       done = true;
@@ -716,7 +713,7 @@ TEST_CASE("ChatService SetModel updates future requests and emits event") {
   bool finished = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(std::move(event));
     if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
@@ -750,7 +747,7 @@ TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
   bool finished = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(std::move(event));
     if (events.back().Type() == ChatEventType::Finished) {
       finished = true;
@@ -782,7 +779,7 @@ TEST_CASE("ChatService cancellation requests provider stop token") {
   bool cancelled = false;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(std::move(event));
     const auto* status = events.back().As<MessageStatusChangedEvent>();
     if (status != nullptr && status->status == ChatMessageStatus::Cancelled) {
@@ -809,7 +806,7 @@ TEST_CASE("ChatService queues prompts while active") {
   std::mutex mtx;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(std::move(event));
   });
 
@@ -823,11 +820,10 @@ TEST_CASE("ChatService queues prompts while active") {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  std::lock_guard lock(mtx);
-  bool has_queued =
-      std::any_of(events.begin(), events.end(), [](const ChatEvent& e) {
-        return e.Type() == ChatEventType::UserMessageQueued;
-      });
+  std::scoped_lock lock(mtx);
+  bool has_queued = std::ranges::any_of(events, [](const ChatEvent& e) {
+    return e.Type() == ChatEventType::UserMessageQueued;
+  });
   REQUIRE(has_queued);
 }
 
@@ -838,7 +834,7 @@ TEST_CASE("ChatService ResetConversation clears history and pending") {
   std::mutex mtx;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     events.push_back(std::move(event));
   });
 
@@ -849,7 +845,7 @@ TEST_CASE("ChatService ResetConversation clears history and pending") {
   REQUIRE(service.History().empty());
   REQUIRE_FALSE(service.IsBusy());
 
-  std::lock_guard lock(mtx);
+  std::scoped_lock lock(mtx);
   REQUIRE(HasEvent(events, ChatEventType::ConversationCleared));
 }
 
@@ -862,7 +858,7 @@ TEST_CASE("ChatService assigns unique message IDs") {
   int finished_count = 0;
 
   service.SetEventCallback([&](ChatEvent event) {
-    std::lock_guard lock(mtx);
+    std::scoped_lock lock(mtx);
     if (const auto* queued = event.As<UserMessageQueuedEvent>()) {
       ids.push_back(queued->message_id);
     }

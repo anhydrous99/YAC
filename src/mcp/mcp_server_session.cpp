@@ -65,7 +65,7 @@ void McpServerSession::Start() {
     return;
   }
 
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (worker_.joinable()) {
     return;
   }
@@ -100,7 +100,7 @@ void McpServerSession::Stop() {
     transport_->SendNotification(pc::kMethodNotificationsCancelled,
                                  cancel_params);
     {
-      std::lock_guard<std::mutex> lock(cancelled_mutex_);
+      std::scoped_lock lock(cancelled_mutex_);
       cancelled_ids_[inflight_id] =
           std::chrono::steady_clock::now() + kCancelledIdTtl;
     }
@@ -116,24 +116,24 @@ void McpServerSession::Stop() {
 }
 
 ServerState McpServerSession::State() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return state_;
 }
 
 std::string McpServerSession::LastError() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return last_error_;
 }
 
 std::shared_ptr<const std::vector<ToolDefinition>> McpServerSession::Tools()
     const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return tools_;
 }
 
 std::shared_ptr<const std::vector<ResourceDescriptor>>
 McpServerSession::Resources() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return resources_;
 }
 
@@ -149,7 +149,7 @@ void McpServerSession::RefreshIfDirty() {
   if (tools_dirty_.exchange(false)) {
     try {
       auto refreshed_tools = FetchTools(std::stop_token{});
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       tools_ = std::make_shared<const std::vector<ToolDefinition>>(
           std::move(refreshed_tools));
     } catch (...) {
@@ -160,7 +160,7 @@ void McpServerSession::RefreshIfDirty() {
   if (resources_dirty_.exchange(false)) {
     try {
       auto refreshed_resources = FetchResources(std::stop_token{});
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       resources_ = std::make_shared<const std::vector<ResourceDescriptor>>(
           std::move(refreshed_resources));
     } catch (...) {
@@ -186,12 +186,11 @@ void McpServerSession::BackoffSleep(std::stop_token stop_token,
           ? std::uniform_int_distribution<long long>{0LL, jitter_max}(rng_)
           : 0LL);
   // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
-  std::stop_callback wake_on_stop(
-      stop_token, [this] { reconnect_cv_.notify_all(); });
+  std::stop_callback wake_on_stop(stop_token,
+                                  [this] { reconnect_cv_.notify_all(); });
   std::unique_lock<std::mutex> lock(reconnect_mutex_);
-  (void)reconnect_cv_.wait_for(lock, delay + jitter, [&] {
-    return stop_token.stop_requested();
-  });
+  (void)reconnect_cv_.wait_for(lock, delay + jitter,
+                               [&] { return stop_token.stop_requested(); });
 }
 
 void McpServerSession::Run(std::stop_token stop_token) {
@@ -254,12 +253,12 @@ void McpServerSession::HandleNotification(std::string_view method,
 }
 
 void McpServerSession::SetState(ServerState state) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   state_ = state;
 }
 
 void McpServerSession::SetFailure(std::string message) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   last_error_ = std::move(message);
   state_ = ServerState::Failed;
 }
@@ -286,7 +285,7 @@ Json McpServerSession::SendTracked(std::string_view method, const Json& params,
     throw std::runtime_error("request " + std::to_string(id) + " cancelled");
   }
   {
-    std::lock_guard<std::mutex> lock(cancelled_mutex_);
+    std::scoped_lock lock(cancelled_mutex_);
     PurgeStaleCancelledIds();
     if (cancelled_ids_.contains(id)) {
       if (debug_log_ != nullptr) {
@@ -311,7 +310,7 @@ void McpServerSession::PurgeStaleCancelledIds() {
   }
 }
 
-InitializeRequest McpServerSession::BuildInitializeRequest() const {
+InitializeRequest McpServerSession::BuildInitializeRequest() {
   return InitializeRequest{
       .protocol_version = std::string(pc::kMcpProtocolVersion),
       .capabilities = ClientCapabilities{},
@@ -331,7 +330,7 @@ void McpServerSession::PerformHandshake(std::stop_token stop_token) {
   ValidateProtocolVersion(response.protocol_version);
 
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     capabilities_ = response.capabilities;
   }
 
@@ -339,13 +338,13 @@ void McpServerSession::PerformHandshake(std::stop_token stop_token) {
 
   if (response.capabilities.has_tools) {
     auto fetched_tools = FetchTools(stop_token);
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     tools_ = std::make_shared<const std::vector<ToolDefinition>>(
         std::move(fetched_tools));
   }
   if (response.capabilities.has_resources) {
     auto fetched_resources = FetchResources(stop_token);
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     resources_ = std::make_shared<const std::vector<ResourceDescriptor>>(
         std::move(fetched_resources));
   }

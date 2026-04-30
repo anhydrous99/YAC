@@ -118,8 +118,8 @@ const T* AsBlock(const BlockNode& node) {
 }
 
 template <typename Visitor>
-auto VisitBlock(const BlockNode& node,
-                Visitor&& v) -> decltype(v(std::declval<const Paragraph&>())) {
+auto VisitBlock(const BlockNode& node, Visitor&& v)
+    -> decltype(v(std::declval<const Paragraph&>())) {
   return std::visit(
       [&](const auto& alt) -> decltype(v(std::declval<const Paragraph&>())) {
         using AT = std::decay_t<decltype(alt)>;

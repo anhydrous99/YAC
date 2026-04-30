@@ -129,7 +129,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
   }
 
   {
-    std::lock_guard lock(*history_mutex_);
+    std::scoped_lock lock(*history_mutex_);
     ChatServiceHistory(*history_).AppendActiveUserMessage(prompt_id,
                                                           prompt_content);
   }
@@ -230,7 +230,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
     }
 
     {
-      std::lock_guard lock(*history_mutex_);
+      std::scoped_lock lock(*history_mutex_);
       ChatServiceHistory(*history_).AppendAssistantToolRound(
           assistant_id, round_text, requested_tools);
     }
@@ -251,7 +251,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
   }
 
   if (!visible_assistant_text.empty()) {
-    std::lock_guard lock(*history_mutex_);
+    std::scoped_lock lock(*history_mutex_);
     ChatServiceHistory(*history_).AppendFinalAssistantMessage(
         assistant_id, visible_assistant_text);
   }
@@ -264,10 +264,10 @@ void ChatServicePromptProcessor::ProcessPrompt(
 
 ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
     const ChatServiceRequestBuilder& request_builder) const {
-  std::lock_guard lock(*history_mutex_);
+  std::scoped_lock lock(*history_mutex_);
   auto tools = ::yac::tool_call::ToolExecutor::Definitions();
   if (chat_service_mcp_ != nullptr) {
-    tools = chat_service_mcp_->MergeBuiltInsAndMcp(
+    tools = yac::chat::internal::ChatServiceMcp::MergeBuiltInsAndMcp(
         tools, chat_service_mcp_->BuildToolCatalogSnapshot());
   }
   auto mode_excluded =
@@ -388,7 +388,7 @@ void ChatServicePromptProcessor::RunToolRound(
                                             .tool_call = result.block,
                                             .status = done_status}});
     {
-      std::lock_guard lock(*history_mutex_);
+      std::scoped_lock lock(*history_mutex_);
       ChatServiceHistory(*history_).AppendToolResult(tool_message_id,
                                                      tool_request, result);
     }

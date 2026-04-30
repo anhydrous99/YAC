@@ -35,15 +35,14 @@ std::shared_ptr<LambdaMockProvider> MakeMcpToolRequestProvider(
         if (stop.stop_requested()) {
           return;
         }
-        const bool has_tool_result = std::any_of(
-            request.messages.begin(), request.messages.end(),
+        const bool has_tool_result = std::ranges::any_of(
+            request.messages,
             [](const ChatMessage& msg) { return msg.role == ChatRole::Tool; });
         if (!has_tool_result) {
-          *saw_mcp_tool_in_catalog =
-              std::any_of(request.tools.begin(), request.tools.end(),
-                          [&mcp_tool_name](const ToolDefinition& def) {
-                            return def.name == mcp_tool_name;
-                          });
+          *saw_mcp_tool_in_catalog = std::ranges::any_of(
+              request.tools, [&mcp_tool_name](const ToolDefinition& def) {
+                return def.name == mcp_tool_name;
+              });
           sink(ChatEvent{ToolCallRequestedEvent{
               .tool_calls = {
                   ToolCallRequest{.id = "mcp-call-1",
@@ -84,7 +83,7 @@ struct SubAgentMcpTestContext {
     manager = std::make_unique<SubAgentManager>(
         registry, executor, tool_approval,
         [this](ChatEvent event) {
-          std::lock_guard lock(events_mutex);
+          std::scoped_lock lock(events_mutex);
           events.push_back(std::move(event));
         },
         [this]() { return config; });
@@ -101,7 +100,7 @@ struct SubAgentMcpTestContext {
   SubAgentMcpTestContext(SubAgentMcpTestContext&&) = delete;
   SubAgentMcpTestContext& operator=(SubAgentMcpTestContext&&) = delete;
 
-  std::string SpawnFg(const std::string& task) {
+  std::string SpawnFg(const std::string& task) const {
     return manager->SpawnForeground(task, 1, "tc-fg");
   }
 };

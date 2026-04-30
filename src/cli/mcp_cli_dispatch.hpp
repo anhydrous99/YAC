@@ -10,7 +10,7 @@ namespace yac::cli {
 
 struct McpCliOptions {
   std::filesystem::path settings_path;  // empty → ~/.yac/settings.toml
-  std::shared_ptr<mcp::ITokenStore> token_store;  // null → auto-detect
+  std::shared_ptr<mcp::ITokenStore> token_store;          // null → auto-detect
   McpAdminCommand::ConnectivityTestFn connectivity_test;  // null → default
   std::ostream* out = nullptr;                            // null → std::cout
   std::ostream* err = nullptr;                            // null → std::cerr

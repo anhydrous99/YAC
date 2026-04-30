@@ -12,8 +12,8 @@ using namespace yac::tool_call;
 
 TEST_CASE("sub_agent tool appears in definitions") {
   auto defs = ToolExecutor::Definitions();
-  auto it = std::find_if(defs.begin(), defs.end(),
-                         [](const auto& d) { return d.name == "sub_agent"; });
+  auto it = std::ranges::find_if(
+      defs, [](const auto& d) { return d.name == "sub_agent"; });
   REQUIRE(it != defs.end());
   REQUIRE(it->description.find("sub-agent") != std::string::npos);
 }

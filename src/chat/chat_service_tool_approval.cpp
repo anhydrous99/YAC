@@ -5,7 +5,7 @@ namespace yac::chat::internal {
 std::string ChatServiceToolApproval::BeginPendingApproval() {
   auto approval_id = "tool-" + std::to_string(next_approval_id_.fetch_add(1));
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     pending_ = PendingApproval{.id = approval_id};
   }
   return approval_id;
@@ -14,7 +14,7 @@ std::string ChatServiceToolApproval::BeginPendingApproval() {
 void ChatServiceToolApproval::Resolve(const std::string& approval_id,
                                       bool approved) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!pending_.has_value() || pending_->id != approval_id) {
       return;
     }
@@ -26,7 +26,7 @@ void ChatServiceToolApproval::Resolve(const std::string& approval_id,
 void ChatServiceToolApproval::ResolveWithResponse(
     const std::string& approval_id, bool approved, std::string response) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!pending_.has_value() || pending_->id != approval_id) {
       return;
     }
@@ -38,7 +38,7 @@ void ChatServiceToolApproval::ResolveWithResponse(
 
 void ChatServiceToolApproval::CancelPending() {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (!pending_.has_value()) {
       return;
     }

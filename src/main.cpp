@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
       std::string_view arg(argv[i]);
       if (arg == "--auto-approve") {
         auto_approve = true;
-      } else if (arg.substr(0, 18) == "--cancel-after-ms=") {
+      } else if (arg.starts_with("--cancel-after-ms=")) {
         try {
           cancel_after_ms = std::stoi(std::string(arg.substr(18)));
         } catch (...) {

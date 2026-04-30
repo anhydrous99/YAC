@@ -60,8 +60,7 @@ bool SlashCommandRegistry::TryDispatch(const std::string& input) const {
 
   for (const auto& command : commands_) {
     const auto alias_match =
-        std::find(command.aliases.begin(), command.aliases.end(), name) !=
-        command.aliases.end();
+        std::ranges::find(command.aliases, name) != command.aliases.end();
 
     if (command.name == name || alias_match) {
       if (command.arguments_handler) {

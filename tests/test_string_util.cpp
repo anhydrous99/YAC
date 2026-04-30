@@ -18,9 +18,9 @@ TEST_CASE("Trim removes leading and trailing whitespace") {
 }
 
 TEST_CASE("Trim returns empty for whitespace-only input") {
-  REQUIRE(Trim("   ") == "");
-  REQUIRE(Trim("\t\r\n\v\f") == "");
-  REQUIRE(Trim("") == "");
+  REQUIRE(Trim("   ").empty());
+  REQUIRE(Trim("\t\r\n\v\f").empty());
+  REQUIRE(Trim("").empty());
 }
 
 TEST_CASE("TrimLeft only removes leading whitespace") {
@@ -44,7 +44,7 @@ TEST_CASE("ToLowerAscii lowercases ASCII letters") {
   REQUIRE(ToLowerAscii("Hello World") == "hello world");
   REQUIRE(ToLowerAscii("ABCDE") == "abcde");
   REQUIRE(ToLowerAscii("123 ABC") == "123 abc");
-  REQUIRE(ToLowerAscii("") == "");
+  REQUIRE(ToLowerAscii("").empty());
 }
 
 TEST_CASE("SplitLines splits on newline preserving content") {
@@ -58,7 +58,7 @@ TEST_CASE("SplitLines splits on newline preserving content") {
 TEST_CASE("SplitLines yields single empty line for empty input") {
   auto lines = SplitLines("");
   REQUIRE(lines.size() == 1);
-  REQUIRE(lines[0] == "");
+  REQUIRE(lines[0].empty());
 }
 
 TEST_CASE("SplitLines drops trailing newline") {

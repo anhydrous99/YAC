@@ -179,7 +179,7 @@ void McpDebugLog::EnsureParentDirectories() {
 }
 
 void McpDebugLog::WriteLine(std::string_view line) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureParentDirectories();
   std::size_t written = 0;
   while (written < line.size()) {

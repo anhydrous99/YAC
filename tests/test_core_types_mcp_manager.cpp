@@ -10,7 +10,7 @@ TEST_CASE("imcp_manager_compiles") {
 
   McpToolCatalogSnapshot snapshot;
   REQUIRE(snapshot.revision_id == 0);
-  REQUIRE(snapshot.tools.size() == 0);
+  REQUIRE(snapshot.tools.empty());
   REQUIRE(snapshot.name_to_server_tool.empty());
   REQUIRE(snapshot.approval_policy.empty());
 
@@ -20,7 +20,7 @@ TEST_CASE("imcp_manager_compiles") {
 
   McpResourceContent content;
   REQUIRE(content.uri.empty());
-  REQUIRE(content.blob.size() == 0);
+  REQUIRE(content.blob.empty());
   REQUIRE_FALSE(content.is_truncated);
   REQUIRE(content.total_bytes == 0);
 
@@ -32,6 +32,6 @@ TEST_CASE("imcp_manager_compiles") {
 
 TEST_CASE("no_leaky_includes") {
   McpToolCatalogSnapshot snapshot;
-  REQUIRE(snapshot.tools.size() == 0);
+  REQUIRE(snapshot.tools.empty());
   REQUIRE(snapshot.approval_policy.empty());
 }

@@ -126,7 +126,7 @@ class TestHttpServer {
   }
 
   [[nodiscard]] std::vector<HttpRequest> Requests() const {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return requests_;
   }
 
@@ -226,7 +226,7 @@ class TestHttpServer {
       try {
         HttpRequest request = ReadRequest(client_fd);
         const std::size_t request_index = [&] {
-          std::lock_guard lock(mutex_);
+          std::scoped_lock lock(mutex_);
           requests_.push_back(request);
           return requests_.size() - 1;
         }();

@@ -64,9 +64,10 @@ class McpServerSession {
   void HandleNotification(std::string_view method, const Json& params);
   void SetState(ServerState state);
   void SetFailure(std::string message);
-  [[nodiscard]] InitializeRequest BuildInitializeRequest() const;
+  [[nodiscard]] static InitializeRequest BuildInitializeRequest();
   void PerformHandshake(std::stop_token stop_token);
-  void ValidateProtocolVersion(const std::string& server_protocol_version);
+  static void ValidateProtocolVersion(
+      const std::string& server_protocol_version);
   [[nodiscard]] std::vector<ToolDefinition> FetchTools(
       std::stop_token stop_token);
   [[nodiscard]] std::vector<ResourceDescriptor> FetchResources(

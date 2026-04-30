@@ -65,7 +65,7 @@ class OAuthFlow {
     Authorized,
   };
 
-  [[nodiscard]] OAuthTokens PerformTokenRequest(
+  [[nodiscard]] static OAuthTokens PerformTokenRequest(
       const OAuthConfig& config,
       const std::vector<std::pair<std::string, std::string>>& form_fields);
 

@@ -56,8 +56,8 @@ ftxui::Color PercentColor(double percent) {
 }
 
 bool IsWhitespaceOnly(const std::string& value) {
-  return std::all_of(value.begin(), value.end(),
-                     [](unsigned char ch) { return std::isspace(ch) != 0; });
+  return std::ranges::all_of(
+      value, [](unsigned char ch) { return std::isspace(ch) != 0; });
 }
 
 std::string SeverityLabel(UiSeverity severity) {

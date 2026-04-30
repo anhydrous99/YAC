@@ -202,7 +202,7 @@ class InlineTokenizer {
       }
     }
     FlushText();
-    nodes_.emplace_back(Link{body, body});
+    nodes_.emplace_back(Link{.text = body, .url = body});
     pos_ = end + 1;
     return true;
   }
@@ -228,7 +228,7 @@ class InlineTokenizer {
         text_.substr(bracket_start + 1, bracket_end - bracket_start - 1));
     std::string url(text_.substr(paren_start + 1, paren_end - paren_start - 1));
     FlushText();
-    nodes_.emplace_back(Image{std::move(alt), std::move(url)});
+    nodes_.emplace_back(Image{.alt = std::move(alt), .url = std::move(url)});
     pos_ = paren_end + 1;
     return true;
   }
@@ -249,7 +249,7 @@ class InlineTokenizer {
     std::string label(text_.substr(pos_ + 1, bracket_end - pos_ - 1));
     std::string url(text_.substr(paren_start + 1, paren_end - paren_start - 1));
     FlushText();
-    nodes_.emplace_back(Link{std::move(label), std::move(url)});
+    nodes_.emplace_back(Link{.text = std::move(label), .url = std::move(url)});
     pos_ = paren_end + 1;
     return true;
   }
@@ -494,7 +494,8 @@ class InlineTokenizer {
     std::string url(text_.substr(pos_, end - pos_));
     std::string display = url;
     FlushText();
-    nodes_.emplace_back(Link{std::move(display), std::move(url)});
+    nodes_.emplace_back(
+        Link{.text = std::move(display), .url = std::move(url)});
     pos_ = end;
     return true;
   }

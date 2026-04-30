@@ -26,7 +26,9 @@ TEST_CASE(
           .tool_call_id = "approval-1",
           .tool_name = "file_read",
           .approval_id = "request-1",
-          .tool_call = FileReadCall{"README.md", 12, "intro"}}},
+          .tool_call = FileReadCall{.filepath = "README.md",
+                                    .lines_loaded = 12,
+                                    .excerpt = "intro"}}},
       completed_tool_count);
 
   REQUIRE(adapted.has_value());
@@ -51,11 +53,15 @@ TEST_CASE(
   SECTION("tool started") {
     auto adapted = AdaptSubAgentPromptEvent(
         context,
-        ChatEvent{ToolCallStartedEvent{
-            .message_id = 11,
-            .tool_name = "list_dir",
-            .tool_call = ListDirCall{"src", {}, false, false, ""},
-            .status = ChatMessageStatus::Active}},
+        ChatEvent{
+            ToolCallStartedEvent{.message_id = 11,
+                                 .tool_name = "list_dir",
+                                 .tool_call = ListDirCall{.path = "src",
+                                                          .entries = {},
+                                                          .truncated = false,
+                                                          .is_error = false,
+                                                          .error = ""},
+                                 .status = ChatMessageStatus::Active}},
         completed_tool_count);
 
     REQUIRE(adapted.has_value());
@@ -74,12 +80,14 @@ TEST_CASE(
   SECTION("tool completed") {
     auto adapted = AdaptSubAgentPromptEvent(
         context,
-        ChatEvent{ToolCallDoneEvent{
-            .message_id = 12,
-            .tool_call_id = "call-12",
-            .tool_name = "file_read",
-            .tool_call = FileReadCall{"README.md", 20, "docs"},
-            .status = ChatMessageStatus::Complete}},
+        ChatEvent{
+            ToolCallDoneEvent{.message_id = 12,
+                              .tool_call_id = "call-12",
+                              .tool_name = "file_read",
+                              .tool_call = FileReadCall{.filepath = "README.md",
+                                                        .lines_loaded = 20,
+                                                        .excerpt = "docs"},
+                              .status = ChatMessageStatus::Complete}},
         completed_tool_count);
 
     REQUIRE(adapted.has_value());

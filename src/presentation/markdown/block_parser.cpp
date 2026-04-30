@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <optional>
+#include <utility>
 
 namespace yac::presentation::markdown::parser_detail {
 
@@ -236,9 +237,9 @@ size_t TryParseParagraph(const std::vector<std::string>& lines, size_t start,
                          std::vector<BlockNode>& blocks) {
   auto is_setext_underline = [](const std::string& line, char marker) {
     const auto trimmed = Trim(line);
-    return !trimmed.empty() &&
-           std::all_of(trimmed.begin(), trimmed.end(),
-                       [marker](char c) { return c == marker; });
+    return !trimmed.empty() && std::ranges::all_of(trimmed, [marker](char c) {
+      return c == marker;
+    });
   };
 
   Paragraph paragraph;
@@ -290,13 +291,13 @@ size_t TryParseParagraph(const std::vector<std::string>& lines, size_t start,
 std::optional<Heading> TryParseHeading(const std::string& line) {
   const auto trimmed = TrimLeft(line);
   int level = 0;
-  while (level < static_cast<int>(trimmed.size()) && trimmed[level] == '#') {
+  while (std::cmp_less(level, trimmed.size()) && trimmed[level] == '#') {
     ++level;
   }
   if (level == 0 || level > kMaxHeadingLevel) {
     return std::nullopt;
   }
-  if (level < static_cast<int>(trimmed.size()) &&
+  if (std::cmp_less(level, trimmed.size()) &&
       std::isspace(static_cast<unsigned char>(trimmed[level])) == 0) {
     return std::nullopt;
   }

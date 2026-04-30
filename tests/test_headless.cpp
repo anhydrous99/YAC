@@ -77,7 +77,9 @@ TEST_CASE("Headless event handler: text deltas accumulate to output") {
   auto provider = std::make_shared<LambdaMockProvider>(
       "fake",
       [](const ChatRequest&, ChatEventSink sink, std::stop_token stop_token) {
-        if (stop_token.stop_requested()) return;
+        if (stop_token.stop_requested()) {
+          return;
+        }
         sink(ChatEvent{TextDeltaEvent{.text = "hello"}});
         sink(ChatEvent{TextDeltaEvent{.text = " world"}});
       });

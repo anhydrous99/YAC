@@ -49,7 +49,10 @@ void RenderAndCheck(const ToolCallBlock& block, int width = 80,
 }  // namespace
 
 TEST_CASE("ToolCallRenderer renders bash command details") {
-  BashCall call{"git status", "On branch main", 0, false};
+  BashCall call{.command = "git status",
+                .output = "On branch main",
+                .exit_code = 0,
+                .is_error = false};
 
   auto output = RenderToString(call, 80, 8);
 
@@ -61,7 +64,10 @@ TEST_CASE("ToolCallRenderer renders bash command details") {
 
 TEST_CASE(
     "ToolCallRenderer renders bash command responsively and handles errors") {
-  BashCall call{"cmake --build build", "build failed", 2, true};
+  BashCall call{.command = "cmake --build build",
+                .output = "build failed",
+                .exit_code = 2,
+                .is_error = true};
 
   auto output = RenderToString(call, 40, 10);
 
@@ -72,10 +78,10 @@ TEST_CASE(
 }
 
 TEST_CASE("ToolCallRenderer renders file edit details") {
-  FileEditCall call{"src/main.cpp",
-                    {{DiffLine::Add, "int added = 1;"},
-                     {DiffLine::Remove, "int removed = 0;"},
-                     {DiffLine::Context, "return 0;"}}};
+  FileEditCall call{.filepath = "src/main.cpp",
+                    .diff = {{DiffLine::Add, "int added = 1;"},
+                             {DiffLine::Remove, "int removed = 0;"},
+                             {DiffLine::Context, "return 0;"}}};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -89,7 +95,8 @@ TEST_CASE("ToolCallRenderer renders file edit details") {
 }
 
 TEST_CASE("ToolCallRenderer renders empty file edit at narrow width") {
-  FileEditCall call{"src/presentation/tool_call/renderer.cpp", {}};
+  FileEditCall call{.filepath = "src/presentation/tool_call/renderer.cpp",
+                    .diff = {}};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -99,7 +106,7 @@ TEST_CASE("ToolCallRenderer renders empty file edit at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders file edit errors") {
-  FileEditCall call{"src/main.cpp", {}};
+  FileEditCall call{.filepath = "src/main.cpp", .diff = {}};
   call.is_error = true;
   call.error = "some error message";
 
@@ -111,7 +118,9 @@ TEST_CASE("ToolCallRenderer renders file edit errors") {
 }
 
 TEST_CASE("ToolCallRenderer renders file read details") {
-  FileReadCall call{"README.md", 12, "Yet Another Chat"};
+  FileReadCall call{.filepath = "README.md",
+                    .lines_loaded = 12,
+                    .excerpt = "Yet Another Chat"};
 
   auto output = RenderToString(call, 80, 8);
 
@@ -123,7 +132,7 @@ TEST_CASE("ToolCallRenderer renders file read details") {
 }
 
 TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
-  FileReadCall call{"notes.txt", 0, ""};
+  FileReadCall call{.filepath = "notes.txt", .lines_loaded = 0, .excerpt = ""};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -146,12 +155,13 @@ TEST_CASE("ToolCallRenderer renders file write details") {
 }
 
 TEST_CASE("ToolCallRenderer renders list dir entries") {
-  ListDirCall call{"src",
-                   {{"presentation", DirectoryEntryType::Directory, 0},
-                    {"main.cpp", DirectoryEntryType::File, 42}},
-                   false,
-                   false,
-                   ""};
+  ListDirCall call{
+      .path = "src",
+      .entries = {{"presentation", DirectoryEntryType::Directory, 0},
+                  {"main.cpp", DirectoryEntryType::File, 42}},
+      .truncated = false,
+      .is_error = false,
+      .error = ""};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -162,10 +172,10 @@ TEST_CASE("ToolCallRenderer renders list dir entries") {
 }
 
 TEST_CASE("ToolCallRenderer renders grep details") {
-  GrepCall call{"needle",
-                2,
-                {{"src/main.cpp", 3, "// needle: cleanup"},
-                 {"tests/test.cpp", 9, "needle renderer"}}};
+  GrepCall call{.pattern = "needle",
+                .match_count = 2,
+                .matches = {{"src/main.cpp", 3, "// needle: cleanup"},
+                            {"tests/test.cpp", 9, "needle renderer"}}};
 
   auto output = RenderToString(call, 80, 12);
 
@@ -178,7 +188,7 @@ TEST_CASE("ToolCallRenderer renders grep details") {
 }
 
 TEST_CASE("ToolCallRenderer renders empty grep at narrow width") {
-  GrepCall call{"needle", 0, {}};
+  GrepCall call{.pattern = "needle", .match_count = 0, .matches = {}};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -188,7 +198,7 @@ TEST_CASE("ToolCallRenderer renders empty grep at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders grep errors") {
-  GrepCall call{"needle", 0, {}};
+  GrepCall call{.pattern = "needle", .match_count = 0, .matches = {}};
   call.is_error = true;
   call.error = "some error message";
 
@@ -200,8 +210,9 @@ TEST_CASE("ToolCallRenderer renders grep errors") {
 }
 
 TEST_CASE("ToolCallRenderer renders glob details") {
-  GlobCall call{"src/**/*.cpp",
-                {"src/main.cpp", "src/presentation/message_renderer.cpp"}};
+  GlobCall call{.pattern = "src/**/*.cpp",
+                .matched_files = {"src/main.cpp",
+                                  "src/presentation/message_renderer.cpp"}};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -214,7 +225,7 @@ TEST_CASE("ToolCallRenderer renders glob details") {
 }
 
 TEST_CASE("ToolCallRenderer renders empty glob at narrow width") {
-  GlobCall call{"tests/*.cpp", {}};
+  GlobCall call{.pattern = "tests/*.cpp", .matched_files = {}};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -223,7 +234,7 @@ TEST_CASE("ToolCallRenderer renders empty glob at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders glob errors") {
-  GlobCall call{"tests/*.cpp", {}};
+  GlobCall call{.pattern = "tests/*.cpp", .matched_files = {}};
   call.is_error = true;
   call.error = "some error message";
 
@@ -235,8 +246,9 @@ TEST_CASE("ToolCallRenderer renders glob errors") {
 }
 
 TEST_CASE("ToolCallRenderer renders web fetch details") {
-  WebFetchCall call{"https://example.com", "Example Domain",
-                    "This domain is for use in examples."};
+  WebFetchCall call{.url = "https://example.com",
+                    .title = "Example Domain",
+                    .excerpt = "This domain is for use in examples."};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -250,7 +262,7 @@ TEST_CASE("ToolCallRenderer renders web fetch details") {
 }
 
 TEST_CASE("ToolCallRenderer renders minimal web fetch at narrow width") {
-  WebFetchCall call{"https://yac.dev", "", ""};
+  WebFetchCall call{.url = "https://yac.dev", .title = "", .excerpt = ""};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -259,10 +271,11 @@ TEST_CASE("ToolCallRenderer renders minimal web fetch at narrow width") {
 }
 
 TEST_CASE("ToolCallRenderer renders web search details") {
-  WebSearchCall call{"yac terminal ui",
-                     {{"YAC", "https://yac.dev", "Terminal chat UI"},
-                      {"FTXUI", "https://github.com/ArthurSonzogni/FTXUI",
-                       "Functional terminal UI"}}};
+  WebSearchCall call{
+      .query = "yac terminal ui",
+      .results = {{"YAC", "https://yac.dev", "Terminal chat UI"},
+                  {"FTXUI", "https://github.com/ArthurSonzogni/FTXUI",
+                   "Functional terminal UI"}}};
 
   auto output = RenderToString(call, 80, 14);
 
@@ -276,7 +289,7 @@ TEST_CASE("ToolCallRenderer renders web search details") {
 }
 
 TEST_CASE("ToolCallRenderer renders empty web search at narrow width") {
-  WebSearchCall call{"docs search", {}};
+  WebSearchCall call{.query = "docs search", .results = {}};
 
   auto output = RenderToString(call, 40, 8);
 
@@ -286,10 +299,10 @@ TEST_CASE("ToolCallRenderer renders empty web search at narrow width") {
 
 TEST_CASE("ToolCallRenderer renders LSP diagnostics") {
   LspDiagnosticsCall call{
-      "src/main.cpp",
-      {{DiagnosticSeverity::Error, "expected expression", 12}},
-      false,
-      ""};
+      .file_path = "src/main.cpp",
+      .diagnostics = {{DiagnosticSeverity::Error, "expected expression", 12}},
+      .is_error = false,
+      .error = ""};
 
   auto output = RenderToString(call, 80, 10);
 
@@ -299,27 +312,36 @@ TEST_CASE("ToolCallRenderer renders LSP diagnostics") {
 }
 
 TEST_CASE("ToolCallRenderer renders LSP navigation and rename tools") {
+  RenderAndCheck(LspReferencesCall{.symbol = "main",
+                                   .file_path = "src/main.cpp",
+                                   .references = {{"src/main.cpp", 4, 3}},
+                                   .is_error = false,
+                                   .error = ""},
+                 80, 8);
+  RenderAndCheck(LspGotoDefinitionCall{.symbol = "main",
+                                       .file_path = "src/main.cpp",
+                                       .line = 4,
+                                       .character = 3,
+                                       .definitions = {{"src/main.cpp", 1, 1}},
+                                       .is_error = false,
+                                       .error = ""},
+                 80, 8);
   RenderAndCheck(
-      LspReferencesCall{
-          "main", "src/main.cpp", {{"src/main.cpp", 4, 3}}, false, ""},
-      80, 8);
-  RenderAndCheck(
-      LspGotoDefinitionCall{
-          "main", "src/main.cpp", 4, 3, {{"src/main.cpp", 1, 1}}, false, ""},
-      80, 8);
-  RenderAndCheck(LspRenameCall{"src/main.cpp",
-                               4,
-                               3,
-                               "old",
-                               "next",
-                               1,
-                               {{"src/main.cpp", 4, 3, 4, 6, "next"}},
-                               false,
-                               ""},
-                 80, 10);
-  RenderAndCheck(
-      LspSymbolsCall{"src/main.cpp", {{"main", "function", 4}}, false, ""}, 80,
-      8);
+      LspRenameCall{.file_path = "src/main.cpp",
+                    .line = 4,
+                    .character = 3,
+                    .old_name = "old",
+                    .new_name = "next",
+                    .changes_count = 1,
+                    .changes = {{"src/main.cpp", 4, 3, 4, 6, "next"}},
+                    .is_error = false,
+                    .error = ""},
+      80, 10);
+  RenderAndCheck(LspSymbolsCall{.file_path = "src/main.cpp",
+                                .symbols = {{"main", "function", 4}},
+                                .is_error = false,
+                                .error = ""},
+                 80, 8);
 }
 
 TEST_CASE("ToolCallRenderer::BuildGroupSummary empty input yields empty") {
@@ -328,9 +350,10 @@ TEST_CASE("ToolCallRenderer::BuildGroupSummary empty input yields empty") {
 
 TEST_CASE(
     "ToolCallRenderer::BuildGroupSummary single variant returns one term") {
-  BashCall a{"echo", "", 0, false};
-  BashCall b{"ls", "", 0, false};
-  BashCall c{"pwd", "", 0, false};
+  BashCall a{
+      .command = "echo", .output = "", .exit_code = 0, .is_error = false};
+  BashCall b{.command = "ls", .output = "", .exit_code = 0, .is_error = false};
+  BashCall c{.command = "pwd", .output = "", .exit_code = 0, .is_error = false};
   std::vector<ToolCallBlock> blocks{ToolCallBlock{a}, ToolCallBlock{b},
                                     ToolCallBlock{c}};
   std::vector<const ToolCallBlock*> ptrs;
@@ -346,13 +369,15 @@ TEST_CASE(
     "ToolCallRenderer::BuildGroupSummary orders terms by descending count") {
   std::vector<ToolCallBlock> blocks;
   for (int i = 0; i < 5; ++i) {
-    blocks.emplace_back(BashCall{"echo", "", 0, false});
+    blocks.emplace_back(BashCall{
+        .command = "echo", .output = "", .exit_code = 0, .is_error = false});
   }
   for (int i = 0; i < 4; ++i) {
-    blocks.emplace_back(FileReadCall{"a.txt", 1, ""});
+    blocks.emplace_back(
+        FileReadCall{.filepath = "a.txt", .lines_loaded = 1, .excerpt = ""});
   }
   for (int i = 0; i < 3; ++i) {
-    blocks.emplace_back(FileEditCall{"a.txt", {}});
+    blocks.emplace_back(FileEditCall{.filepath = "a.txt", .diff = {}});
   }
   std::vector<const ToolCallBlock*> ptrs;
   ptrs.reserve(blocks.size());
@@ -366,9 +391,22 @@ TEST_CASE(
 
 TEST_CASE("ToolCallRenderer::BuildGroupSummary collapses LSP variants") {
   std::vector<ToolCallBlock> blocks;
-  blocks.emplace_back(LspDiagnosticsCall{"f", {}, false, ""});
-  blocks.emplace_back(LspReferencesCall{"s", "f", {}, false, ""});
-  blocks.emplace_back(LspRenameCall{"f", 0, 0, "", "", 0, {}, false, ""});
+  blocks.emplace_back(LspDiagnosticsCall{
+      .file_path = "f", .diagnostics = {}, .is_error = false, .error = ""});
+  blocks.emplace_back(LspReferencesCall{.symbol = "s",
+                                        .file_path = "f",
+                                        .references = {},
+                                        .is_error = false,
+                                        .error = ""});
+  blocks.emplace_back(LspRenameCall{.file_path = "f",
+                                    .line = 0,
+                                    .character = 0,
+                                    .old_name = "",
+                                    .new_name = "",
+                                    .changes_count = 0,
+                                    .changes = {},
+                                    .is_error = false,
+                                    .error = ""});
   std::vector<const ToolCallBlock*> ptrs;
   ptrs.reserve(blocks.size());
   for (const auto& block : blocks) {
@@ -382,12 +420,15 @@ TEST_CASE(
     "ToolCallRenderer::BuildGroupSummary caps at four terms and appends "
     "ellipsis when more variants exist") {
   std::vector<ToolCallBlock> blocks;
-  blocks.emplace_back(BashCall{"c", "", 0, false});
-  blocks.emplace_back(FileReadCall{"r", 1, ""});
-  blocks.emplace_back(FileEditCall{"e", {}});
+  blocks.emplace_back(BashCall{
+      .command = "c", .output = "", .exit_code = 0, .is_error = false});
+  blocks.emplace_back(
+      FileReadCall{.filepath = "r", .lines_loaded = 1, .excerpt = ""});
+  blocks.emplace_back(FileEditCall{.filepath = "e", .diff = {}});
   blocks.emplace_back(FileWriteCall{.filepath = "w"});
-  blocks.emplace_back(GrepCall{"g", 0, {}});
-  blocks.emplace_back(GlobCall{"*", {}});
+  blocks.emplace_back(
+      GrepCall{.pattern = "g", .match_count = 0, .matches = {}});
+  blocks.emplace_back(GlobCall{.pattern = "*", .matched_files = {}});
   std::vector<const ToolCallBlock*> ptrs;
   for (const auto& b : blocks) {
     ptrs.push_back(&b);
@@ -403,23 +444,64 @@ TEST_CASE(
 }
 
 TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
-  RenderAndCheck(BashCall{"pwd", "", 0, false}, 80, 8);
-  RenderAndCheck(FileEditCall{"file.txt", {}}, 80, 8);
-  RenderAndCheck(FileReadCall{"file.txt", 1, "line"}, 80, 8);
+  RenderAndCheck(
+      BashCall{
+          .command = "pwd", .output = "", .exit_code = 0, .is_error = false},
+      80, 8);
+  RenderAndCheck(FileEditCall{.filepath = "file.txt", .diff = {}}, 80, 8);
+  RenderAndCheck(
+      FileReadCall{
+          .filepath = "file.txt", .lines_loaded = 1, .excerpt = "line"},
+      80, 8);
   RenderAndCheck(
       FileWriteCall{
           .filepath = "file.txt", .content_preview = "line", .lines_added = 1},
       80, 8);
-  RenderAndCheck(ListDirCall{"src", {}, false, false, ""}, 80, 8);
-  RenderAndCheck(GrepCall{"pattern", 0, {}}, 80, 8);
-  RenderAndCheck(GlobCall{"*.cpp", {}}, 80, 8);
-  RenderAndCheck(WebFetchCall{"https://example.com", "", ""}, 80, 8);
-  RenderAndCheck(WebSearchCall{"query", {}}, 80, 8);
-  RenderAndCheck(LspDiagnosticsCall{"file.txt", {}, false, ""}, 80, 8);
-  RenderAndCheck(LspReferencesCall{"symbol", "file.txt", {}, false, ""}, 80, 8);
+  RenderAndCheck(ListDirCall{.path = "src",
+                             .entries = {},
+                             .truncated = false,
+                             .is_error = false,
+                             .error = ""},
+                 80, 8);
   RenderAndCheck(
-      LspGotoDefinitionCall{"symbol", "file.txt", 1, 1, {}, false, ""}, 80, 8);
+      GrepCall{.pattern = "pattern", .match_count = 0, .matches = {}}, 80, 8);
+  RenderAndCheck(GlobCall{.pattern = "*.cpp", .matched_files = {}}, 80, 8);
   RenderAndCheck(
-      LspRenameCall{"file.txt", 1, 1, "old", "new", 0, {}, false, ""}, 80, 8);
-  RenderAndCheck(LspSymbolsCall{"file.txt", {}, false, ""}, 80, 8);
+      WebFetchCall{.url = "https://example.com", .title = "", .excerpt = ""},
+      80, 8);
+  RenderAndCheck(WebSearchCall{.query = "query", .results = {}}, 80, 8);
+  RenderAndCheck(LspDiagnosticsCall{.file_path = "file.txt",
+                                    .diagnostics = {},
+                                    .is_error = false,
+                                    .error = ""},
+                 80, 8);
+  RenderAndCheck(LspReferencesCall{.symbol = "symbol",
+                                   .file_path = "file.txt",
+                                   .references = {},
+                                   .is_error = false,
+                                   .error = ""},
+                 80, 8);
+  RenderAndCheck(LspGotoDefinitionCall{.symbol = "symbol",
+                                       .file_path = "file.txt",
+                                       .line = 1,
+                                       .character = 1,
+                                       .definitions = {},
+                                       .is_error = false,
+                                       .error = ""},
+                 80, 8);
+  RenderAndCheck(LspRenameCall{.file_path = "file.txt",
+                               .line = 1,
+                               .character = 1,
+                               .old_name = "old",
+                               .new_name = "new",
+                               .changes_count = 0,
+                               .changes = {},
+                               .is_error = false,
+                               .error = ""},
+                 80, 8);
+  RenderAndCheck(LspSymbolsCall{.file_path = "file.txt",
+                                .symbols = {},
+                                .is_error = false,
+                                .error = ""},
+                 80, 8);
 }

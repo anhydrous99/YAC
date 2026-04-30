@@ -27,7 +27,7 @@ namespace {
     const std::string_view segment =
         query.substr(pos, amp == std::string_view::npos ? std::string_view::npos
                                                         : amp - pos);
-    if (segment.size() > key.size() && segment.substr(0, key.size()) == key &&
+    if (segment.size() > key.size() && segment.starts_with(key) &&
         segment[key.size()] == '=') {
       return std::string(segment.substr(key.size() + 1));
     }

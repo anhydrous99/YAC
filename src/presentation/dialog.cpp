@@ -115,7 +115,9 @@ ftxui::Component DialogPanel(std::string title, ftxui::Component inner_content,
       return ComponentBase::OnEvent(event);
     }
 
-    bool Focusable() const override { return show_ != nullptr && *show_; }
+    [[nodiscard]] bool Focusable() const override {
+      return show_ != nullptr && *show_;
+    }
 
    private:
     std::string title_;

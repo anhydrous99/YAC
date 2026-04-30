@@ -326,7 +326,7 @@ void McpManager::EnsureSessionsCreated() const {
 }
 
 void McpManager::Start() {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   if (started_) {
     EmitStateChanges();
@@ -343,7 +343,7 @@ void McpManager::Start() {
 }
 
 void McpManager::Stop() {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (sessions_.empty()) {
     started_ = false;
     return;
@@ -357,10 +357,10 @@ void McpManager::Stop() {
 
 McpManager::SessionRecord& McpManager::RequireRecord(
     std::string_view server_id) {
-  auto it = std::find_if(sessions_.begin(), sessions_.end(),
-                         [server_id](const SessionRecord& record) {
-                           return record.config.id == server_id;
-                         });
+  auto it =
+      std::ranges::find_if(sessions_, [server_id](const SessionRecord& record) {
+        return record.config.id == server_id;
+      });
   if (it == sessions_.end()) {
     throw std::runtime_error("Unknown MCP server: " + std::string(server_id));
   }
@@ -369,10 +369,10 @@ McpManager::SessionRecord& McpManager::RequireRecord(
 
 const McpManager::SessionRecord& McpManager::RequireRecord(
     std::string_view server_id) const {
-  auto it = std::find_if(sessions_.begin(), sessions_.end(),
-                         [server_id](const SessionRecord& record) {
-                           return record.config.id == server_id;
-                         });
+  auto it =
+      std::ranges::find_if(sessions_, [server_id](const SessionRecord& record) {
+        return record.config.id == server_id;
+      });
   if (it == sessions_.end()) {
     throw std::runtime_error("Unknown MCP server: " + std::string(server_id));
   }
@@ -404,7 +404,7 @@ void McpManager::HandleNotification(std::string_view server_id,
 }
 
 core_types::McpToolCatalogSnapshot McpManager::GetToolCatalogSnapshot() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   EmitStateChanges();
 
@@ -435,9 +435,10 @@ core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
           qualified_name, std::make_pair(record.config.id, tool.name));
       const bool requires_approval =
           record.config.requires_approval ||
-          std::find(record.config.approval_required_tools.begin(),
-                    record.config.approval_required_tools.end(),
-                    tool.name) != record.config.approval_required_tools.end();
+          std::ranges::find(record.config.approval_required_tools,
+
+                            tool.name) !=
+              record.config.approval_required_tools.end();
       snapshot.approval_policy.emplace(
           qualified_name,
           core_types::McpToolApprovalPolicy{
@@ -453,7 +454,7 @@ core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
 core_types::ToolExecutionResult McpManager::InvokeTool(
     std::string_view qualified_name, std::string_view arguments_json,
     std::stop_token stop) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   if (!latest_snapshot_.name_to_server_tool.contains(
           std::string(qualified_name))) {
@@ -516,7 +517,7 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
 
 std::vector<core_types::McpServerStatus> McpManager::GetServerStatusSnapshot()
     const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   EmitStateChanges();
 
@@ -539,7 +540,7 @@ std::vector<core_types::McpServerStatus> McpManager::GetServerStatusSnapshot()
 
 std::vector<core_types::McpResourceDescriptor> McpManager::ListResources(
     std::string_view server_id, std::stop_token stop) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   auto& record = RequireRecord(server_id);
 
@@ -565,7 +566,7 @@ std::vector<core_types::McpResourceDescriptor> McpManager::ListResources(
 
 core_types::McpResourceContent McpManager::ReadResource(
     std::string_view server_id, std::string_view uri, std::stop_token stop) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   auto& record = RequireRecord(server_id);
 
@@ -601,7 +602,7 @@ core_types::McpResourceContent McpManager::ReadResource(
 void McpManager::Authenticate(std::string_view server_id,
                               const oauth::OAuthInteractionMode& mode,
                               std::stop_token stop) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   EnsureSessionsCreated();
   auto& record = RequireRecord(server_id);
   emit_event_(chat::MakeMcpAuthRequiredEvent(

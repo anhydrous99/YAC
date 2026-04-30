@@ -48,7 +48,7 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
 
 ChatService::~ChatService() {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (active_stop_source_.has_value()) {
       active_stop_source_->request_stop();
     }
@@ -63,7 +63,7 @@ ChatService::~ChatService() {
 }
 
 void ChatService::SetEventCallback(ChatEventCallback callback) {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   callback_ = std::move(callback);
 }
 
@@ -71,7 +71,7 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   auto id = NextMessageId();
   auto queued_content = content;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     pending_.push_back({id, std::move(content)});
   }
   wake_.notify_one();
@@ -89,7 +89,7 @@ void ChatService::SetModel(std::string model) {
   std::string provider_id;
   std::string new_model;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (config_.model == model) {
       return;
     }
@@ -103,7 +103,7 @@ void ChatService::SetModel(std::string model) {
 }
 
 void ChatService::CancelActiveResponse() {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (!active_) {
     return;
   }
@@ -124,13 +124,13 @@ void ChatService::ResolveAskUser(const std::string& approval_id,
 }
 
 AgentMode ChatService::GetAgentMode() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return config_.agent_mode;
 }
 
 void ChatService::SetAgentMode(AgentMode mode) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (config_.agent_mode == mode) {
       return;
     }
@@ -144,7 +144,7 @@ void ChatService::ResetConversation() {
   (void)old_gen;
 
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (active_stop_source_.has_value()) {
       active_stop_source_->request_stop();
     }
@@ -157,7 +157,7 @@ void ChatService::ResetConversation() {
   tool_approval_->CancelPending();
   todo_state_.Clear();
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     config_.agent_mode = AgentMode::Build;
   }
   wake_.notify_one();
@@ -168,7 +168,7 @@ void ChatService::ResetConversation() {
 
 void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (active_ || !pending_.empty()) {
       return;
     }
@@ -179,17 +179,17 @@ void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
 }
 
 std::vector<ChatMessage> ChatService::History() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return history_;
 }
 
 bool ChatService::IsBusy() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return active_ || !pending_.empty();
 }
 
 int ChatService::QueueDepth() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return static_cast<int>(pending_.size());
 }
 
@@ -231,7 +231,7 @@ void ChatService::WorkerLoop(std::stop_token stop_token) {
                                      request_stop_source.get_token());
 
     {
-      std::lock_guard lock(mutex_);
+      std::scoped_lock lock(mutex_);
       active_ = false;
       active_stop_source_.reset();
     }
@@ -241,7 +241,7 @@ void ChatService::WorkerLoop(std::stop_token stop_token) {
 void ChatService::EmitEvent(ChatEvent event) const {
   ChatEventCallback cb;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     cb = callback_;
   }
   if (cb) {
@@ -252,7 +252,7 @@ void ChatService::EmitEvent(ChatEvent event) const {
 void ChatService::EmitQueueDepth() {
   int depth = 0;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     depth = static_cast<int>(pending_.size());
   }
   EmitEvent(ChatEvent{QueueDepthChangedEvent{.queue_depth = depth}});
@@ -263,7 +263,7 @@ ChatMessageId ChatService::NextMessageId() {
 }
 
 ChatConfig ChatService::ConfigSnapshot() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return config_;
 }
 
@@ -306,7 +306,7 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
 
   bool was_idle = false;
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     was_idle = !active_ && pending_.empty();
     if (was_idle) {
       // Worker will append to history via AppendActiveUserMessage when it

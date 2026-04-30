@@ -325,15 +325,15 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 add_custom_target(format
-  COMMAND clang-format -i ${ALL_SOURCES}
+  COMMAND clang-format-21 -i ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Formatting source files with clang-format"
+  COMMENT "Formatting source files with clang-format-21"
 )
 
 add_custom_target(format-check
-  COMMAND clang-format --dry-run --Werror ${ALL_SOURCES}
+  COMMAND clang-format-21 --dry-run --Werror ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Checking source files with clang-format"
+  COMMENT "Checking source files with clang-format-21"
 )
 
 string(REPLACE ";" "\",\n    \"" LINT_EXTRA_ARGS_PY
@@ -377,7 +377,7 @@ for entry in entries:
     files.append(str(relative_path))
 
 command = [
-    "run-clang-tidy-18",
+    "run-clang-tidy-21",
     "-p",
     str(build_dir),
     "-header-filter=^(src|tests)/",

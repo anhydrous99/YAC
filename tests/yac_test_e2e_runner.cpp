@@ -6,6 +6,7 @@
 #include "mock_response_provider.hpp"
 #include "provider/provider_registry.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -42,10 +43,9 @@ bool WaitForMcpReady(yac::mcp::McpManager& manager) {
                   << " tool_count=" << s.tool_count << " error=" << s.error
                   << '\n';
       }
-      const bool all_ready =
-          std::all_of(status.begin(), status.end(), [](const auto& s) {
-            return s.state == "Ready" || s.state == "Failed";
-          });
+      const bool all_ready = std::ranges::all_of(status, [](const auto& s) {
+        return s.state == "Ready" || s.state == "Failed";
+      });
       if (all_ready) {
         return true;
       }

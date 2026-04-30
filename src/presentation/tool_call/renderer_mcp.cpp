@@ -42,7 +42,7 @@ ftxui::Element RenderMcpResourceLinkBlock(
 ftxui::Element RenderMcpEmbeddedResourceBlock(
     const tool_data::McpResultBlock& block, const theme::Theme& theme,
     const RenderContext& context) {
-  if (block.mime_type.rfind("text/", 0) == 0 && !block.text.empty()) {
+  if (block.mime_type.starts_with("text/") && !block.text.empty()) {
     auto ast = markdown::MarkdownParser::Parse(block.text);
     auto rendered = markdown::MarkdownRenderer::Render(ast, context);
     return rendered | ftxui::color(theme.semantic.text_body);

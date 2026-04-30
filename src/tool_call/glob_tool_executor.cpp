@@ -60,10 +60,9 @@ ToolExecutionResult ExecuteGlobTool(
     matches.emplace_back(entry.path(), entry.last_write_time());
   }
 
-  std::sort(matches.begin(), matches.end(),
-            [](const FileEntry& lhs, const FileEntry& rhs) {
-              return lhs.second > rhs.second;
-            });
+  std::ranges::sort(matches, [](const FileEntry& lhs, const FileEntry& rhs) {
+    return lhs.second > rhs.second;
+  });
 
   const bool truncated = matches.size() > kMaxResults;
   if (truncated) {

@@ -160,7 +160,7 @@ SubAgentManager::~SubAgentManager() {
 }
 
 void SubAgentManager::SetBackgroundResultCallback(BackgroundResultFn callback) {
-  std::lock_guard lock(background_result_mutex_);
+  std::scoped_lock lock(background_result_mutex_);
   background_result_ = std::move(callback);
 }
 
@@ -273,7 +273,7 @@ SubAgentManager::SubAgentCompletion SubAgentManager::RunSession(
         session.next_id.fetch_add(1), session.task, session.generation.load(),
         session.stop_source.get_token());
     {
-      std::lock_guard lock(session.history_mutex);
+      std::scoped_lock lock(session.history_mutex);
       completion.result = LastAssistantMessage(session.history);
     }
     if (session.timed_out.load()) {
@@ -341,7 +341,7 @@ void SubAgentManager::DeliverBackgroundResult(
     const SubAgentSession& session, const SubAgentCompletion& completion) {
   BackgroundResultFn callback;
   {
-    std::lock_guard lock(background_result_mutex_);
+    std::scoped_lock lock(background_result_mutex_);
     callback = background_result_;
   }
   if (!callback) {

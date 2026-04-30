@@ -81,11 +81,15 @@ TEST_CASE("ChatEventBridge creates and updates tool call messages") {
   ChatUI ui;
   ChatEventBridge bridge(ui);
 
-  bridge.HandleEvent(ChatEvent{ToolCallStartedEvent{
-      .message_id = 40,
-      .role = ChatRole::Tool,
-      .tool_call = ListDirCall{"src", {}, false, false, ""},
-      .status = ChatMessageStatus::Active}});
+  bridge.HandleEvent(ChatEvent{
+      ToolCallStartedEvent{.message_id = 40,
+                           .role = ChatRole::Tool,
+                           .tool_call = ListDirCall{.path = "src",
+                                                    .entries = {},
+                                                    .truncated = false,
+                                                    .is_error = false,
+                                                    .error = ""},
+                           .status = ChatMessageStatus::Active}});
 
   REQUIRE(ui.GetMessages().size() == 1);
   REQUIRE(ui.GetMessages()[0].sender == Sender::Agent);
@@ -96,11 +100,12 @@ TEST_CASE("ChatEventBridge creates and updates tool call messages") {
   bridge.HandleEvent(ChatEvent{ToolCallDoneEvent{
       .message_id = 40,
       .role = ChatRole::Tool,
-      .tool_call = ListDirCall{"src",
-                               {{"main.cpp", DirectoryEntryType::File, 10}},
-                               false,
-                               false,
-                               ""},
+      .tool_call =
+          ListDirCall{.path = "src",
+                      .entries = {{"main.cpp", DirectoryEntryType::File, 10}},
+                      .truncated = false,
+                      .is_error = false,
+                      .error = ""},
       .status = ChatMessageStatus::Complete}});
 
   tool = ui.GetMessages()[0].FindToolSegment(40);

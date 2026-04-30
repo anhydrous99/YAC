@@ -7,9 +7,9 @@ using namespace yac::presentation::tool_call;
 using namespace yac::tool_call;
 
 TEST_CASE("DescribeToolCall summarizes edited files by basename") {
-  const auto descriptor = DescribeToolCall(
-      FileEditCall{"src/presentation/tool_call/renderer.cpp",
-                   {{DiffLine::Add, "added"}, {DiffLine::Remove, "removed"}}});
+  const auto descriptor = DescribeToolCall(FileEditCall{
+      .filepath = "src/presentation/tool_call/renderer.cpp",
+      .diff = {{DiffLine::Add, "added"}, {DiffLine::Remove, "removed"}}});
 
   REQUIRE(descriptor.tag == "edit");
   REQUIRE(descriptor.label == "Edit renderer.cpp");
@@ -40,7 +40,9 @@ TEST_CASE("DescribeToolCall reports write failures and grep counts") {
 
   SECTION("grep count") {
     const auto descriptor = DescribeToolCall(
-        GrepCall{"needle", 3, {{"src/main.cpp", 12, "needle hit"}}});
+        GrepCall{.pattern = "needle",
+                 .match_count = 3,
+                 .matches = {{"src/main.cpp", 12, "needle hit"}}});
 
     REQUIRE(descriptor.tag == "grep");
     REQUIRE(descriptor.label == "Search for \"needle\"");
@@ -49,9 +51,15 @@ TEST_CASE("DescribeToolCall reports write failures and grep counts") {
 }
 
 TEST_CASE("DescribeToolCall summarizes sub-agent status") {
-  const auto descriptor = DescribeToolCall(SubAgentCall{
-      "run focused tests", SubAgentMode::Background, SubAgentStatus::Complete,
-      "agent-7", "all green", "", 4, 1200});
+  const auto descriptor =
+      DescribeToolCall(SubAgentCall{.task = "run focused tests",
+                                    .mode = SubAgentMode::Background,
+                                    .status = SubAgentStatus::Complete,
+                                    .agent_id = "agent-7",
+                                    .result = "all green",
+                                    .result_summary = "",
+                                    .tool_count = 4,
+                                    .elapsed_ms = 1200});
 
   REQUIRE(descriptor.tag == "agent");
   REQUIRE(descriptor.label == "[>] Sub-agent");

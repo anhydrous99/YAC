@@ -170,8 +170,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
   if (auto val = GetEnv("YAC_SYNC_TERMINAL_BACKGROUND")) {
     std::string normalized = *val;
-    std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                   [](unsigned char ch) { return std::tolower(ch); });
+    std::ranges::transform(normalized, normalized.begin(),
+                           [](unsigned char ch) { return std::tolower(ch); });
     config.sync_terminal_background =
         !(normalized == "0" || normalized == "false" || normalized == "no" ||
           normalized == "off");
@@ -200,8 +200,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     }
     if (auto val = GetEnv((server_prefix + "ENABLED").c_str())) {
       std::string normalized = *val;
-      std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-                     [](unsigned char ch) { return std::tolower(ch); });
+      std::ranges::transform(normalized, normalized.begin(),
+                             [](unsigned char ch) { return std::tolower(ch); });
       server.enabled = !(normalized == "0" || normalized == "false" ||
                          normalized == "no" || normalized == "off");
     }

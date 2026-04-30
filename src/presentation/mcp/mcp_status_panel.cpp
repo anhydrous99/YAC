@@ -33,10 +33,14 @@ struct StateMetadata {
 };
 
 constexpr std::array<StateMetadata, 4> kStateTable = {{
-    {"ready", kIconReady, StateColorRole::Ready},
-    {"failed", kIconFailed, StateColorRole::Failed},
-    {"reconnecting", kIconReconnecting, StateColorRole::Pending},
-    {"connecting", kIconReconnecting, StateColorRole::Pending},
+    {.state = "ready", .icon = kIconReady, .color = StateColorRole::Ready},
+    {.state = "failed", .icon = kIconFailed, .color = StateColorRole::Failed},
+    {.state = "reconnecting",
+     .icon = kIconReconnecting,
+     .color = StateColorRole::Pending},
+    {.state = "connecting",
+     .icon = kIconReconnecting,
+     .color = StateColorRole::Pending},
 }};
 
 [[nodiscard]] const StateMetadata* FindState(std::string_view state) {

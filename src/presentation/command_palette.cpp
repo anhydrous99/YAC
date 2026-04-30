@@ -8,6 +8,7 @@
 #include "ui_spacing.hpp"
 #include "util/string_util.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -76,7 +77,7 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       } else {
         ftxui::Elements rows;
         rows.reserve(filtered_indices_.size());
-        for (int i = 0; i < static_cast<int>(filtered_indices_.size()); ++i) {
+        for (int i = 0; std::cmp_less(i, filtered_indices_.size()); ++i) {
           rows.push_back(RenderRow(i));
         }
         children.push_back(ftxui::vbox(std::move(rows)) | ftxui::yflex);
@@ -180,7 +181,7 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
       filtered_indices_.clear();
 
       auto lowered_filter = ::yac::util::ToLowerAscii(filter_text_);
-      for (int i = 0; i < static_cast<int>(commands_.size()); ++i) {
+      for (int i = 0; std::cmp_less(i, commands_.size()); ++i) {
         auto haystack = ::yac::util::ToLowerAscii(commands_[i].name + " " +
                                                   commands_[i].description);
         if (lowered_filter.empty() ||
@@ -194,8 +195,7 @@ ftxui::Component CommandPalette(std::function<std::vector<Command>()> commands,
         return;
       }
 
-      auto it = std::find(filtered_indices_.begin(), filtered_indices_.end(),
-                          previous_original);
+      auto it = std::ranges::find(filtered_indices_, previous_original);
       if (it != filtered_indices_.end()) {
         selected_index_ =
             static_cast<int>(std::distance(filtered_indices_.begin(), it));

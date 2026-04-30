@@ -388,7 +388,7 @@ TEST_CASE("WriteDefaultSettingsToml creates the file with mode 0600") {
   REQUIRE(issues.empty());
   REQUIRE(std::filesystem::exists(path));
 
-  struct stat file_stat {};
+  struct stat file_stat{};
   REQUIRE(::stat(path.c_str(), &file_stat) == 0);
   REQUIRE((file_stat.st_mode & 0777) == 0600);
 

@@ -144,7 +144,7 @@ std::string ExtractQueryParam(const std::string& url, const std::string& key) {
     const size_t amp = query.find('&', pos);
     const size_t seg_end = (amp == std::string::npos) ? query.size() : amp;
     const std::string seg = query.substr(pos, seg_end - pos);
-    if (seg.size() > prefix.size() && seg.substr(0, prefix.size()) == prefix) {
+    if (seg.size() > prefix.size() && seg.starts_with(prefix)) {
       return seg.substr(prefix.size());
     }
     if (amp == std::string::npos) {

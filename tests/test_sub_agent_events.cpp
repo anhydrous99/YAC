@@ -85,7 +85,7 @@ ftxui::Event MakeMouseLeftPress(int x, int y) {
 
 void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
                            std::string agent_id) {
-  const auto task = "inspect workspace";
+  const auto* const task = "inspect workspace";
   bridge.HandleEvent(ChatEvent{SubAgentProgressEvent{
       .message_id = id,
       .sub_agent_id = std::move(agent_id),
@@ -94,17 +94,18 @@ void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
       .child_tool = SubAgentChildToolEvent{
           .tool_call_id = "tool-1",
           .tool_name = std::string(kListDirToolName),
-          .tool_call = ListDirCall{"src",
-                                   {{"main.cpp", DirectoryEntryType::File, 10}},
-                                   false,
-                                   false,
-                                   ""},
+          .tool_call = ListDirCall{.path = "src",
+                                   .entries = {{"main.cpp",
+                                                DirectoryEntryType::File, 10}},
+                                   .truncated = false,
+                                   .is_error = false,
+                                   .error = ""},
           .status = ChatMessageStatus::Complete}}});
 }
 
 void SeedSubAgentWithChildTool(ChatEventBridge& bridge, ChatMessageId id,
                                const std::string& agent_id) {
-  const auto task = "inspect workspace";
+  const auto* const task = "inspect workspace";
   bridge.HandleEvent(MakeToolStartedEvent(id, agent_id, task));
   EmitSubAgentChildTool(bridge, id, agent_id);
 }

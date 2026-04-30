@@ -30,7 +30,7 @@ struct Options {
     }
 
     constexpr std::string_view kLogPrefix = "--log-frames-to=";
-    if (arg.rfind(kLogPrefix, 0) == 0) {
+    if (arg.starts_with(kLogPrefix)) {
       options.log_frames_to = std::string(arg.substr(kLogPrefix.size()));
     }
   }
@@ -43,13 +43,13 @@ void LogFrame(std::ofstream* log_stream, std::mutex* log_mutex,
     return;
   }
 
-  std::lock_guard lock(*log_mutex);
+  std::scoped_lock lock(*log_mutex);
   *log_stream << frame << '\n';
   log_stream->flush();
 }
 
 void WriteResponse(std::mutex* write_mutex, const Json& response) {
-  std::lock_guard lock(*write_mutex);
+  std::scoped_lock lock(*write_mutex);
   std::cout << response.dump() << '\n' << std::flush;
 }
 

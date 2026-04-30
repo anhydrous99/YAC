@@ -21,14 +21,14 @@ class ResourceMockMcpManager : public yac::test::MockMcpManager {
   }
 
   std::vector<yac::core_types::McpResourceDescriptor> ListResources(
-      std::string_view, std::stop_token) override {
+      std::string_view /*unused*/, std::stop_token /*unused*/) override {
     ++list_count;
     return list_result_;
   }
 
-  yac::core_types::McpResourceContent ReadResource(std::string_view,
-                                                   std::string_view,
-                                                   std::stop_token) override {
+  yac::core_types::McpResourceContent ReadResource(
+      std::string_view /*unused*/, std::string_view /*unused*/,
+      std::stop_token /*unused*/) override {
     ++read_count;
     return read_result_;
   }

@@ -28,7 +28,7 @@ StreamingCoalescer::StreamingCoalescer(ftxui::App& screen,
 StreamingCoalescer::~StreamingCoalescer() {
   worker_.request_stop();
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     flush_now_ = true;
   }
   cv_.notify_all();
@@ -36,7 +36,7 @@ StreamingCoalescer::~StreamingCoalescer() {
 
 void StreamingCoalescer::Dispatch(chat::ChatEvent event) {
   if (auto* delta = std::get_if<chat::TextDeltaEvent>(&event.payload)) {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     auto [it, inserted] =
         pending_deltas_.try_emplace(delta->message_id, *delta);
     if (!inserted) {

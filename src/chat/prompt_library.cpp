@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -244,15 +245,17 @@ bool IsCommandNameChar(unsigned char ch) {
 }
 
 bool IsValidPromptName(const std::string& name) {
-  return !name.empty() &&
-         std::all_of(name.begin(), name.end(),
-                     [](unsigned char ch) { return IsCommandNameChar(ch); });
+  return !name.empty() && std::ranges::all_of(name, [](unsigned char ch) {
+    return IsCommandNameChar(ch);
+  });
 }
 
 std::string TrimAsciiWhitespace(std::string value) {
   const auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
-  auto begin = std::find_if_not(value.begin(), value.end(), is_space);
-  auto end = std::find_if_not(value.rbegin(), value.rend(), is_space).base();
+  auto begin = std::ranges::find_if_not(value, is_space);
+  auto end =
+      std::ranges::find_if_not(std::ranges::reverse_view(value), is_space)
+          .base();
   if (begin >= end) {
     return {};
   }
@@ -448,10 +451,10 @@ PromptLibraryResult LoadPromptLibrary(const std::filesystem::path& prompts_dir,
     }
   }
 
-  std::sort(result.prompts.begin(), result.prompts.end(),
-            [](const PromptDefinition& lhs, const PromptDefinition& rhs) {
-              return lhs.name < rhs.name;
-            });
+  std::ranges::sort(result.prompts, [](const PromptDefinition& lhs,
+                                       const PromptDefinition& rhs) {
+    return lhs.name < rhs.name;
+  });
   return result;
 }
 
@@ -500,16 +503,17 @@ std::string RenderPrompt(const std::string& prompt,
     std::string value;
   };
   const TokenReplacement replacements[] = {
-      {kArgumentsToken, rendered_arguments},
-      {kRepoContextToken, BuildRepoContext()},
-      {kWorkspaceRootToken,
-       [] {
-         try {
-           return std::filesystem::current_path().string();
-         } catch (...) {
-           return std::string{};
-         }
-       }()},
+      {.token = kArgumentsToken, .value = rendered_arguments},
+      {.token = kRepoContextToken, .value = BuildRepoContext()},
+      {.token = kWorkspaceRootToken,
+       .value =
+           [] {
+             try {
+               return std::filesystem::current_path().string();
+             } catch (...) {
+               return std::string{};
+             }
+           }()},
   };
 
   std::string rendered;

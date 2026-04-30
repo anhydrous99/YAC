@@ -81,8 +81,9 @@ class TestHttpServer {
  public:
   using Handler = std::function<HttpResponse(const HttpRequest&, std::size_t)>;
 
-  explicit TestHttpServer(Handler handler) : handler_(std::move(handler)) {
-    listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+  explicit TestHttpServer(Handler handler)
+      : handler_(std::move(handler)),
+        listen_fd_(socket(AF_INET, SOCK_STREAM, 0)) {
     if (listen_fd_ < 0) {
       throw std::runtime_error("socket failed");
     }
@@ -139,7 +140,7 @@ class TestHttpServer {
   }
 
   [[nodiscard]] std::vector<HttpRequest> Requests() const {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return requests_;
   }
 
@@ -160,7 +161,7 @@ class TestHttpServer {
       try {
         HttpRequest request = ReadRequest(client_fd);
         const std::size_t request_index = [&] {
-          std::lock_guard lock(mutex_);
+          std::scoped_lock lock(mutex_);
           requests_.push_back(request);
           return requests_.size() - 1;
         }();
@@ -173,7 +174,7 @@ class TestHttpServer {
     }
   }
 
-  [[nodiscard]] HttpRequest ReadRequest(int client_fd) {
+  [[nodiscard]] static HttpRequest ReadRequest(int client_fd) {
     std::string buffer;
     char chunk[1024];
     std::size_t header_end = std::string::npos;
@@ -231,7 +232,7 @@ class TestHttpServer {
     return request;
   }
 
-  void WriteResponse(int client_fd, const HttpResponse& response) {
+  static void WriteResponse(int client_fd, const HttpResponse& response) {
     std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " " +
                        ReasonPhrase(response.status) + "\r\n";
 

@@ -203,7 +203,7 @@ void ChatUiScrollState::UpdateScrollOffsetFromMouse(ftxui::Event event) {
     return;
   }
 
-  int mouse_y = event.mouse().y - scrollbar_box_.y_min - thumb_size / 2;
+  int mouse_y = event.mouse().y - scrollbar_box_.y_min - (thumb_size / 2);
   float ratio = static_cast<float>(mouse_y) / static_cast<float>(track_usable);
   ratio = std::max(0.0F, std::min(1.0F, ratio));
   scroll_offset_y_ = util::CalculateScrollOffsetFromRatio(
