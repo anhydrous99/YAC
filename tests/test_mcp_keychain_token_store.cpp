@@ -40,9 +40,17 @@ TEST_CASE("round_trip") {
 TEST_CASE("detection_when_unavailable") {
   const bool available = yac::mcp::KeychainTokenStore::IsKeychainAvailable();
 
+#if defined(__linux__)
   if (!IsDbusAvailable()) {
     REQUIRE_FALSE(available);
   } else {
     SUCCEED("DBus present; availability check completed without throwing");
   }
+#else
+  // macOS uses Apple Keychain and Windows uses Credential Manager; neither
+  // depends on DBus, so the Linux-specific "no DBus ⇒ unavailable" inference
+  // does not apply.
+  (void)available;
+  SUCCEED("non-Linux platform; backend independent of DBus");
+#endif
 }

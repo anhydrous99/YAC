@@ -55,7 +55,7 @@ ChatService::~ChatService() {
   }
   tool_approval_->CancelPending();
   worker_.request_stop();
-  wake_.notify_one();
+  wake_.notify_all();
   if (worker_.joinable()) {
     worker_.join();
   }
@@ -194,12 +194,17 @@ int ChatService::QueueDepth() const {
 }
 
 void ChatService::WorkerLoop(std::stop_token stop_token) {
+  // libc++ < 18.1 (llvm/llvm-project#76807) does not wake the stop_token-aware
+  // wait overload on request_stop; route around it with an explicit
+  // stop_callback that triggers notify_all and a predicate-form wait that
+  // folds stop_requested() into the predicate.
+  std::stop_callback wake_on_stop(stop_token, [this] { wake_.notify_all(); });
   while (!stop_token.stop_requested()) {
     PendingPrompt prompt;
     std::stop_source request_stop_source;
     {
       std::unique_lock lock(mutex_);
-      wake_.wait(lock, stop_token, [&] {
+      wake_.wait(lock, [&] {
         return !pending_.empty() || stop_token.stop_requested();
       });
       if (stop_token.stop_requested()) {

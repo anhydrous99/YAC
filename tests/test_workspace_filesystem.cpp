@@ -62,7 +62,8 @@ TEST_CASE("ResolvePath accepts regular files inside the workspace") {
 TEST_CASE("ResolvePath rejects a symlink that points outside the workspace") {
   TempWorkspace workspace;
   std::error_code ec;
-  std::filesystem::create_symlink("/etc/hostname", workspace.Path() / "escape",
+  // /etc/hosts exists on both Linux and macOS; /etc/hostname is Linux-only.
+  std::filesystem::create_symlink("/etc/hosts", workspace.Path() / "escape",
                                   ec);
   REQUIRE_FALSE(ec);
   WorkspaceFilesystem fs(workspace.Path());

@@ -49,10 +49,12 @@ void ChatServiceToolApproval::CancelPending() {
 
 ApprovalResolution ChatServiceToolApproval::WaitForResolution(
     const std::string& approval_id, std::stop_token stop_token) {
+  // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
+  std::stop_callback wake_on_stop(stop_token, [this] { wake_.notify_all(); });
   std::unique_lock lock(mutex_);
-  wake_.wait(lock, stop_token, [&] {
+  wake_.wait(lock, [&] {
     return !pending_.has_value() || pending_->id != approval_id ||
-           pending_->approved.has_value();
+           pending_->approved.has_value() || stop_token.stop_requested();
   });
   if (stop_token.stop_requested() || !pending_.has_value() ||
       pending_->id != approval_id || !pending_->approved.has_value()) {

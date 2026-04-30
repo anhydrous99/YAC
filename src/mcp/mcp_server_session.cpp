@@ -185,9 +185,13 @@ void McpServerSession::BackoffSleep(std::stop_token stop_token,
       jitter_max > 0
           ? std::uniform_int_distribution<long long>{0LL, jitter_max}(rng_)
           : 0LL);
+  // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
+  std::stop_callback wake_on_stop(
+      stop_token, [this] { reconnect_cv_.notify_all(); });
   std::unique_lock<std::mutex> lock(reconnect_mutex_);
-  (void)reconnect_cv_.wait_for(lock, std::move(stop_token), delay + jitter,
-                               [] { return false; });
+  (void)reconnect_cv_.wait_for(lock, delay + jitter, [&] {
+    return stop_token.stop_requested();
+  });
 }
 
 void McpServerSession::Run(std::stop_token stop_token) {

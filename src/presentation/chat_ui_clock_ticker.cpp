@@ -21,9 +21,13 @@ void ChatUiClockTicker::Start(UiTaskRunner ui_task_runner) {
   }
   worker_ = std::jthread([ui_task_runner = std::move(ui_task_runner),
                           this](std::stop_token stop_token) mutable {
+    // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
+    std::stop_callback wake_on_stop(stop_token,
+                                    [this] { wake_.notify_all(); });
     while (!stop_token.stop_requested()) {
       std::unique_lock lock(mutex_);
-      wake_.wait_for(lock, stop_token, kTickInterval, [] { return false; });
+      wake_.wait_for(lock, kTickInterval,
+                     [&] { return stop_token.stop_requested(); });
       if (stop_token.stop_requested()) {
         return;
       }
