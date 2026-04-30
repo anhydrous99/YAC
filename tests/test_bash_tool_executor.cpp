@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <stop_token>
 #include <string>
+#include <thread>
 
 #include <catch2/catch_test_macros.hpp>
 
