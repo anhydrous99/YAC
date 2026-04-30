@@ -1,9 +1,36 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.18)
 project(YAC VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Apple's libc++ keeps C++20 jthread / stop_token / stop_callback (P0660R10)
+# behind -fexperimental-library through libc++ 19; YAC relies on these.
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-fexperimental-library)
+  add_link_options(-fexperimental-library)
+endif()
+
+# llvm/llvm-project#76807: condition_variable_any::wait* with stop_token can
+# fail to wake on stop in libc++ < 18.1. Fix landed in libc++ 18.1.0.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles([[
+  #include <version>
+  #if defined(_LIBCPP_VERSION) && _LIBCPP_VERSION < 180100
+  #error libc++ predates the stop_token wait fix
+  #endif
+  int main() {}
+]] YAC_LIBCXX_HAS_STOP_TOKEN_FIX)
+if(NOT YAC_LIBCXX_HAS_STOP_TOKEN_FIX)
+  message(WARNING
+    "Detected libc++ < 18.1 (llvm/llvm-project#76807): "
+    "std::condition_variable_any::wait/wait_for/wait_until with std::stop_token "
+    "may not wake on stop. YAC uses this pattern in chat_service, "
+    "mcp_server_session, and the chat UI ticker/animation, so shutdown can "
+    "stall. Build will proceed; for a clean runtime, use Homebrew GCC or "
+    "upstream LLVM >= 18 (Apple Clang through Xcode 16.4 ships libc++ ~17).")
+endif()
 
 include(FetchContent)
 
@@ -27,11 +54,10 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/olrea/openai-cpp.git
   # Pin a known-good upstream revision for reproducible builds.
   GIT_TAG 9554a4d86d7650bb3b46db772dbacd5f3e054b8c
+  # Header-only consumed via our own INTERFACE target below; skip auto-add.
+  SOURCE_SUBDIR yac_skip_auto_add
 )
-FetchContent_GetProperties(openai_cpp)
-if(NOT openai_cpp_POPULATED)
-  FetchContent_Populate(openai_cpp)
-endif()
+FetchContent_MakeAvailable(openai_cpp)
 
 add_library(openai_cpp INTERFACE)
 target_include_directories(openai_cpp INTERFACE
@@ -49,9 +75,10 @@ FetchContent_Declare(
   keychain
   GIT_REPOSITORY https://github.com/hrantzsch/keychain.git
   GIT_TAG v1.3.1
+  # We add_subdirectory conditionally below; skip MakeAvailable's auto-add.
+  SOURCE_SUBDIR yac_skip_auto_add
 )
-
-FetchContent_Populate(keychain)
+FetchContent_MakeAvailable(keychain)
 
 if(APPLE OR WIN32)
   add_subdirectory(${keychain_SOURCE_DIR} ${keychain_BINARY_DIR} EXCLUDE_FROM_ALL)
