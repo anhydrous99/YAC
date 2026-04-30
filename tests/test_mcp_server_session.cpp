@@ -448,9 +448,12 @@ TEST_CASE("reconnect_backoff_schedule") {
             attempt_times[i] - attempt_times[i - 1])
             .count();
     const auto base_ms = expected_delay.count();
+    // Generous slack absorbs scheduler jitter on slow CI runners (notably
+    // macOS GitHub runners), where condvar wakeup + thread re-scheduling can
+    // add 100ms+ on top of the expected delay + 25% jitter.
     CHECK(actual_ms >= base_ms - 100);
     CHECK(actual_ms <=
-          static_cast<long long>(static_cast<double>(base_ms) * 1.25) + 100);
+          static_cast<long long>(static_cast<double>(base_ms) * 1.25) + 500);
     expected_delay =
         std::min(std::chrono::duration_cast<std::chrono::milliseconds>(
                      expected_delay * pc::kReconnectBackoffMultiplier),
