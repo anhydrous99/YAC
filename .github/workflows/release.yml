@@ -1,0 +1,96 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-24.04
+          - platform: macos-arm64
+            runner: macos-15
+
+    env:
+      BUILD_TYPE: Release
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libcurl4-openssl-dev openssl ripgrep
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja curl openssl@3 ripgrep
+
+      - name: Configure
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmake_args=(
+            -B build
+            -G Ninja
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}"
+          )
+
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            cmake_args+=("-DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)")
+          fi
+
+          cmake "${cmake_args[@]}"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        id: package
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          safe_tag_name="${RELEASE_TAG//\//-}"
+          package_name="yac-${safe_tag_name}-${PLATFORM}"
+          package_root="dist/${package_name}"
+
+          mkdir -p "${package_root}"
+          cp build/yac "${package_root}/yac"
+          chmod 755 "${package_root}/yac"
+          cp README.md settings.example.toml "${package_root}/"
+
+          tar -czf "dist/${package_name}.tar.gz" -C dist "${package_name}"
+          echo "asset=dist/${package_name}.tar.gz" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload release asset
+        env:
+          ASSET: ${{ steps.package.outputs.asset }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: >
+          gh release upload
+          "${RELEASE_TAG}"
+          "${ASSET}"
+          --repo "${GITHUB_REPOSITORY}"
