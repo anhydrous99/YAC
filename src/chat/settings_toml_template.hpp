@@ -21,7 +21,7 @@ max_tool_rounds = 32                    # sequential tool rounds per response
 # workspace_root = "/path/to/workspace"   # defaults to the launch directory
 
 [provider]
-id          = "openai"                    # "openai" or "zai"
+id          = "openai-compatible"         # "openai-compatible" or "zai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"            # env var that holds the key

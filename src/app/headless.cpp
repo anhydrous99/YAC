@@ -3,7 +3,7 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
-#include "provider/openai_chat_provider.hpp"
+#include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
 #include <atomic>
@@ -23,7 +23,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
   auto config_result = chat::LoadChatConfigResult();
   const auto& config = config_result.config;
 
-  auto provider = std::make_shared<provider::OpenAiChatProvider>(
+  auto provider = std::make_shared<provider::OpenAiCompatibleChatProvider>(
       chat::ProviderConfig{.id = config.provider_id,
                            .model = config.model,
                            .api_key = config.api_key,

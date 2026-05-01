@@ -86,7 +86,7 @@ TEST_CASE("add_preserves_comments") {
       "\n"
       "[provider]\n"
       "# provider comment\n"
-      "id = \"openai\"\n";
+      "id = \"openai-compatible\"\n";
 
   WriteFile(toml_path, kInitialToml);
 

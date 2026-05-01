@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace yac::provider::openai_protocol {
+namespace yac::provider::openai_compatible_protocol {
 
 using Json = openai::_detail::Json;
 
@@ -43,4 +43,4 @@ struct StreamState {
     const Json& response);
 void ConsumeSseChunk(std::string_view chunk, StreamState& state);
 
-}  // namespace yac::provider::openai_protocol
+}  // namespace yac::provider::openai_compatible_protocol

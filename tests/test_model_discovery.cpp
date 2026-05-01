@@ -62,7 +62,7 @@ class FakeDiscoveryProvider : public LanguageModelProvider {
   std::chrono::milliseconds last_timeout_{0};
 };
 
-ChatConfig MakeConfig(std::string provider_id = "openai",
+ChatConfig MakeConfig(std::string provider_id = "openai-compatible",
                       std::string model = "") {
   ChatConfig config;
   config.provider_id = std::move(provider_id);
@@ -74,11 +74,11 @@ ChatConfig MakeConfig(std::string provider_id = "openai",
 
 TEST_CASE("DiscoverModels returns provider models when discovery succeeds") {
   FakeDiscoveryProvider provider(
-      "openai", true,
+      "openai-compatible", true,
       {{.id = "gpt-4.1", .display_name = "GPT-4.1"},
        {.id = "gpt-4.1-mini", .display_name = "GPT-4.1 Mini"}});
 
-  const auto models = DiscoverModels(provider, MakeConfig("openai"));
+  const auto models = DiscoverModels(provider, MakeConfig("openai-compatible"));
 
   REQUIRE(models.size() == 2);
   REQUIRE(models[0].id == "gpt-4.1");
@@ -90,9 +90,11 @@ TEST_CASE("DiscoverModels returns provider models when discovery succeeds") {
 
 TEST_CASE("DiscoverModelsWithStatus reports successful discovery") {
   FakeDiscoveryProvider provider(
-      "openai", true, {{.id = "gpt-4.1", .display_name = "GPT-4.1"}});
+      "openai-compatible", true,
+      {{.id = "gpt-4.1", .display_name = "GPT-4.1"}});
 
-  const auto result = DiscoverModelsWithStatus(provider, MakeConfig("openai"));
+  const auto result =
+      DiscoverModelsWithStatus(provider, MakeConfig("openai-compatible"));
 
   REQUIRE(result.status == ModelDiscoveryStatus::Success);
   REQUIRE(result.models.size() == 1);
@@ -135,18 +137,20 @@ TEST_CASE("DiscoverModelsWithStatus reports Z.ai fallback") {
 TEST_CASE(
     "DiscoverModels returns empty when provider does not support discovery") {
   FakeDiscoveryProvider provider(
-      "openai", false, {{.id = "ignored", .display_name = "Ignored"}});
+      "openai-compatible", false,
+      {{.id = "ignored", .display_name = "Ignored"}});
 
-  const auto models = DiscoverModels(provider, MakeConfig("openai"));
+  const auto models = DiscoverModels(provider, MakeConfig("openai-compatible"));
 
   REQUIRE(models.empty());
   REQUIRE(provider.ListModelsCalls() == 0);
 }
 
 TEST_CASE("DiscoverModelsWithStatus reports unsupported discovery") {
-  FakeDiscoveryProvider provider("openai", false);
+  FakeDiscoveryProvider provider("openai-compatible", false);
 
-  const auto result = DiscoverModelsWithStatus(provider, MakeConfig("openai"));
+  const auto result =
+      DiscoverModelsWithStatus(provider, MakeConfig("openai-compatible"));
 
   REQUIRE(result.status == ModelDiscoveryStatus::Unsupported);
   REQUIRE(result.models.empty());
@@ -156,12 +160,12 @@ TEST_CASE("DiscoverModelsWithStatus reports unsupported discovery") {
 TEST_CASE(
     "DiscoverModels preserves configured model when missing from results") {
   FakeDiscoveryProvider provider(
-      "openai", true,
+      "openai-compatible", true,
       {{.id = "gpt-4.1", .display_name = "GPT-4.1"},
        {.id = "gpt-4.1-mini", .display_name = "GPT-4.1 Mini"}});
 
-  const auto models =
-      DiscoverModels(provider, MakeConfig("openai", "configured-model"));
+  const auto models = DiscoverModels(
+      provider, MakeConfig("openai-compatible", "configured-model"));
 
   REQUIRE(models.size() == 3);
   REQUIRE(models[0].id == "configured-model");
@@ -170,9 +174,9 @@ TEST_CASE(
 }
 
 TEST_CASE("DiscoverModels does not apply Z.ai fallback to non-zai providers") {
-  FakeDiscoveryProvider provider("openai", true);
+  FakeDiscoveryProvider provider("openai-compatible", true);
 
-  const auto models = DiscoverModels(provider, MakeConfig("openai"));
+  const auto models = DiscoverModels(provider, MakeConfig("openai-compatible"));
 
   REQUIRE(provider.ListModelsCalls() == 1);
   REQUIRE(models.empty());
@@ -180,10 +184,10 @@ TEST_CASE("DiscoverModels does not apply Z.ai fallback to non-zai providers") {
 
 TEST_CASE(
     "DiscoverModels preserves configured model for non-Z.ai empty results") {
-  FakeDiscoveryProvider provider("openai", true);
+  FakeDiscoveryProvider provider("openai-compatible", true);
 
   const auto models =
-      DiscoverModels(provider, MakeConfig("openai", "my-model"));
+      DiscoverModels(provider, MakeConfig("openai-compatible", "my-model"));
 
   REQUIRE(models.size() == 1);
   REQUIRE(models[0].id == "my-model");
@@ -191,10 +195,10 @@ TEST_CASE(
 
 TEST_CASE(
     "DiscoverModels preserves configured model for non-Z.ai discovery throw") {
-  FakeDiscoveryProvider provider("openai", true, {}, true);
+  FakeDiscoveryProvider provider("openai-compatible", true, {}, true);
 
   const auto models =
-      DiscoverModels(provider, MakeConfig("openai", "my-model"));
+      DiscoverModels(provider, MakeConfig("openai-compatible", "my-model"));
 
   REQUIRE(models.size() == 1);
   REQUIRE(models[0].id == "my-model");
@@ -202,10 +206,10 @@ TEST_CASE(
 
 TEST_CASE(
     "DiscoverModelsWithStatus keeps configured model when discovery fails") {
-  FakeDiscoveryProvider provider("openai", true, {}, true);
+  FakeDiscoveryProvider provider("openai-compatible", true, {}, true);
 
-  const auto result =
-      DiscoverModelsWithStatus(provider, MakeConfig("openai", "my-model"));
+  const auto result = DiscoverModelsWithStatus(
+      provider, MakeConfig("openai-compatible", "my-model"));
 
   REQUIRE(result.status == ModelDiscoveryStatus::Failed);
   REQUIRE(result.models.size() == 1);

@@ -18,7 +18,7 @@
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
 #include "presentation/util/terminal.hpp"
-#include "provider/openai_chat_provider.hpp"
+#include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
 #include <cstdlib>
@@ -37,15 +37,16 @@
 namespace yac::app {
 namespace {
 
-std::shared_ptr<provider::OpenAiChatProvider> BuildProvider(
+std::shared_ptr<provider::OpenAiCompatibleChatProvider> BuildProvider(
     const chat::ChatConfig& config) {
-  return std::make_shared<provider::OpenAiChatProvider>(chat::ProviderConfig{
-      .id = config.provider_id,
-      .model = config.model,
-      .api_key = config.api_key,
-      .api_key_env = config.api_key_env,
-      .base_url = config.base_url,
-  });
+  return std::make_shared<provider::OpenAiCompatibleChatProvider>(
+      chat::ProviderConfig{
+          .id = config.provider_id,
+          .model = config.model,
+          .api_key = config.api_key,
+          .api_key_env = config.api_key_env,
+          .base_url = config.base_url,
+      });
 }
 
 presentation::UiSeverity SeverityFor(chat::ConfigIssueSeverity severity) {

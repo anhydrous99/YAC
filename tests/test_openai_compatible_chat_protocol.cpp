@@ -1,4 +1,4 @@
-#include "provider/openai_chat_protocol.hpp"
+#include "provider/openai_compatible_chat_protocol.hpp"
 
 #include <atomic>
 #include <vector>
@@ -34,7 +34,8 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
   ProviderConfig config;
   config.options["include_stream_usage"] = "false";
 
-  const auto payload = openai_protocol::BuildChatPayload(request, true, config);
+  const auto payload =
+      openai_compatible_protocol::BuildChatPayload(request, true, config);
 
   REQUIRE(payload["model"].get<std::string>() == "gpt-4.1");
   REQUIRE(payload["stream"].get<bool>());
@@ -53,18 +54,20 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
 }
 
 TEST_CASE("Buffered response helpers extract content, usage, and tool calls") {
-  const auto response = openai_protocol::Json::parse(
+  const auto response = openai_compatible_protocol::Json::parse(
       R"JSON({"choices":[{"message":{"content":"final answer","tool_calls":[{"id":"call-2","function":{"name":"file_read","arguments":"{\"path\":\"README.md\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":6}})JSON");
 
-  REQUIRE(openai_protocol::ExtractBufferedText(response) == "final answer");
+  REQUIRE(openai_compatible_protocol::ExtractBufferedText(response) ==
+          "final answer");
 
-  const auto usage = openai_protocol::ExtractBufferedUsage(response);
+  const auto usage = openai_compatible_protocol::ExtractBufferedUsage(response);
   REQUIRE(usage.has_value());
   REQUIRE(usage->prompt_tokens == 4);
   REQUIRE(usage->completion_tokens == 6);
   REQUIRE(usage->total_tokens == 10);
 
-  const auto calls = openai_protocol::ExtractBufferedToolCalls(response);
+  const auto calls =
+      openai_compatible_protocol::ExtractBufferedToolCalls(response);
   REQUIRE(calls.size() == 1);
   REQUIRE(calls[0].id == "call-2");
   REQUIRE(calls[0].name == "file_read");
@@ -78,14 +81,14 @@ TEST_CASE(
     events.push_back(std::move(event));
   };
 
-  openai_protocol::StreamState state;
+  openai_compatible_protocol::StreamState state;
   state.sink = &sink;
 
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"choices":[{"delta":{"content":"hel)JSON", state);
   REQUIRE(events.empty());
 
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(lo"}}]}
 )JSON",
       state);
@@ -94,15 +97,15 @@ TEST_CASE(
   REQUIRE(events[0].Type() == ChatEventType::TextDelta);
   REQUIRE(events[0].Get<TextDeltaEvent>().text == "hello");
 
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-3","function":{"name":"list_dir","arguments":"{\"path\":\""}}]}}]}
 )JSON",
       state);
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"usage":{"prompt_tokens":2,"completion_tokens":3},"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"src\"}"}}]}}]}
 )JSON",
       state);
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"choices":[{"finish_reason":"tool_calls"}]}
 )JSON",
       state);
@@ -137,16 +140,16 @@ TEST_CASE(
     events.push_back(std::move(event));
   };
 
-  openai_protocol::StreamState state;
+  openai_compatible_protocol::StreamState state;
   state.sink = &sink;
 
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file_write","arguments":"{\"filep"}}]}}]}
 )JSON",
       state);
   REQUIRE(events.empty());
 
-  openai_protocol::ConsumeSseChunk(
+  openai_compatible_protocol::ConsumeSseChunk(
       R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-4","function":{"arguments":"ath\":\"foo.txt\",\"content\":\"hi\"}"}}]}}]}
 )JSON",
       state);

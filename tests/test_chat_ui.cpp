@@ -205,7 +205,7 @@ TEST_CASE("Build returns non-null component with typing enabled") {
 TEST_CASE("ChatUI renders startup status in empty transcript") {
   ChatUI ui;
   ui.SetStartupStatus(StartupStatus{
-      .provider_id = "openai",
+      .provider_id = "openai-compatible",
       .model = "gpt-4o-mini",
       .workspace_root = "/workspace",
       .api_key_env = "OPENAI_API_KEY",

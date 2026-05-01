@@ -1,11 +1,11 @@
-#include "provider/openai_chat_protocol.hpp"
+#include "provider/openai_compatible_chat_protocol.hpp"
 
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
 
-namespace yac::provider::openai_protocol {
+namespace yac::provider::openai_compatible_protocol {
 
 namespace {
 
@@ -368,4 +368,4 @@ void ConsumeSseChunk(std::string_view chunk, StreamState& state) {
   }
 }
 
-}  // namespace yac::provider::openai_protocol
+}  // namespace yac::provider::openai_compatible_protocol

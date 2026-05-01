@@ -36,7 +36,7 @@ struct ChatMessage {
 };
 
 struct ChatRequest {
-  std::string provider_id = "openai";
+  std::string provider_id = "openai-compatible";
   std::string model = "gpt-4o-mini";
   std::vector<ChatMessage> messages;
   std::vector<ToolDefinition> tools;
@@ -389,7 +389,7 @@ struct ChatEvent {
 }
 
 struct ProviderConfig {
-  std::string id = "openai";
+  std::string id = "openai-compatible";
   std::string model = "gpt-4o-mini";
   std::string api_key;
   std::string api_key_env = "OPENAI_API_KEY";
@@ -407,7 +407,7 @@ struct ConfigIssue {
 };
 
 struct ChatConfig {
-  std::string provider_id = "openai";
+  std::string provider_id = "openai-compatible";
   std::string model = "gpt-4o-mini";
   std::string base_url = "https://api.openai.com/v1/";
   double temperature = 0.7;

@@ -10,9 +10,13 @@
 
 namespace yac::provider {
 
-class OpenAiChatProvider : public LanguageModelProvider {
+// Generic provider that speaks the OpenAI Chat Completions wire protocol
+// against any compatible endpoint configured via `chat::ProviderConfig`.
+// Subclass and override `ResolveApiKey()` to plug in custom auth (e.g. an
+// OAuth-issued access token); the rest of the HTTP/SSE plumbing is reused.
+class OpenAiCompatibleChatProvider : public LanguageModelProvider {
  public:
-  explicit OpenAiChatProvider(chat::ProviderConfig config = {});
+  explicit OpenAiCompatibleChatProvider(chat::ProviderConfig config = {});
 
   [[nodiscard]] std::string Id() const override;
   [[nodiscard]] bool SupportsModelDiscovery() const override { return true; }
@@ -28,11 +32,13 @@ class OpenAiChatProvider : public LanguageModelProvider {
   [[nodiscard]] static std::optional<chat::TokenUsage> ParseUsageJson(
       const std::string& data);
 
+ protected:
+  [[nodiscard]] virtual std::string ResolveApiKey() const;
+
  private:
   void CompleteBuffered(const chat::ChatRequest& request, ChatEventSink sink);
   void CompleteStreaming(const chat::ChatRequest& request, ChatEventSink sink,
                          std::stop_token stop_token);
-  [[nodiscard]] std::string ResolveApiKey() const;
   [[nodiscard]] std::string CompletionUrl() const;
   [[nodiscard]] std::string ModelsUrl() const;
 

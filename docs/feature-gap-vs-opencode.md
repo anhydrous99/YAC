@@ -14,7 +14,7 @@ through MCP.
 
 ### 2. Provider Coverage (2 vs 75+)
 
-YAC ships only `openai` and `zai` presets. OpenCode integrates with Models.dev
+YAC ships only `openai-compatible` and `zai` presets. OpenCode integrates with Models.dev
 for 75+ providers (Anthropic native, Bedrock, Vertex, Groq, OpenRouter, Ollama,
 llama.cpp, LM Studio, Cerebras, etc.) plus OAuth flows for Claude Pro/Max,
 GitHub Copilot, GitLab Duo. No Anthropic-native, no local model support, no

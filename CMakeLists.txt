@@ -239,8 +239,8 @@ add_library(yac_service STATIC
   src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp
   src/chat/sub_agent_event_adapter.cpp
-  src/provider/openai_chat_provider.cpp
-  src/provider/openai_chat_protocol.cpp
+  src/provider/openai_compatible_chat_provider.cpp
+  src/provider/openai_compatible_chat_protocol.cpp
   src/provider/provider_registry.cpp
   src/tool_call/bash_tool_executor.cpp
   src/tool_call/edit_tool_executor.cpp

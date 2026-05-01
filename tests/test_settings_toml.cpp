@@ -112,7 +112,7 @@ TEST_CASE("LoadSettingsFromToml keeps defaults for absent fields") {
   REQUIRE_FALSE(fields.provider_id);
   REQUIRE(config.temperature == 0.3);
   REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
-  REQUIRE(config.provider_id == "openai");
+  REQUIRE(config.provider_id == "openai-compatible");
   REQUIRE(config.model == "gpt-4o-mini");
 }
 

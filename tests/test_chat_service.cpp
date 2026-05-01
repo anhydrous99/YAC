@@ -349,7 +349,7 @@ ChatService MakeService(
     ChatConfig config = {}) {
   ProviderRegistry registry;
   if (provider) {
-    if (config.provider_id == "openai") {
+    if (config.provider_id == "openai-compatible") {
       config.provider_id = provider->Id();
     }
     registry.Register(std::move(provider));
@@ -910,7 +910,7 @@ TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
   auto config =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
-  REQUIRE(config.provider_id == "openai");
+  REQUIRE(config.provider_id == "openai-compatible");
   REQUIRE(config.model == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
@@ -925,7 +925,7 @@ TEST_CASE(
   auto result =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/true);
   REQUIRE(std::filesystem::exists(settings.Path()));
-  REQUIRE(result.config.provider_id == "openai");
+  REQUIRE(result.config.provider_id == "openai-compatible");
   REQUIRE(result.config.model == "gpt-4o-mini");
 }
 
@@ -1114,7 +1114,7 @@ TEST_CASE(
   auto result =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
 
-  REQUIRE(result.config.provider_id == "openai");
+  REQUIRE(result.config.provider_id == "openai-compatible");
   REQUIRE(result.config.model == "gpt-4o-mini");
   REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
     return issue.severity == ConfigIssueSeverity::Error &&

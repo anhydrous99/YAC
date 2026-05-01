@@ -1,6 +1,6 @@
-#include "provider/openai_chat_provider.hpp"
+#include "provider/openai_compatible_chat_provider.hpp"
 
-#include "provider/openai_chat_protocol.hpp"
+#include "provider/openai_compatible_chat_protocol.hpp"
 
 #include <cstdlib>
 #include <curl/curl.h>
@@ -13,7 +13,7 @@
 namespace yac::provider {
 namespace {
 
-using Json = openai_protocol::Json;
+using Json = openai_compatible_protocol::Json;
 
 size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const auto bytes = size * nmemb;
@@ -24,8 +24,9 @@ size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
 
 size_t WriteStream(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const auto bytes = size * nmemb;
-  auto* state = static_cast<openai_protocol::StreamState*>(userdata);
-  openai_protocol::ConsumeSseChunk(std::string_view(ptr, bytes), *state);
+  auto* state = static_cast<openai_compatible_protocol::StreamState*>(userdata);
+  openai_compatible_protocol::ConsumeSseChunk(std::string_view(ptr, bytes),
+                                              *state);
   return bytes;
 }
 struct ProgressState {
@@ -53,14 +54,15 @@ std::string TrimTrailingSlash(std::string value) {
 
 }  // namespace
 
-OpenAiChatProvider::OpenAiChatProvider(chat::ProviderConfig config)
+OpenAiCompatibleChatProvider::OpenAiCompatibleChatProvider(
+    chat::ProviderConfig config)
     : config_(std::move(config)) {}
 
-std::string OpenAiChatProvider::Id() const {
+std::string OpenAiCompatibleChatProvider::Id() const {
   return config_.id;
 }
 
-std::vector<chat::ModelInfo> OpenAiChatProvider::ListModels(
+std::vector<chat::ModelInfo> OpenAiCompatibleChatProvider::ListModels(
     std::chrono::milliseconds timeout) {
   const auto api_key = ResolveApiKey();
   if (api_key.empty()) {
@@ -110,12 +112,12 @@ std::vector<chat::ModelInfo> OpenAiChatProvider::ListModels(
     throw std::runtime_error(message.str());
   }
 
-  return openai_protocol::ParseModelsData(response);
+  return openai_compatible_protocol::ParseModelsData(response);
 }
 
-void OpenAiChatProvider::CompleteStream(const chat::ChatRequest& request,
-                                        ChatEventSink sink,
-                                        std::stop_token stop_token) {
+void OpenAiCompatibleChatProvider::CompleteStream(
+    const chat::ChatRequest& request, ChatEventSink sink,
+    std::stop_token stop_token) {
   try {
     if (request.stream) {
       CompleteStreaming(request, sink, stop_token);
@@ -129,49 +131,51 @@ void OpenAiChatProvider::CompleteStream(const chat::ChatRequest& request,
   }
 }
 
-std::string OpenAiChatProvider::RoleToOpenAi(chat::ChatRole role) {
-  return openai_protocol::RoleToOpenAi(role);
+std::string OpenAiCompatibleChatProvider::RoleToOpenAi(chat::ChatRole role) {
+  return openai_compatible_protocol::RoleToOpenAi(role);
 }
 
-std::vector<chat::ModelInfo> OpenAiChatProvider::ParseModelsData(
+std::vector<chat::ModelInfo> OpenAiCompatibleChatProvider::ParseModelsData(
     const std::string& data) {
-  return openai_protocol::ParseModelsData(data);
+  return openai_compatible_protocol::ParseModelsData(data);
 }
 
-chat::ChatEvent OpenAiChatProvider::ParseStreamData(const std::string& data) {
-  return openai_protocol::ParseStreamData(data);
-}
-
-std::optional<chat::TokenUsage> OpenAiChatProvider::ParseUsageJson(
+chat::ChatEvent OpenAiCompatibleChatProvider::ParseStreamData(
     const std::string& data) {
-  return openai_protocol::ParseUsageJson(data);
+  return openai_compatible_protocol::ParseStreamData(data);
 }
 
-void OpenAiChatProvider::CompleteBuffered(const chat::ChatRequest& request,
-                                          ChatEventSink sink) {
+std::optional<chat::TokenUsage> OpenAiCompatibleChatProvider::ParseUsageJson(
+    const std::string& data) {
+  return openai_compatible_protocol::ParseUsageJson(data);
+}
+
+void OpenAiCompatibleChatProvider::CompleteBuffered(
+    const chat::ChatRequest& request, ChatEventSink sink) {
   openai::OpenAI client(ResolveApiKey(), "", true, config_.base_url);
   const auto response = client.chat.create(
-      openai_protocol::BuildChatPayload(request, false, config_));
-  const auto text = openai_protocol::ExtractBufferedText(response);
+      openai_compatible_protocol::BuildChatPayload(request, false, config_));
+  const auto text = openai_compatible_protocol::ExtractBufferedText(response);
   if (!text.empty()) {
     sink(chat::ChatEvent{chat::TextDeltaEvent{
         .text = text, .provider_id = config_.id, .model = request.model}});
   }
-  auto tool_calls = openai_protocol::ExtractBufferedToolCalls(response);
+  auto tool_calls =
+      openai_compatible_protocol::ExtractBufferedToolCalls(response);
   if (!tool_calls.empty()) {
     sink(chat::ChatEvent{
         chat::ToolCallRequestedEvent{.tool_calls = std::move(tool_calls)}});
   }
-  if (auto usage = openai_protocol::ExtractBufferedUsage(response)) {
+  if (auto usage = openai_compatible_protocol::ExtractBufferedUsage(response)) {
     sink(chat::ChatEvent{chat::UsageReportedEvent{.provider_id = config_.id,
                                                   .model = request.model,
                                                   .usage = std::move(*usage)}});
   }
 }
 
-void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
-                                           ChatEventSink sink,
-                                           std::stop_token stop_token) {
+void OpenAiCompatibleChatProvider::CompleteStreaming(
+    const chat::ChatRequest& request, ChatEventSink sink,
+    std::stop_token stop_token) {
   const auto api_key = ResolveApiKey();
   if (api_key.empty()) {
     throw std::runtime_error(config_.api_key_env + " is not set.");
@@ -186,8 +190,9 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
   std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
 
   auto payload =
-      openai_protocol::BuildChatPayload(request, true, config_).dump();
-  openai_protocol::StreamState stream_state{.sink = &sink};
+      openai_compatible_protocol::BuildChatPayload(request, true, config_)
+          .dump();
+  openai_compatible_protocol::StreamState stream_state{.sink = &sink};
   ProgressState progress_state{.stop_token = &stop_token};
 
   struct curl_slist* headers = nullptr;
@@ -238,7 +243,7 @@ void OpenAiChatProvider::CompleteStreaming(const chat::ChatRequest& request,
   }
 }
 
-std::string OpenAiChatProvider::ResolveApiKey() const {
+std::string OpenAiCompatibleChatProvider::ResolveApiKey() const {
   if (!config_.api_key.empty()) {
     return config_.api_key;
   }
@@ -248,11 +253,11 @@ std::string OpenAiChatProvider::ResolveApiKey() const {
   return {};
 }
 
-std::string OpenAiChatProvider::CompletionUrl() const {
+std::string OpenAiCompatibleChatProvider::CompletionUrl() const {
   return TrimTrailingSlash(config_.base_url) + "/chat/completions";
 }
 
-std::string OpenAiChatProvider::ModelsUrl() const {
+std::string OpenAiCompatibleChatProvider::ModelsUrl() const {
   return TrimTrailingSlash(config_.base_url) + "/models";
 }
 

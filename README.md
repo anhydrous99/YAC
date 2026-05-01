@@ -20,7 +20,7 @@ The SVG previews show the current chat surface and command palette.
 | `yac_app` | Bridges chat service events into `ChatUI` updates |
 | `yac_service` | Queues prompts, tracks history, and streams provider responses |
 | `yac_presentation` | FTXUI components, Markdown rendering, theming, and tool cards |
-| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with OpenAI and Z.ai presets |
+| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with `openai-compatible` and `zai` presets |
 | Config | `~/.yac/settings.toml`, with `YAC_*` environment variable overrides |
 
 ## Highlights
@@ -102,7 +102,7 @@ temperature = 0.7
 # system_prompt = "You are a helpful assistant."
 
 [provider]
-id          = "openai"
+id          = "openai-compatible"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"
@@ -114,7 +114,7 @@ args    = []
 
 | Setting | Env override | Default | Purpose |
 | --- | --- | --- | --- |
-| `provider.id` | `YAC_PROVIDER` | `openai` | Provider ID registered by the app |
+| `provider.id` | `YAC_PROVIDER` | `openai-compatible` | Provider ID registered by the app |
 | `provider.model` | `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
 | `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
 | `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
