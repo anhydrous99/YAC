@@ -311,8 +311,24 @@ file(GLOB_RECURSE ALL_SOURCES
   tests/*.cpp tests/*.hpp
 )
 
-find_program(CLANG_FORMAT NAMES clang-format-21 clang-format REQUIRED)
-find_program(RUN_CLANG_TIDY NAMES run-clang-tidy-21 run-clang-tidy REQUIRED)
+find_program(CLANG_FORMAT NAMES clang-format-21 clang-format)
+find_program(RUN_CLANG_TIDY NAMES run-clang-tidy-21 run-clang-tidy)
+
+if(CLANG_FORMAT)
+  add_custom_target(format
+    COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Formatting source files with ${CLANG_FORMAT}"
+  )
+
+  add_custom_target(format-check
+    COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking source files with ${CLANG_FORMAT}"
+  )
+endif()
+
+if(RUN_CLANG_TIDY)
 
 set(CLANG_TIDY_EXTRA_ARGS)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -326,18 +342,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(PREPEND CLANG_TIDY_EXTRA_ARGS "--extra-arg=-nostdinc++")
   endif()
 endif()
-
-add_custom_target(format
-  COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCES}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Formatting source files with ${CLANG_FORMAT}"
-)
-
-add_custom_target(format-check
-  COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCES}
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Checking source files with ${CLANG_FORMAT}"
-)
 
 string(REPLACE ";" "\",\n    \"" LINT_EXTRA_ARGS_PY
   "${CLANG_TIDY_EXTRA_ARGS}")
@@ -404,3 +408,5 @@ add_custom_target(lint
   COMMENT "Running clang-tidy checks (parallel)"
   VERBATIM
 )
+
+endif() # RUN_CLANG_TIDY
