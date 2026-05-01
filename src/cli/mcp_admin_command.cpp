@@ -11,6 +11,7 @@
 #include "mcp/token_store.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -243,6 +244,11 @@ bool DefaultConnectivityTest(const mcp::McpServerConfig& cfg) {
   return !cfg.command.empty();
 }
 
+bool UseFileTokenStoreOverride() {
+  const char* value = std::getenv("YAC_MCP_TOKEN_STORE");
+  return value != nullptr && std::string_view(value) == "file";
+}
+
 }  // namespace
 
 McpAdminCommand::McpAdminCommand(Options opts) : opts_(std::move(opts)) {}
@@ -258,6 +264,8 @@ mcp::ITokenStore& McpAdminCommand::GetTokenStore() {
   if (!token_store_cache_) {
     if (opts_.token_store) {
       token_store_cache_ = opts_.token_store;
+    } else if (UseFileTokenStoreOverride()) {
+      token_store_cache_ = std::make_shared<mcp::FileTokenStore>();
     } else if (mcp::KeychainTokenStore::IsKeychainAvailable()) {
       token_store_cache_ = std::make_shared<mcp::KeychainTokenStore>();
     } else {

@@ -21,8 +21,9 @@ namespace {
 
 using namespace std::chrono_literals;
 
-constexpr int kOAuthPort = 19877;
 constexpr const char* kCannedCode = "test_code";
+constexpr const char* kTokenStoreOverride = "YAC_MCP_TOKEN_STORE";
+constexpr const char* kFileTokenStore = "file";
 
 struct TempDir {
   std::filesystem::path path;
@@ -121,6 +122,46 @@ std::string ReadFile(const std::filesystem::path& p) {
   std::ifstream f(p);
   REQUIRE(f.is_open());
   return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+
+std::string ReplaceAll(std::string text, std::string_view needle,
+                       std::string_view replacement) {
+  std::size_t pos = 0;
+  while ((pos = text.find(needle, pos)) != std::string::npos) {
+    text.replace(pos, needle.size(), replacement);
+    pos += replacement.size();
+  }
+  return text;
+}
+
+int AllocateLoopbackPort() {
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0) {
+    throw std::runtime_error("socket failed");
+  }
+
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = 0;
+  if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+    ::close(fd);
+    throw std::runtime_error("bind failed");
+  }
+
+  socklen_t len = sizeof(addr);
+  if (::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+    ::close(fd);
+    throw std::runtime_error("getsockname failed");
+  }
+  const int port = ntohs(addr.sin_port);
+  ::close(fd);
+  return port;
+}
+
+std::string OAuthFixtureForPort(int port) {
+  return ReplaceAll(ReadFile(MOCK_OAUTH_FIXTURE), ":19877",
+                    ":" + std::to_string(port));
 }
 
 void WriteSettings(const std::filesystem::path& home_dir,
@@ -285,6 +326,7 @@ YacAuthHandle SpawnYacAuth(const std::filesystem::path& home_dir,
     ::close(out_pipe[1]);
 
     ::setenv("HOME", home_dir.c_str(), 1);
+    ::setenv(kTokenStoreOverride, kFileTokenStore, 1);
     ::unsetenv("DBUS_SESSION_BUS_ADDRESS");
 
     std::vector<std::string> argv_storage = {YAC_BINARY_PATH, "mcp", "auth",
@@ -418,6 +460,7 @@ int RunE2eRunner(const std::filesystem::path& home_dir,
   }
   if (pid == 0) {
     ::setenv("HOME", home_str.c_str(), 1);
+    ::setenv(kTokenStoreOverride, kFileTokenStore, 1);
     std::vector<std::string> storage = {
         runner, "run", prompt, "--auto-approve", mock_script, mock_log};
     std::vector<char*> argv;
@@ -466,6 +509,7 @@ std::string RunYacDebug(const std::filesystem::path& home_dir,
     ::close(out_pipe[0]);
     ::close(out_pipe[1]);
     ::setenv("HOME", home_dir.c_str(), 1);
+    ::setenv(kTokenStoreOverride, kFileTokenStore, 1);
     std::vector<std::string> argv_storage = {YAC_BINARY_PATH, "mcp", "debug",
                                              server_id};
     std::vector<char*> argv;
@@ -500,13 +544,14 @@ std::string RunYacDebug(const std::filesystem::path& home_dir,
 
 TEST_CASE("happy_path") {
   TempDir tmp;
-  WriteSettings(tmp.path, ReadFile(MOCK_OAUTH_FIXTURE));
+  const int oauth_port = AllocateLoopbackPort();
+  WriteSettings(tmp.path, OAuthFixtureForPort(oauth_port));
 
-  ProcessHandle oauth_server = SpawnOAuthServer(kOAuthPort, kCannedCode);
+  ProcessHandle oauth_server = SpawnOAuthServer(oauth_port, kCannedCode);
   WaitForReady(oauth_server.read_fd);
 
   const int auth_exit =
-      RunOAuthDance(tmp.path, kOAuthPort, kCannedCode, "mock_oauth");
+      RunOAuthDance(tmp.path, oauth_port, kCannedCode, "mock_oauth");
   REQUIRE(auth_exit == 0);
 
   const auto token_path =
@@ -526,13 +571,14 @@ TEST_CASE("happy_path") {
 
 TEST_CASE("redaction_holds") {
   TempDir tmp;
-  WriteSettings(tmp.path, ReadFile(MOCK_OAUTH_FIXTURE));
+  const int oauth_port = AllocateLoopbackPort();
+  WriteSettings(tmp.path, OAuthFixtureForPort(oauth_port));
 
-  ProcessHandle oauth_server = SpawnOAuthServer(kOAuthPort, kCannedCode);
+  ProcessHandle oauth_server = SpawnOAuthServer(oauth_port, kCannedCode);
   WaitForReady(oauth_server.read_fd);
 
   const int auth_exit =
-      RunOAuthDance(tmp.path, kOAuthPort, kCannedCode, "mock_oauth");
+      RunOAuthDance(tmp.path, oauth_port, kCannedCode, "mock_oauth");
   REQUIRE(auth_exit == 0);
 
   const auto token_path =
