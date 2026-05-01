@@ -156,7 +156,10 @@ SubAgentManager::SubAgentManager(
       timeout_seconds_(timeout_seconds) {}
 
 SubAgentManager::~SubAgentManager() {
-  CancelAll();
+  try {
+    CancelAll();
+  } catch (...) {  // Destructors must not propagate
+  }
 }
 
 void SubAgentManager::SetBackgroundResultCallback(BackgroundResultFn callback) {

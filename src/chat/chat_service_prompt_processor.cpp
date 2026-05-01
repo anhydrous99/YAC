@@ -204,6 +204,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
                                  .status = ChatMessageStatus::Error}});
         return;
       }
+      // FinishedEvent from the provider signals stream end; ProcessPrompt emits
+      // its own authoritative FinishedEvent (with message_id) after all rounds.
+      if (event.As<FinishedEvent>()) {
+        return;
+      }
       emit_event_(std::move(event));
     };
 

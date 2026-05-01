@@ -173,28 +173,38 @@ void RegisterMcpSlashCommandHandlers(
           .title = "Starting MCP auth...",
           .detail = server_id,
       });
-      std::thread([mcp_admin, server_id, &chat_ui, &screen]() {
+      std::thread([mcp_admin, server_id,  // NOLINT(bugprone-exception-escape)
+                   &chat_ui, &screen]() noexcept {
         try {
           mcp_admin->Authenticate(server_id,
                                   mcp::oauth::OAuthInteractionMode{});
-          screen.Post([&chat_ui, &screen, server_id]() {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Info,
-                .title = "MCP auth complete",
-                .detail = server_id,
-            });
-            screen.PostEvent(ftxui::Event::Custom);
+          screen.Post([&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
+                       server_id]() noexcept {
+            try {
+              chat_ui.SetTransientStatus(presentation::UiNotice{
+                  .severity = presentation::UiSeverity::Info,
+                  .title = "MCP auth complete",
+                  .detail = server_id,
+              });
+              screen.PostEvent(ftxui::Event::Custom);
+            } catch (...) {  // best-effort
+            }
           });
         } catch (const std::exception& error) {
           std::string err = error.what();
-          screen.Post([&chat_ui, &screen, server_id, err]() mutable {
-            chat_ui.SetTransientStatus(presentation::UiNotice{
-                .severity = presentation::UiSeverity::Error,
-                .title = "MCP auth failed: " + server_id,
-                .detail = err,
-            });
-            screen.PostEvent(ftxui::Event::Custom);
+          screen.Post([&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
+                       server_id, err]() mutable noexcept {
+            try {
+              chat_ui.SetTransientStatus(presentation::UiNotice{
+                  .severity = presentation::UiSeverity::Error,
+                  .title = "MCP auth failed: " + server_id,
+                  .detail = err,
+              });
+              screen.PostEvent(ftxui::Event::Custom);
+            } catch (...) {  // best-effort
+            }
           });
+        } catch (...) {  // best-effort
         }
       }).detach();
       return;

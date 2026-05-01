@@ -125,14 +125,14 @@ ToolExecutionResult ExecuteLspRenameTool(
 
   std::map<std::filesystem::path, std::string> new_contents;
   for (auto& [path, edits] : edits_by_file) {
-    auto content = workspace_filesystem.ReadFile(path);
-    std::sort(edits.begin(), edits.end(),
-              [](const LspTextEdit& lhs, const LspTextEdit& rhs) {
-                if (lhs.start_line != rhs.start_line) {
-                  return lhs.start_line > rhs.start_line;
-                }
-                return lhs.start_character > rhs.start_character;
-              });
+    auto content = WorkspaceFilesystem::ReadFile(path);
+    std::ranges::sort(edits,
+                      [](const LspTextEdit& lhs, const LspTextEdit& rhs) {
+                        if (lhs.start_line != rhs.start_line) {
+                          return lhs.start_line > rhs.start_line;
+                        }
+                        return lhs.start_character > rhs.start_character;
+                      });
     for (const auto& edit : edits) {
       const auto start = OffsetForLineCharacter(content, edit.start_line,
                                                 edit.start_character);
@@ -143,7 +143,7 @@ ToolExecutionResult ExecuteLspRenameTool(
     new_contents[path] = std::move(content);
   }
   for (const auto& [path, content] : new_contents) {
-    workspace_filesystem.WriteFile(path, content);
+    WorkspaceFilesystem::WriteFile(path, content);
   }
 
   Json result{{"file_path", call.file_path},

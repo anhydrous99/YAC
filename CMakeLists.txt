@@ -311,6 +311,9 @@ file(GLOB_RECURSE ALL_SOURCES
   tests/*.cpp tests/*.hpp
 )
 
+find_program(CLANG_FORMAT NAMES clang-format-21 clang-format REQUIRED)
+find_program(RUN_CLANG_TIDY NAMES run-clang-tidy-21 run-clang-tidy REQUIRED)
+
 set(CLANG_TIDY_EXTRA_ARGS)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   foreach(IMPLICIT_INCLUDE_DIR IN LISTS CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
@@ -325,15 +328,15 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 endif()
 
 add_custom_target(format
-  COMMAND clang-format-21 -i ${ALL_SOURCES}
+  COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Formatting source files with clang-format-21"
+  COMMENT "Formatting source files with ${CLANG_FORMAT}"
 )
 
 add_custom_target(format-check
-  COMMAND clang-format-21 --dry-run --Werror ${ALL_SOURCES}
+  COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCES}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Checking source files with clang-format-21"
+  COMMENT "Checking source files with ${CLANG_FORMAT}"
 )
 
 string(REPLACE ";" "\",\n    \"" LINT_EXTRA_ARGS_PY
@@ -377,7 +380,7 @@ for entry in entries:
     files.append(str(relative_path))
 
 command = [
-    "run-clang-tidy-21",
+    "@RUN_CLANG_TIDY@",
     "-p",
     str(build_dir),
     "-header-filter=^(src|tests)/",
@@ -397,12 +400,7 @@ file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/run_clang_tidy.py"
 add_custom_target(lint
   COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_BINARY_DIR}/run_clang_tidy.py
           ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}
-          src/tool_call/bash_tool_executor.cpp
-          src/tool_call/executor.cpp
-          src/tool_call/filesystem_tool_executor.cpp
-          src/tool_call/lsp_tool_executor.cpp
-          src/tool_call/todo_state.cpp
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Running clang-tidy checks (parallel, ICE-filtered)"
+  COMMENT "Running clang-tidy checks (parallel)"
   VERBATIM
 )

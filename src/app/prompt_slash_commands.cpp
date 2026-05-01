@@ -65,12 +65,20 @@ void RegisterPromptSlashCommands(
     const auto id = "prompt:" + prompt.name;
     registry.Define(id, prompt.name, prompt.description);
 
-    registry.SetHandler(id, [prompt, submit_prompt] {
-      submit_prompt(chat::RenderPrompt(prompt, ""));
-    });
+    registry.SetHandler(
+        id, [prompt, submit_prompt] {  // NOLINT(bugprone-exception-escape)
+          try {
+            submit_prompt(chat::RenderPrompt(prompt, ""));
+          } catch (...) {  // best-effort
+          }
+        });
     registry.SetArgumentsHandler(
-        id, [prompt, submit_prompt](std::string arguments) {
-          submit_prompt(chat::RenderPrompt(prompt, arguments));
+        id, [prompt, submit_prompt](  // NOLINT(bugprone-exception-escape)
+                std::string arguments) {
+          try {
+            submit_prompt(chat::RenderPrompt(prompt, std::move(arguments)));
+          } catch (...) {  // best-effort
+          }
         });
   }
 }

@@ -298,7 +298,10 @@ McpManager::McpManager(McpConfig config, EmitEventFn emit_event,
       deps_(std::move(deps)) {}
 
 McpManager::~McpManager() {
-  Stop();
+  try {
+    Stop();
+  } catch (...) {  // Destructors must not propagate
+  }
 }
 
 void McpManager::EnsureSessionsCreated() const {

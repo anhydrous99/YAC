@@ -266,6 +266,7 @@ target_link_libraries(yac_test_mcp_oauth_e2e PRIVATE
 )
 catch_discover_tests(yac_test_mcp_oauth_e2e
   TEST_PREFIX "yac_test_mcp_oauth_e2e::"
+  PROPERTIES RESOURCE_LOCK "oauth_port_19877"
 )
 
 add_executable(yac_test_mcp_cold_start_integration

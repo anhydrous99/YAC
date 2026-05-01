@@ -30,87 +30,97 @@ using ExecuteFn = ToolExecutionResult (*)(
     chat::internal::ChatServiceToolApproval* tool_approval);
 
 ToolExecutionResult ExecuteFileReadDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteFileReadTool(prepared.request, workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteFileWriteDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteFileWriteTool(prepared.request, workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteListDirDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteListDirTool(prepared.request, workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteLspDiagnosticsDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>& lsp_client, TodoState&,
-    chat::SubAgentManager*, chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& lsp_client, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteLspDiagnosticsTool(prepared.request, *lsp_client,
                                    workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteLspReferencesDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>& lsp_client, TodoState&,
-    chat::SubAgentManager*, chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& lsp_client, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteLspReferencesTool(prepared.request, *lsp_client,
                                   workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteLspGotoDefinitionDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>& lsp_client, TodoState&,
-    chat::SubAgentManager*, chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& lsp_client, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteLspGotoDefinitionTool(prepared.request, *lsp_client,
                                       workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteLspRenameDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>& lsp_client, TodoState&,
-    chat::SubAgentManager*, chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& lsp_client, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteLspRenameTool(prepared.request, *lsp_client,
                               workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteLspSymbolsDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>& lsp_client, TodoState&,
-    chat::SubAgentManager*, chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& lsp_client, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteLspSymbolsTool(prepared.request, *lsp_client,
                                workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteSubAgentDispatch(
     const PreparedToolCall& prepared, std::stop_token stop_token,
-    const WorkspaceFilesystem&, const std::shared_ptr<ILspClient>&, TodoState&,
+    const WorkspaceFilesystem& /*workspace*/,
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
     chat::SubAgentManager* sub_agent_manager,
-    chat::internal::ChatServiceToolApproval*) {
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteSubAgentTool(prepared, sub_agent_manager, stop_token);
 }
 
 ToolExecutionResult ExecuteTodoWriteDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
-    const WorkspaceFilesystem&, const std::shared_ptr<ILspClient>&,
-    TodoState& todo_state, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
+    const WorkspaceFilesystem& /*workspace*/,
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& todo_state,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   const auto& call = std::get<TodoWriteCall>(prepared.preview);
   todo_state.Update(call.todos);
   auto current = todo_state.Current();
@@ -129,16 +139,18 @@ ToolExecutionResult ExecuteTodoWriteDispatch(
 ToolExecutionResult ExecuteBashDispatch(
     const PreparedToolCall& prepared, std::stop_token stop_token,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteBashTool(prepared.request, workspace_filesystem.Root(),
                          stop_token);
 }
 
 ToolExecutionResult ExecuteAskUserDispatch(
     const PreparedToolCall& prepared, std::stop_token stop_token,
-    const WorkspaceFilesystem&, const std::shared_ptr<ILspClient>&, TodoState&,
-    chat::SubAgentManager*,
+    const WorkspaceFilesystem& /*workspace*/,
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
     chat::internal::ChatServiceToolApproval* tool_approval) {
   auto call = std::get<AskUserCall>(prepared.preview);
   if (tool_approval == nullptr || prepared.approval_id.empty()) {
@@ -158,52 +170,54 @@ ToolExecutionResult ExecuteAskUserDispatch(
 }
 
 ToolExecutionResult ExecuteFileEditDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteEditTool(prepared.request, workspace_filesystem);
 }
 
 ToolExecutionResult ExecuteGrepDispatch(
     const PreparedToolCall& prepared, std::stop_token stop_token,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteGrepTool(prepared.request, workspace_filesystem, stop_token);
 }
 
 ToolExecutionResult ExecuteGlobDispatch(
-    const PreparedToolCall& prepared, std::stop_token,
+    const PreparedToolCall& prepared, std::stop_token /*stop*/,
     const WorkspaceFilesystem& workspace_filesystem,
-    const std::shared_ptr<ILspClient>&, TodoState&, chat::SubAgentManager*,
-    chat::internal::ChatServiceToolApproval*) {
+    const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
+    chat::SubAgentManager* /*agents*/,
+    chat::internal::ChatServiceToolApproval* /*approval*/) {
   return ExecuteGlobTool(prepared.request, workspace_filesystem);
 }
 
-static const std::unordered_map<std::string_view, ExecuteFn> kExecuteRegistry =
-    {
-        {kFileReadToolName, &ExecuteFileReadDispatch},
-        {kFileWriteToolName, &ExecuteFileWriteDispatch},
-        {kListDirToolName, &ExecuteListDirDispatch},
-        {kLspDiagnosticsToolName, &ExecuteLspDiagnosticsDispatch},
-        {kLspReferencesToolName, &ExecuteLspReferencesDispatch},
-        {kLspGotoDefinitionToolName, &ExecuteLspGotoDefinitionDispatch},
-        {kLspRenameToolName, &ExecuteLspRenameDispatch},
-        {kLspSymbolsToolName, &ExecuteLspSymbolsDispatch},
-        {kSubAgentToolName, &ExecuteSubAgentDispatch},
-        {kTodoWriteToolName, &ExecuteTodoWriteDispatch},
-        {kBashToolName, &ExecuteBashDispatch},
-        {kAskUserToolName, &ExecuteAskUserDispatch},
-        {kFileEditToolName, &ExecuteFileEditDispatch},
-        {kGrepToolName, &ExecuteGrepDispatch},
-        {kGlobToolName, &ExecuteGlobDispatch},
+const std::unordered_map<std::string_view, ExecuteFn> kExecuteRegistry = {
+    {kFileReadToolName, &ExecuteFileReadDispatch},
+    {kFileWriteToolName, &ExecuteFileWriteDispatch},
+    {kListDirToolName, &ExecuteListDirDispatch},
+    {kLspDiagnosticsToolName, &ExecuteLspDiagnosticsDispatch},
+    {kLspReferencesToolName, &ExecuteLspReferencesDispatch},
+    {kLspGotoDefinitionToolName, &ExecuteLspGotoDefinitionDispatch},
+    {kLspRenameToolName, &ExecuteLspRenameDispatch},
+    {kLspSymbolsToolName, &ExecuteLspSymbolsDispatch},
+    {kSubAgentToolName, &ExecuteSubAgentDispatch},
+    {kTodoWriteToolName, &ExecuteTodoWriteDispatch},
+    {kBashToolName, &ExecuteBashDispatch},
+    {kAskUserToolName, &ExecuteAskUserDispatch},
+    {kFileEditToolName, &ExecuteFileEditDispatch},
+    {kGrepToolName, &ExecuteGrepDispatch},
+    {kGlobToolName, &ExecuteGlobDispatch},
 };
 
 }  // namespace
 
 bool HasToolExecutorDispatchEntry(std::string_view name) {
-  return kExecuteRegistry.find(name) != kExecuteRegistry.end();
+  return kExecuteRegistry.contains(name);
 }
 
 ToolExecutor::ToolExecutor(std::filesystem::path workspace_root,

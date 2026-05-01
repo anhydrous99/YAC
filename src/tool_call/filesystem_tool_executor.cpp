@@ -53,10 +53,10 @@ ToolExecutionResult ExecuteFileWriteTool(
   const auto filepath = RequireString(args, "filepath");
   const auto content = RequireString(args, "content");
   const auto path = workspace_filesystem.ResolvePath(filepath);
-  const auto old_content = workspace_filesystem.ReadFile(path);
+  const auto old_content = WorkspaceFilesystem::ReadFile(path);
   const auto lines_removed = CountLines(old_content);
   const auto lines_added = CountLines(content);
-  workspace_filesystem.WriteFile(path, content);
+  WorkspaceFilesystem::WriteFile(path, content);
 
   auto block = FileWriteCall{.filepath = workspace_filesystem.DisplayPath(path),
                              .content_preview = PreviewText(content),
@@ -93,13 +93,13 @@ ToolExecutionResult ExecuteListDirTool(
     entries.push_back(DirectoryEntry{
         .name = entry.path().filename().string(), .type = type, .size = size});
   }
-  std::sort(entries.begin(), entries.end(),
-            [](const DirectoryEntry& lhs, const DirectoryEntry& rhs) {
-              if (lhs.type != rhs.type) {
-                return lhs.type == DirectoryEntryType::Directory;
-              }
-              return lhs.name < rhs.name;
-            });
+  std::ranges::sort(entries,
+                    [](const DirectoryEntry& lhs, const DirectoryEntry& rhs) {
+                      if (lhs.type != rhs.type) {
+                        return lhs.type == DirectoryEntryType::Directory;
+                      }
+                      return lhs.name < rhs.name;
+                    });
   const bool truncated = entries.size() > kMaxListDirEntries;
   if (truncated) {
     entries.resize(kMaxListDirEntries);
