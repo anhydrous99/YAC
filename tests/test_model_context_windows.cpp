@@ -21,4 +21,7 @@ TEST_CASE("LookupContextWindow falls back to prefix families") {
   REQUIRE(LookupContextWindow("claude-sonnet-4-6") == 200000);
   REQUIRE(LookupContextWindow("glm-4.6-air") == 200000);
   REQUIRE(LookupContextWindow("glm-4.5-flash") == 128000);
+  REQUIRE(LookupContextWindow("glm-5.1") == 200000);
+  REQUIRE(LookupContextWindow("glm-5") == 200000);
+  REQUIRE(LookupContextWindow("glm-4.7") == 200000);
 }

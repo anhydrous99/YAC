@@ -1121,3 +1121,204 @@ TEST_CASE(
            issue.message.find("settings.toml") != std::string::npos;
   }));
 }
+
+namespace {
+
+// Provider that emits a TextDelta plus a UsageReportedEvent with the given
+// prompt-token count. Used to drive the auto-compact trigger from inside a
+// real ChatService run.
+std::shared_ptr<LambdaMockProvider> MakeUsageReportingProvider(
+    int prompt_tokens) {
+  return std::make_shared<LambdaMockProvider>(
+      "fake", [prompt_tokens](const ChatRequest&, ChatEventSink sink,
+                              std::stop_token stop_token) {
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        sink(ChatEvent{TextDeltaEvent{.text = "ack"}});
+        sink(ChatEvent{UsageReportedEvent{
+            .provider_id = "fake",
+            .model = "fake-model",
+            .usage = TokenUsage{.prompt_tokens = prompt_tokens,
+                                .completion_tokens = 1,
+                                .total_tokens = prompt_tokens + 1}}});
+      });
+}
+
+}  // namespace
+
+TEST_CASE(
+    "ChatService auto-compacts before the next prompt when usage crosses the "
+    "threshold") {
+  ChatConfig config;
+  config.provider_id = "fake";
+  // gpt-4o-mini's hard-coded window is 128000; 0.85 × 128000 = 108800. With
+  // threshold 0.5, this trips the trigger. keep_last is 2 so the synthetic
+  // system message is observable in History().
+  config.model = "gpt-4o-mini";
+  config.auto_compact_enabled = true;
+  config.auto_compact_threshold = 0.5;
+  config.auto_compact_keep_last = 2;
+  config.auto_compact_mode = "truncate";
+  auto provider = MakeUsageReportingProvider(108800);
+  auto service = MakeService(provider, config);
+
+  // First prompt populates last_usage_ with prompt_tokens = 108800.
+  (void)CollectEvents(service, "first message");
+  // Build up enough history that compaction has something to drop.
+  (void)CollectEvents(service, "second message");
+  (void)CollectEvents(service, "third message");
+
+  // Fourth prompt: trigger sees prompt_tokens / window = 0.85 ≥ 0.5 and
+  // compacts. ConversationCompactedEvent must appear in this round.
+  const auto round = CollectEvents(service, "fourth message");
+  REQUIRE(HasEvent(round, ChatEventType::ConversationCompacted));
+
+  // After compaction the head of history is the synthetic system note.
+  const auto history = service.History();
+  REQUIRE_FALSE(history.empty());
+  REQUIRE(history.front().role == ChatRole::System);
+  REQUIRE(history.front().content.find("messages removed") !=
+          std::string::npos);
+}
+
+TEST_CASE(
+    "ChatService does not auto-compact when usage is below the threshold") {
+  ChatConfig config;
+  config.provider_id = "fake";
+  config.model = "gpt-4o-mini";
+  config.auto_compact_enabled = true;
+  config.auto_compact_threshold = 0.9;
+  config.auto_compact_keep_last = 2;
+  config.auto_compact_mode = "truncate";
+  // 0.5 × 128000 = 64000 — well below the 0.9 threshold.
+  auto provider = MakeUsageReportingProvider(64000);
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "first");
+  (void)CollectEvents(service, "second");
+  (void)CollectEvents(service, "third");
+  const auto round = CollectEvents(service, "fourth");
+
+  REQUIRE_FALSE(HasEvent(round, ChatEventType::ConversationCompacted));
+}
+
+TEST_CASE("ChatService respects auto_compact_enabled = false") {
+  ChatConfig config;
+  config.provider_id = "fake";
+  config.model = "gpt-4o-mini";
+  config.auto_compact_enabled = false;
+  config.auto_compact_threshold = 0.1;  // would trip if enabled
+  config.auto_compact_keep_last = 2;
+  config.auto_compact_mode = "truncate";
+  auto provider = MakeUsageReportingProvider(120000);
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "one");
+  (void)CollectEvents(service, "two");
+  const auto round = CollectEvents(service, "three");
+
+  REQUIRE_FALSE(HasEvent(round, ChatEventType::ConversationCompacted));
+}
+
+TEST_CASE("ChatService stress: submit-then-reset never leaves history dirty") {
+  auto service = MakeService();
+  // Tight drain budget so any actual race surfaces fast.
+  service.SetResetDrainBudgetForTest(std::chrono::milliseconds(500));
+
+  for (int i = 0; i < 50; ++i) {
+    service.SubmitUserMessage("stress-" + std::to_string(i));
+    service.ResetConversation();
+    REQUIRE(service.History().empty());
+  }
+}
+
+TEST_CASE(
+    "ChatService Reset returns within budget when provider blocks "
+    "indefinitely") {
+  auto blocking = std::make_shared<BlockingFakeProvider>();
+  ChatConfig config;
+  config.provider_id = blocking->Id();
+  config.model = "any";
+
+  ProviderRegistry registry;
+  registry.Register(blocking);
+  ChatService service(std::move(registry), config);
+
+  constexpr auto kBudget = std::chrono::milliseconds(150);
+  service.SetResetDrainBudgetForTest(kBudget);
+
+  service.SubmitUserMessage("blocked");
+  blocking->WaitUntilStarted();
+
+  const auto t0 = std::chrono::steady_clock::now();
+  service.ResetConversation();
+  const auto elapsed = std::chrono::steady_clock::now() - t0;
+
+  // Reset must observe the budget. Allow generous slack — CI clocks are
+  // noisy, but anything under ~5x the budget proves we didn't hang on
+  // the blocking provider.
+  REQUIRE(elapsed < kBudget * 5);
+  REQUIRE(service.History().empty());
+
+  // Release the provider so the destructor can join the worker. The
+  // round resumes against a stale generation and the per-append guards
+  // make sure no append leaks into the cleared history.
+  blocking->Release();
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  REQUIRE(service.History().empty());
+}
+
+TEST_CASE(
+    "ChatService Reset drains quickly when provider observes stop_token") {
+  auto cancellable = std::make_shared<CancellableFakeProvider>();
+  ChatConfig config;
+  config.provider_id = cancellable->Id();
+  config.model = "any";
+
+  ProviderRegistry registry;
+  registry.Register(cancellable);
+  ChatService service(std::move(registry), config);
+
+  // Generous budget; we expect to return well before it expires.
+  constexpr auto kBudget = std::chrono::seconds(2);
+  service.SetResetDrainBudgetForTest(
+      std::chrono::duration_cast<std::chrono::milliseconds>(kBudget));
+
+  service.SubmitUserMessage("cancellable");
+  cancellable->WaitUntilStarted();
+
+  const auto t0 = std::chrono::steady_clock::now();
+  service.ResetConversation();
+  const auto elapsed = std::chrono::steady_clock::now() - t0;
+
+  REQUIRE(elapsed < kBudget);
+  REQUIRE(service.History().empty());
+  cancellable->WaitUntilStopObserved();
+}
+
+TEST_CASE("ChatService Reset survives concurrent SubmitUserMessage") {
+  auto service = MakeService();
+  service.SetResetDrainBudgetForTest(std::chrono::milliseconds(200));
+
+  std::atomic<bool> stop{false};
+  std::thread submitter([&] {
+    int i = 0;
+    while (!stop.load(std::memory_order_relaxed)) {
+      service.SubmitUserMessage("submit-" + std::to_string(i++));
+      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    }
+  });
+
+  for (int i = 0; i < 25; ++i) {
+    service.ResetConversation();
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+
+  stop.store(true, std::memory_order_relaxed);
+  submitter.join();
+
+  // One final reset to absorb any in-flight prompt, then assert clean.
+  service.ResetConversation();
+  REQUIRE(service.History().empty());
+}

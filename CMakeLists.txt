@@ -263,6 +263,7 @@ target_link_libraries(yac_presentation PUBLIC yac_core_types ftxui::screen ftxui
 
 add_library(yac_service STATIC
   src/chat/chat_service.cpp
+  src/chat/chat_service_compactor.cpp
   src/chat/chat_service_history.cpp
   src/chat/chat_service_prompt_processor.cpp
   src/chat/chat_service_request_builder.cpp
@@ -272,8 +273,10 @@ add_library(yac_service STATIC
   src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp
   src/chat/sub_agent_event_adapter.cpp
+  src/app/model_context_windows.cpp
   src/provider/openai_compatible_chat_provider.cpp
   src/provider/openai_compatible_chat_protocol.cpp
+  src/provider/zai_context_windows.cpp
   src/provider/provider_registry.cpp
   src/tool_call/bash_tool_executor.cpp
   src/tool_call/edit_tool_executor.cpp
@@ -325,7 +328,6 @@ add_library(yac_app STATIC
   src/app/chat_event_bridge.cpp
   src/app/headless.cpp
   src/app/mcp_command_handlers.cpp
-  src/app/model_context_windows.cpp
   src/app/model_discovery.cpp
   src/app/prompt_slash_commands.cpp
   src/app/streaming_coalescer.cpp

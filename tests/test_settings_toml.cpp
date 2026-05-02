@@ -420,3 +420,85 @@ TEST_CASE("WriteDefaultSettingsToml does not overwrite an existing file") {
   std::filesystem::remove_all(dir);
 }
 #endif
+
+TEST_CASE("LoadSettingsFromToml overlays [compact] section") {
+  TempFile file("yac_test_settings_compact.toml");
+  WriteFile(file.Path(),
+            "[compact]\n"
+            "auto_enabled = false\n"
+            "threshold = 0.65\n"
+            "keep_last = 50\n"
+            "mode = \"truncate\"\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(issues.empty());
+  REQUIRE_FALSE(config.auto_compact_enabled);
+  REQUIRE(config.auto_compact_threshold == 0.65);
+  REQUIRE(config.auto_compact_keep_last == 50);
+  REQUIRE(config.auto_compact_mode == "truncate");
+}
+
+TEST_CASE("LoadSettingsFromToml keeps compact defaults when [compact] absent") {
+  TempFile file("yac_test_settings_no_compact.toml");
+  WriteFile(file.Path(), "temperature = 0.5\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(issues.empty());
+  REQUIRE(config.auto_compact_enabled);
+  REQUIRE(config.auto_compact_threshold == 0.8);
+  REQUIRE(config.auto_compact_keep_last == 20);
+  REQUIRE(config.auto_compact_mode == "summarize");
+}
+
+TEST_CASE("LoadSettingsFromToml rejects unknown compact.mode") {
+  TempFile file("yac_test_settings_bad_mode.toml");
+  WriteFile(file.Path(),
+            "[compact]\n"
+            "mode = \"shrubbery\"\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error;
+  }));
+  REQUIRE(config.auto_compact_mode == "summarize");
+}
+
+TEST_CASE("LoadSettingsFromToml rejects out-of-range compact.threshold") {
+  TempFile file("yac_test_settings_bad_threshold.toml");
+  WriteFile(file.Path(),
+            "[compact]\n"
+            "threshold = 1.5\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error;
+  }));
+}
+
+TEST_CASE("LoadSettingsFromToml rejects out-of-range compact.keep_last") {
+  TempFile file("yac_test_settings_bad_keep_last.toml");
+  WriteFile(file.Path(),
+            "[compact]\n"
+            "keep_last = 0\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error;
+  }));
+}
+
+TEST_CASE("LoadSettingsFromToml reports invalid [compact] table type") {
+  TempFile file("yac_test_settings_compact_scalar.toml");
+  WriteFile(file.Path(), "compact = \"all\"\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+  REQUIRE(std::ranges::any_of(issues, [](const ConfigIssue& issue) {
+    return issue.severity == ConfigIssueSeverity::Error;
+  }));
+}

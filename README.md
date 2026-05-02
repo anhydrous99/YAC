@@ -127,6 +127,10 @@ args    = []
 | `mcp.servers[].{command,args,url,enabled,auth.api_key_env}` | `YAC_MCP_<ID>_COMMAND`, `YAC_MCP_<ID>_ARGS`, `YAC_MCP_<ID>_URL`, `YAC_MCP_<ID>_ENABLED`, `YAC_MCP_<ID>_API_KEY_ENV` | unset | Override an existing MCP server by ID (`<ID>` = upper snake case, non-alnum → `_`) |
 | `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
 | `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
+| `compact.auto_enabled` | `YAC_COMPACT_AUTO_ENABLED` | `true` | Auto-compact history before each new user prompt when usage crosses `compact.threshold` |
+| `compact.threshold` | `YAC_COMPACT_THRESHOLD` | `0.8` | Fraction of context window (0.05–1.0) at which auto-compact fires |
+| `compact.keep_last` | `YAC_COMPACT_KEEP_LAST` | `20` | Most-recent non-system messages preserved through compaction |
+| `compact.mode` | `YAC_COMPACT_MODE` | `"summarize"` | `"summarize"` (LLM-summarized) or `"truncate"` (drop and insert a synthetic note) |
 
 Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
 preset. When only `id` is set, the preset fills in `glm-5.1`,

@@ -4,8 +4,10 @@
 #include "provider/language_model_provider.hpp"
 
 #include <chrono>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace yac::provider {
@@ -22,6 +24,10 @@ class OpenAiCompatibleChatProvider : public LanguageModelProvider {
   [[nodiscard]] bool SupportsModelDiscovery() const override { return true; }
   [[nodiscard]] std::vector<chat::ModelInfo> ListModels(
       std::chrono::milliseconds timeout) override;
+  // Lookup chain: discovered cache (populated by `ListModels`) → built-in
+  // z.ai preset table when `config_.id == "zai"` → 0.
+  [[nodiscard]] int GetContextWindow(
+      const std::string& model_id) const override;
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override;
 
@@ -32,6 +38,11 @@ class OpenAiCompatibleChatProvider : public LanguageModelProvider {
   [[nodiscard]] static std::optional<chat::TokenUsage> ParseUsageJson(
       const std::string& data);
 
+  // Test seam: install a discovered window without performing HTTP. Lets
+  // unit tests exercise the cache path of `GetContextWindow` directly.
+  void SeedDiscoveredContextWindowForTest(const std::string& model_id,
+                                          int context_window);
+
  protected:
   [[nodiscard]] virtual std::string ResolveApiKey() const;
 
@@ -41,8 +52,12 @@ class OpenAiCompatibleChatProvider : public LanguageModelProvider {
                          std::stop_token stop_token);
   [[nodiscard]] std::string CompletionUrl() const;
   [[nodiscard]] std::string ModelsUrl() const;
+  void StoreDiscoveredContextWindows(
+      const std::vector<chat::ModelInfo>& models);
 
   chat::ProviderConfig config_;
+  mutable std::mutex discovered_windows_mutex_;
+  std::unordered_map<std::string, int> discovered_windows_;
 };
 
 }  // namespace yac::provider

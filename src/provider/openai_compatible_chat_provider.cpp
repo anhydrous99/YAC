@@ -1,6 +1,7 @@
 #include "provider/openai_compatible_chat_provider.hpp"
 
 #include "provider/openai_compatible_chat_protocol.hpp"
+#include "provider/zai_context_windows.hpp"
 
 #include <cstdlib>
 #include <curl/curl.h>
@@ -112,7 +113,49 @@ std::vector<chat::ModelInfo> OpenAiCompatibleChatProvider::ListModels(
     throw std::runtime_error(message.str());
   }
 
-  return openai_compatible_protocol::ParseModelsData(response);
+  auto models = openai_compatible_protocol::ParseModelsData(response);
+  StoreDiscoveredContextWindows(models);
+  return models;
+}
+
+void OpenAiCompatibleChatProvider::StoreDiscoveredContextWindows(
+    const std::vector<chat::ModelInfo>& models) {
+  std::scoped_lock lock(discovered_windows_mutex_);
+  for (const auto& model : models) {
+    if (model.context_window > 0) {
+      discovered_windows_[model.id] = model.context_window;
+    }
+  }
+}
+
+int OpenAiCompatibleChatProvider::GetContextWindow(
+    const std::string& model_id) const {
+  if (model_id.empty()) {
+    return 0;
+  }
+  {
+    std::scoped_lock lock(discovered_windows_mutex_);
+    if (const auto it = discovered_windows_.find(model_id);
+        it != discovered_windows_.end()) {
+      return it->second;
+    }
+  }
+  if (config_.id == "zai") {
+    if (const int built_in = KnownZaiContextWindow(model_id); built_in > 0) {
+      return built_in;
+    }
+  }
+  return 0;
+}
+
+void OpenAiCompatibleChatProvider::SeedDiscoveredContextWindowForTest(
+    const std::string& model_id, int context_window) {
+  std::scoped_lock lock(discovered_windows_mutex_);
+  if (context_window > 0) {
+    discovered_windows_[model_id] = context_window;
+  } else {
+    discovered_windows_.erase(model_id);
+  }
 }
 
 void OpenAiCompatibleChatProvider::CompleteStream(

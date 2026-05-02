@@ -52,6 +52,15 @@ name = "vivid"
 # no effect when name = "system".
 sync_terminal_background = true
 
+[compact]
+# Auto-compact the conversation history when projected prompt-token usage
+# crosses `threshold` × the model's context window. Fired before each new
+# user prompt; never splits a tool_call/tool_result pair.
+auto_enabled = true
+threshold    = 0.8                       # 0.05 .. 1.0
+keep_last    = 20                        # most-recent messages to keep
+mode         = "summarize"               # "summarize" (default) or "truncate"
+
 [mcp]
 # Maximum bytes for MCP tool result payloads (default: 262144 = 256 KB).
 # result_max_bytes = 262144

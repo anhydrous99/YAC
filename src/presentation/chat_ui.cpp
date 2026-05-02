@@ -150,20 +150,24 @@ ftxui::Component ChatUI::Build() {
       }
     }
 
-    // Right: context %, token count, help chip
+    // Right: context %, prompt-token count over window, help chip. We use
+    // `prompt_tokens` (not total) so the indicator matches the auto-compact
+    // trigger's signal — what fraction of the window the *next* request
+    // will consume.
     ftxui::Elements rail_right;
     {
       const int window = overlay_state_.ContextWindowTokens();
-      const int total = overlay_state_.LastUsage()
-                            ? overlay_state_.LastUsage()->total_tokens
-                            : 0;
-      if (window > 0 && total > 0) {
+      const int prompt = overlay_state_.LastUsage()
+                             ? overlay_state_.LastUsage()->prompt_tokens
+                             : 0;
+      if (window > 0 && prompt > 0) {
         const double pct =
-            (static_cast<double>(total) / static_cast<double>(window)) * 100.0;
+            (static_cast<double>(prompt) / static_cast<double>(window)) * 100.0;
         rail_right.push_back(ftxui::text(FormatPercent(pct) + " ") |
                              ftxui::color(PercentColor(pct)) | ftxui::bold);
-        rail_right.push_back(ftxui::text(FormatTokens(total)) |
-                             ftxui::color(colors.semantic.text_muted));
+        rail_right.push_back(
+            ftxui::text(FormatTokens(prompt) + "/" + FormatTokens(window)) |
+            ftxui::color(colors.semantic.text_muted));
       }
     }
     rail_right.push_back(ftxui::text(" [? help]") |
@@ -441,6 +445,10 @@ std::string ChatUI::ProviderId() const {
 
 std::string ChatUI::Model() const {
   return overlay_state_.Model();
+}
+
+int ChatUI::ContextWindowTokens() const {
+  return overlay_state_.ContextWindowTokens();
 }
 
 }  // namespace yac::presentation

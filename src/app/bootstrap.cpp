@@ -466,10 +466,15 @@ int RunApp() {
 
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
-  chat_ui.SetContextWindowTokens(LookupContextWindow(config.model));
+  chat_ui.SetContextWindowTokens(
+      ResolveContextWindow(provider.get(), config.model));
   chat_ui.SetProviderModel(config.provider_id, config.model);
 
-  ChatEventBridge bridge(chat_ui);
+  ChatEventBridge bridge(chat_ui, /*history_provider=*/{},
+                         [provider](const std::string& model_id) {
+                           return ResolveContextWindow(provider.get(),
+                                                       model_id);
+                         });
 
   StreamingCoalescer event_coalescer(screen, bridge);
 

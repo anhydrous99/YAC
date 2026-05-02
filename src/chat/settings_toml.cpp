@@ -122,6 +122,34 @@ bool ApplyBoolField(const toml::node_view<toml::node>& node,
   return false;
 }
 
+bool ApplyDoubleField(const toml::node_view<toml::node>& node,
+                      const std::string& key, double min_value,
+                      double max_value, double& target,
+                      std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  double parsed = 0.0;
+  if (auto* value = node.as_floating_point()) {
+    parsed = value->get();
+  } else if (auto* value = node.as_integer()) {
+    parsed = static_cast<double>(value->get());
+  } else {
+    AddError(issues, "Invalid type for " + key + " in settings.toml",
+             "Expected a number.");
+    return false;
+  }
+  if (parsed < min_value || parsed > max_value) {
+    std::ostringstream detail;
+    detail << "Value must be between " << min_value << " and " << max_value
+           << ".";
+    AddError(issues, "Invalid " + key + " in settings.toml", detail.str());
+    return false;
+  }
+  target = parsed;
+  return true;
+}
+
 bool ApplyStringArray(const toml::node_view<toml::node>& node,
                       const std::string& key, std::vector<std::string>& target,
                       std::vector<ConfigIssue>& issues) {
@@ -492,6 +520,30 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
     }
   } else if (table.contains("theme")) {
     AddError(issues, "Invalid type for [theme] in settings.toml",
+             "Expected a table.");
+  }
+
+  const auto compact_section = table["compact"];
+  if (compact_section.is_table()) {
+    ApplyBoolField(compact_section["auto_enabled"], "compact.auto_enabled",
+                   config.auto_compact_enabled, issues);
+    ApplyDoubleField(compact_section["threshold"], "compact.threshold",
+                     kMinAutoCompactThreshold, kMaxAutoCompactThreshold,
+                     config.auto_compact_threshold, issues);
+    ApplyIntegerField(compact_section["keep_last"], "compact.keep_last",
+                      kMinAutoCompactKeepLast, kMaxAutoCompactKeepLast,
+                      config.auto_compact_keep_last, issues);
+    if (ApplyStringField(compact_section["mode"], "compact.mode",
+                         config.auto_compact_mode, issues)) {
+      if (config.auto_compact_mode != "summarize" &&
+          config.auto_compact_mode != "truncate") {
+        AddError(issues, "Invalid compact.mode in settings.toml",
+                 "Value must be 'summarize' or 'truncate'.");
+        config.auto_compact_mode = "summarize";
+      }
+    }
+  } else if (table.contains("compact")) {
+    AddError(issues, "Invalid type for [compact] in settings.toml",
              "Expected a table.");
   }
 

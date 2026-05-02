@@ -77,6 +77,33 @@ TEST_CASE("ChatEventBridge updates provider and model display") {
   REQUIRE(ui.Model() == "glm-5.1");
 }
 
+TEST_CASE(
+    "ChatEventBridge resolves context window via injected resolver, "
+    "overriding the cross-provider table") {
+  ChatUI ui;
+  // gpt-4o-mini's cross-provider table value is 128000; the resolver returns
+  // 64000. The resolver wins.
+  ChatEventBridge bridge(ui, /*history_provider=*/{},
+                         [](const std::string&) { return 64000; });
+
+  bridge.HandleEvent(ChatEvent{
+      ModelChangedEvent{.provider_id = "openai", .model = "gpt-4o-mini"}});
+
+  REQUIRE(ui.ContextWindowTokens() == 64000);
+}
+
+TEST_CASE(
+    "ChatEventBridge falls back to LookupContextWindow when resolver is "
+    "unset") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(ChatEvent{
+      ModelChangedEvent{.provider_id = "openai", .model = "gpt-4o-mini"}});
+
+  REQUIRE(ui.ContextWindowTokens() == 128000);
+}
+
 TEST_CASE("ChatEventBridge creates and updates tool call messages") {
   ChatUI ui;
   ChatEventBridge bridge(ui);

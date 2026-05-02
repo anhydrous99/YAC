@@ -111,6 +111,7 @@ class ChatUI : public ChatEventSink {
   [[nodiscard]] bool IsTyping() const;
   [[nodiscard]] std::string ProviderId() const;
   [[nodiscard]] std::string Model() const override;
+  [[nodiscard]] int ContextWindowTokens() const;
   [[nodiscard]] int CalculateInputHeight() const;
   [[nodiscard]] bool HandleInputEvent(const ftxui::Event& event);
 

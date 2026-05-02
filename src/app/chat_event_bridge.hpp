@@ -13,9 +13,15 @@ class ChatEventBridge {
  public:
   using HistoryProvider = std::function<std::vector<chat::ChatMessage>()>;
   using PostFn = std::function<void(std::function<void()>)>;
+  // Resolves a model id to its advertised context-window size in tokens. The
+  // bridge calls this on `ModelChangedEvent` so the UI can show
+  // "ctx 65k / 200k" in the footer. When unset (default), the bridge falls
+  // back to the cross-provider table via `LookupContextWindow`.
+  using ContextWindowResolver = std::function<int(const std::string&)>;
 
   explicit ChatEventBridge(presentation::ChatEventSink& chat_ui,
-                           HistoryProvider history_provider = {});
+                           HistoryProvider history_provider = {},
+                           ContextWindowResolver context_window_resolver = {});
 
   void HandleEvent(chat::ChatEvent event);
   void SetPostFn(PostFn fn);
@@ -53,6 +59,7 @@ class ChatEventBridge {
 
   std::reference_wrapper<presentation::ChatEventSink> chat_ui_;
   HistoryProvider history_provider_;
+  ContextWindowResolver context_window_resolver_;
   presentation::McpStatusSink mcp_sink_;
   PostFn post_fn_;
 };

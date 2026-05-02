@@ -1,5 +1,7 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
+#include "app/model_context_windows.hpp"
+#include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
 #include "mcp/tool_naming.hpp"
@@ -73,7 +75,8 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
     std::set<std::string> excluded_tools, std::mutex* approval_gate,
     ModeExcludedToolsFn mode_excluded_tools,
     PrepareBuiltInToolCallFn prepare_built_in_tool_call,
-    ExecuteBuiltInToolCallFn execute_built_in_tool_call)
+    ExecuteBuiltInToolCallFn execute_built_in_tool_call,
+    OnUsageReportedFn on_usage_reported, LastUsageFn last_usage)
     : registry_(&registry),
       tool_executor_(&tool_executor),
       tool_approval_(&tool_approval),
@@ -96,12 +99,14 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
       execute_built_in_tool_call_(
           execute_built_in_tool_call
               ? std::move(execute_built_in_tool_call)
-              : ExecuteBuiltInToolCallFn{
-                    [tool_executor_ptr = &tool_executor](
-                        const ::yac::tool_call::PreparedToolCall& prepared,
-                        std::stop_token stop_token) {
-                      return tool_executor_ptr->Execute(prepared, stop_token);
-                    }}) {}
+              : ExecuteBuiltInToolCallFn{[tool_executor_ptr = &tool_executor](
+                                             const ::yac::tool_call::
+                                                 PreparedToolCall& prepared,
+                                             std::stop_token stop_token) {
+                  return tool_executor_ptr->Execute(prepared, stop_token);
+                }}),
+      on_usage_reported_(std::move(on_usage_reported)),
+      last_usage_(std::move(last_usage)) {}
 
 void ChatServicePromptProcessor::ProcessPrompt(
     ChatMessageId prompt_id, const std::string& prompt_content,
@@ -128,8 +133,33 @@ void ChatServicePromptProcessor::ProcessPrompt(
     return;
   }
 
+  // Auto-compact BEFORE appending the new user message so the new prompt is
+  // the freshest message and isn't itself a candidate for being summarized.
+  // The trigger relies on `prompt_tokens` from the previous round's
+  // UsageReportedEvent — stale by one turn but the threshold (default 0.8)
+  // leaves headroom.
+  const auto& cfg = request_builder.Config();
+  if (cfg.auto_compact_enabled && last_usage_) {
+    const auto prior_usage = last_usage_();
+    if (prior_usage && prior_usage->prompt_tokens > 0) {
+      const int window =
+          ::yac::app::ResolveContextWindow(provider.get(), cfg.model);
+      if (window > 0) {
+        const double pct = static_cast<double>(prior_usage->prompt_tokens) /
+                           static_cast<double>(window);
+        if (pct >= cfg.auto_compact_threshold) {
+          MaybeAutoCompactHistory(*history_, *history_mutex_, cfg, *provider,
+                                  emit_event_, stop_token);
+        }
+      }
+    }
+  }
+
   {
     std::scoped_lock lock(*history_mutex_);
+    if (ShouldAbortLocked(generation)) {
+      return;
+    }
     ChatServiceHistory(*history_).AppendActiveUserMessage(prompt_id,
                                                           prompt_content);
   }
@@ -157,7 +187,20 @@ void ChatServicePromptProcessor::ProcessPrompt(
     std::string round_text;
     requested_tools.clear();
     std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
-    const ChatRequest request = BuildRoundRequest(request_builder);
+    bool round_aborted = false;
+    const ChatRequest request =
+        BuildRoundRequest(request_builder, generation, round_aborted);
+    if (round_aborted) {
+      // ResetConversation/CancelActiveResponse fired between rounds.
+      // Don't issue an empty request to the provider; emit the standard
+      // cancellation pair and bail.
+      emit_event_(ChatEvent{
+          MessageStatusChangedEvent{.message_id = assistant_id,
+                                    .role = ChatRole::Assistant,
+                                    .status = ChatMessageStatus::Cancelled}});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+      return;
+    }
 
     auto sink = [this, &round_text, assistant_id, generation, &assistant_error,
                  &requested_tools,
@@ -209,6 +252,10 @@ void ChatServicePromptProcessor::ProcessPrompt(
       if (event.As<FinishedEvent>()) {
         return;
       }
+      if (auto* usage = event.As<UsageReportedEvent>();
+          usage != nullptr && on_usage_reported_) {
+        on_usage_reported_(usage->usage);
+      }
       emit_event_(std::move(event));
     };
 
@@ -236,11 +283,19 @@ void ChatServicePromptProcessor::ProcessPrompt(
 
     {
       std::scoped_lock lock(*history_mutex_);
+      if (ShouldAbortLocked(generation)) {
+        emit_event_(ChatEvent{
+            MessageStatusChangedEvent{.message_id = assistant_id,
+                                      .role = ChatRole::Assistant,
+                                      .status = ChatMessageStatus::Cancelled}});
+        emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+        return;
+      }
       ChatServiceHistory(*history_).AppendAssistantToolRound(
           assistant_id, round_text, requested_tools);
     }
 
-    RunToolRound(requested_tools, streaming_card_ids, stop_token);
+    RunToolRound(requested_tools, streaming_card_ids, generation, stop_token);
   }
 
   if (!requested_tools.empty()) {
@@ -257,6 +312,14 @@ void ChatServicePromptProcessor::ProcessPrompt(
 
   if (!visible_assistant_text.empty()) {
     std::scoped_lock lock(*history_mutex_);
+    if (ShouldAbortLocked(generation)) {
+      emit_event_(ChatEvent{
+          MessageStatusChangedEvent{.message_id = assistant_id,
+                                    .role = ChatRole::Assistant,
+                                    .status = ChatMessageStatus::Cancelled}});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+      return;
+    }
     ChatServiceHistory(*history_).AppendFinalAssistantMessage(
         assistant_id, visible_assistant_text);
   }
@@ -268,8 +331,17 @@ void ChatServicePromptProcessor::ProcessPrompt(
 }
 
 ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
-    const ChatServiceRequestBuilder& request_builder) const {
+    const ChatServiceRequestBuilder& request_builder, uint64_t generation,
+    bool& aborted) const {
   std::scoped_lock lock(*history_mutex_);
+  // Gate the read on a fresh generation — closes the window where
+  // ResetConversation clears history between an outer check and this
+  // read. Caller observes `aborted` and bails before issuing the
+  // upstream request.
+  if (ShouldAbortLocked(generation)) {
+    aborted = true;
+    return {};
+  }
   auto tools = ::yac::tool_call::ToolExecutor::Definitions();
   if (chat_service_mcp_ != nullptr) {
     tools = yac::chat::internal::ChatServiceMcp::MergeBuiltInsAndMcp(
@@ -283,10 +355,14 @@ ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
   return request_builder.BuildRequest(*history_, tools);
 }
 
+bool ChatServicePromptProcessor::ShouldAbortLocked(uint64_t generation) const {
+  return generation_value_() != generation;
+}
+
 void ChatServicePromptProcessor::RunToolRound(
     const std::vector<ToolCallRequest>& requested_tools,
     const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
-    std::stop_token stop_token) {
+    uint64_t generation, std::stop_token stop_token) {
   for (const auto& tool_request : requested_tools) {
     ChatMessageId tool_message_id = 0;
     if (auto it = streaming_card_ids.find(tool_request.id);
@@ -394,6 +470,9 @@ void ChatServicePromptProcessor::RunToolRound(
                                             .status = done_status}});
     {
       std::scoped_lock lock(*history_mutex_);
+      if (ShouldAbortLocked(generation)) {
+        return;
+      }
       ChatServiceHistory(*history_).AppendToolResult(tool_message_id,
                                                      tool_request, result);
     }

@@ -1,5 +1,7 @@
 #include "app/model_context_windows.hpp"
 
+#include "provider/language_model_provider.hpp"
+
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -28,12 +30,14 @@ const std::vector<std::pair<std::string, int>>& PrefixTable() {
       {"o3", 200000},           {"o1", 200000},
       {"claude-opus", 200000},  {"claude-sonnet", 200000},
       {"claude-haiku", 200000}, {"claude-3", 200000},
-      {"claude-", 200000},      {"glm-4.6", 200000},
-      {"glm-4.5", 128000},      {"glm-4", 128000},
-      {"glm-", 128000},         {"gemini-2", 1000000},
-      {"gemini-1.5", 1000000},  {"gemini-", 32768},
-      {"deepseek-", 128000},    {"qwen", 131072},
-      {"llama-3.1", 128000},    {"llama-3", 8192},
+      {"claude-", 200000},      {"glm-5.1", 200000},
+      {"glm-5", 200000},        {"glm-4.7", 200000},
+      {"glm-4.6", 200000},      {"glm-4.5", 128000},
+      {"glm-4", 128000},        {"glm-", 128000},
+      {"gemini-2", 1000000},    {"gemini-1.5", 1000000},
+      {"gemini-", 32768},       {"deepseek-", 128000},
+      {"qwen", 131072},         {"llama-3.1", 128000},
+      {"llama-3", 8192},
   };
   return table;
 }
@@ -54,6 +58,17 @@ int LookupContextWindow(std::string_view model_id) {
     }
   }
   return 0;
+}
+
+int ResolveContextWindow(const provider::LanguageModelProvider* provider,
+                         const std::string& model_id) {
+  if (provider != nullptr) {
+    if (const int advertised = provider->GetContextWindow(model_id);
+        advertised > 0) {
+      return advertised;
+    }
+  }
+  return LookupContextWindow(model_id);
 }
 
 }  // namespace yac::app

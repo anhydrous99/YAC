@@ -184,6 +184,61 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     config.theme_density = std::move(*val);
     fields.theme_density = true;
   }
+  if (auto val = GetEnv("YAC_COMPACT_AUTO_ENABLED")) {
+    std::string normalized = *val;
+    std::ranges::transform(normalized, normalized.begin(),
+                           [](unsigned char ch) { return std::tolower(ch); });
+    config.auto_compact_enabled =
+        !(normalized == "0" || normalized == "false" || normalized == "no" ||
+          normalized == "off");
+  }
+  if (auto val = GetEnv("YAC_COMPACT_THRESHOLD")) {
+    try {
+      const double parsed = std::stod(*val);
+      if (parsed < kMinAutoCompactThreshold ||
+          parsed > kMaxAutoCompactThreshold) {
+        throw std::out_of_range("YAC_COMPACT_THRESHOLD must be between " +
+                                std::to_string(kMinAutoCompactThreshold) +
+                                " and " +
+                                std::to_string(kMaxAutoCompactThreshold));
+      }
+      config.auto_compact_threshold = parsed;
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_COMPACT_THRESHOLD",
+                        .detail = error.what()});
+    }
+  }
+  if (auto val = GetEnv("YAC_COMPACT_KEEP_LAST")) {
+    try {
+      size_t consumed = 0;
+      const int parsed = std::stoi(*val, &consumed);
+      if (consumed != val->size()) {
+        throw std::invalid_argument("YAC_COMPACT_KEEP_LAST must be an integer");
+      }
+      if (parsed < kMinAutoCompactKeepLast ||
+          parsed > kMaxAutoCompactKeepLast) {
+        throw std::out_of_range("YAC_COMPACT_KEEP_LAST must be between " +
+                                std::to_string(kMinAutoCompactKeepLast) +
+                                " and " +
+                                std::to_string(kMaxAutoCompactKeepLast));
+      }
+      config.auto_compact_keep_last = parsed;
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_COMPACT_KEEP_LAST",
+                        .detail = error.what()});
+    }
+  }
+  if (auto val = GetEnv("YAC_COMPACT_MODE")) {
+    if (*val == "summarize" || *val == "truncate") {
+      config.auto_compact_mode = std::move(*val);
+    } else {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_COMPACT_MODE",
+                        .detail = "Value must be 'summarize' or 'truncate'."});
+    }
+  }
 
   for (auto& server : config.mcp.servers) {
     const std::string server_prefix =

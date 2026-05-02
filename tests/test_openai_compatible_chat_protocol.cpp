@@ -160,3 +160,56 @@ TEST_CASE(
   REQUIRE(delta.tool_name == "file_write");
   REQUIRE(delta.arguments_json == R"({"filepath":"foo.txt","content":"hi"})");
 }
+
+TEST_CASE("ParseModelsData extracts context window from /models response") {
+  SECTION("OpenRouter shape: top-level context_length wins") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"anthropic/claude-3.5-sonnet","context_length":200000,"top_provider":{"context_length":150000}}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].id == "anthropic/claude-3.5-sonnet");
+    REQUIRE(models[0].context_window == 200000);
+  }
+
+  SECTION("Anthropic shape: max_input_tokens") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"claude-opus-4","max_input_tokens":200000,"max_tokens":8192}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].context_window == 200000);
+  }
+
+  SECTION("Defensive aliases: max_context_length") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"some-model","max_context_length":65536}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].context_window == 65536);
+  }
+
+  SECTION("Missing field defaults to 0") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"gpt-4o-mini","object":"model","owned_by":"openai"}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].context_window == 0);
+  }
+
+  SECTION("Priority order: context_length > max_input_tokens > top_provider") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"m","context_length":111,"max_input_tokens":222,"max_context_length":333,"top_provider":{"context_length":444}}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].context_window == 111);
+  }
+
+  SECTION("top_provider fallback when top-level fields are absent") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":[{"id":"m","top_provider":{"context_length":98765}}]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].context_window == 98765);
+  }
+
+  SECTION("String-only model entries (legacy shape) have window 0") {
+    const auto models = openai_compatible_protocol::ParseModelsData(
+        R"JSON({"data":["bare-model-id"]})JSON");
+    REQUIRE(models.size() == 1);
+    REQUIRE(models[0].id == "bare-model-id");
+    REQUIRE(models[0].context_window == 0);
+  }
+}

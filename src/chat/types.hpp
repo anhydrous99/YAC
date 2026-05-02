@@ -25,6 +25,11 @@ inline constexpr int kMaxToolRoundLimit = 256;
 inline constexpr double kMinTemperature = 0.0;
 inline constexpr double kMaxTemperature = 2.0;
 
+inline constexpr double kMinAutoCompactThreshold = 0.05;
+inline constexpr double kMaxAutoCompactThreshold = 1.0;
+inline constexpr int kMinAutoCompactKeepLast = 1;
+inline constexpr int kMaxAutoCompactKeepLast = 10000;
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;
@@ -187,8 +192,15 @@ struct ConversationClearedEvent {
   static constexpr ChatEventType kType = ChatEventType::ConversationCleared;
 };
 
+enum class CompactReason { Manual, Auto };
+
 struct ConversationCompactedEvent {
   static constexpr ChatEventType kType = ChatEventType::ConversationCompacted;
+
+  CompactReason reason = CompactReason::Manual;
+  // Number of non-system messages folded into the synthetic note. 0 when the
+  // event is constructed without a count (older callers).
+  int messages_removed = 0;
 };
 
 struct ModelChangedEvent {
@@ -422,6 +434,12 @@ struct ChatConfig {
   bool sync_terminal_background = true;
   std::string theme_name = "vivid";
   std::string theme_density = "comfortable";
+  // Auto-compaction settings — fired before each new user prompt when the
+  // previous round's prompt_tokens / context_window crosses the threshold.
+  bool auto_compact_enabled = true;
+  double auto_compact_threshold = 0.8;
+  int auto_compact_keep_last = 20;
+  std::string auto_compact_mode = "summarize";  // "summarize" | "truncate"
   mcp::McpConfig mcp;
 };
 

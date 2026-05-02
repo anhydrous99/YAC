@@ -1,7 +1,8 @@
 #include "provider/openai_compatible_chat_protocol.hpp"
 
-#include <sstream>
-#include <stdexcept>
+#include <array>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 
@@ -169,6 +170,37 @@ void ConsumeSseLine(std::string_view line, StreamState& state) {
   DispatchSseData(std::string(data), state);
 }
 
+int ExtractContextWindowFromModelNode(const Json& model) {
+  // Priority order: OpenRouter's `context_length` first, then Anthropic's
+  // `max_input_tokens`, then defensive aliases. First non-zero positive
+  // integer wins.
+  static constexpr std::array<std::string_view, 4> kContextWindowFields = {
+      "context_length", "max_input_tokens", "max_context_length",
+      "context_window"};
+  for (const auto& field : kContextWindowFields) {
+    const std::string field_str(field);
+    if (model.contains(field_str) && model[field_str].is_number_integer()) {
+      const auto value = model[field_str].get<long long>();
+      if (value > 0) {
+        return static_cast<int>(value);
+      }
+    }
+  }
+  // OpenRouter nests a per-provider variant under `top_provider`. Use it as a
+  // fallback so the headline `context_length` still wins when both exist.
+  if (model.contains("top_provider") && model["top_provider"].is_object()) {
+    const auto& top = model["top_provider"];
+    if (top.contains("context_length") &&
+        top["context_length"].is_number_integer()) {
+      const auto value = top["context_length"].get<long long>();
+      if (value > 0) {
+        return static_cast<int>(value);
+      }
+    }
+  }
+  return 0;
+}
+
 }  // namespace
 
 std::string RoleToOpenAi(chat::ChatRole role) {
@@ -257,13 +289,17 @@ std::vector<chat::ModelInfo> ParseModelsData(const std::string& data) {
     std::unordered_set<std::string> seen;
     for (const auto& model : *models) {
       std::string id;
+      int context_window = 0;
       if (model.is_string()) {
         id = model.get<std::string>();
-      } else if (model.contains("id") && model["id"].is_string()) {
+      } else if (model.is_object() && model.contains("id") &&
+                 model["id"].is_string()) {
         id = model["id"].get<std::string>();
+        context_window = ExtractContextWindowFromModelNode(model);
       }
       if (!id.empty() && seen.insert(id).second) {
-        result.push_back(chat::ModelInfo{.id = id, .display_name = id});
+        result.push_back(chat::ModelInfo{
+            .id = id, .display_name = id, .context_window = context_window});
       }
     }
     return result;

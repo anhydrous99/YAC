@@ -9,6 +9,7 @@
 #include "tool_call/todo_state.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -64,6 +65,16 @@ class ChatService {
   [[nodiscard]] std::vector<ChatMessage> History() const;
   [[nodiscard]] bool IsBusy() const;
   [[nodiscard]] int QueueDepth() const;
+  // Returns the most recent token-usage report from the provider, or
+  // `std::nullopt` if no response has reported usage yet. Used by the
+  // auto-compact trigger to estimate prompt-token pressure for the next
+  // round.
+  [[nodiscard]] std::optional<TokenUsage> LastUsage() const;
+
+  // Test seam: override the drain budget that `ResetConversation` waits
+  // on the worker for. Default is 2 seconds; tests use a shorter value
+  // to keep slow-provider scenarios fast. Must be a positive duration.
+  void SetResetDrainBudgetForTest(std::chrono::milliseconds budget);
 
  private:
   struct PendingPrompt {
@@ -96,10 +107,15 @@ class ChatService {
   mutable std::mutex mutex_;
   std::vector<ChatMessage> history_;
   std::deque<PendingPrompt> pending_;
+  std::optional<TokenUsage> last_usage_;
   ChatEventCallback callback_;
 
   std::atomic<uint64_t> generation_{0};
   std::atomic<ChatMessageId> next_id_{1};
+  // Milliseconds ResetConversation waits on the worker to drain the
+  // in-flight ProcessPrompt before forcibly clearing history. Defaults to
+  // 2 seconds; lowered by tests via SetResetDrainBudgetForTest.
+  std::atomic<int64_t> reset_drain_budget_ms_{2000};
 
   std::jthread worker_;
   std::condition_variable_any wake_;

@@ -29,6 +29,15 @@ class LanguageModelProvider {
     (void)timeout;
     return {};
   }
+  // Best-effort context-window lookup for a model id. Returns 0 for unknown
+  // ids; callers fall through to the cross-provider table in
+  // `app/model_context_windows.cpp`. Implementations should consult any
+  // discovered cache (populated from `ListModels`) before any built-in table.
+  [[nodiscard]] virtual int GetContextWindow(
+      const std::string& model_id) const {
+    (void)model_id;
+    return 0;
+  }
   virtual void CompleteStream(const chat::ChatRequest& request,
                               ChatEventSink sink,
                               std::stop_token stop_token) = 0;

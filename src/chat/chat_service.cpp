@@ -6,6 +6,7 @@
 #include "chat/chat_service_request_builder.hpp"
 #include "chat/chat_service_tool_approval.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -33,7 +34,14 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
           [this] { return ConfigSnapshot(); },
           [this] { return generation_.load(); }, std::set<std::string>{},
           sub_agent_manager_->GetApprovalGate(),
-          [this] { return ExcludedToolsForMode(config_.agent_mode); })) {
+          [this] { return ExcludedToolsForMode(config_.agent_mode); },
+          internal::ChatServicePromptProcessor::PrepareBuiltInToolCallFn{},
+          internal::ChatServicePromptProcessor::ExecuteBuiltInToolCallFn{},
+          [this](const TokenUsage& usage) {
+            std::scoped_lock lock(mutex_);
+            last_usage_ = usage;
+          },
+          [this] { return LastUsage(); })) {
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   tool_executor_->SetToolApproval(tool_approval_.get());
   sub_agent_manager_->SetMcpManager(mcp_manager_.get());
@@ -140,42 +148,75 @@ void ChatService::SetAgentMode(AgentMode mode) {
 }
 
 void ChatService::ResetConversation() {
-  uint64_t old_gen = generation_.fetch_add(1);
-  (void)old_gen;
-
+  // Bump generation up front so the worker's ProcessPrompt observes
+  // cancellation at every guarded site. Then signal the active prompt
+  // to stop and drop any queued prompts so they don't get processed
+  // under the new generation.
+  generation_.fetch_add(1);
   {
     std::scoped_lock lock(mutex_);
+    pending_.clear();
     if (active_stop_source_.has_value()) {
       active_stop_source_->request_stop();
     }
-    history_.clear();
-    pending_.clear();
-    active_ = false;
-    active_stop_source_.reset();
   }
+
+  // Wait for the worker to finish whatever ProcessPrompt is in flight.
+  // The worker notifies wake_ after setting active_=false. Bounded so a
+  // misbehaving provider that ignores stop_token can't pin the UI thread;
+  // if the budget expires, the per-append generation guards in
+  // ProcessPrompt prevent the worker from corrupting the cleared
+  // history that follows.
+  {
+    std::unique_lock lock(mutex_);
+    const auto budget = std::chrono::milliseconds(
+        reset_drain_budget_ms_.load(std::memory_order_relaxed));
+    wake_.wait_for(lock, budget, [this] { return !active_; });
+  }
+
+  // Now safe to mutate history. We do not touch active_ or
+  // active_stop_source_ — those are owned by the worker thread.
+  {
+    std::scoped_lock lock(mutex_);
+    history_.clear();
+    last_usage_.reset();
+    config_.agent_mode = AgentMode::Build;
+  }
+
   sub_agent_manager_->CancelAll();
   tool_approval_->CancelPending();
   todo_state_.Clear();
-  {
-    std::scoped_lock lock(mutex_);
-    config_.agent_mode = AgentMode::Build;
-  }
-  wake_.notify_one();
 
   EmitEvent(ChatEvent{ConversationClearedEvent{}});
   EmitEvent(ChatEvent{AgentModeChangedEvent{.mode = AgentMode::Build}});
 }
 
+void ChatService::SetResetDrainBudgetForTest(std::chrono::milliseconds budget) {
+  reset_drain_budget_ms_.store(std::max<int64_t>(1, budget.count()),
+                               std::memory_order_relaxed);
+}
+
 void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
+  int messages_removed = 0;
   {
     std::scoped_lock lock(mutex_);
     if (active_ || !pending_.empty()) {
       return;
     }
+    const auto before_non_system = static_cast<decltype(sizeof(0))>(
+        std::ranges::count_if(history_, [](const ChatMessage& message) {
+          return message.role != ChatRole::System;
+        }));
     internal::CompactHistory(history_, keep_last);
+    if (before_non_system > keep_last) {
+      messages_removed = static_cast<int>(before_non_system - keep_last);
+    }
   }
 
-  EmitEvent(ChatEvent{ConversationCompactedEvent{}});
+  EmitEvent(ChatEvent{ConversationCompactedEvent{
+      .reason = CompactReason::Manual,
+      .messages_removed = messages_removed,
+  }});
 }
 
 std::vector<ChatMessage> ChatService::History() const {
@@ -191,6 +232,11 @@ bool ChatService::IsBusy() const {
 int ChatService::QueueDepth() const {
   std::scoped_lock lock(mutex_);
   return static_cast<int>(pending_.size());
+}
+
+std::optional<TokenUsage> ChatService::LastUsage() const {
+  std::scoped_lock lock(mutex_);
+  return last_usage_;
 }
 
 void ChatService::WorkerLoop(std::stop_token stop_token) {
@@ -235,6 +281,9 @@ void ChatService::WorkerLoop(std::stop_token stop_token) {
       active_ = false;
       active_stop_source_.reset();
     }
+    // Wake any thread (notably ResetConversation) waiting for this prompt
+    // to drain. Cheap; the wait predicate filters spurious wakes.
+    wake_.notify_all();
   }
 }
 

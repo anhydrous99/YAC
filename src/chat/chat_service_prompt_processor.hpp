@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <stop_token>
 #include <string>
@@ -29,6 +30,12 @@ class ChatServicePromptProcessor {
   using ExecuteBuiltInToolCallFn =
       std::function<::yac::tool_call::ToolExecutionResult(
           const ::yac::tool_call::PreparedToolCall&, std::stop_token)>;
+  // Optional side-channel hooks for auto-compaction. `OnUsageReportedFn` is
+  // invoked alongside the forwarded `UsageReportedEvent` so the host can
+  // cache the latest usage; `LastUsageFn` returns it back for the trigger.
+  // Both default to no-ops, so existing callers are unaffected.
+  using OnUsageReportedFn = std::function<void(const TokenUsage&)>;
+  using LastUsageFn = std::function<std::optional<TokenUsage>()>;
 
   ChatServicePromptProcessor(
       provider::ProviderRegistry& registry,
@@ -41,18 +48,29 @@ class ChatServicePromptProcessor {
       std::mutex* approval_gate = nullptr,
       ModeExcludedToolsFn mode_excluded_tools = {},
       PrepareBuiltInToolCallFn prepare_built_in_tool_call = {},
-      ExecuteBuiltInToolCallFn execute_built_in_tool_call = {});
+      ExecuteBuiltInToolCallFn execute_built_in_tool_call = {},
+      OnUsageReportedFn on_usage_reported = {}, LastUsageFn last_usage = {});
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
 
  private:
+  // Builds the per-round request snapshot under the history lock.
+  // `aborted` is set to true when the captured `generation` is stale —
+  // the caller must observe it and bail before sending the (empty)
+  // request.
   [[nodiscard]] ChatRequest BuildRoundRequest(
-      const ChatServiceRequestBuilder& request_builder) const;
+      const ChatServiceRequestBuilder& request_builder, uint64_t generation,
+      bool& aborted) const;
   void RunToolRound(
       const std::vector<ToolCallRequest>& requested_tools,
       const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
-      std::stop_token stop_token);
+      uint64_t generation, std::stop_token stop_token);
+  // Returns true when ResetConversation or CancelActiveResponse has
+  // bumped generation past `generation`. Caller must hold
+  // *history_mutex_; this is shorthand for the recurring re-check
+  // pattern at every history-mutating site.
+  [[nodiscard]] bool ShouldAbortLocked(uint64_t generation) const;
   [[nodiscard]] static ::yac::tool_call::ToolExecutionResult
   MakeRejectedToolResult(const ::yac::tool_call::PreparedToolCall& prepared);
 
@@ -71,6 +89,8 @@ class ChatServicePromptProcessor {
   ModeExcludedToolsFn mode_excluded_tools_;
   PrepareBuiltInToolCallFn prepare_built_in_tool_call_;
   ExecuteBuiltInToolCallFn execute_built_in_tool_call_;
+  OnUsageReportedFn on_usage_reported_;
+  LastUsageFn last_usage_;
 };
 
 }  // namespace yac::chat::internal

@@ -33,8 +33,11 @@ yac::presentation::Sender SenderForRole(yac::chat::ChatRole role) {
 }  // namespace
 
 ChatEventBridge::ChatEventBridge(presentation::ChatEventSink& chat_ui,
-                                 HistoryProvider history_provider)
-    : chat_ui_(chat_ui), history_provider_(std::move(history_provider)) {}
+                                 HistoryProvider history_provider,
+                                 ContextWindowResolver context_window_resolver)
+    : chat_ui_(chat_ui),
+      history_provider_(std::move(history_provider)),
+      context_window_resolver_(std::move(context_window_resolver)) {}
 
 void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
   std::visit([this](auto& payload) { Handle(std::move(payload)); },
@@ -147,16 +150,29 @@ void ChatEventBridge::RefreshFromHistory() {
 }
 
 void ChatEventBridge::Handle(chat::ConversationCompactedEvent event) {
-  (void)event;
   RefreshFromHistory();
-  chat_ui_.get().SetTransientStatus(
-      presentation::UiNotice{.severity = presentation::UiSeverity::Info,
-                             .title = "Conversation compacted"});
+  std::string title;
+  if (event.reason == chat::CompactReason::Auto) {
+    title = "Auto-compacted near context limit";
+    if (event.messages_removed > 0) {
+      title += " (" + std::to_string(event.messages_removed) + " removed)";
+    }
+  } else {
+    title = "Conversation compacted";
+    if (event.messages_removed > 0) {
+      title += " (" + std::to_string(event.messages_removed) + " removed)";
+    }
+  }
+  chat_ui_.get().SetTransientStatus(presentation::UiNotice{
+      .severity = presentation::UiSeverity::Info, .title = std::move(title)});
 }
 
 void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   auto& chat_ui = chat_ui_.get();
-  chat_ui.SetContextWindowTokens(LookupContextWindow(event.model));
+  const int window = context_window_resolver_
+                         ? context_window_resolver_(event.model)
+                         : LookupContextWindow(event.model);
+  chat_ui.SetContextWindowTokens(window);
   chat_ui.SetProviderModel(std::move(event.provider_id),
                            std::move(event.model));
   chat_ui.SetTransientStatus(presentation::UiNotice{
