@@ -41,6 +41,64 @@ jobs:
       - name: Format check
         run: cmake --build build --target format-check
 
+  coverage:
+    name: PR coverage (gated)
+    # Only PRs trigger this; pushes to main never run coverage.
+    if: github.event_name == 'pull_request'
+    # Wait for the regular Linux job to pass before asking for review —
+    # avoids burning a reviewer's time when the build is already broken.
+    needs: linux
+    runs-on: ubuntu-latest
+    # Requires a one-time setup in repo Settings > Environments:
+    # create an environment named "coverage-approval" with required reviewers.
+    # The job sits in "Waiting" state until a reviewer approves it via the
+    # GitHub UI, then runs.
+    environment: coverage-approval
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build + coverage dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libcurl4-openssl-dev ripgrep wget gnupg lsb-release software-properties-common
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+          sudo add-apt-repository -y "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
+          sudo apt-get update
+          sudo apt-get install -y clang-21 llvm-21
+
+      - name: Configure (coverage)
+        env:
+          CC: clang-21
+          CXX: clang++-21
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DYAC_ENABLE_COVERAGE=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run coverage
+        run: cmake --build build --target coverage
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: build/coverage_html
+          if-no-files-found: error
+
+      - name: Upload lcov report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: build/coverage.lcov
+          if-no-files-found: error
+
   macos:
     name: macOS validation
     runs-on: macos-latest

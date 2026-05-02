@@ -175,6 +175,35 @@ target_link_libraries(yac_keychain INTERFACE keychain)
 find_package(CURL REQUIRED)
 find_package(OpenSSL REQUIRED)
 
+option(YAC_ENABLE_COVERAGE
+  "Build YAC libraries, executable, and tests with LLVM source-based coverage instrumentation"
+  OFF)
+
+if(YAC_ENABLE_COVERAGE)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR
+      "YAC_ENABLE_COVERAGE requires a Clang-family compiler "
+      "(currently using ${CMAKE_CXX_COMPILER_ID}). LLVM source-based coverage "
+      "uses -fprofile-instr-generate / -fcoverage-mapping and the matching "
+      "llvm-profdata / llvm-cov tools.")
+  endif()
+
+  find_program(LLVM_PROFDATA NAMES llvm-profdata-21 llvm-profdata)
+  find_program(LLVM_COV NAMES llvm-cov-21 llvm-cov)
+  if(NOT LLVM_PROFDATA OR NOT LLVM_COV)
+    message(FATAL_ERROR
+      "YAC_ENABLE_COVERAGE needs llvm-profdata and llvm-cov on PATH; "
+      "found LLVM_PROFDATA=${LLVM_PROFDATA} LLVM_COV=${LLVM_COV}.")
+  endif()
+
+  # Applied below for every YAC target + the tests/ subdir. FetchContent
+  # third-party libs (ftxui, openai_cpp, tomlplusplus, keychain, Catch2)
+  # were declared above this point and stay uninstrumented so the report
+  # focuses on src/.
+  add_compile_options(-fprofile-instr-generate -fcoverage-mapping)
+  add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+endif()
+
 add_library(yac_core_types INTERFACE)
 target_include_directories(yac_core_types INTERFACE src)
 
@@ -309,6 +338,121 @@ target_link_libraries(yac PRIVATE yac_app yac_presentation yac_service)
 
 enable_testing()
 add_subdirectory(tests)
+
+if(YAC_ENABLE_COVERAGE)
+  set(COVERAGE_RUNNER_TEMPLATE [[
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+source_dir = pathlib.Path(sys.argv[1]).resolve()
+build_dir = pathlib.Path(sys.argv[2]).resolve()
+
+profdata_tool = "@LLVM_PROFDATA@"
+cov_tool = "@LLVM_COV@"
+
+raw_dir = build_dir / "cov"
+profraws = sorted(raw_dir.glob("*.profraw"))
+if not profraws:
+    sys.exit(
+        f"No .profraw files in {raw_dir}; "
+        "did tests run with LLVM_PROFILE_FILE set?"
+    )
+
+merged = build_dir / "yac.profdata"
+subprocess.run(
+    [profdata_tool, "merge", "-sparse", *map(str, profraws), "-o", str(merged)],
+    check=True,
+)
+
+# Pull every executable under build/tests/ that carries coverage maps.
+# This includes the test binaries themselves plus helper exes
+# (echo_jsonrpc_server, fake_mcp_server, mock_oauth_server) that
+# integration tests spawn as subprocesses.
+binaries = [
+    p for p in sorted((build_dir / "tests").iterdir())
+    if p.is_file() and os.access(p, os.X_OK) and not p.name.endswith(".cmake")
+]
+yac_bin = build_dir / "yac"
+if yac_bin.is_file():
+    binaries.append(yac_bin)
+if not binaries:
+    sys.exit(f"No instrumented binaries found under {build_dir / 'tests'}")
+
+positional = str(binaries[0])
+extra_objects = []
+for b in binaries[1:]:
+    extra_objects.extend(["-object", str(b)])
+
+ignore = "--ignore-filename-regex=(_deps|tests|build)/"
+
+html_dir = build_dir / "coverage_html"
+shutil.rmtree(html_dir, ignore_errors=True)
+
+subprocess.run(
+    [
+        cov_tool, "show",
+        f"-instr-profile={merged}",
+        positional, *extra_objects,
+        "-format=html",
+        f"-output-dir={html_dir}",
+        ignore,
+    ],
+    check=True,
+)
+
+subprocess.run(
+    [
+        cov_tool, "report",
+        f"-instr-profile={merged}",
+        positional, *extra_objects,
+        ignore,
+    ],
+    check=True,
+)
+
+lcov_path = build_dir / "coverage.lcov"
+with lcov_path.open("w", encoding="utf-8") as fh:
+    subprocess.run(
+        [
+            cov_tool, "export",
+            f"-instr-profile={merged}",
+            positional, *extra_objects,
+            "-format=lcov",
+            ignore,
+        ],
+        check=True,
+        stdout=fh,
+    )
+
+print(f"\nCoverage HTML : {html_dir}/index.html")
+print(f"Coverage lcov : {lcov_path}")
+]])
+
+  string(CONFIGURE "${COVERAGE_RUNNER_TEMPLATE}" COVERAGE_RUNNER_SCRIPT @ONLY)
+
+  file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/run_coverage.py"
+    CONTENT "${COVERAGE_RUNNER_SCRIPT}")
+
+  add_custom_target(coverage
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+            ${CMAKE_BINARY_DIR}/cov
+            ${CMAKE_BINARY_DIR}/coverage_html
+            ${CMAKE_BINARY_DIR}/yac.profdata
+            ${CMAKE_BINARY_DIR}/coverage.lcov
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/cov
+    COMMAND ${CMAKE_COMMAND} -E env
+            LLVM_PROFILE_FILE=${CMAKE_BINARY_DIR}/cov/%p-%m.profraw
+            ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure
+    COMMAND python3 ${CMAKE_BINARY_DIR}/run_coverage.py
+            ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Running tests under coverage instrumentation and emitting reports"
+    VERBATIM
+  )
+endif()
 
 file(GLOB_RECURSE ALL_SOURCES
   src/*.cpp src/*.hpp
