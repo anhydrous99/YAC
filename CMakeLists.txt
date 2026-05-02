@@ -181,6 +181,10 @@ target_include_directories(yac_core_types INTERFACE src)
 add_library(yac_presentation STATIC
   src/presentation/chat_session.cpp
   src/presentation/chat_ui.cpp
+  src/presentation/chat_ui_notice_format.cpp
+  src/presentation/chat_ui_composer_render.cpp
+  src/presentation/chat_ui_dynamic_message_stack.cpp
+  src/presentation/chat_ui_components.cpp
   src/presentation/chat_ui_input_controller.cpp
   src/presentation/chat_ui_overlay_state.cpp
   src/presentation/chat_ui_render_plan.cpp

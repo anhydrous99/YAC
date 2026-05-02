@@ -2,6 +2,7 @@
 
 #include "ftxui/screen/string.hpp"
 #include "slash_command_registry.hpp"
+#include "util/glyph_util.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -26,28 +27,11 @@ int CountNewlines(const std::string& text) {
       [](int count, char ch) { return count + static_cast<int>(ch == '\n'); }));
 }
 
-size_t NextGlyphEnd(const std::string& text, size_t start, size_t limit) {
-  if (start >= limit) {
-    return limit;
-  }
-
-  const auto byte = static_cast<unsigned char>(text[start]);
-  size_t advance = 1;
-  if ((byte & 0b1110'0000) == 0b1100'0000) {
-    advance = 2;
-  } else if ((byte & 0b1111'0000) == 0b1110'0000) {
-    advance = 3;
-  } else if ((byte & 0b1111'1000) == 0b1111'0000) {
-    advance = 4;
-  }
-  return std::min(start + advance, limit);
-}
-
 std::vector<ComposerGlyph> BuildGlyphs(const std::string& text, size_t start,
                                        size_t end) {
   std::vector<ComposerGlyph> glyphs;
   for (size_t pos = start; pos < end;) {
-    const size_t next = NextGlyphEnd(text, pos, end);
+    const size_t next = util::NextGlyphEnd(text, pos, end);
     const std::string glyph = text.substr(pos, next - pos);
     glyphs.push_back(ComposerGlyph{
         .start = pos,
