@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/color.hpp"
 #include "ui_status.hpp"
+
+#include <string>
 
 namespace yac::presentation::detail {
 

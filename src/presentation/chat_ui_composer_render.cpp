@@ -1,14 +1,14 @@
 #include "chat_ui_composer_render.hpp"
 
+#include "ftxui/screen/string.hpp"
+#include "ui_spacing.hpp"
+#include "util/glyph_util.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "ftxui/screen/string.hpp"
-#include "ui_spacing.hpp"
-#include "util/glyph_util.hpp"
 
 namespace yac::presentation::detail {
 

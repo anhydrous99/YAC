@@ -1,9 +1,9 @@
 #pragma once
 
-#include <string_view>
-
 #include "composer_state.hpp"
 #include "ftxui/dom/elements.hpp"
+
+#include <string_view>
 
 namespace yac::presentation::detail {
 

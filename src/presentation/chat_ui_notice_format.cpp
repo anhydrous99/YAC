@@ -1,10 +1,10 @@
 #include "chat_ui_notice_format.hpp"
 
+#include "theme.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <string>
-
-#include "theme.hpp"
 
 namespace yac::presentation::detail {
 

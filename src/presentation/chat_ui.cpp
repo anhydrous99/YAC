@@ -5,13 +5,12 @@
 #include "ftxui/component/component.hpp"
 #include "ftxui/dom/elements.hpp"
 #include "ftxui/screen/terminal.hpp"
+#include "ui_spacing.hpp"
 
 #include <functional>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "ui_spacing.hpp"
 
 namespace yac::presentation {
 

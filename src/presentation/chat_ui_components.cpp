@@ -1,11 +1,4 @@
 #include "chat_ui.hpp"
-
-#include <cstddef>
-#include <cstdint>
-#include <string>
-#include <utility>
-#include <variant>
-
 #include "chat_ui_composer_render.hpp"
 #include "chat_ui_dynamic_message_stack.hpp"
 #include "chat_ui_notice_format.hpp"
@@ -19,6 +12,12 @@
 #include "message_renderer.hpp"
 #include "tool_call/renderer.hpp"
 #include "util/scroll_math.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <variant>
 
 namespace yac::presentation {
 

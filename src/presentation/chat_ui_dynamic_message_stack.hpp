@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstdint>
-#include <functional>
-
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
+
+#include <cstdint>
+#include <functional>
 
 namespace yac::presentation::detail {
 

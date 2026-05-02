@@ -1,13 +1,13 @@
 #include "chat_ui_dynamic_message_stack.hpp"
 
+#include "ftxui/component/component_base.hpp"
+#include "ftxui/dom/elements.hpp"
+#include "ftxui/screen/terminal.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
-
-#include "ftxui/component/component_base.hpp"
-#include "ftxui/dom/elements.hpp"
-#include "ftxui/screen/terminal.hpp"
 
 namespace yac::presentation::detail {
 
@@ -167,9 +167,8 @@ ftxui::Component MakeSlashMenuInputWrapper(
     ftxui::Component input,
     std::function<bool(const ftxui::Event&)> pre_handler,
     std::function<void()> post_handler) {
-  return ftxui::Make<SlashMenuInputWrapper>(std::move(input),
-                                            std::move(pre_handler),
-                                            std::move(post_handler));
+  return ftxui::Make<SlashMenuInputWrapper>(
+      std::move(input), std::move(pre_handler), std::move(post_handler));
 }
 
 }  // namespace yac::presentation::detail
