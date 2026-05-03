@@ -145,6 +145,31 @@ TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   std::filesystem::remove_all(root);
 }
 
+TEST_CASE("ToolExecutor prepare unknown returns generic tool error") {
+  ToolCallRequest request{.id = "call_1", .name = "does_not_exist"};
+
+  auto prepared = ToolExecutor::Prepare(request);
+
+  REQUIRE(std::holds_alternative<ToolCallError>(prepared.preview));
+  const auto& error = std::get<ToolCallError>(prepared.preview);
+  REQUIRE(error.tool_name == "does_not_exist");
+  REQUIRE(error.error.message == "Unknown tool: does_not_exist");
+}
+
+TEST_CASE(
+    "ToolExecutor prepare malformed arguments returns generic tool error") {
+  ToolCallRequest request{.id = "call_1",
+                          .name = "file_read",
+                          .arguments_json = R"({"wrong_key":"src/main.cpp"})"};
+
+  auto prepared = ToolExecutor::Prepare(request);
+
+  REQUIRE(std::holds_alternative<ToolCallError>(prepared.preview));
+  const auto& error = std::get<ToolCallError>(prepared.preview);
+  REQUIRE(error.tool_name == "file_read");
+  REQUIRE(error.error.message.find("filepath") != std::string::npos);
+}
+
 TEST_CASE("ToolExecutor dispatch registry keys match tool definitions") {
   for (const auto& definition : ToolExecutor::Definitions()) {
     REQUIRE(HasToolExecutorDispatchEntry(definition.name));

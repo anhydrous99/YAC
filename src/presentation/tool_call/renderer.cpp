@@ -26,7 +26,9 @@ ftxui::Element ToolCallRenderer::Render(const tool_data::ToolCallBlock& block,
   return std::visit(
       [&context](const auto& call) -> ftxui::Element {
         using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+        if constexpr (std::is_same_v<T, tool_data::ToolCallError>) {
+          return RenderToolCallError(call, context);
+        } else if constexpr (std::is_same_v<T, tool_data::BashCall>) {
           return RenderBash(call, context);
         } else if constexpr (std::is_same_v<T, tool_data::FileEditCall>) {
           return RenderFileEdit(call, context);

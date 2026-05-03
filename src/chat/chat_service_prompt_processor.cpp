@@ -6,10 +6,12 @@
 #include "chat/chat_service_mcp.hpp"
 #include "mcp/tool_naming.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/tool_error_result.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
@@ -36,31 +38,15 @@ std::string ToolRejectedJson() {
   }
   return ::yac::tool_call::PreparedToolCall{
       .request = request,
-      .preview = ::yac::tool_call::BashCall{.command = request.name,
-                                            .is_error = true}};
+      .preview = ::yac::tool_call::ToolCallError{
+          .tool_name = request.name,
+          .error = ::yac::tool_call::ErrorInfo{.message =
+                                                   "Tool preparation failed"}}};
 }
 
 ::yac::tool_call::ToolExecutionResult MakeErrorToolResult(
     ::yac::tool_call::ToolCallBlock block, std::string message) {
-  std::visit(
-      [&message](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
-          call.is_error = true;
-          call.error = message;
-        } else if constexpr (requires { call.is_error; }) {
-          call.is_error = true;
-        }
-      },
-      block);
-  return ::yac::tool_call::ToolExecutionResult{
-      .block = std::move(block),
-      .result_json =
-          ::yac::tool_call::Json{{"error", std::move(message)}}.dump(),
-      .is_error = true,
-  };
+  return ::yac::tool_call::ErrorResult(std::move(block), std::move(message));
 }
 
 }  // namespace
@@ -493,10 +479,14 @@ ChatServicePromptProcessor::MakeRejectedToolResult(
   };
   std::visit(
       [](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
+        using Call = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<Call, ::yac::tool_call::ToolCallError>) {
+          call.is_error = true;
+          call.error.message = "User rejected tool execution.";
+        } else if constexpr (requires {
+                               call.is_error;
+                               call.error;
+                             }) {
           call.is_error = true;
           call.error = "User rejected tool execution.";
         }

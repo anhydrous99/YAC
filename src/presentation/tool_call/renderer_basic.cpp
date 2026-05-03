@@ -29,6 +29,22 @@ std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
 
 }  // namespace
 
+ftxui::Element ToolCallRenderer::RenderToolCallError(
+    const tool_data::ToolCallError& call, const RenderContext& context) {
+  const auto& theme = context.Colors();
+  ftxui::Elements content;
+  content.push_back(RenderLabelValue("Tool: ", call.tool_name, theme));
+  if (!call.error.message.empty()) {
+    content.push_back(RenderError(call.error.message, theme));
+  }
+  if (!call.error.detail.empty()) {
+    content.push_back(
+        RenderWrappedLine(call.error.detail, theme.semantic.text_muted));
+  }
+  return RenderContainer("!", "tool", theme.tool.edit_remove,
+                         std::move(content), theme);
+}
+
 ftxui::Element ToolCallRenderer::RenderBash(const tool_data::BashCall& call,
                                             const RenderContext& context) {
   const auto& theme = context.Colors();

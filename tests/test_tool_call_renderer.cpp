@@ -62,6 +62,20 @@ TEST_CASE("ToolCallRenderer renders bash command details") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("On branch main"));
 }
 
+TEST_CASE("ToolCallRenderer renders generic tool errors") {
+  ToolCallError call{.tool_name = "does_not_exist",
+                     .error = {.message = "Unknown tool: does_not_exist"}};
+
+  auto output = RenderToString(call, 80, 8);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("tool"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("does_not_exist"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring(
+                           "Error: Unknown tool: does_not_exist"));
+  REQUIRE(ToolCallRenderer::BuildSummary(call) ==
+          "Unknown tool: does_not_exist");
+}
+
 TEST_CASE(
     "ToolCallRenderer renders bash command responsively and handles errors") {
   BashCall call{.command = "cmake --build build",

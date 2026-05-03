@@ -177,6 +177,69 @@ bool ApplyStringArray(const toml::node_view<toml::node>& node,
   return true;
 }
 
+void ApplyMcpBearerAuth(toml::table& auth_tbl, mcp::McpServerConfig& server,
+                        McpServerFieldSet& server_fields) {
+  mcp::McpAuthBearer bearer;
+  if (auto* v = auth_tbl["api_key_env"].as_string()) {
+    bearer.api_key_env = v->get();
+    server_fields.api_key_env = true;
+  }
+  server.auth = std::move(bearer);
+}
+
+void ApplyMcpOAuthAuth(toml::table& auth_tbl, mcp::McpServerConfig& server,
+                       std::vector<ConfigIssue>& issues) {
+  mcp::McpAuthOAuth oauth;
+  if (auto* v = auth_tbl["authorization_url"].as_string()) {
+    oauth.authorization_url = v->get();
+  }
+  if (auto* v = auth_tbl["token_url"].as_string()) {
+    oauth.token_url = v->get();
+  }
+  if (auto* v = auth_tbl["client_id"].as_string()) {
+    oauth.client_id = v->get();
+  }
+  ApplyStringArray(auth_tbl["scopes"], "mcp.servers.auth.scopes", oauth.scopes,
+                   issues);
+  server.auth = std::move(oauth);
+}
+
+void ApplyMcpAuth(toml::table& auth_tbl, mcp::McpServerConfig& server,
+                  McpServerFieldSet& server_fields,
+                  std::vector<ConfigIssue>& issues) {
+  if (auto* type_v = auth_tbl["type"].as_string()) {
+    const std::string auth_type = type_v->get();
+    if (auth_type == "bearer") {
+      ApplyMcpBearerAuth(auth_tbl, server, server_fields);
+    } else if (auth_type == "oauth" || auth_type == "oauth2") {
+      ApplyMcpOAuthAuth(auth_tbl, server, issues);
+    } else {
+      AddError(issues, "Unknown mcp.servers.auth.type: " + auth_type,
+               "Expected 'bearer', 'oauth', or 'oauth2'.");
+    }
+    return;
+  }
+
+  auto* bearer_tbl = auth_tbl["bearer"].as_table();
+  auto* oauth_tbl = auth_tbl["oauth2"].as_table();
+  if (bearer_tbl != nullptr && oauth_tbl != nullptr) {
+    AddError(issues, "Ambiguous mcp.servers.auth for '" + server.id + "'",
+             "Specify only one of auth.bearer or auth.oauth2.");
+    return;
+  }
+  if (bearer_tbl != nullptr) {
+    ApplyMcpBearerAuth(*bearer_tbl, server, server_fields);
+    return;
+  }
+  if (oauth_tbl != nullptr) {
+    ApplyMcpOAuthAuth(*oauth_tbl, server, issues);
+    return;
+  }
+
+  AddError(issues, "mcp.servers.auth missing auth type for '" + server.id + "'",
+           "Expected auth.type, auth.bearer, or auth.oauth2.");
+}
+
 struct TextLine {
   std::string text;
   std::string newline;
@@ -670,38 +733,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
                          srv.approval_required_tools, issues);
 
         if (auto* auth_tbl = (*server_tbl)["auth"].as_table()) {
-          if (auto* type_v = (*auth_tbl)["type"].as_string()) {
-            const std::string auth_type = type_v->get();
-            if (auth_type == "bearer") {
-              mcp::McpAuthBearer bearer;
-              if (auto* v = (*auth_tbl)["api_key_env"].as_string()) {
-                bearer.api_key_env = v->get();
-                server_fields.api_key_env = true;
-              }
-              srv.auth = std::move(bearer);
-            } else if (auth_type == "oauth") {
-              mcp::McpAuthOAuth oauth;
-              if (auto* v = (*auth_tbl)["authorization_url"].as_string()) {
-                oauth.authorization_url = v->get();
-              }
-              if (auto* v = (*auth_tbl)["token_url"].as_string()) {
-                oauth.token_url = v->get();
-              }
-              if (auto* v = (*auth_tbl)["client_id"].as_string()) {
-                oauth.client_id = v->get();
-              }
-              ApplyStringArray((*auth_tbl)["scopes"], "mcp.servers.auth.scopes",
-                               oauth.scopes, issues);
-              srv.auth = std::move(oauth);
-            } else {
-              AddError(issues, "Unknown mcp.servers.auth.type: " + auth_type,
-                       "Expected 'bearer' or 'oauth'.");
-            }
-          } else {
-            AddError(issues,
-                     "mcp.servers.auth missing 'type' for '" + srv.id + "'",
-                     "Expected 'bearer' or 'oauth'.");
-          }
+          ApplyMcpAuth(*auth_tbl, srv, server_fields, issues);
         } else if ((*server_tbl)["auth"]) {
           AddError(issues,
                    "Invalid type for mcp.servers.auth for '" + srv.id + "'",

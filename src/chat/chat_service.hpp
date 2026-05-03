@@ -118,7 +118,7 @@ class ChatService {
   std::atomic<int64_t> reset_drain_budget_ms_{2000};
 
   std::jthread worker_;
-  std::condition_variable_any wake_;
+  std::condition_variable wake_;
   std::optional<std::stop_source> active_stop_source_;
   bool active_ = false;
 };

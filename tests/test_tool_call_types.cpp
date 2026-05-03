@@ -9,6 +9,12 @@
 using namespace yac::tool_call;
 
 TEST_CASE("Tool call structs preserve field values") {
+  ToolCallError error{.tool_name = "missing_tool",
+                      .error = {.message = "Unknown tool"}};
+  REQUIRE(error.tool_name == "missing_tool");
+  REQUIRE(error.error.message == "Unknown tool");
+  REQUIRE(error.is_error);
+
   BashCall bash{
       .command = "echo hi", .output = "ok", .exit_code = 0, .is_error = false};
   REQUIRE(bash.command == "echo hi");
@@ -114,7 +120,11 @@ TEST_CASE("Tool call structs preserve field values") {
 }
 
 TEST_CASE("ToolCallBlock stores all tool call variants") {
-  ToolCallBlock block = BashCall{
+  ToolCallBlock block =
+      ToolCallError{.tool_name = "bad", .error = {.message = "failed"}};
+  REQUIRE(std::holds_alternative<ToolCallError>(block));
+
+  block = BashCall{
       .command = "cmd", .output = "out", .exit_code = 1, .is_error = true};
   REQUIRE(std::holds_alternative<BashCall>(block));
 

@@ -90,6 +90,17 @@ struct BashCall {
   bool is_error{};
 };
 
+struct ErrorInfo {
+  std::string message;
+  std::string detail;
+};
+
+struct ToolCallError {
+  std::string tool_name;
+  ErrorInfo error;
+  bool is_error = true;
+};
+
 struct FileEditCall {
   std::string filepath;
   std::vector<DiffLine> diff;
@@ -267,11 +278,11 @@ struct McpToolCall {
 };
 
 using ToolCallBlock =
-    std::variant<BashCall, FileEditCall, FileReadCall, FileWriteCall,
-                 ListDirCall, GrepCall, GlobCall, WebFetchCall, WebSearchCall,
-                 LspDiagnosticsCall, LspReferencesCall, LspGotoDefinitionCall,
-                 LspRenameCall, LspSymbolsCall, SubAgentCall, TodoWriteCall,
-                 AskUserCall, McpToolCall>;
+    std::variant<ToolCallError, BashCall, FileEditCall, FileReadCall,
+                 FileWriteCall, ListDirCall, GrepCall, GlobCall, WebFetchCall,
+                 WebSearchCall, LspDiagnosticsCall, LspReferencesCall,
+                 LspGotoDefinitionCall, LspRenameCall, LspSymbolsCall,
+                 SubAgentCall, TodoWriteCall, AskUserCall, McpToolCall>;
 
 namespace core_types {
 

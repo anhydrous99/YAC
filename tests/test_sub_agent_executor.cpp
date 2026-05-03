@@ -35,9 +35,11 @@ TEST_CASE("Prepare sub_agent with missing task returns error") {
   ToolCallRequest request{
       .id = "call-2", .name = "sub_agent", .arguments_json = R"({})"};
   auto prepared = ToolExecutor::Prepare(request);
-  REQUIRE(std::holds_alternative<BashCall>(prepared.preview));
-  const auto& bash = std::get<BashCall>(prepared.preview);
-  REQUIRE(bash.is_error);
+  REQUIRE(std::holds_alternative<ToolCallError>(prepared.preview));
+  const auto& error = std::get<ToolCallError>(prepared.preview);
+  REQUIRE(error.is_error);
+  REQUIRE(error.tool_name == "sub_agent");
+  REQUIRE(error.error.message.find("task") != std::string::npos);
 }
 
 TEST_CASE("sub_agent tool requires no approval") {

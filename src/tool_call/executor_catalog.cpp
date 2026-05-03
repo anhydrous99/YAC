@@ -314,16 +314,14 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
     }
     return PreparedToolCall{
         .request = request,
-        .preview = BashCall{.command = request.name,
-                            .output = "Unknown tool: " + request.name,
-                            .exit_code = 1,
-                            .is_error = true}};
+        .preview = ToolCallError{
+            .tool_name = request.name,
+            .error = ErrorInfo{.message = "Unknown tool: " + request.name}}};
   } catch (const std::exception& error) {
-    return PreparedToolCall{.request = request,
-                            .preview = BashCall{.command = request.name,
-                                                .output = error.what(),
-                                                .exit_code = 1,
-                                                .is_error = true}};
+    return PreparedToolCall{
+        .request = request,
+        .preview = ToolCallError{.tool_name = request.name,
+                                 .error = ErrorInfo{.message = error.what()}}};
   }
 }
 

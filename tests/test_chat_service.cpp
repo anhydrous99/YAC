@@ -1301,21 +1301,45 @@ TEST_CASE("ChatService Reset survives concurrent SubmitUserMessage") {
   auto service = MakeService();
   service.SetResetDrainBudgetForTest(std::chrono::milliseconds(200));
 
-  std::atomic<bool> stop{false};
+  std::mutex mutex;
+  std::condition_variable condition;
+  bool submit_requested = false;
+  bool stop = false;
+  int completed_submits = 0;
   std::thread submitter([&] {
     int i = 0;
-    while (!stop.load(std::memory_order_relaxed)) {
-      service.SubmitUserMessage("submit-" + std::to_string(i++));
-      std::this_thread::sleep_for(std::chrono::microseconds(50));
+    std::unique_lock lock(mutex);
+    while (true) {
+      condition.wait(lock, [&] { return submit_requested || stop; });
+      if (stop) {
+        break;
+      }
+      submit_requested = false;
+      const auto message = "submit-" + std::to_string(i++);
+      lock.unlock();
+      service.SubmitUserMessage(message);
+      lock.lock();
+      ++completed_submits;
+      condition.notify_one();
     }
   });
 
   for (int i = 0; i < 25; ++i) {
+    {
+      std::scoped_lock lock(mutex);
+      submit_requested = true;
+    }
+    condition.notify_one();
     service.ResetConversation();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    std::unique_lock lock(mutex);
+    condition.wait(lock, [&] { return completed_submits > i; });
   }
 
-  stop.store(true, std::memory_order_relaxed);
+  {
+    std::scoped_lock lock(mutex);
+    stop = true;
+  }
+  condition.notify_one();
   submitter.join();
 
   // One final reset to absorb any in-flight prompt, then assert clean.

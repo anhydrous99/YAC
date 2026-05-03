@@ -5,6 +5,7 @@
 #include "tool_call/executor_arguments.hpp"
 
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -16,10 +17,15 @@ inline void ApplyErrorToBlock(ToolCallBlock& block,
                               const std::string& message) {
   std::visit(
       [&message](auto& call) {
-        if constexpr (requires { call.is_error; }) {
+        using Call = std::decay_t<decltype(call)>;
+        if constexpr (std::is_same_v<Call, ToolCallError>) {
+          call.is_error = true;
+          call.error.message = message;
+        } else if constexpr (requires { call.is_error; }) {
           call.is_error = true;
         }
-        if constexpr (requires { call.error; }) {
+        if constexpr (!std::is_same_v<Call, ToolCallError> &&
+                      requires { call.error; }) {
           call.error = message;
         }
       },

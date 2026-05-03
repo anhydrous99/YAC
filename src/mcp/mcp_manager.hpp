@@ -72,9 +72,14 @@ class McpManager : public core_types::IMcpManager {
   class ObservedTransport;
 
   struct SessionRecord;
+  struct SessionHandle;
 
   [[nodiscard]] static Dependencies BuildDefaultDependencies();
-  [[nodiscard]] core_types::McpToolCatalogSnapshot BuildSnapshotLocked() const;
+  [[nodiscard]] core_types::McpToolCatalogSnapshot BuildSnapshot(
+      const std::vector<SessionHandle>& sessions) const;
+  [[nodiscard]] std::vector<SessionHandle> SessionHandlesSnapshot() const;
+  [[nodiscard]] SessionHandle RequireSessionHandle(
+      std::string_view server_id) const;
   [[nodiscard]] SessionRecord& RequireRecord(std::string_view server_id);
   [[nodiscard]] const SessionRecord& RequireRecord(
       std::string_view server_id) const;

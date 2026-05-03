@@ -30,6 +30,8 @@ class ToolCallRenderer {
       const tool_data::FileWriteCall& call, const RenderContext& context);
 
  private:
+  [[nodiscard]] static ftxui::Element RenderToolCallError(
+      const tool_data::ToolCallError& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderBash(
       const tool_data::BashCall& call, const RenderContext& context);
   [[nodiscard]] static ftxui::Element RenderFileEdit(

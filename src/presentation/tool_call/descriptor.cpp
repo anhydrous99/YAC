@@ -48,7 +48,14 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
   return std::visit(
       [](const auto& call) -> ToolCallDescriptor {
         using T = std::decay_t<decltype(call)>;
-        if constexpr (std::is_same_v<T, tool_data::BashCall>) {
+        if constexpr (std::is_same_v<T, tool_data::ToolCallError>) {
+          return ToolCallDescriptor{
+              .tag = "tool",
+              .label = "Tool error",
+              .summary =
+                  call.error.message.empty() ? "failed" : call.error.message,
+          };
+        } else if constexpr (std::is_same_v<T, tool_data::BashCall>) {
           return ToolCallDescriptor{
               .tag = "bash",
               .label = "Run command",
