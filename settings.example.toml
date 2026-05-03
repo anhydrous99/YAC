@@ -21,7 +21,8 @@ id          = "openai-compatible"         # "openai-compatible" or "zai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"            # env var that holds the key
-# api_key   = ""                          # optional; prefer the env var
+# api_key        = ""                     # optional; prefer the env var
+# context_window = 0                      # override context window size (tokens); 0 = auto-detect
 
 # Z.ai preset example — uncomment to switch providers.
 # Leaving model/base_url/api_key_env unset applies the built-in zai defaults

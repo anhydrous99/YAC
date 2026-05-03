@@ -133,6 +133,9 @@ int OpenAiCompatibleChatProvider::GetContextWindow(
   if (model_id.empty()) {
     return 0;
   }
+  if (config_.context_window > 0) {
+    return config_.context_window;
+  }
   {
     std::scoped_lock lock(discovered_windows_mutex_);
     if (const auto it = discovered_windows_.find(model_id);

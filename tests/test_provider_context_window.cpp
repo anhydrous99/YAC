@@ -90,6 +90,24 @@ TEST_CASE(
   REQUIRE(provider.GetContextWindow("") == 0);
 }
 
+TEST_CASE(
+    "OpenAiCompatibleChatProvider::GetContextWindow manual override wins over "
+    "all other sources") {
+  yac::chat::ProviderConfig config;
+  config.id = "openai-compatible";
+  config.model = "unknown-model";
+  config.context_window = 32768;
+  OpenAiCompatibleChatProvider provider(std::move(config));
+
+  REQUIRE(provider.GetContextWindow("unknown-model") == 32768);
+
+  // Override wins even over discovered cache.
+  provider.SeedDiscoveredContextWindowForTest("unknown-model", 999);
+  REQUIRE(provider.GetContextWindow("unknown-model") == 32768);
+
+  REQUIRE(ResolveContextWindow(&provider, "unknown-model") == 32768);
+}
+
 TEST_CASE("ResolveContextWindow chains provider then cross-provider table") {
   auto provider = MakeZaiProvider();
 

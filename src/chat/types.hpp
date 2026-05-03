@@ -22,6 +22,9 @@ inline constexpr int kDefaultToolRoundLimit = 32;
 inline constexpr int kMinToolRoundLimit = 1;
 inline constexpr int kMaxToolRoundLimit = 256;
 
+inline constexpr int kMinContextWindow = 1;
+inline constexpr int kMaxContextWindow = 10'000'000;
+
 inline constexpr double kMinTemperature = 0.0;
 inline constexpr double kMaxTemperature = 2.0;
 
@@ -408,6 +411,7 @@ struct ProviderConfig {
   std::string base_url = "https://api.openai.com/v1/";
   std::optional<std::string> system_prompt;
   std::map<std::string, std::string> options;
+  int context_window = 0;
 };
 
 enum class ConfigIssueSeverity { Info, Warning, Error };
@@ -440,6 +444,7 @@ struct ChatConfig {
   double auto_compact_threshold = 0.8;
   int auto_compact_keep_last = 20;
   std::string auto_compact_mode = "summarize";  // "summarize" | "truncate"
+  int context_window = 0;
   mcp::McpConfig mcp;
 };
 

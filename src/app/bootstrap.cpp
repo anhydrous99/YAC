@@ -46,6 +46,7 @@ std::shared_ptr<provider::OpenAiCompatibleChatProvider> BuildProvider(
           .api_key = config.api_key,
           .api_key_env = config.api_key_env,
           .base_url = config.base_url,
+          .context_window = config.context_window,
       });
 }
 

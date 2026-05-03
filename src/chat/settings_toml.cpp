@@ -474,6 +474,9 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
                          config.api_key_env, issues);
     fields.api_key = ApplyStringField(provider["api_key"], "provider.api_key",
                                       config.api_key, issues);
+    fields.context_window = ApplyIntegerField(
+        provider["context_window"], "provider.context_window",
+        kMinContextWindow, kMaxContextWindow, config.context_window, issues);
   } else if (table.contains("provider")) {
     AddError(issues, "Invalid type for [provider] in settings.toml",
              "Expected a table.");

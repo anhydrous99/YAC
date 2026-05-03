@@ -27,6 +27,7 @@ struct ChatConfigFieldSet {
   bool api_key = false;
   bool temperature = false;
   bool max_tool_rounds = false;
+  bool context_window = false;
   bool system_prompt = false;
   bool workspace_root = false;
   bool lsp_clangd_command = false;
