@@ -1,6 +1,7 @@
 #include "chat/sub_agent_manager.hpp"
 #include "tool_call/executor.hpp"
 #include "tool_call/sub_agent_tool_executor.hpp"
+#include "tool_call/tool_validation_error.hpp"
 
 #include <algorithm>
 #include <string>
@@ -31,13 +32,24 @@ TEST_CASE("Prepare sub_agent tool creates SubAgentCall preview") {
   REQUIRE(prepared.requires_approval == false);
 }
 
-TEST_CASE("Prepare sub_agent with missing task returns error") {
+TEST_CASE("Prepare sub_agent with missing task throws ToolValidationError") {
   ToolCallRequest request{
       .id = "call-2", .name = "sub_agent", .arguments_json = R"({})"};
-  auto prepared = ToolExecutor::Prepare(request);
-  REQUIRE(std::holds_alternative<BashCall>(prepared.preview));
-  const auto& bash = std::get<BashCall>(prepared.preview);
-  REQUIRE(bash.is_error);
+  REQUIRE_THROWS_AS(ToolExecutor::Prepare(request),
+                    yac::tool_call::ToolValidationError);
+}
+
+TEST_CASE("Prepare sub_agent validation error carries metadata") {
+  ToolCallRequest request{
+      .id = "call-2", .name = "sub_agent", .arguments_json = R"({})"};
+  try {
+    (void)ToolExecutor::Prepare(request);
+    FAIL("expected throw");
+  } catch (const yac::tool_call::ToolValidationError& err) {
+    REQUIRE(err.tool_name() == "sub_agent");
+    REQUIRE(err.raw_arguments_json() == "{}");
+    REQUIRE(std::string(err.what()).find("task") != std::string::npos);
+  }
 }
 
 TEST_CASE("sub_agent tool requires no approval") {

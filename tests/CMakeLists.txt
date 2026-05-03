@@ -103,6 +103,11 @@ yac_add_test(yac_test_chat_service_prompt_processor_mcp
 target_include_directories(yac_test_chat_service_prompt_processor_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+yac_add_test(yac_test_tool_validation_error test_tool_validation_error.cpp)
+yac_add_test(yac_test_prepare_validation test_prepare_validation.cpp)
+target_include_directories(yac_test_prepare_validation PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 yac_add_test(yac_test_bootstrap_mcp          test_bootstrap_mcp.cpp)
 target_include_directories(yac_test_bootstrap_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}

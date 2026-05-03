@@ -4,8 +4,10 @@
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
+#include "chat/tool_call_argument_parser.hpp"
 #include "mcp/tool_naming.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/tool_validation_error.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -19,6 +21,72 @@ namespace {
 
 std::string ToolRejectedJson() {
   return R"({"error":"User rejected tool execution."})";
+}
+
+// Best-effort partial extraction of a string field from possibly-malformed
+// streamed arguments. Returns empty string when not present or when JSON is
+// truncated before the value starts.
+std::string PartialField(const std::string& arguments_json,
+                         const std::string& field) {
+  const auto value =
+      ::yac::chat::ExtractStringFieldPartial(arguments_json, field);
+  return value.has_value() ? *value : std::string{};
+}
+
+::yac::tool_call::ToolCallBlock MakeBuiltinFallbackBlock(
+    const ::yac::chat::ToolCallRequest& request) {
+  namespace tc = ::yac::tool_call;
+  const auto& name = request.name;
+  const auto& args = request.arguments_json;
+  if (name == tc::kFileEditToolName) {
+    return tc::FileEditCall{.filepath = PartialField(args, "filepath")};
+  }
+  if (name == tc::kFileReadToolName) {
+    return tc::FileReadCall{.filepath = PartialField(args, "filepath")};
+  }
+  if (name == tc::kFileWriteToolName) {
+    return tc::FileWriteCall{.filepath = PartialField(args, "filepath")};
+  }
+  if (name == tc::kListDirToolName) {
+    return tc::ListDirCall{.path = PartialField(args, "path")};
+  }
+  if (name == tc::kGrepToolName) {
+    return tc::GrepCall{.pattern = PartialField(args, "pattern")};
+  }
+  if (name == tc::kGlobToolName) {
+    return tc::GlobCall{.pattern = PartialField(args, "pattern")};
+  }
+  if (name == tc::kLspDiagnosticsToolName) {
+    return tc::LspDiagnosticsCall{.file_path = PartialField(args, "file_path")};
+  }
+  if (name == tc::kLspReferencesToolName) {
+    return tc::LspReferencesCall{.file_path = PartialField(args, "file_path")};
+  }
+  if (name == tc::kLspGotoDefinitionToolName) {
+    return tc::LspGotoDefinitionCall{
+        .file_path = PartialField(args, "file_path")};
+  }
+  if (name == tc::kLspRenameToolName) {
+    return tc::LspRenameCall{.file_path = PartialField(args, "file_path"),
+                             .new_name = PartialField(args, "new_name")};
+  }
+  if (name == tc::kLspSymbolsToolName) {
+    return tc::LspSymbolsCall{.file_path = PartialField(args, "file_path")};
+  }
+  if (name == tc::kSubAgentToolName) {
+    return tc::SubAgentCall{.task = PartialField(args, "task")};
+  }
+  if (name == tc::kTodoWriteToolName) {
+    return tc::TodoWriteCall{};
+  }
+  if (name == tc::kAskUserToolName) {
+    return tc::AskUserCall{.question = PartialField(args, "question")};
+  }
+  if (name == tc::kBashToolName) {
+    return tc::BashCall{.command = PartialField(args, "command"),
+                        .is_error = true};
+  }
+  return tc::BashCall{.command = name, .is_error = true};
 }
 
 ::yac::tool_call::PreparedToolCall MakeFallbackPreparedToolCall(
@@ -35,9 +103,7 @@ std::string ToolRejectedJson() {
         }};
   }
   return ::yac::tool_call::PreparedToolCall{
-      .request = request,
-      .preview = ::yac::tool_call::BashCall{.command = request.name,
-                                            .is_error = true}};
+      .request = request, .preview = MakeBuiltinFallbackBlock(request)};
 }
 
 ::yac::tool_call::ToolExecutionResult MakeErrorToolResult(
@@ -374,6 +440,7 @@ void ChatServicePromptProcessor::RunToolRound(
     const bool is_mcp_tool = ::yac::mcp::IsMcpToolName(tool_request.name);
     auto prepared = MakeFallbackPreparedToolCall(tool_request);
     std::string preparation_error;
+    std::string preparation_result_json;
     try {
       if (is_mcp_tool) {
         if (chat_service_mcp_ == nullptr) {
@@ -385,8 +452,19 @@ void ChatServicePromptProcessor::RunToolRound(
       } else {
         prepared = prepare_built_in_tool_call_(tool_request);
       }
+    } catch (const ::yac::tool_call::ToolValidationError& error) {
+      preparation_error = error.what();
+      auto definitions = ::yac::tool_call::ToolExecutor::Definitions();
+      if (chat_service_mcp_ != nullptr) {
+        definitions = ChatServiceMcp::MergeBuiltInsAndMcp(
+            definitions, chat_service_mcp_->BuildToolCatalogSnapshot());
+      }
+      preparation_result_json =
+          ::yac::tool_call::BuildValidationErrorJson(error, definitions);
     } catch (const std::exception& error) {
       preparation_error = error.what();
+      preparation_result_json = ::yac::tool_call::BuildValidationErrorJson(
+          preparation_error, tool_request.name, tool_request.arguments_json);
     }
     prepared.card_message_id = tool_message_id;
     emit_event_(
@@ -437,6 +515,9 @@ void ChatServicePromptProcessor::RunToolRound(
     ::yac::tool_call::ToolExecutionResult result;
     if (!preparation_error.empty()) {
       result = MakeErrorToolResult(prepared.preview, preparation_error);
+      if (!preparation_result_json.empty()) {
+        result.result_json = std::move(preparation_result_json);
+      }
     } else if (!approved) {
       result = MakeRejectedToolResult(prepared);
     } else if (is_mcp_tool) {
