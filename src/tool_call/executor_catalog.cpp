@@ -1,6 +1,7 @@
 #include "tool_call/executor_catalog.hpp"
 
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/tool_validation_error.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <cstddef>
@@ -306,24 +307,29 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
 }
 
 PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
+  Json args;
   try {
-    const auto args = ParseArguments(request);
-    const auto it = kPrepareRegistry.find(request.name);
-    if (it != kPrepareRegistry.end()) {
-      return it->second(request, args);
-    }
-    return PreparedToolCall{
-        .request = request,
-        .preview = BashCall{.command = request.name,
-                            .output = "Unknown tool: " + request.name,
-                            .exit_code = 1,
-                            .is_error = true}};
+    args = ParseArguments(request);
+  } catch (const ToolValidationError& error) {
+    throw ToolValidationError(error.what(), request.name,
+                              request.arguments_json);
   } catch (const std::exception& error) {
-    return PreparedToolCall{.request = request,
-                            .preview = BashCall{.command = request.name,
-                                                .output = error.what(),
-                                                .exit_code = 1,
-                                                .is_error = true}};
+    throw ToolValidationError(error.what(), request.name,
+                              request.arguments_json);
+  }
+  const auto it = kPrepareRegistry.find(request.name);
+  if (it == kPrepareRegistry.end()) {
+    throw ToolValidationError("Unknown tool: " + request.name, request.name,
+                              request.arguments_json);
+  }
+  try {
+    return it->second(request, args);
+  } catch (const ToolValidationError& error) {
+    throw ToolValidationError(error.what(), request.name,
+                              request.arguments_json);
+  } catch (const std::exception& error) {
+    throw ToolValidationError(error.what(), request.name,
+                              request.arguments_json);
   }
 }
 

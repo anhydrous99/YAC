@@ -12,6 +12,7 @@
 #include "tool_call/sub_agent_tool_executor.hpp"
 #include "tool_call/todo_state.hpp"
 #include "tool_call/tool_error_result.hpp"
+#include "tool_call/tool_validation_error.hpp"
 
 #include <stdexcept>
 #include <string_view>
@@ -121,8 +122,12 @@ ToolExecutionResult ExecuteTodoWriteDispatch(
     const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& todo_state,
     chat::SubAgentManager* /*agents*/,
     chat::internal::ChatServiceToolApproval* /*approval*/) {
-  const auto& call = std::get<TodoWriteCall>(prepared.preview);
-  todo_state.Update(call.todos);
+  const auto* call = std::get_if<TodoWriteCall>(&prepared.preview);
+  if (call == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: todo_write preview type mismatch.");
+  }
+  todo_state.Update(call->todos);
   auto current = todo_state.Current();
   Json todos_json = Json::array();
   for (const auto& item : current) {
@@ -152,7 +157,12 @@ ToolExecutionResult ExecuteAskUserDispatch(
     const std::shared_ptr<ILspClient>& /*lsp*/, TodoState& /*todos*/,
     chat::SubAgentManager* /*agents*/,
     chat::internal::ChatServiceToolApproval* tool_approval) {
-  auto call = std::get<AskUserCall>(prepared.preview);
+  const auto* call_ptr = std::get_if<AskUserCall>(&prepared.preview);
+  if (call_ptr == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: ask_user preview type mismatch.");
+  }
+  auto call = *call_ptr;
   if (tool_approval == nullptr || prepared.approval_id.empty()) {
     return ErrorResult(std::move(call),
                        "Ask user approval pipeline unavailable.");
@@ -252,11 +262,21 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
   try {
     const auto it = kExecuteRegistry.find(prepared.request.name);
     if (it == kExecuteRegistry.end()) {
-      return ErrorResult(prepared.preview,
-                         "Unknown tool: " + prepared.request.name);
+      const auto definitions = ToolDefinitions();
+      ToolValidationError validation("Unknown tool: " + prepared.request.name,
+                                     prepared.request.name,
+                                     prepared.request.arguments_json);
+      return ErrorResult(
+          prepared.preview, validation.what(),
+          Json::parse(BuildValidationErrorJson(validation, definitions)));
     }
     return it->second(prepared, stop_token, workspace_filesystem_, lsp_client_,
                       todo_state_, sub_agent_manager_, tool_approval_);
+  } catch (const ToolValidationError& error) {
+    const auto definitions = ToolDefinitions();
+    return ErrorResult(
+        prepared.preview, error.what(),
+        Json::parse(BuildValidationErrorJson(error, definitions)));
   } catch (const std::exception& error) {
     return ErrorResult(prepared.preview, error.what());
   }
