@@ -174,10 +174,15 @@ void ChatService::ResetConversation() {
     wake_.wait_for(lock, budget, [this] { return !active_; });
   }
 
-  // Now safe to mutate history. We do not touch active_ or
-  // active_stop_source_ — those are owned by the worker thread.
+  // Invalidate prompts submitted while ResetConversation was waiting for the
+  // active prompt to drain, then clear any that have not started yet. Without
+  // this second generation bump, a concurrent submit can race in after the
+  // first bump and build a provider request against the history we are about to
+  // clear.
   {
     std::scoped_lock lock(mutex_);
+    generation_.fetch_add(1);
+    pending_.clear();
     history_.clear();
     last_usage_.reset();
     config_.agent_mode = AgentMode::Build;
