@@ -75,6 +75,21 @@ TEST_CASE("Buffered response helpers extract content, usage, and tool calls") {
 }
 
 TEST_CASE(
+    "ExtractBufferedUsage derives prompt_tokens from total when field absent") {
+  // Some providers (e.g. OpenRouter with cached prompts) omit prompt_tokens
+  // and only report completion_tokens + total_tokens. The UI uses prompt_tokens
+  // for the context-usage indicator, so we must derive it.
+  const auto response = openai_compatible_protocol::Json::parse(
+      R"JSON({"choices":[{"message":{"content":"hi"}}],"usage":{"completion_tokens":50,"total_tokens":1290}})JSON");
+
+  const auto usage = openai_compatible_protocol::ExtractBufferedUsage(response);
+  REQUIRE(usage.has_value());
+  REQUIRE(usage->completion_tokens == 50);
+  REQUIRE(usage->total_tokens == 1290);
+  REQUIRE(usage->prompt_tokens == 1240);
+}
+
+TEST_CASE(
     "ConsumeSseChunk buffers partial lines and emits accumulated tool calls") {
   std::vector<ChatEvent> events;
   ChatEventSink sink = [&events](ChatEvent event) {

@@ -10,3 +10,4 @@ compile_commands.json
 CLAUDE.md
 AGENTS.md
 .claude/
+.DS_Store

@@ -52,6 +52,9 @@ std::optional<chat::TokenUsage> ExtractUsageFromNode(const Json& node) {
   if (usage.total_tokens == 0) {
     usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
   }
+  if (usage.prompt_tokens == 0 && usage.total_tokens > 0) {
+    usage.prompt_tokens = usage.total_tokens - usage.completion_tokens;
+  }
   return usage;
 }
 
