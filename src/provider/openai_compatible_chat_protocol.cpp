@@ -55,21 +55,6 @@ std::optional<chat::TokenUsage> ExtractUsageFromNode(const Json& node) {
   return usage;
 }
 
-std::vector<chat::ToolCallRequest> PendingToolCalls(const StreamState& state) {
-  std::vector<chat::ToolCallRequest> calls;
-  for (const auto& [index, call] : state.pending_tool_calls) {
-    (void)index;
-    if (call.id.empty() || call.name.empty()) {
-      continue;
-    }
-    calls.push_back(
-        chat::ToolCallRequest{.id = call.id,
-                              .name = call.name,
-                              .arguments_json = call.arguments_json});
-  }
-  return calls;
-}
-
 int AccumulateToolCallDelta(const Json& tool_call, StreamState& state) {
   if (!tool_call.contains("index")) {
     return -1;
@@ -141,15 +126,15 @@ void DispatchSseData(const std::string& data, StreamState& state) {
       }
     }
 
+    // Any non-empty terminating finish_reason closes the choice and consumes
+    // any tool_calls accumulated in deltas. Some compat servers (vLLM,
+    // llama.cpp, ollama, certain GLM/ZAI deployments) emit tool_calls then
+    // terminate with "stop"/"length" instead of "tool_calls"; flushing on
+    // any terminator surfaces the model's intent rather than dropping it.
     if (choice.contains("finish_reason") &&
         choice["finish_reason"].is_string() &&
-        choice["finish_reason"].get<std::string>() == "tool_calls") {
-      auto calls = PendingToolCalls(state);
-      if (!calls.empty()) {
-        (*state.sink)(chat::ChatEvent{
-            chat::ToolCallRequestedEvent{.tool_calls = std::move(calls)}});
-      }
-      state.pending_tool_calls.clear();
+        !choice["finish_reason"].get<std::string>().empty()) {
+      FlushPendingToolCalls(state, *state.sink);
     }
   } catch (const std::exception& error) {
     (*state.sink)(chat::ChatEvent{chat::ErrorEvent{.text = error.what()}});
@@ -401,6 +386,25 @@ void ConsumeSseChunk(std::string_view chunk, StreamState& state) {
     }
     state.buffer.erase(0, pos + 1);
     ConsumeSseLine(line, state);
+  }
+}
+
+void FlushPendingToolCalls(StreamState& state, ChatEventSink& sink) {
+  std::vector<chat::ToolCallRequest> calls;
+  for (const auto& [index, call] : state.pending_tool_calls) {
+    (void)index;
+    if (call.id.empty() || call.name.empty()) {
+      continue;
+    }
+    calls.push_back(
+        chat::ToolCallRequest{.id = call.id,
+                              .name = call.name,
+                              .arguments_json = call.arguments_json});
+  }
+  state.pending_tool_calls.clear();
+  if (!calls.empty()) {
+    sink(chat::ChatEvent{
+        chat::ToolCallRequestedEvent{.tool_calls = std::move(calls)}});
   }
 }
 

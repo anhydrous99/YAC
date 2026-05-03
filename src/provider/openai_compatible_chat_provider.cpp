@@ -281,6 +281,12 @@ void OpenAiCompatibleChatProvider::CompleteStreaming(
     throw std::runtime_error(message.str());
   }
 
+  // Backstop for servers that close the SSE socket without ever sending a
+  // terminating finish_reason chunk. The dispatcher flushes on any
+  // finish_reason; this catches the no-finish-reason case so accumulated
+  // tool_calls aren't silently dropped.
+  openai_compatible_protocol::FlushPendingToolCalls(stream_state, sink);
+
   if (stream_state.pending_usage.has_value()) {
     sink(chat::ChatEvent{chat::UsageReportedEvent{
         .provider_id = config_.id,

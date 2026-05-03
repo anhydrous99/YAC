@@ -213,3 +213,174 @@ TEST_CASE("ParseModelsData extracts context window from /models response") {
     REQUIRE(models[0].context_window == 0);
   }
 }
+
+TEST_CASE(
+    "ConsumeSseChunk flushes pending tool calls on finish_reason: \"stop\"") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-stop","function":{"name":"file_read","arguments":"{\"filep"}}]}}]}
+)JSON",
+      state);
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"ath\":\"foo.txt\"}"}}]}}]}
+)JSON",
+      state);
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+)JSON",
+      state);
+
+  REQUIRE(events.size() == 3);
+  REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE(events[1].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE(events[2].Type() == ChatEventType::ToolCallRequested);
+
+  const auto& requested = events[2].Get<ToolCallRequestedEvent>();
+  REQUIRE(requested.tool_calls.size() == 1);
+  REQUIRE(requested.tool_calls[0].id == "call-stop");
+  REQUIRE(requested.tool_calls[0].name == "file_read");
+  REQUIRE(requested.tool_calls[0].arguments_json ==
+          R"({"filepath":"foo.txt"})");
+  REQUIRE(state.pending_tool_calls.empty());
+}
+
+TEST_CASE(
+    "ConsumeSseChunk flushes pending tool calls on finish_reason: \"length\"") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-len","function":{"name":"grep","arguments":"{\"pattern\":\"x\"}"}}]}}]}
+)JSON",
+      state);
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{},"finish_reason":"length"}]}
+)JSON",
+      state);
+
+  REQUIRE(events.size() == 2);
+  REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE(events[1].Type() == ChatEventType::ToolCallRequested);
+
+  const auto& requested = events[1].Get<ToolCallRequestedEvent>();
+  REQUIRE(requested.tool_calls.size() == 1);
+  REQUIRE(requested.tool_calls[0].id == "call-len");
+  REQUIRE(requested.tool_calls[0].name == "grep");
+  REQUIRE(state.pending_tool_calls.empty());
+}
+
+TEST_CASE(
+    "FlushPendingToolCalls backstops streams that close without a "
+    "finish_reason chunk") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-no-fin","function":{"name":"list_dir","arguments":"{\"path\":\"src\"}"}}]}}]}
+)JSON",
+      state);
+
+  REQUIRE(events.size() == 1);
+  REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE_FALSE(state.pending_tool_calls.empty());
+
+  openai_compatible_protocol::FlushPendingToolCalls(state, sink);
+
+  REQUIRE(events.size() == 2);
+  REQUIRE(events[1].Type() == ChatEventType::ToolCallRequested);
+  const auto& requested = events[1].Get<ToolCallRequestedEvent>();
+  REQUIRE(requested.tool_calls.size() == 1);
+  REQUIRE(requested.tool_calls[0].id == "call-no-fin");
+  REQUIRE(requested.tool_calls[0].name == "list_dir");
+  REQUIRE(requested.tool_calls[0].arguments_json == R"({"path":"src"})");
+  REQUIRE(state.pending_tool_calls.empty());
+}
+
+TEST_CASE(
+    "ConsumeSseChunk does not emit ToolCallRequested for a text-only stream") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}
+)JSON",
+      state);
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+)JSON",
+      state);
+
+  for (const auto& event : events) {
+    REQUIRE(event.Type() != ChatEventType::ToolCallRequested);
+  }
+  REQUIRE(state.pending_tool_calls.empty());
+}
+
+TEST_CASE("FlushPendingToolCalls is a no-op when nothing is pending") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  openai_compatible_protocol::FlushPendingToolCalls(state, sink);
+
+  REQUIRE(events.empty());
+  REQUIRE(state.pending_tool_calls.empty());
+}
+
+TEST_CASE(
+    "ConsumeSseChunk emits argument delta before flushing on a combined "
+    "chunk") {
+  std::vector<ChatEvent> events;
+  ChatEventSink sink = [&events](ChatEvent event) {
+    events.push_back(std::move(event));
+  };
+
+  openai_compatible_protocol::StreamState state;
+  state.sink = &sink;
+
+  // Single chunk where choices[0] carries both the tool_call delta and the
+  // terminating finish_reason. Argument-delta event must precede the
+  // requested event so consumers that key off card ids see the final
+  // arguments before being told the call is ready to dispatch.
+  openai_compatible_protocol::ConsumeSseChunk(
+      R"JSON(data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-G","function":{"name":"glob","arguments":"{\"pattern\":\"*.cpp\"}"}}]},"finish_reason":"tool_calls"}]}
+)JSON",
+      state);
+
+  REQUIRE(events.size() == 2);
+  REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
+  REQUIRE(events[1].Type() == ChatEventType::ToolCallRequested);
+
+  const auto& requested = events[1].Get<ToolCallRequestedEvent>();
+  REQUIRE(requested.tool_calls.size() == 1);
+  REQUIRE(requested.tool_calls[0].id == "call-G");
+  REQUIRE(requested.tool_calls[0].name == "glob");
+  REQUIRE(requested.tool_calls[0].arguments_json == R"({"pattern":"*.cpp"})");
+  REQUIRE(state.pending_tool_calls.empty());
+}

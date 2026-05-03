@@ -41,6 +41,13 @@ struct StreamState {
     const Json& response);
 [[nodiscard]] std::vector<chat::ToolCallRequest> ExtractBufferedToolCalls(
     const Json& response);
+// Emits a ToolCallRequestedEvent for any fully-formed pending tool calls
+// (entries with both id and name populated) and clears the pending buffer.
+// Safe to call when nothing is pending — emits nothing in that case. Called
+// both from the SSE dispatcher (on any terminating finish_reason) and from
+// the provider after the stream closes (backstop for servers that close the
+// SSE socket without a finish_reason chunk).
+void FlushPendingToolCalls(StreamState& state, ChatEventSink& sink);
 void ConsumeSseChunk(std::string_view chunk, StreamState& state);
 
 }  // namespace yac::provider::openai_compatible_protocol
