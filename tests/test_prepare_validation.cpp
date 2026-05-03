@@ -8,12 +8,11 @@
 #include "tool_call/executor.hpp"
 #include "tool_call/todo_state.hpp"
 
-#include <openai.hpp>
-
 #include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <openai.hpp>
 #include <stop_token>
 #include <string>
 #include <utility>
@@ -159,9 +158,8 @@ TEST_CASE("wrong type for required field yields structured error") {
   auto captured = std::make_shared<CapturedToolResult>();
   auto count = std::make_shared<int>(0);
   auto provider = MakeMalformedToolProvider(
-      "file_edit",
-      R"({"filepath":42,"old_string":"x","new_string":"y"})", captured,
-      count);
+      "file_edit", R"({"filepath":42,"old_string":"x","new_string":"y"})",
+      captured, count);
   Harness harness(provider);
 
   harness.processor.ProcessPrompt(1, "do an edit", 1,
@@ -219,8 +217,7 @@ TEST_CASE("ToolCallStarted event carries tool-typed preview, not BashCall") {
       MakeMalformedToolProvider("file_edit", "{not json", captured, count);
   Harness harness(provider);
 
-  harness.processor.ProcessPrompt(1, "edit", 1,
-                                  std::stop_source{}.get_token());
+  harness.processor.ProcessPrompt(1, "edit", 1, std::stop_source{}.get_token());
 
   bool found = false;
   for (const auto& evt : harness.events) {
@@ -237,8 +234,8 @@ TEST_CASE("ToolCallStarted event carries tool-typed preview, not BashCall") {
 TEST_CASE("unknown builtin tool yields structured error without crash") {
   auto captured = std::make_shared<CapturedToolResult>();
   auto count = std::make_shared<int>(0);
-  auto provider = MakeMalformedToolProvider("not_a_real_tool", "{}", captured,
-                                            count);
+  auto provider =
+      MakeMalformedToolProvider("not_a_real_tool", "{}", captured, count);
   Harness harness(provider);
 
   harness.processor.ProcessPrompt(1, "call ghost", 1,

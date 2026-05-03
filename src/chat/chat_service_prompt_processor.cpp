@@ -63,8 +63,8 @@ std::string PartialField(const std::string& arguments_json,
     return tc::LspReferencesCall{.file_path = PartialField(args, "file_path")};
   }
   if (name == tc::kLspGotoDefinitionToolName) {
-    return tc::LspGotoDefinitionCall{
-        .file_path = PartialField(args, "file_path")};
+    return tc::LspGotoDefinitionCall{.file_path =
+                                         PartialField(args, "file_path")};
   }
   if (name == tc::kLspRenameToolName) {
     return tc::LspRenameCall{.file_path = PartialField(args, "file_path"),
