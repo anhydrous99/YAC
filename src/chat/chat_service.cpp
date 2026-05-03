@@ -176,8 +176,18 @@ void ChatService::ResetConversation() {
 
   // Now safe to mutate history. We do not touch active_ or
   // active_stop_source_ — those are owned by the worker thread.
+  //
+  // Bump generation a second time, under the lock, before clearing
+  // history. This closes a window where a worker that captured the
+  // first post-bump generation has already passed its append guard
+  // (so history_ has its user_msg) but hasn't yet entered
+  // BuildRoundRequest. Without the second bump, a budget-expired
+  // wait_for above would let us clear history while the worker still
+  // sees a matching generation — the next BuildRoundRequest would
+  // then issue an empty messages vector to the provider.
   {
     std::scoped_lock lock(mutex_);
+    generation_.fetch_add(1);
     history_.clear();
     last_usage_.reset();
     config_.agent_mode = AgentMode::Build;
