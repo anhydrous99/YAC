@@ -347,18 +347,26 @@ void ChatServicePromptProcessor::ProcessPrompt(
       break;
     }
 
+    bool tool_round_aborted = false;
     {
       std::scoped_lock lock(*history_mutex_);
       if (ShouldAbortLocked(generation)) {
-        emit_event_(ChatEvent{
-            MessageStatusChangedEvent{.message_id = assistant_id,
-                                      .role = ChatRole::Assistant,
-                                      .status = ChatMessageStatus::Cancelled}});
-        emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
-        return;
+        tool_round_aborted = true;
+      } else {
+        ChatServiceHistory(*history_).AppendAssistantToolRound(
+            assistant_id, round_text, requested_tools);
       }
-      ChatServiceHistory(*history_).AppendAssistantToolRound(
-          assistant_id, round_text, requested_tools);
+    }
+    // Emit cancellation events outside the lock — emit_event_ routes through
+    // ChatService::EmitEvent, which acquires the same mutex history_mutex_
+    // points to. Re-locking std::mutex from the same thread is UB.
+    if (tool_round_aborted) {
+      emit_event_(ChatEvent{
+          MessageStatusChangedEvent{.message_id = assistant_id,
+                                    .role = ChatRole::Assistant,
+                                    .status = ChatMessageStatus::Cancelled}});
+      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+      return;
     }
 
     RunToolRound(requested_tools, streaming_card_ids, generation, stop_token);
@@ -377,8 +385,19 @@ void ChatServicePromptProcessor::ProcessPrompt(
   }
 
   if (!visible_assistant_text.empty()) {
-    std::scoped_lock lock(*history_mutex_);
-    if (ShouldAbortLocked(generation)) {
+    bool final_message_aborted = false;
+    {
+      std::scoped_lock lock(*history_mutex_);
+      if (ShouldAbortLocked(generation)) {
+        final_message_aborted = true;
+      } else {
+        ChatServiceHistory(*history_).AppendFinalAssistantMessage(
+            assistant_id, visible_assistant_text);
+      }
+    }
+    // See note above: emit_event_ re-enters history_mutex_, so the
+    // cancellation events must be emitted after the scoped_lock releases.
+    if (final_message_aborted) {
       emit_event_(ChatEvent{
           MessageStatusChangedEvent{.message_id = assistant_id,
                                     .role = ChatRole::Assistant,
@@ -386,8 +405,6 @@ void ChatServicePromptProcessor::ProcessPrompt(
       emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
       return;
     }
-    ChatServiceHistory(*history_).AppendFinalAssistantMessage(
-        assistant_id, visible_assistant_text);
   }
   emit_event_(ChatEvent{
       AssistantMessageDoneEvent{.message_id = assistant_id,
