@@ -18,7 +18,7 @@ namespace yac::chat {
 
 static_assert(sizeof(ModelInfo) > 0);
 
-inline constexpr int kDefaultToolRoundLimit = 32;
+inline constexpr int kDefaultToolRoundLimit = 64;
 inline constexpr int kMinToolRoundLimit = 1;
 inline constexpr int kMaxToolRoundLimit = 256;
 

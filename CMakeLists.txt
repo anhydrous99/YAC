@@ -60,7 +60,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(openai_cpp)
 
 add_library(openai_cpp INTERFACE)
-target_include_directories(openai_cpp INTERFACE
+target_include_directories(openai_cpp SYSTEM INTERFACE
   ${openai_cpp_SOURCE_DIR}/include/openai
 )
 
