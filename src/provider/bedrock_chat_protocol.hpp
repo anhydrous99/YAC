@@ -22,4 +22,6 @@ chat::ErrorEvent MapBedrockSyncError(const std::string& error_type,
 chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
                                        const std::string& message);
 
+bool IsErrorStopReason(const std::string& stop_reason);
+
 }  // namespace yac::provider
