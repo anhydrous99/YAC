@@ -10,12 +10,33 @@
 namespace yac::app {
 namespace {
 
+std::string_view StripInferenceProfilePrefix(std::string_view model_id) {
+  for (std::string_view prefix : {"us.", "eu.", "apac.", "global."}) {
+    if (model_id.starts_with(prefix)) {
+      return model_id.substr(prefix.size());
+    }
+  }
+  return model_id;
+}
+
 const std::unordered_map<std::string, int>& ExactTable() {
   static const std::unordered_map<std::string, int> table = {
       {"gpt-4o", 128000},
       {"gpt-4o-mini", 128000},
       {"gpt-4-turbo", 128000},
       {"gpt-3.5-turbo", 16385},
+      {"anthropic.claude-3-5-sonnet-20241022-v2:0", 200000},
+      {"anthropic.claude-3-5-sonnet-20240620-v1:0", 200000},
+      {"anthropic.claude-3-5-haiku-20241022-v1:0", 200000},
+      {"anthropic.claude-3-opus-20240229-v1:0", 200000},
+      {"anthropic.claude-3-sonnet-20240229-v1:0", 200000},
+      {"anthropic.claude-3-haiku-20240307-v1:0", 200000},
+      {"amazon.nova-pro-v1:0", 300000},
+      {"amazon.nova-lite-v1:0", 300000},
+      {"amazon.nova-micro-v1:0", 128000},
+      {"meta.llama3-1-70b-instruct-v1:0", 128000},
+      {"meta.llama3-1-8b-instruct-v1:0", 128000},
+      {"mistral.mistral-large-2407-v1:0", 128000},
   };
   return table;
 }
@@ -48,7 +69,8 @@ int LookupContextWindow(std::string_view model_id) {
   if (model_id.empty()) {
     return 0;
   }
-  const std::string key(model_id);
+  const std::string_view stripped = StripInferenceProfilePrefix(model_id);
+  const std::string key(stripped);
   if (const auto it = ExactTable().find(key); it != ExactTable().end()) {
     return it->second;
   }

@@ -25,3 +25,27 @@ TEST_CASE("LookupContextWindow falls back to prefix families") {
   REQUIRE(LookupContextWindow("glm-5") == 200000);
   REQUIRE(LookupContextWindow("glm-4.7") == 200000);
 }
+
+TEST_CASE("LookupContextWindow resolves Bedrock models") {
+  REQUIRE(LookupContextWindow("anthropic.claude-3-5-haiku-20241022-v1:0") ==
+          200000);
+  REQUIRE(LookupContextWindow("amazon.nova-pro-v1:0") == 300000);
+  REQUIRE(LookupContextWindow("meta.llama3-1-70b-instruct-v1:0") == 128000);
+  REQUIRE(LookupContextWindow("mistral.mistral-large-2407-v1:0") == 128000);
+}
+
+TEST_CASE("LookupContextWindow strips inference profile prefixes") {
+  REQUIRE(LookupContextWindow("us.anthropic.claude-3-5-haiku-20241022-v1:0") ==
+          200000);
+  REQUIRE(LookupContextWindow("eu.anthropic.claude-3-5-haiku-20241022-v1:0") ==
+          200000);
+  REQUIRE(LookupContextWindow(
+              "apac.anthropic.claude-3-5-haiku-20241022-v1:0") == 200000);
+  REQUIRE(LookupContextWindow("global.amazon.nova-pro-v1:0") == 300000);
+  REQUIRE(LookupContextWindow("us.meta.llama3-1-70b-instruct-v1:0") == 128000);
+}
+
+TEST_CASE("LookupContextWindow returns zero for unknown Bedrock models") {
+  REQUIRE(LookupContextWindow("nonexistent.model:0") == 0);
+  REQUIRE(LookupContextWindow("us.nonexistent.model:0") == 0);
+}
