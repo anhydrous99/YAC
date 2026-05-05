@@ -1,6 +1,11 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
+#include <aws/bedrock-runtime/model/ContentBlock.h>
+#include <aws/bedrock-runtime/model/ConversationRole.h>
 #include <aws/bedrock-runtime/model/ConverseStreamRequest.h>
+#include <aws/bedrock-runtime/model/InferenceConfiguration.h>
+#include <aws/bedrock-runtime/model/Message.h>
+#include <aws/bedrock-runtime/model/SystemContentBlock.h>
 #include <aws/bedrock-runtime/model/Tool.h>
 #include <aws/bedrock-runtime/model/ToolConfiguration.h>
 #include <aws/bedrock-runtime/model/ToolInputSchema.h>
@@ -30,9 +35,62 @@ struct ToolResultData {
 
 ConverseStreamRequestData BuildConverseStreamRequest(
     const chat::ChatRequest& request, const chat::ProviderConfig& config) {
-  (void)request;
-  (void)config;
-  return {};
+  ConverseStreamRequestData data;
+  data.request.SetModelId(request.model);
+
+  std::string system_text;
+  for (const auto& msg : request.messages) {
+    if (msg.role == chat::ChatRole::System) {
+      if (!system_text.empty()) {
+        system_text += '\n';
+      }
+      system_text += msg.content;
+    }
+  }
+  if (!system_text.empty()) {
+    Aws::BedrockRuntime::Model::SystemContentBlock sys_block;
+    sys_block.SetText(system_text);
+    data.request.AddSystem(std::move(sys_block));
+  }
+
+  for (const auto& msg : request.messages) {
+    if (msg.role == chat::ChatRole::System ||
+        msg.role == chat::ChatRole::Tool) {
+      continue;
+    }
+
+    using Aws::BedrockRuntime::Model::ConversationRole;
+    ConversationRole role = msg.role == chat::ChatRole::User
+                                ? ConversationRole::user
+                                : ConversationRole::assistant;
+
+    Aws::BedrockRuntime::Model::ContentBlock content_block;
+    content_block.SetText(msg.content);
+
+    Aws::BedrockRuntime::Model::Message bedrock_msg;
+    bedrock_msg.SetRole(role);
+    bedrock_msg.AddContent(std::move(content_block));
+
+    data.request.AddMessages(std::move(bedrock_msg));
+  }
+
+  Aws::BedrockRuntime::Model::InferenceConfiguration inf_config;
+  int max_tokens = 4096;
+  if (config.options.count("max_tokens") != 0) {
+    max_tokens = std::stoi(config.options.at("max_tokens"));
+  }
+  inf_config.SetMaxTokens(max_tokens);
+  if (request.temperature > 0.0) {
+    inf_config.SetTemperature(request.temperature);
+  }
+  data.request.SetInferenceConfig(std::move(inf_config));
+
+  if (!request.tools.empty()) {
+    ToolConfigData tool_config = TranslateToolDefinitions(request.tools);
+    data.request.SetToolConfig(std::move(tool_config.config));
+  }
+
+  return data;
 }
 
 std::vector<BedrockMessageData> CoalesceToolResults(
