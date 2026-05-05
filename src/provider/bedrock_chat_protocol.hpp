@@ -5,6 +5,8 @@
 
 #include <aws/bedrock-runtime/model/ConverseStreamHandler.h>
 #include <aws/bedrock-runtime/model/ConverseStreamRequest.h>
+#include <aws/bedrock-runtime/model/ToolConfiguration.h>
+#include <aws/bedrock-runtime/model/ToolResultBlock.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,7 +17,10 @@ struct ConverseStreamRequestData {
   Aws::BedrockRuntime::Model::ConverseStreamRequest request;
 };
 
-struct BedrockMessageData;
+struct BedrockMessageData {
+  Aws::BedrockRuntime::Model::Message message;
+};
+
 struct BedrockStreamHandlerData;
 
 void DestroyBedrockStreamHandler(BedrockStreamHandlerData* data) noexcept;
@@ -57,8 +62,13 @@ chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
 
 bool IsErrorStopReason(const std::string& stop_reason);
 
-struct ToolConfigData;
-struct ToolResultData;
+struct ToolConfigData {
+  Aws::BedrockRuntime::Model::ToolConfiguration config;
+};
+
+struct ToolResultData {
+  Aws::BedrockRuntime::Model::ToolResultBlock block;
+};
 
 ToolConfigData TranslateToolDefinitions(
     const std::vector<chat::ToolDefinition>& tools);

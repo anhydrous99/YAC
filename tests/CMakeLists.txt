@@ -49,6 +49,20 @@ yac_add_test(yac_test_chat_event_bridge_mcp test_chat_event_bridge_mcp.cpp)
 yac_add_test(yac_test_model_discovery  test_model_discovery.cpp)
 yac_add_test(yac_test_openai_compatible_chat_provider test_openai_compatible_chat_provider.cpp)
 yac_add_test(yac_test_openai_compatible_chat_protocol test_openai_compatible_chat_protocol.cpp)
+yac_add_test(yac_test_bedrock_chat_protocol test_bedrock_chat_protocol.cpp)
+target_include_directories(yac_test_bedrock_chat_protocol SYSTEM PRIVATE
+  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+)
+yac_add_test(yac_test_bedrock_tool_translator         test_bedrock_tool_translator.cpp)
+target_link_libraries(yac_test_bedrock_tool_translator PRIVATE
+  aws-cpp-sdk-bedrock-runtime
+  aws-cpp-sdk-core
+)
+target_include_directories(yac_test_bedrock_tool_translator PRIVATE
+  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+)
 yac_add_test(yac_test_model_context_windows test_model_context_windows.cpp)
 yac_add_test(yac_test_provider_context_window test_provider_context_window.cpp)
 yac_add_test(yac_test_auto_compact      test_auto_compact.cpp)
@@ -62,6 +76,13 @@ yac_add_test(yac_test_config_paths     test_config_paths.cpp)
 yac_add_test(yac_test_prompt_library   test_prompt_library.cpp)
 yac_add_test(yac_test_ask_user         test_ask_user.cpp)
 yac_add_test(yac_test_sub_agent_manager test_sub_agent_manager.cpp)
+yac_add_test(yac_test_bedrock_history_coalescing
+  test_bedrock_history_coalescing.cpp
+)
+target_link_libraries(yac_test_bedrock_history_coalescing PRIVATE
+  aws-cpp-sdk-bedrock-runtime
+  aws-cpp-sdk-core
+)
 yac_add_test(yac_test_sub_agent_mcp     test_sub_agent_mcp.cpp)
 target_include_directories(yac_test_sub_agent_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}

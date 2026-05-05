@@ -22,18 +22,6 @@
 
 namespace yac::provider {
 
-struct BedrockMessageData {
-  Aws::BedrockRuntime::Model::Message message;
-};
-
-struct ToolConfigData {
-  Aws::BedrockRuntime::Model::ToolConfiguration config;
-};
-
-struct ToolResultData {
-  Aws::BedrockRuntime::Model::ToolResultBlock block;
-};
-
 ConverseStreamRequestData BuildConverseStreamRequest(
     const chat::ChatRequest& request, const chat::ProviderConfig& config) {
   ConverseStreamRequestData data;
