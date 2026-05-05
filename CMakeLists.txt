@@ -71,6 +71,28 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
+set(YAC_AWS_SDK_TAG "1.11.580" CACHE STRING "aws-sdk-cpp tag to fetch")
+FetchContent_Declare(
+  aws-sdk-cpp
+  GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
+  GIT_TAG ${YAC_AWS_SDK_TAG}
+  GIT_SHALLOW TRUE
+)
+set(BUILD_ONLY "bedrock-runtime" CACHE STRING "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(AUTORUN_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+set(AWS_SDK_WARNINGS_ARE_ERRORS OFF CACHE BOOL "" FORCE)
+set(MINIMIZE_SIZE ON CACHE BOOL "" FORCE)
+set(ENABLE_UNITY_BUILD ON CACHE BOOL "" FORCE)
+set(USE_OPENSSL ON CACHE BOOL "" FORCE)
+set(CUSTOM_MEMORY_MANAGEMENT 0 CACHE STRING "" FORCE)
+set(CPP_STANDARD 17 CACHE STRING "" FORCE)
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+  set(CMAKE_OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "" FORCE)
+endif()
+FetchContent_MakeAvailable(aws-sdk-cpp)
+
 FetchContent_Declare(
   keychain
   GIT_REPOSITORY https://github.com/hrantzsch/keychain.git
@@ -317,9 +339,14 @@ add_library(yac_service STATIC
   src/tool_call/glob_tool_executor.cpp
 )
 target_include_directories(yac_service PUBLIC src)
+target_include_directories(yac_service SYSTEM PRIVATE
+  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+)
 target_link_libraries(yac_service
   PUBLIC yac_core_types openai_cpp CURL::libcurl OpenSSL::Crypto
-  PRIVATE tomlplusplus::tomlplusplus yac_keychain)
+  PRIVATE tomlplusplus::tomlplusplus yac_keychain
+          aws-cpp-sdk-bedrock-runtime aws-cpp-sdk-core)
 
 include(src/chat/CMakeLists.txt)
 
@@ -514,6 +541,10 @@ raw_extra_args = [
 ]
 extra_args = []
 for arg in raw_extra_args:
+    if not arg:
+        # Skip empty entries: an empty positional regex matches every file in
+        # compile_commands.json (including _deps/), defeating the source filter.
+        continue
     if arg.startswith("--extra-arg="):
         extra_args.append(
             "-extra-arg=" + arg.removeprefix("--extra-arg="))
