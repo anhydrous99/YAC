@@ -299,6 +299,7 @@ add_library(yac_service STATIC
    src/provider/bedrock_logger.cpp
    src/provider/bedrock_aws_api_guard.cpp
    src/provider/bedrock_chat_provider.cpp
+   src/provider/bedrock_chat_protocol.cpp
    src/provider/openai_compatible_chat_provider.cpp
    src/provider/openai_compatible_chat_protocol.cpp
    src/provider/zai_context_windows.cpp

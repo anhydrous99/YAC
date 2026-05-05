@@ -1,0 +1,25 @@
+#pragma once
+
+#include "chat/types.hpp"
+
+#include <string>
+#include <vector>
+
+namespace yac::provider {
+
+struct ConverseStreamRequestData;
+struct BedrockMessageData;
+
+ConverseStreamRequestData BuildConverseStreamRequest(
+    const chat::ChatRequest& request, const chat::ProviderConfig& config);
+
+std::vector<BedrockMessageData> CoalesceToolResults(
+    const std::vector<chat::ChatMessage>& messages);
+
+chat::ErrorEvent MapBedrockSyncError(const std::string& error_type,
+                                     const std::string& message);
+
+chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
+                                       const std::string& message);
+
+}  // namespace yac::provider
