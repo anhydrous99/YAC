@@ -114,6 +114,15 @@ yac_add_test(yac_test_subprocess_runner test_subprocess_runner.cpp)
 yac_add_test(yac_test_mcp_protocol_constants test_mcp_protocol_constants.cpp)
 yac_add_test(yac_test_mcp_tool_naming test_mcp_tool_naming.cpp)
 yac_add_test(yac_test_mcp_tool_name_invariant test_mcp_tool_name_invariant.cpp)
+yac_add_test(yac_test_bedrock_mcp_interop test_bedrock_mcp_interop.cpp)
+target_include_directories(yac_test_bedrock_mcp_interop SYSTEM PRIVATE
+  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+)
+target_link_libraries(yac_test_bedrock_mcp_interop PRIVATE
+  aws-cpp-sdk-bedrock-runtime
+  aws-cpp-sdk-core
+)
 yac_add_test(yac_test_mcp_secret_redaction test_mcp_secret_redaction.cpp)
 yac_add_test(yac_test_mcp_debug_log test_mcp_debug_log.cpp)
 yac_add_test(yac_test_mcp_file_token_store test_mcp_file_token_store.cpp)
