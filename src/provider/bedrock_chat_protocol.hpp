@@ -24,4 +24,17 @@ chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
 
 bool IsErrorStopReason(const std::string& stop_reason);
 
+struct ToolConfigData;
+struct ToolResultData;
+
+ToolConfigData TranslateToolDefinitions(
+    const std::vector<chat::ToolDefinition>& tools);
+
+chat::ToolCallRequest TranslateToolUseToYac(const std::string& tooluse_id,
+                                            const std::string& name,
+                                            const std::string& input_json);
+
+ToolResultData TranslateYacToolResultToBedrock(
+    const chat::ChatMessage& tool_msg);
+
 }  // namespace yac::provider

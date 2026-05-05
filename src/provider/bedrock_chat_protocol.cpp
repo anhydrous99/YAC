@@ -1,6 +1,14 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
 #include <aws/bedrock-runtime/model/ConverseStreamRequest.h>
+#include <aws/bedrock-runtime/model/Tool.h>
+#include <aws/bedrock-runtime/model/ToolConfiguration.h>
+#include <aws/bedrock-runtime/model/ToolInputSchema.h>
+#include <aws/bedrock-runtime/model/ToolResultBlock.h>
+#include <aws/bedrock-runtime/model/ToolResultContentBlock.h>
+#include <aws/bedrock-runtime/model/ToolSpecification.h>
+#include <aws/core/utils/Document.h>
+#include <stdexcept>
 
 namespace yac::provider {
 
@@ -10,6 +18,14 @@ struct ConverseStreamRequestData {
 
 struct BedrockMessageData {
   std::string role;
+};
+
+struct ToolConfigData {
+  Aws::BedrockRuntime::Model::ToolConfiguration config;
+};
+
+struct ToolResultData {
+  Aws::BedrockRuntime::Model::ToolResultBlock block;
 };
 
 ConverseStreamRequestData BuildConverseStreamRequest(
@@ -88,6 +104,51 @@ bool IsErrorStopReason(const std::string& stop_reason) {
   }
 
   return false;
+}
+
+ToolConfigData TranslateToolDefinitions(
+    const std::vector<chat::ToolDefinition>& tools) {
+  ToolConfigData data;
+  for (const auto& def : tools) {
+    Aws::Utils::Document schema_doc(def.parameters_schema_json);
+    if (!schema_doc.WasParseSuccessful()) {
+      throw std::runtime_error(
+          "[bedrock] Failed to parse tool schema JSON for '" + def.name +
+          "': " + std::string(schema_doc.GetErrorMessage()));
+    }
+
+    Aws::BedrockRuntime::Model::ToolInputSchema input_schema;
+    input_schema.SetJson(schema_doc);
+
+    Aws::BedrockRuntime::Model::ToolSpecification tool_spec;
+    tool_spec.SetName(def.name);
+    tool_spec.SetDescription(def.description);
+    tool_spec.SetInputSchema(std::move(input_schema));
+
+    Aws::BedrockRuntime::Model::Tool tool;
+    tool.SetToolSpec(std::move(tool_spec));
+
+    data.config.AddTools(std::move(tool));
+  }
+  return data;
+}
+
+chat::ToolCallRequest TranslateToolUseToYac(const std::string& tooluse_id,
+                                            const std::string& name,
+                                            const std::string& input_json) {
+  return {.id = tooluse_id, .name = name, .arguments_json = input_json};
+}
+
+ToolResultData TranslateYacToolResultToBedrock(
+    const chat::ChatMessage& tool_msg) {
+  Aws::BedrockRuntime::Model::ToolResultContentBlock content_block;
+  content_block.SetText(tool_msg.content);
+
+  Aws::BedrockRuntime::Model::ToolResultBlock result_block;
+  result_block.SetToolUseId(tool_msg.tool_call_id);
+  result_block.AddContent(std::move(content_block));
+
+  return {.block = std::move(result_block)};
 }
 
 }  // namespace yac::provider
