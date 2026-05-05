@@ -20,7 +20,7 @@ void AssertBedrockInvariant(const std::string& result) {
   REQUIRE(result.size() > 0);
 }
 
-}
+}  // namespace
 
 TEST_CASE("bedrock_invariant_randomized_50_combinations",
           "[mcp_tool_name_invariant]") {
@@ -176,7 +176,8 @@ TEST_CASE("bedrock_invariant_single_char_server", "[mcp_tool_name_invariant]") {
   REQUIRE(result == "mcp_a__b");
 }
 
-TEST_CASE("bedrock_invariant_max_length_boundary", "[mcp_tool_name_invariant]") {
+TEST_CASE("bedrock_invariant_max_length_boundary",
+          "[mcp_tool_name_invariant]") {
   const std::string server_id = "a";
   const std::string tool_name(100, 'x');
   const std::string result =
@@ -229,7 +230,8 @@ TEST_CASE("bedrock_invariant_short_server_long_tool",
   AssertBedrockInvariant(result);
 }
 
-TEST_CASE("bedrock_invariant_hash_suffix_present", "[mcp_tool_name_invariant]") {
+TEST_CASE("bedrock_invariant_hash_suffix_present",
+          "[mcp_tool_name_invariant]") {
   const std::string server_id = "github";
   const std::string tool_name(100, 'x');
   const std::string result =
