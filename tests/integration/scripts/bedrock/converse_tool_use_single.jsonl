@@ -1,0 +1,1 @@
+{"on_user_prompt_contains":"call tool","tool_use":{"id":"tu_single_001","name":"file_read","input":{"path":"README.md","start_line":1,"end_line":10}},"text":"Tool called successfully."}

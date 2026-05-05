@@ -414,3 +414,13 @@ target_link_libraries(yac_test_mock_bedrock_provider PRIVATE
 catch_discover_tests(yac_test_mock_bedrock_provider
   TEST_PREFIX "yac_test_mock_bedrock_provider::"
 )
+
+yac_add_test(yac_test_bedrock_e2e integration/test_bedrock_e2e.cpp)
+target_sources(yac_test_bedrock_e2e PRIVATE mock_bedrock_provider.cpp)
+target_include_directories(yac_test_bedrock_e2e PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_bedrock_e2e PRIVATE openai_cpp)
+target_compile_definitions(yac_test_bedrock_e2e PRIVATE
+  BEDROCK_SCRIPTS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/integration/scripts/bedrock"
+)
