@@ -1,7 +1,9 @@
 #pragma once
 
 #include "chat/types.hpp"
+#include "provider/language_model_provider.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -9,6 +11,26 @@ namespace yac::provider {
 
 struct ConverseStreamRequestData;
 struct BedrockMessageData;
+struct BedrockStreamHandlerData;
+
+void DestroyBedrockStreamHandler(BedrockStreamHandlerData* data) noexcept;
+
+struct BedrockStreamHandlerDeleter {
+  void operator()(BedrockStreamHandlerData* data) const noexcept {
+    DestroyBedrockStreamHandler(data);
+  }
+};
+
+using BedrockStreamHandlerHandle =
+    std::unique_ptr<BedrockStreamHandlerData, BedrockStreamHandlerDeleter>;
+
+// Creates a per-stream handler that translates Bedrock ConverseStream events
+// into ChatEvents and dispatches them to `sink`. The returned handle owns the
+// underlying handler; it must outlive any in-flight ConverseStream call that
+// references it. Not thread-safe; callers must keep one handle per stream.
+BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
+                                             const std::string& provider_id,
+                                             const std::string& model);
 
 ConverseStreamRequestData BuildConverseStreamRequest(
     const chat::ChatRequest& request, const chat::ProviderConfig& config);

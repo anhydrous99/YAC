@@ -1,10 +1,13 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
+#include <aws/bedrock-runtime/BedrockRuntimeErrors.h>
 #include <aws/bedrock-runtime/model/ContentBlock.h>
 #include <aws/bedrock-runtime/model/ConversationRole.h>
+#include <aws/bedrock-runtime/model/ConverseStreamHandler.h>
 #include <aws/bedrock-runtime/model/ConverseStreamRequest.h>
 #include <aws/bedrock-runtime/model/InferenceConfiguration.h>
 #include <aws/bedrock-runtime/model/Message.h>
+#include <aws/bedrock-runtime/model/StopReason.h>
 #include <aws/bedrock-runtime/model/SystemContentBlock.h>
 #include <aws/bedrock-runtime/model/Tool.h>
 #include <aws/bedrock-runtime/model/ToolConfiguration.h>
@@ -12,8 +15,10 @@
 #include <aws/bedrock-runtime/model/ToolResultBlock.h>
 #include <aws/bedrock-runtime/model/ToolResultContentBlock.h>
 #include <aws/bedrock-runtime/model/ToolSpecification.h>
+#include <aws/core/client/AWSError.h>
 #include <aws/core/utils/Document.h>
 #include <stdexcept>
+#include <utility>
 
 namespace yac::provider {
 
@@ -295,6 +300,191 @@ ToolResultData TranslateYacToolResultToBedrock(
   result_block.AddContent(std::move(content_block));
 
   return {.block = std::move(result_block)};
+}
+
+namespace {
+
+class BedrockStreamHandler
+    : public Aws::BedrockRuntime::Model::ConverseStreamHandler {
+ public:
+  BedrockStreamHandler(ChatEventSink sink, std::string provider_id,
+                       std::string model)
+      : sink_(std::move(sink)),
+        provider_id_(std::move(provider_id)),
+        model_(std::move(model)) {
+    SetMessageStartEventCallback(
+        [this](const Aws::BedrockRuntime::Model::MessageStartEvent& evt) {
+          OnMessageStart(evt);
+        });
+    SetContentBlockStartEventCallback(
+        [this](const Aws::BedrockRuntime::Model::ContentBlockStartEvent& evt) {
+          OnContentBlockStart(evt);
+        });
+    SetContentBlockDeltaEventCallback(
+        [this](const Aws::BedrockRuntime::Model::ContentBlockDeltaEvent& evt) {
+          OnContentBlockDelta(evt);
+        });
+    SetContentBlockStopEventCallback(
+        [this](const Aws::BedrockRuntime::Model::ContentBlockStopEvent& evt) {
+          OnContentBlockStop(evt);
+        });
+    SetMessageStopEventCallback(
+        [this](const Aws::BedrockRuntime::Model::MessageStopEvent& evt) {
+          OnMessageStop(evt);
+        });
+    SetConverseStreamMetadataEventCallback(
+        [this](const Aws::BedrockRuntime::Model::ConverseStreamMetadataEvent&
+                   evt) { OnMetadata(evt); });
+    SetOnErrorCallback(
+        [this](const Aws::Client::AWSError<
+               Aws::BedrockRuntime::BedrockRuntimeErrors>& error) {
+          OnError(error);
+        });
+  }
+
+  BedrockStreamHandler(const BedrockStreamHandler&) = delete;
+  BedrockStreamHandler& operator=(const BedrockStreamHandler&) = delete;
+  BedrockStreamHandler(BedrockStreamHandler&&) = delete;
+  BedrockStreamHandler& operator=(BedrockStreamHandler&&) = delete;
+  ~BedrockStreamHandler() = default;
+
+ private:
+  void OnMessageStart(
+      const Aws::BedrockRuntime::Model::MessageStartEvent& /*evt*/) {}
+
+  void OnContentBlockStart(
+      const Aws::BedrockRuntime::Model::ContentBlockStartEvent& evt) {
+    const auto& start = evt.GetStart();
+    if (!start.ToolUseHasBeenSet()) {
+      return;
+    }
+    const auto& tool_use = start.GetToolUse();
+    current_tool_use_id_ = tool_use.GetToolUseId();
+    current_tool_name_ = tool_use.GetName();
+    accumulated_tool_input_.clear();
+    in_tool_block_ = true;
+
+    sink_(chat::ChatEvent{chat::ToolCallStartedEvent{
+        .tool_call_id = current_tool_use_id_,
+        .tool_name = current_tool_name_,
+    }});
+  }
+
+  void OnContentBlockDelta(
+      const Aws::BedrockRuntime::Model::ContentBlockDeltaEvent& evt) {
+    const auto& delta = evt.GetDelta();
+    if (delta.TextHasBeenSet()) {
+      const auto& text = delta.GetText();
+      if (text.empty()) {
+        return;
+      }
+      sink_(chat::ChatEvent{chat::TextDeltaEvent{
+          .text = std::string(text.c_str(), text.size()),
+          .provider_id = provider_id_,
+          .model = model_,
+      }});
+      return;
+    }
+    if (delta.ToolUseHasBeenSet() && in_tool_block_) {
+      const auto& tool_use_delta = delta.GetToolUse();
+      if (!tool_use_delta.InputHasBeenSet()) {
+        return;
+      }
+      const auto& fragment = tool_use_delta.GetInput();
+      accumulated_tool_input_.append(fragment.c_str(), fragment.size());
+      sink_(chat::ChatEvent{chat::ToolCallArgumentDeltaEvent{
+          .tool_call_id = current_tool_use_id_,
+          .tool_name = current_tool_name_,
+          .arguments_json = accumulated_tool_input_,
+      }});
+    }
+  }
+
+  void OnContentBlockStop(
+      const Aws::BedrockRuntime::Model::ContentBlockStopEvent& /*evt*/) {
+    if (!in_tool_block_) {
+      return;
+    }
+    sink_(chat::ChatEvent{chat::ToolCallDoneEvent{
+        .tool_call_id = current_tool_use_id_,
+        .tool_name = current_tool_name_,
+    }});
+    in_tool_block_ = false;
+    current_tool_use_id_.clear();
+    current_tool_name_.clear();
+    accumulated_tool_input_.clear();
+  }
+
+  void OnMessageStop(const Aws::BedrockRuntime::Model::MessageStopEvent& evt) {
+    using Aws::BedrockRuntime::Model::StopReasonMapper::GetNameForStopReason;
+    const Aws::String reason_aws = GetNameForStopReason(evt.GetStopReason());
+    const std::string reason(reason_aws.c_str(), reason_aws.size());
+    if (IsErrorStopReason(reason)) {
+      auto error = MapBedrockStreamError("stopReason", reason);
+      error.provider_id = provider_id_;
+      error.model = model_;
+      sink_(chat::ChatEvent{std::move(error)});
+    }
+  }
+
+  void OnMetadata(
+      const Aws::BedrockRuntime::Model::ConverseStreamMetadataEvent& evt) {
+    if (!evt.UsageHasBeenSet()) {
+      return;
+    }
+    const auto& usage = evt.GetUsage();
+    chat::TokenUsage token_usage;
+    token_usage.prompt_tokens = usage.GetInputTokens();
+    token_usage.completion_tokens = usage.GetOutputTokens();
+    token_usage.total_tokens = usage.GetTotalTokens();
+    if (token_usage.total_tokens == 0) {
+      token_usage.total_tokens =
+          token_usage.prompt_tokens + token_usage.completion_tokens;
+    }
+    sink_(chat::ChatEvent{chat::UsageReportedEvent{
+        .provider_id = provider_id_,
+        .model = model_,
+        .usage = token_usage,
+    }});
+  }
+
+  void OnError(
+      const Aws::Client::AWSError<Aws::BedrockRuntime::BedrockRuntimeErrors>&
+          error) {
+    const auto& name = error.GetExceptionName();
+    const auto& message = error.GetMessage();
+    auto evt =
+        MapBedrockStreamError(std::string(name.c_str(), name.size()),
+                              std::string(message.c_str(), message.size()));
+    evt.provider_id = provider_id_;
+    evt.model = model_;
+    sink_(chat::ChatEvent{std::move(evt)});
+  }
+
+  ChatEventSink sink_;
+  std::string provider_id_;
+  std::string model_;
+  std::string current_tool_use_id_;
+  std::string current_tool_name_;
+  std::string accumulated_tool_input_;
+  bool in_tool_block_ = false;
+};
+
+}  // namespace
+
+struct BedrockStreamHandlerData {
+  BedrockStreamHandler handler;
+};
+
+void DestroyBedrockStreamHandler(BedrockStreamHandlerData* data) noexcept {
+  delete data;
+}
+
+BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
+                                             const std::string& provider_id,
+                                             const std::string& model) {
+  return BedrockStreamHandlerHandle(new BedrockStreamHandlerData{
+      .handler = BedrockStreamHandler(sink, provider_id, model)});
 }
 
 }  // namespace yac::provider
