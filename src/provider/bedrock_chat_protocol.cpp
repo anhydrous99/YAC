@@ -42,25 +42,13 @@ ConverseStreamRequestData BuildConverseStreamRequest(
     data.request.AddSystem(std::move(sys_block));
   }
 
-  for (const auto& msg : request.messages) {
-    if (msg.role == chat::ChatRole::System ||
-        msg.role == chat::ChatRole::Tool) {
-      continue;
-    }
-
-    using Aws::BedrockRuntime::Model::ConversationRole;
-    ConversationRole role = msg.role == chat::ChatRole::User
-                                ? ConversationRole::user
-                                : ConversationRole::assistant;
-
-    Aws::BedrockRuntime::Model::ContentBlock content_block;
-    content_block.SetText(msg.content);
-
-    Aws::BedrockRuntime::Model::Message bedrock_msg;
-    bedrock_msg.SetRole(role);
-    bedrock_msg.AddContent(std::move(content_block));
-
-    data.request.AddMessages(std::move(bedrock_msg));
+  // Coalesce tool messages into Bedrock-shaped user/assistant messages so
+  // multi-turn tool calling works. The system prompt was already extracted
+  // above; CoalesceToolResults additionally skips ChatRole::System entries.
+  std::vector<BedrockMessageData> coalesced =
+      CoalesceToolResults(request.messages);
+  for (auto& bmd : coalesced) {
+    data.request.AddMessages(std::move(bmd.message));
   }
 
   Aws::BedrockRuntime::Model::InferenceConfiguration inf_config;

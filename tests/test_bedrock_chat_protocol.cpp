@@ -1,5 +1,8 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
+#include <aws/bedrock-runtime/model/ContentBlock.h>
+#include <aws/bedrock-runtime/model/ConversationRole.h>
+#include <aws/bedrock-runtime/model/ToolResultBlock.h>
 #include <string>
 #include <vector>
 
@@ -204,17 +207,39 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "BuildConverseStreamRequest skips system and tool messages from the "
-    "converse message list") {
+    "BuildConverseStreamRequest extracts system block and coalesces tool "
+    "messages into a user toolResult message") {
   ChatRequest req = MakeRequest();
   req.messages = {
       ChatMessage{.role = ChatRole::System, .content = "sys"},
       ChatMessage{.role = ChatRole::User, .content = "user msg"},
+      ChatMessage{.role = ChatRole::Assistant,
+                  .content = "",
+                  .tool_calls = {{.id = "tc-1",
+                                  .name = "list_dir",
+                                  .arguments_json = R"({"path":"."})"}}},
       ChatMessage{
           .role = ChatRole::Tool, .content = "result", .tool_call_id = "tc-1"},
   };
   const auto data = BuildConverseStreamRequest(req, ProviderConfig{});
-  REQUIRE(data.request.GetMessages().size() == 1);
+
+  REQUIRE(data.request.GetSystem().size() == 1);
+
+  const auto& msgs = data.request.GetMessages();
+  REQUIRE(msgs.size() == 3);
+  REQUIRE(msgs[0].GetRole() ==
+          Aws::BedrockRuntime::Model::ConversationRole::user);
+  REQUIRE(msgs[1].GetRole() ==
+          Aws::BedrockRuntime::Model::ConversationRole::assistant);
+  REQUIRE(msgs[2].GetRole() ==
+          Aws::BedrockRuntime::Model::ConversationRole::user);
+
+  const auto& tool_result_content = msgs[2].GetContent();
+  REQUIRE(tool_result_content.size() == 1);
+  REQUIRE(tool_result_content[0].ToolResultHasBeenSet());
+  const auto& tool_use_id =
+      tool_result_content[0].GetToolResult().GetToolUseId();
+  REQUIRE(std::string(tool_use_id.data(), tool_use_id.size()) == "tc-1");
 }
 
 TEST_CASE("BuildConverseStreamRequest uses default max_tokens of 4096") {

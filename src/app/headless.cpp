@@ -37,6 +37,8 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
             .api_key = config.api_key,
             .api_key_env = config.api_key_env,
             .base_url = config.base_url,
+            .options = config.options,
+            .context_window = config.context_window,
         });
   } else {
     provider = std::make_shared<provider::OpenAiCompatibleChatProvider>(
