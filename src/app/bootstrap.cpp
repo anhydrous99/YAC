@@ -18,6 +18,8 @@
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
 #include "presentation/util/terminal.hpp"
+#include "provider/bedrock_aws_api_guard.hpp"
+#include "provider/bedrock_chat_provider.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
@@ -439,7 +441,25 @@ int RunApp() {
   auto config = config_result.config;
   auto prompt_result = chat::LoadPromptLibrary(/*seed_defaults=*/true);
   auto startup_issues = prompt_result.issues;
-  auto provider = BuildProvider(config);
+
+  // Conditionally register Bedrock or OpenAI provider
+  std::shared_ptr<provider::LanguageModelProvider> provider;
+  if (config.provider_id == "bedrock") {
+    // AwsApiGuard must outlive all Bedrock usage — store as static local
+    static provider::AwsApiGuard aws_guard;
+    provider =
+        std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
+            .id = config.provider_id,
+            .model = config.model,
+            .api_key = config.api_key,
+            .api_key_env = config.api_key_env,
+            .base_url = config.base_url,
+            .options = config.options,
+            .context_window = config.context_window,
+        });
+  } else {
+    provider = BuildProvider(config);
+  }
 
   {
     auto theme = presentation::theme::GetTheme(config.theme_name);

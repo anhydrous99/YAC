@@ -307,7 +307,8 @@ void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,
       config.api_key = std::move(*val);
     }
   }
-  if (config.api_key.empty()) {
+  // Bedrock uses AWS credential chain, not API key env var
+  if (config.api_key.empty() && config.provider_id != "bedrock") {
     issues.push_back({.severity = ConfigIssueSeverity::Warning,
                       .message = config.api_key_env + " is not set",
                       .detail = "Set " + config.api_key_env +
