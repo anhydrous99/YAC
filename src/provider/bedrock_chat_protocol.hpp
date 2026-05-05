@@ -3,13 +3,18 @@
 #include "chat/types.hpp"
 #include "provider/language_model_provider.hpp"
 
+#include <aws/bedrock-runtime/model/ConverseStreamHandler.h>
+#include <aws/bedrock-runtime/model/ConverseStreamRequest.h>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace yac::provider {
 
-struct ConverseStreamRequestData;
+struct ConverseStreamRequestData {
+  Aws::BedrockRuntime::Model::ConverseStreamRequest request;
+};
+
 struct BedrockMessageData;
 struct BedrockStreamHandlerData;
 
@@ -31,6 +36,12 @@ using BedrockStreamHandlerHandle =
 BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
                                              const std::string& provider_id,
                                              const std::string& model);
+
+// Returns a reference to the SDK-side handler bound by `handle`. The reference
+// is valid for the lifetime of the handle and is intended for passing to
+// ConverseStreamRequest::SetEventStreamHandler at dispatch time.
+Aws::BedrockRuntime::Model::ConverseStreamHandler& GetSdkHandler(
+    BedrockStreamHandlerHandle& handle);
 
 ConverseStreamRequestData BuildConverseStreamRequest(
     const chat::ChatRequest& request, const chat::ProviderConfig& config);

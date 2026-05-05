@@ -22,10 +22,6 @@
 
 namespace yac::provider {
 
-struct ConverseStreamRequestData {
-  Aws::BedrockRuntime::Model::ConverseStreamRequest request;
-};
-
 struct BedrockMessageData {
   Aws::BedrockRuntime::Model::Message message;
 };
@@ -485,6 +481,11 @@ BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
                                              const std::string& model) {
   return BedrockStreamHandlerHandle(new BedrockStreamHandlerData{
       .handler = BedrockStreamHandler(sink, provider_id, model)});
+}
+
+Aws::BedrockRuntime::Model::ConverseStreamHandler& GetSdkHandler(
+    BedrockStreamHandlerHandle& handle) {
+  return handle->handler;
 }
 
 }  // namespace yac::provider
