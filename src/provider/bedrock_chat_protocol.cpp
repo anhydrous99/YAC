@@ -22,7 +22,7 @@ struct ConverseStreamRequestData {
 };
 
 struct BedrockMessageData {
-  std::string role;
+  Aws::BedrockRuntime::Model::Message message;
 };
 
 struct ToolConfigData {
@@ -95,8 +95,96 @@ ConverseStreamRequestData BuildConverseStreamRequest(
 
 std::vector<BedrockMessageData> CoalesceToolResults(
     const std::vector<chat::ChatMessage>& messages) {
-  (void)messages;
-  return {};
+  using Aws::BedrockRuntime::Model::ContentBlock;
+  using Aws::BedrockRuntime::Model::ConversationRole;
+  using Aws::BedrockRuntime::Model::ToolResultContentBlock;
+  using Aws::BedrockRuntime::Model::ToolUseBlock;
+
+  std::vector<BedrockMessageData> out;
+  // Index of the in-flight coalesced user-role tool-result message in `out`.
+  // -1 means we are not currently coalescing tool results.
+  std::ptrdiff_t pending_tool_result_idx = -1;
+
+  for (const auto& msg : messages) {
+    // System messages are routed via SystemContentBlock by
+    // BuildConverseStreamRequest; do not emit them here.
+    if (msg.role == chat::ChatRole::System) {
+      pending_tool_result_idx = -1;
+      continue;
+    }
+
+    if (msg.role == chat::ChatRole::Tool) {
+      if (pending_tool_result_idx < 0) {
+        BedrockMessageData wrapper;
+        wrapper.message.SetRole(ConversationRole::user);
+        out.push_back(std::move(wrapper));
+        pending_tool_result_idx = static_cast<std::ptrdiff_t>(out.size()) - 1;
+      }
+
+      ToolResultContentBlock trc;
+      trc.SetText(msg.content);
+
+      Aws::BedrockRuntime::Model::ToolResultBlock trb;
+      trb.SetToolUseId(msg.tool_call_id);
+      trb.AddContent(std::move(trc));
+
+      ContentBlock cb;
+      cb.SetToolResult(std::move(trb));
+
+      out[static_cast<std::size_t>(pending_tool_result_idx)].message.AddContent(
+          std::move(cb));
+      continue;
+    }
+
+    // Non-tool message: any pending tool-result coalescing run ends here.
+    pending_tool_result_idx = -1;
+
+    BedrockMessageData data;
+    if (msg.role == chat::ChatRole::User) {
+      data.message.SetRole(ConversationRole::user);
+      ContentBlock cb;
+      cb.SetText(msg.content);
+      data.message.AddContent(std::move(cb));
+    } else {
+      data.message.SetRole(ConversationRole::assistant);
+      if (!msg.content.empty()) {
+        ContentBlock cb;
+        cb.SetText(msg.content);
+        data.message.AddContent(std::move(cb));
+      }
+      for (const auto& tc : msg.tool_calls) {
+        ToolUseBlock tub;
+        tub.SetToolUseId(tc.id);
+        tub.SetName(tc.name);
+
+        const std::string args_json =
+            tc.arguments_json.empty() ? "{}" : tc.arguments_json;
+        Aws::Utils::Document input_doc(args_json);
+        if (!input_doc.WasParseSuccessful()) {
+          throw std::runtime_error(
+              "[bedrock] Failed to parse tool_use input JSON for '" + tc.name +
+              "': " + std::string(input_doc.GetErrorMessage()));
+        }
+        tub.SetInput(std::move(input_doc));
+
+        ContentBlock cb;
+        cb.SetToolUse(std::move(tub));
+        data.message.AddContent(std::move(cb));
+      }
+      // Bedrock rejects messages with an empty content array. If an assistant
+      // message had no text and no tool_calls, emit a single empty text block
+      // to keep the array non-empty.
+      if (msg.content.empty() && msg.tool_calls.empty()) {
+        ContentBlock cb;
+        cb.SetText("");
+        data.message.AddContent(std::move(cb));
+      }
+    }
+
+    out.push_back(std::move(data));
+  }
+
+  return out;
 }
 
 chat::ErrorEvent MapBedrockSyncError(const std::string& error_type,
