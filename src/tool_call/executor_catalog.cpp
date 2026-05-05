@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <exception>
+#include <iostream>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -221,6 +223,19 @@ const PrepareRegistry kPrepareRegistry = {
 };
 
 }  // namespace
+
+void ValidateToolNames(const std::vector<chat::ToolDefinition>& tools) {
+  static const std::regex kBedrockToolNameRegex("^[a-zA-Z0-9_-]+$");
+  for (const auto& tool : tools) {
+    if (tool.name.size() > 64 ||
+        !std::regex_match(tool.name, kBedrockToolNameRegex)) {
+      std::cerr << "ERROR: Tool name '" << tool.name
+                << "' violates Bedrock compliance: must match [a-zA-Z0-9_-]+ "
+                   "and be ≤64 chars"
+                << std::endl;
+    }
+  }
+}
 
 bool HasToolExecutorPrepareRegistryEntry(std::string_view name) {
   return kPrepareRegistry.contains(name);

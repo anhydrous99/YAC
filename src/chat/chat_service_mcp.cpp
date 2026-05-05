@@ -3,6 +3,7 @@
 #include "core_types/mcp_manager_interface.hpp"
 #include "core_types/mcp_tool_catalog_snapshot.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "tool_call/executor_catalog.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -37,6 +38,10 @@ std::vector<ToolDefinition> ChatServiceMcp::MergeBuiltInsAndMcp(
   merged.reserve(built_ins.size() + snapshot.tools.size());
   merged.insert(merged.end(), built_ins.begin(), built_ins.end());
   merged.insert(merged.end(), snapshot.tools.begin(), snapshot.tools.end());
+
+  // Validate all tool names against Bedrock compliance regex
+  tool_call::ValidateToolNames(merged);
+
   return merged;
 }
 

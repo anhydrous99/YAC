@@ -30,6 +30,16 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # [provider]
 # id = "zai"
 
+# Bedrock provider — set id = "bedrock" to use AWS Bedrock (Converse API)
+# Credentials: AWS SDK default chain (env vars, ~/.aws/credentials, IAM role, SSO)
+# [provider]
+# id          = "bedrock"
+# model       = "anthropic.claude-3-5-haiku-20241022-v1:0"
+# options.region             = "us-east-1"   # or set AWS_REGION / YAC_BEDROCK_REGION
+# options.max_tokens         = "4096"
+# options.profile            = ""            # AWS profile (optional)
+# options.endpoint_override  = ""            # VPC endpoint (optional)
+
 [lsp.clangd]
 command = "clangd"
 args    = []

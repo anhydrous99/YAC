@@ -47,6 +47,7 @@ class ChatService {
   void SetEventCallback(ChatEventCallback callback);
   ChatMessageId SubmitUserMessage(std::string content);
   void SetModel(std::string model);
+  void SetProvider(std::string provider_id);
   void CancelActiveResponse();
   void ResolveToolApproval(std::string approval_id, bool approved);
   void ResolveAskUser(const std::string& approval_id, std::string response);

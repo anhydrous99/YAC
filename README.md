@@ -137,6 +137,24 @@ preset. When only `id` is set, the preset fills in `glm-5.1`,
 `https://api.z.ai/api/coding/paas/v4`, and `ZAI_API_KEY`; any field you set
 explicitly overrides the preset.
 
+### Bedrock provider
+
+Set `[provider].id = "bedrock"` to use AWS Bedrock via the Converse API.
+Credentials come from the AWS SDK's default chain (env vars, `~/.aws/credentials`, IAM role, SSO).
+
+| Setting | Env override | Default | Purpose |
+| --- | --- | --- | --- |
+| `provider.id` | `YAC_PROVIDER` | — | Set to `"bedrock"` |
+| `provider.model` | `YAC_MODEL` | `anthropic.claude-3-5-haiku-20241022-v1:0` | Bedrock model ID |
+| `provider.options.region` | `YAC_BEDROCK_REGION`, `AWS_REGION` | `us-east-1` | AWS region |
+| `provider.options.max_tokens` | `YAC_BEDROCK_MAX_TOKENS` | `4096` | Max output tokens |
+| `provider.options.profile` | `YAC_BEDROCK_PROFILE` | — | AWS profile name |
+| `provider.options.endpoint_override` | `YAC_BEDROCK_ENDPOINT_OVERRIDE` | — | VPC endpoint URL |
+
+Known-good model IDs: `anthropic.claude-3-5-sonnet-20241022-v2:0`, `anthropic.claude-3-5-haiku-20241022-v1:0`, `amazon.nova-pro-v1:0`, `amazon.nova-lite-v1:0`, `amazon.nova-micro-v1:0`, `meta.llama3-1-70b-instruct-v1:0`, `mistral.mistral-large-2407-v1:0`.
+Inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) are supported.
+Out of scope: prompt caching, Guardrails, Knowledge Bases, document/image content.
+
 API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell over
 placing `api_key` in the TOML file. Plaintext secrets in `$HOME` are harder to
 rotate safely and don't travel well across shells or CI.

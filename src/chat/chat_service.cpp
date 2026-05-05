@@ -110,6 +110,37 @@ void ChatService::SetModel(std::string model) {
                                         .model = std::move(new_model)}});
 }
 
+void ChatService::SetProvider(std::string provider_id) {
+  {
+    std::scoped_lock lock(mutex_);
+    if (config_.provider_id == provider_id) {
+      return;
+    }
+
+    bool has_non_system_messages = false;
+    for (const auto& msg : history_) {
+      if (msg.role != ChatRole::System) {
+        has_non_system_messages = true;
+        break;
+      }
+    }
+
+    if (has_non_system_messages) {
+      EmitEvent(ChatEvent{ErrorEvent{
+          .text = "Cannot change provider mid-session. Run /clear to start a "
+                  "new conversation, then change provider.",
+          .provider_id = config_.provider_id,
+          .model = config_.model}});
+      return;
+    }
+
+    config_.provider_id = std::move(provider_id);
+  }
+
+  EmitEvent(ChatEvent{ModelChangedEvent{.provider_id = config_.provider_id,
+                                        .model = config_.model}});
+}
+
 void ChatService::CancelActiveResponse() {
   std::scoped_lock lock(mutex_);
   if (!active_) {
