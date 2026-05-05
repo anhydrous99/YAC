@@ -297,6 +297,7 @@ add_library(yac_service STATIC
   src/chat/sub_agent_event_adapter.cpp
   src/app/model_context_windows.cpp
    src/provider/bedrock_logger.cpp
+   src/provider/bedrock_aws_api_guard.cpp
    src/provider/bedrock_chat_provider.cpp
    src/provider/openai_compatible_chat_provider.cpp
    src/provider/openai_compatible_chat_protocol.cpp
