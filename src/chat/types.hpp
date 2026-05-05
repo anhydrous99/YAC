@@ -445,6 +445,7 @@ struct ChatConfig {
   int auto_compact_keep_last = 20;
   std::string auto_compact_mode = "summarize";  // "summarize" | "truncate"
   int context_window = 0;
+  std::map<std::string, std::string> options;
   mcp::McpConfig mcp;
 };
 

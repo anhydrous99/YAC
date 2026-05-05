@@ -85,6 +85,10 @@ const std::unordered_map<std::string, ProviderPreset>& ProviderPresets() {
        {.model = "glm-5.1",
         .base_url = "https://api.z.ai/api/coding/paas/v4",
         .api_key_env = "ZAI_API_KEY"}},
+      {"bedrock",
+       {.model = "anthropic.claude-3-5-haiku-20241022-v1:0",
+        .base_url = "",
+        .api_key_env = ""}},
   };
   return presets;
 }
@@ -237,6 +241,30 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_COMPACT_MODE",
                         .detail = "Value must be 'summarize' or 'truncate'."});
+    }
+  }
+
+  // Bedrock-specific env overrides
+  if (config.provider_id == "bedrock") {
+    if (!config.options.count("region")) {
+      config.options["region"] = "us-east-1";
+    }
+    if (!config.options.count("max_tokens")) {
+      config.options["max_tokens"] = "4096";
+    }
+    if (auto val = GetEnv("YAC_BEDROCK_REGION")) {
+      config.options["region"] = std::move(*val);
+    } else if (auto val = GetEnv("AWS_REGION")) {
+      config.options["region"] = std::move(*val);
+    }
+    if (auto val = GetEnv("YAC_BEDROCK_PROFILE")) {
+      config.options["profile"] = std::move(*val);
+    }
+    if (auto val = GetEnv("YAC_BEDROCK_ENDPOINT_OVERRIDE")) {
+      config.options["endpoint_override"] = std::move(*val);
+    }
+    if (auto val = GetEnv("YAC_BEDROCK_MAX_TOKENS")) {
+      config.options["max_tokens"] = std::move(*val);
     }
   }
 
