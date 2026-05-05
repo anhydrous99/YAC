@@ -387,3 +387,21 @@ target_link_libraries(yac_test_mock_response_provider PRIVATE
 catch_discover_tests(yac_test_mock_response_provider
   TEST_PREFIX "yac_test_mock_response_provider::"
 )
+
+add_executable(yac_test_mock_bedrock_provider
+  mock_bedrock_provider.cpp
+  test_mock_bedrock_provider.cpp
+)
+target_include_directories(yac_test_mock_bedrock_provider PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_mock_bedrock_provider PRIVATE
+  yac_app
+  yac_service
+  yac_presentation
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_mock_bedrock_provider
+  TEST_PREFIX "yac_test_mock_bedrock_provider::"
+)
