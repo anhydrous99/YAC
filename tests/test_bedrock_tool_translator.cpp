@@ -85,12 +85,10 @@ TEST_CASE("TranslateToolDefinitions: invalid JSON schema throws") {
   REQUIRE_THROWS_AS(TranslateToolDefinitions(tools), std::runtime_error);
 }
 
-TEST_CASE(
-    "TranslateToolDefinitions: error message contains the tool name") {
-  std::vector<ToolDefinition> tools = {
-      {.name = "my_broken_tool",
-       .description = "test",
-       .parameters_schema_json = "{invalid"}};
+TEST_CASE("TranslateToolDefinitions: error message contains the tool name") {
+  std::vector<ToolDefinition> tools = {{.name = "my_broken_tool",
+                                        .description = "test",
+                                        .parameters_schema_json = "{invalid"}};
   try {
     TranslateToolDefinitions(tools);
     FAIL("Expected std::runtime_error to be thrown");
@@ -117,8 +115,7 @@ TEST_CASE("TranslateToolUseToYac: arguments_json is passed through") {
 }
 
 TEST_CASE("TranslateToolUseToYac: all fields are mapped correctly") {
-  auto req =
-      TranslateToolUseToYac("call-abc", "grep", R"({"pattern":"TODO"})");
+  auto req = TranslateToolUseToYac("call-abc", "grep", R"({"pattern":"TODO"})");
   REQUIRE(req.id == "call-abc");
   REQUIRE(req.name == "grep");
   REQUIRE(req.arguments_json == R"({"pattern":"TODO"})");
@@ -131,8 +128,7 @@ TEST_CASE("TranslateToolUseToYac: empty arguments_json is preserved") {
   REQUIRE(req.arguments_json.empty());
 }
 
-TEST_CASE(
-    "TranslateYacToolResultToBedrock: tool_call_id maps to ToolUseId") {
+TEST_CASE("TranslateYacToolResultToBedrock: tool_call_id maps to ToolUseId") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "output";
@@ -148,9 +144,8 @@ TEST_CASE("TranslateYacToolResultToBedrock: content maps to text block") {
   msg.tool_call_id = "call-result-2";
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(
-      std::string(result.block.GetContent()[0].GetText().c_str()) ==
-      "file contents here");
+  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()) ==
+          "file contents here");
 }
 
 TEST_CASE("TranslateYacToolResultToBedrock: empty content is preserved") {
@@ -160,12 +155,10 @@ TEST_CASE("TranslateYacToolResultToBedrock: empty content is preserved") {
   msg.tool_call_id = "call-empty-result";
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(
-      std::string(result.block.GetContent()[0].GetText().c_str()).empty());
+  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()).empty());
 }
 
-TEST_CASE(
-    "TranslateYacToolResultToBedrock: all fields mapped in one call") {
+TEST_CASE("TranslateYacToolResultToBedrock: all fields mapped in one call") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "tool output";
@@ -174,7 +167,6 @@ TEST_CASE(
   REQUIRE(std::string(result.block.GetToolUseId().c_str()) ==
           "call-full-result");
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(
-      std::string(result.block.GetContent()[0].GetText().c_str()) ==
-      "tool output");
+  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()) ==
+          "tool output");
 }

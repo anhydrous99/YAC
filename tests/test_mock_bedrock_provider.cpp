@@ -147,9 +147,8 @@ TEST_CASE("MockBedrockProvider: error when no entry matches") {
 }
 
 TEST_CASE("MockBedrockProvider: throws on missing script file") {
-  REQUIRE_THROWS_AS(
-      MockBedrockProvider("/nonexistent/bedrock_script.jsonl"),
-      std::runtime_error);
+  REQUIRE_THROWS_AS(MockBedrockProvider("/nonexistent/bedrock_script.jsonl"),
+                    std::runtime_error);
 }
 
 TEST_CASE("MockBedrockProvider: emits tool call events") {
@@ -213,7 +212,8 @@ TEST_CASE("MockBedrockProvider: guardrail stop_reason emits ErrorEvent") {
   REQUIRE(ev.finished);
 }
 
-TEST_CASE("MockBedrockProvider: content_filtered stop_reason emits ErrorEvent") {
+TEST_CASE(
+    "MockBedrockProvider: content_filtered stop_reason emits ErrorEvent") {
   TempFile script("bedrock_test_filtered.jsonl");
   script.Write(
       R"({"on_user_prompt_contains":"","stop_reason":"content_filtered"})");
@@ -256,7 +256,8 @@ TEST_CASE("MockBedrockProvider: request log is written") {
 
   TempFile log_file("bedrock_test_request_log.jsonl");
 
-  MockBedrockProvider provider(script.Path().string(), log_file.Path().string());
+  MockBedrockProvider provider(script.Path().string(),
+                               log_file.Path().string());
   RunStream(provider, "first message");
   RunStream(provider, "second message");
 

@@ -43,8 +43,8 @@ MockBedrockProvider::MockBedrockProvider(std::string script_path,
     : request_log_path_(std::move(request_log_path)) {
   std::ifstream file(script_path);
   if (!file.is_open()) {
-    throw std::runtime_error(
-        "MockBedrockProvider: cannot open script file: " + script_path);
+    throw std::runtime_error("MockBedrockProvider: cannot open script file: " +
+                             script_path);
   }
   std::string line;
   while (std::getline(file, line)) {

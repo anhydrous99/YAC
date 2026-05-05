@@ -15,9 +15,15 @@ static ChatRequest MakeRequest(const std::string& model = "test-model") {
 }
 
 TEST_CASE("IsErrorStopReason returns false for normal stop reasons") {
-  SECTION("end_turn") { REQUIRE_FALSE(IsErrorStopReason("end_turn")); }
-  SECTION("tool_use") { REQUIRE_FALSE(IsErrorStopReason("tool_use")); }
-  SECTION("max_tokens") { REQUIRE_FALSE(IsErrorStopReason("max_tokens")); }
+  SECTION("end_turn") {
+    REQUIRE_FALSE(IsErrorStopReason("end_turn"));
+  }
+  SECTION("tool_use") {
+    REQUIRE_FALSE(IsErrorStopReason("tool_use"));
+  }
+  SECTION("max_tokens") {
+    REQUIRE_FALSE(IsErrorStopReason("max_tokens"));
+  }
   SECTION("stop_sequence") {
     REQUIRE_FALSE(IsErrorStopReason("stop_sequence"));
   }
@@ -50,23 +56,19 @@ TEST_CASE(
     REQUIRE(err.text.find("access-denied") != std::string::npos);
   }
   SECTION("ValidationException") {
-    const auto err =
-        MapBedrockSyncError("ValidationException", "bad input");
+    const auto err = MapBedrockSyncError("ValidationException", "bad input");
     REQUIRE(err.text.find("validation") != std::string::npos);
   }
   SECTION("ModelErrorException") {
-    const auto err =
-        MapBedrockSyncError("ModelErrorException", "model error");
+    const auto err = MapBedrockSyncError("ModelErrorException", "model error");
     REQUIRE(err.text.find("model-error") != std::string::npos);
   }
   SECTION("ModelNotReadyException") {
-    const auto err =
-        MapBedrockSyncError("ModelNotReadyException", "not ready");
+    const auto err = MapBedrockSyncError("ModelNotReadyException", "not ready");
     REQUIRE(err.text.find("not-ready") != std::string::npos);
   }
   SECTION("ModelTimeoutException") {
-    const auto err =
-        MapBedrockSyncError("ModelTimeoutException", "timed out");
+    const auto err = MapBedrockSyncError("ModelTimeoutException", "timed out");
     REQUIRE(err.text.find("timeout") != std::string::npos);
   }
   SECTION("ResourceNotFoundException") {
@@ -75,8 +77,7 @@ TEST_CASE(
     REQUIRE(err.text.find("not-found") != std::string::npos);
   }
   SECTION("ServiceUnavailableException") {
-    const auto err =
-        MapBedrockSyncError("ServiceUnavailableException", "down");
+    const auto err = MapBedrockSyncError("ServiceUnavailableException", "down");
     REQUIRE(err.text.find("unavailable") != std::string::npos);
   }
   SECTION("InternalServerException") {
@@ -102,8 +103,7 @@ TEST_CASE("MapBedrockSyncError appends original message to error text") {
 TEST_CASE(
     "MapBedrockStreamError produces ErrorEvent with stream-specific prefix") {
   SECTION("throttlingException") {
-    const auto err =
-        MapBedrockStreamError("throttlingException", "too fast");
+    const auto err = MapBedrockStreamError("throttlingException", "too fast");
     REQUIRE(err.text.find("throttle") != std::string::npos);
   }
   SECTION("internalServerException") {
@@ -122,8 +122,7 @@ TEST_CASE(
     REQUIRE(err.text.find("unavailable") != std::string::npos);
   }
   SECTION("validationException") {
-    const auto err =
-        MapBedrockStreamError("validationException", "bad input");
+    const auto err = MapBedrockStreamError("validationException", "bad input");
     REQUIRE(err.text.find("validation") != std::string::npos);
   }
 }
@@ -138,8 +137,7 @@ TEST_CASE(
 
 TEST_CASE(
     "MapBedrockStreamError appends original message to stream error text") {
-  const auto err =
-      MapBedrockStreamError("throttlingException", "back off 5s");
+  const auto err = MapBedrockStreamError("throttlingException", "back off 5s");
   REQUIRE(err.text.find("back off 5s") != std::string::npos);
 }
 
@@ -169,8 +167,7 @@ TEST_CASE("BuildConverseStreamRequest sets model id from ChatRequest") {
 TEST_CASE(
     "BuildConverseStreamRequest with empty messages has no system block and "
     "no converse messages") {
-  const auto data =
-      BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
+  const auto data = BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
   REQUIRE(data.request.GetSystem().empty());
   REQUIRE(data.request.GetMessages().empty());
 }
@@ -213,17 +210,15 @@ TEST_CASE(
   req.messages = {
       ChatMessage{.role = ChatRole::System, .content = "sys"},
       ChatMessage{.role = ChatRole::User, .content = "user msg"},
-      ChatMessage{.role = ChatRole::Tool,
-                  .content = "result",
-                  .tool_call_id = "tc-1"},
+      ChatMessage{
+          .role = ChatRole::Tool, .content = "result", .tool_call_id = "tc-1"},
   };
   const auto data = BuildConverseStreamRequest(req, ProviderConfig{});
   REQUIRE(data.request.GetMessages().size() == 1);
 }
 
 TEST_CASE("BuildConverseStreamRequest uses default max_tokens of 4096") {
-  const auto data =
-      BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
+  const auto data = BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
   REQUIRE(data.request.GetInferenceConfig().GetMaxTokens() == 4096);
 }
 
@@ -270,8 +265,7 @@ TEST_CASE(
 
 TEST_CASE(
     "BuildConverseStreamRequest has no tool config when tools list is empty") {
-  const auto data =
-      BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
+  const auto data = BuildConverseStreamRequest(MakeRequest(), ProviderConfig{});
   REQUIRE_FALSE(data.request.ToolConfigHasBeenSet());
 }
 

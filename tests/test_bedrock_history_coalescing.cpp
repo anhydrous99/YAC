@@ -5,11 +5,10 @@
 #include <aws/bedrock-runtime/model/ToolResultBlock.h>
 #include <aws/bedrock-runtime/model/ToolResultContentBlock.h>
 #include <aws/bedrock-runtime/model/ToolUseBlock.h>
-
-#include <catch2/catch_test_macros.hpp>
-
 #include <string>
 #include <vector>
+
+#include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
 using namespace yac::provider;
@@ -67,9 +66,7 @@ TEST_CASE(
        .tool_calls = {ToolCallRequest{.id = "call-1",
                                       .name = "bash",
                                       .arguments_json = R"({"cmd":"ls"})"}}},
-      {.role = ChatRole::Tool,
-       .content = "file.txt",
-       .tool_call_id = "call-1"},
+      {.role = ChatRole::Tool, .content = "file.txt", .tool_call_id = "call-1"},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 3);
@@ -95,11 +92,12 @@ TEST_CASE(
       {.role = ChatRole::User, .content = "run three tools"},
       {.role = ChatRole::Assistant,
        .content = "",
-       .tool_calls = {
-           ToolCallRequest{.id = "c-a", .name = "bash"},
-           ToolCallRequest{.id = "c-b", .name = "bash"},
-           ToolCallRequest{.id = "c-c", .name = "bash"},
-       }},
+       .tool_calls =
+           {
+               ToolCallRequest{.id = "c-a", .name = "bash"},
+               ToolCallRequest{.id = "c-b", .name = "bash"},
+               ToolCallRequest{.id = "c-c", .name = "bash"},
+           }},
       {.role = ChatRole::Tool, .content = "out-a", .tool_call_id = "c-a"},
       {.role = ChatRole::Tool, .content = "out-b", .tool_call_id = "c-b"},
       {.role = ChatRole::Tool, .content = "out-c", .tool_call_id = "c-c"},
@@ -205,11 +203,13 @@ TEST_CASE(
   REQUIRE(result[0].message.GetRole() == ConversationRole::user);
   REQUIRE(result[1].message.GetRole() == ConversationRole::user);
   REQUIRE(
-      AwsStr(result[0].message.GetContent()[0].GetToolResult().GetToolUseId())
-      == "id1");
+      AwsStr(
+          result[0].message.GetContent()[0].GetToolResult().GetToolUseId()) ==
+      "id1");
   REQUIRE(
-      AwsStr(result[1].message.GetContent()[0].GetToolResult().GetToolUseId())
-      == "id2");
+      AwsStr(
+          result[1].message.GetContent()[0].GetToolResult().GetToolUseId()) ==
+      "id2");
 }
 
 TEST_CASE(
