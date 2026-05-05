@@ -3,6 +3,8 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "provider/bedrock_aws_api_guard.hpp"
+#include "provider/bedrock_chat_provider.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 
@@ -23,12 +25,27 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
   auto config_result = chat::LoadChatConfigResult();
   const auto& config = config_result.config;
 
-  auto provider = std::make_shared<provider::OpenAiCompatibleChatProvider>(
-      chat::ProviderConfig{.id = config.provider_id,
-                           .model = config.model,
-                           .api_key = config.api_key,
-                           .api_key_env = config.api_key_env,
-                           .base_url = config.base_url});
+  // Conditionally register Bedrock or OpenAI provider
+  std::shared_ptr<provider::LanguageModelProvider> provider;
+  if (config.provider_id == "bedrock") {
+    // AwsApiGuard must outlive all Bedrock usage — store as static local
+    static provider::AwsApiGuard aws_guard;
+    provider =
+        std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
+            .id = config.provider_id,
+            .model = config.model,
+            .api_key = config.api_key,
+            .api_key_env = config.api_key_env,
+            .base_url = config.base_url,
+        });
+  } else {
+    provider = std::make_shared<provider::OpenAiCompatibleChatProvider>(
+        chat::ProviderConfig{.id = config.provider_id,
+                             .model = config.model,
+                             .api_key = config.api_key,
+                             .api_key_env = config.api_key_env,
+                             .base_url = config.base_url});
+  }
 
   provider::ProviderRegistry registry;
   registry.Register(provider);
