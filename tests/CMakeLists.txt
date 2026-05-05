@@ -54,6 +54,9 @@ target_include_directories(yac_test_bedrock_chat_protocol SYSTEM PRIVATE
   ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
   ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
 )
+target_link_libraries(yac_test_bedrock_chat_protocol PRIVATE
+  aws-cpp-sdk-bedrock-runtime aws-cpp-sdk-core
+)
 yac_add_test(yac_test_bedrock_tool_translator         test_bedrock_tool_translator.cpp)
 target_link_libraries(yac_test_bedrock_tool_translator PRIVATE
   aws-cpp-sdk-bedrock-runtime
