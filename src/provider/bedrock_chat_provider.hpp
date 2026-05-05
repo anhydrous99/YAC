@@ -20,7 +20,8 @@ class BedrockChatProvider final : public LanguageModelProvider {
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override;
   [[nodiscard]] bool SupportsModelDiscovery() const override;
-  [[nodiscard]] int GetContextWindow(const std::string& model_id) const override;
+  [[nodiscard]] int GetContextWindow(
+      const std::string& model_id) const override;
 
  private:
   struct Impl;

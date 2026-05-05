@@ -23,8 +23,9 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
   (void)request;
   (void)stop_token;
 
-  sink(chat::ErrorEvent{.text = "BedrockChatProvider not yet implemented"});
-  sink(chat::FinishedEvent{});
+  sink(chat::ChatEvent{
+      chat::ErrorEvent{.text = "BedrockChatProvider not yet implemented"}});
+  sink(chat::ChatEvent{chat::FinishedEvent{}});
 }
 
 bool BedrockChatProvider::SupportsModelDiscovery() const {
