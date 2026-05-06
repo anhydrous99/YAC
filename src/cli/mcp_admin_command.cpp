@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <iterator>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -264,9 +263,8 @@ mcp::ITokenStore& McpAdminCommand::GetTokenStore() {
   if (!token_store_cache_) {
     if (opts_.token_store) {
       token_store_cache_ = opts_.token_store;
-    } else if (UseFileTokenStoreOverride()) {
-      token_store_cache_ = std::make_shared<mcp::FileTokenStore>();
-    } else if (mcp::KeychainTokenStore::IsKeychainAvailable()) {
+    } else if (!UseFileTokenStoreOverride() &&
+               mcp::KeychainTokenStore::IsKeychainAvailable()) {
       token_store_cache_ = std::make_shared<mcp::KeychainTokenStore>();
     } else {
       token_store_cache_ = std::make_shared<mcp::FileTokenStore>();

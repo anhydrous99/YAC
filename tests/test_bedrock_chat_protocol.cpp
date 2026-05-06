@@ -203,7 +203,7 @@ TEST_CASE("BuildConverseStreamRequest sets model id from ChatRequest") {
   auto req = MakeRequest("anthropic.claude-3-5-haiku-20241022-v1:0");
   const ProviderConfig config;
   const auto data = BuildConverseStreamRequest(req, config);
-  REQUIRE(std::string(data.request.GetModelId().c_str()) ==
+  REQUIRE(data.request.GetModelId() ==
           "anthropic.claude-3-5-haiku-20241022-v1:0");
 }
 
@@ -225,8 +225,7 @@ TEST_CASE(
   };
   const auto data = BuildConverseStreamRequest(req, ProviderConfig{});
   REQUIRE(data.request.GetSystem().size() == 1);
-  REQUIRE(std::string(data.request.GetSystem()[0].GetText().c_str()) ==
-          "You are helpful");
+  REQUIRE(data.request.GetSystem()[0].GetText() == "You are helpful");
   REQUIRE(data.request.GetMessages().size() == 1);
 }
 
@@ -240,7 +239,7 @@ TEST_CASE(
   };
   const auto data = BuildConverseStreamRequest(req, ProviderConfig{});
   REQUIRE(data.request.GetSystem().size() == 1);
-  const std::string sys_text(data.request.GetSystem()[0].GetText().c_str());
+  const std::string sys_text = data.request.GetSystem()[0].GetText();
   REQUIRE(sys_text.find("Part one") != std::string::npos);
   REQUIRE(sys_text.find("Part two") != std::string::npos);
   REQUIRE(data.request.GetMessages().empty());

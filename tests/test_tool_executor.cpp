@@ -141,7 +141,7 @@ TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   const auto json = Json::parse(result.result_json);
   REQUIRE(json["error"] == "Unknown tool: does_not_exist");
   REQUIRE(json["tool_name"] == "does_not_exist");
-  REQUIRE(json["received_arguments"] == "");
+  REQUIRE(json["received_arguments"].empty());
   REQUIRE_FALSE(json.contains("expected_schema"));
   REQUIRE(std::holds_alternative<FileWriteCall>(result.block));
   REQUIRE(std::get<FileWriteCall>(result.block).is_error);

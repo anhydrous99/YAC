@@ -1,7 +1,6 @@
 #include "mcp/tool_naming.hpp"
 
 #include <random>
-#include <regex>
 #include <string>
 
 #include <catch2/catch_test_macros.hpp>
@@ -17,7 +16,7 @@ constexpr std::string_view kBedrockToolNameRegex = "^[a-zA-Z0-9_-]+$";
 void AssertBedrockInvariant(const std::string& result) {
   REQUIRE(result.size() <= kBedrockMaxToolNameLength);
   REQUIRE_THAT(result, Matches(std::string(kBedrockToolNameRegex)));
-  REQUIRE(result.size() > 0);
+  REQUIRE(!result.empty());
 }
 
 }  // namespace
@@ -117,7 +116,7 @@ TEST_CASE("bedrock_invariant_determinism", "[mcp_tool_name_invariant]") {
 
 TEST_CASE("bedrock_invariant_empty_tool_name", "[mcp_tool_name_invariant]") {
   const std::string server_id = "github";
-  const std::string tool_name = "";
+  const std::string tool_name;
   const std::string result =
       yac::mcp::SanitizeMcpToolName(server_id, tool_name);
   AssertBedrockInvariant(result);
@@ -125,7 +124,7 @@ TEST_CASE("bedrock_invariant_empty_tool_name", "[mcp_tool_name_invariant]") {
 
 TEST_CASE("bedrock_invariant_empty_server_id_throws",
           "[mcp_tool_name_invariant]") {
-  const std::string server_id = "";
+  const std::string server_id;
   const std::string tool_name = "test_tool";
   REQUIRE_THROWS_AS(yac::mcp::SanitizeMcpToolName(server_id, tool_name),
                     std::invalid_argument);

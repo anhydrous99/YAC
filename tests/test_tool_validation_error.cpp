@@ -36,9 +36,15 @@ TEST_CASE("BuildValidationErrorJson includes parsed schema for known tool") {
   bool has_old_string = false;
   bool has_new_string = false;
   for (const auto& item : required) {
-    if (item == "filepath") has_filepath = true;
-    if (item == "old_string") has_old_string = true;
-    if (item == "new_string") has_new_string = true;
+    if (item == "filepath") {
+      has_filepath = true;
+    }
+    if (item == "old_string") {
+      has_old_string = true;
+    }
+    if (item == "new_string") {
+      has_new_string = true;
+    }
   }
   REQUIRE(has_filepath);
   REQUIRE(has_old_string);
@@ -62,7 +68,7 @@ TEST_CASE("BuildValidationErrorJson handles empty raw arguments") {
                           "");
   const auto definitions = yac::tool_call::ToolExecutor::Definitions();
   const auto json = Json::parse(BuildValidationErrorJson(err, definitions));
-  REQUIRE(json["received_arguments"] == "");
+  REQUIRE(json["received_arguments"].empty());
   REQUIRE(json.contains("expected_schema"));
 }
 

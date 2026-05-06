@@ -198,7 +198,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: tool_call_id maps to ToolUseId") {
   msg.content = "output";
   msg.tool_call_id = "call-result-1";
   auto result = TranslateYacToolResultToBedrock(msg);
-  REQUIRE(std::string(result.block.GetToolUseId().c_str()) == "call-result-1");
+  REQUIRE(result.block.GetToolUseId() == "call-result-1");
 }
 
 TEST_CASE("TranslateYacToolResultToBedrock: content maps to text block") {
@@ -208,8 +208,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: content maps to text block") {
   msg.tool_call_id = "call-result-2";
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()) ==
-          "file contents here");
+  REQUIRE(result.block.GetContent()[0].GetText() == "file contents here");
 }
 
 TEST_CASE("TranslateYacToolResultToBedrock: empty content is preserved") {
@@ -219,7 +218,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: empty content is preserved") {
   msg.tool_call_id = "call-empty-result";
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()).empty());
+  REQUIRE(result.block.GetContent()[0].GetText().empty());
 }
 
 TEST_CASE("TranslateYacToolResultToBedrock: all fields mapped in one call") {
@@ -228,9 +227,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: all fields mapped in one call") {
   msg.content = "tool output";
   msg.tool_call_id = "call-full-result";
   auto result = TranslateYacToolResultToBedrock(msg);
-  REQUIRE(std::string(result.block.GetToolUseId().c_str()) ==
-          "call-full-result");
+  REQUIRE(result.block.GetToolUseId() == "call-full-result");
   REQUIRE(result.block.GetContent().size() == 1);
-  REQUIRE(std::string(result.block.GetContent()[0].GetText().c_str()) ==
-          "tool output");
+  REQUIRE(result.block.GetContent()[0].GetText() == "tool output");
 }

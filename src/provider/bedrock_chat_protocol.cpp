@@ -250,12 +250,12 @@ ToolConfigData TranslateToolDefinitions(
   // Bedrock requires tool names to match ^[a-zA-Z0-9_-]+$ and be ≤64 chars.
   // OpenAI accepts a broader set (including '.'), so this check is scoped to
   // the Bedrock translator rather than the cross-provider tool catalog.
-  static const std::regex kBedrockToolNameRegex("^[a-zA-Z0-9_-]+$");
+  static const std::regex bedrock_tool_name_regex("^[a-zA-Z0-9_-]+$");
 
   ToolConfigData data;
   for (const auto& def : tools) {
     if (def.name.size() > 64 ||
-        !std::regex_match(def.name, kBedrockToolNameRegex)) {
+        !std::regex_match(def.name, bedrock_tool_name_regex)) {
       throw std::runtime_error(
           "[bedrock-validation] Tool name '" + def.name +
           "' violates Bedrock compliance: must match ^[a-zA-Z0-9_-]+$ and be "
@@ -347,7 +347,7 @@ class BedrockStreamHandler
   BedrockStreamHandler& operator=(const BedrockStreamHandler&) = delete;
   BedrockStreamHandler(BedrockStreamHandler&&) = delete;
   BedrockStreamHandler& operator=(BedrockStreamHandler&&) = delete;
-  ~BedrockStreamHandler() = default;
+  ~BedrockStreamHandler() override = default;
 
  private:
   void OnMessageStart(
@@ -478,7 +478,7 @@ struct BedrockStreamHandlerData {
 };
 
 void DestroyBedrockStreamHandler(BedrockStreamHandlerData* data) noexcept {
-  delete data;
+  delete data;  // NOLINT(cppcoreguidelines-owning-memory)
 }
 
 BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
