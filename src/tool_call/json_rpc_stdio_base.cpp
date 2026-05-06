@@ -22,6 +22,15 @@ void CloseFd(int* fd) {
   *fd = -1;
 }
 
+// Ignore SIGPIPE process-wide so that writing to a pipe whose reader has
+// closed (e.g. a stdio child that exited before consuming the request)
+// returns EPIPE from write() rather than terminating the process. The
+// throwing branch in WriteBytes then surfaces it as a runtime_error.
+[[maybe_unused]] const auto kIgnoreSigpipeOnce = [] {
+  std::signal(SIGPIPE, SIG_IGN);
+  return 0;
+}();
+
 }  // namespace
 
 JsonRpcStdioBase::JsonRpcStdioBase(std::string error_label)
