@@ -16,14 +16,18 @@ endfunction()
 # and links the bedrock-runtime + core libraries.
 function(yac_add_aws_test name source)
   yac_add_test(${name} ${source})
-  target_include_directories(${name} SYSTEM PRIVATE
-    ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-    ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-  )
-  target_link_libraries(${name} PRIVATE
-    aws-cpp-sdk-bedrock-runtime
-    aws-cpp-sdk-core
-  )
+  if(NOT YAC_USE_VCPKG_AWSSDK)
+    target_include_directories(${name} SYSTEM PRIVATE
+      ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+      ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+    )
+    target_link_libraries(${name} PRIVATE
+      aws-cpp-sdk-bedrock-runtime
+      aws-cpp-sdk-core
+    )
+  else()
+    target_link_libraries(${name} PRIVATE ${AWSSDK_LINK_LIBRARIES})
+  endif()
 endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
