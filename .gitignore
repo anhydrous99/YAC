@@ -1,4 +1,5 @@
 build/
+build-*/
 cmake-*/
 .cache/
 compile_commands.json
@@ -11,3 +12,11 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .DS_Store
+
+# vcpkg
+external/vcpkg/vcpkg
+external/vcpkg/buildtrees/
+external/vcpkg/packages/
+external/vcpkg/installed/
+external/vcpkg/downloads/
+vcpkg_installed/
