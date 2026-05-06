@@ -54,7 +54,7 @@ ConverseStreamRequestData BuildConverseStreamRequest(
 
   Aws::BedrockRuntime::Model::InferenceConfiguration inf_config;
   int max_tokens = 4096;
-  if (config.options.count("max_tokens") != 0) {
+  if (config.options.contains("max_tokens")) {
     max_tokens = std::stoi(config.options.at("max_tokens"));
   }
   inf_config.SetMaxTokens(max_tokens);

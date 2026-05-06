@@ -246,10 +246,10 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
 
   // Bedrock-specific env overrides
   if (config.provider_id == "bedrock") {
-    if (!config.options.count("region")) {
+    if (!config.options.contains("region")) {
       config.options["region"] = "us-east-1";
     }
-    if (!config.options.count("max_tokens")) {
+    if (!config.options.contains("max_tokens")) {
       config.options["max_tokens"] = "4096";
     }
     if (auto val = GetEnv("YAC_BEDROCK_REGION")) {
