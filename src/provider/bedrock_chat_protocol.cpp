@@ -17,6 +17,7 @@
 #include <aws/bedrock-runtime/model/ToolSpecification.h>
 #include <aws/core/client/AWSError.h>
 #include <aws/core/utils/Document.h>
+#include <regex>
 #include <stdexcept>
 #include <utility>
 
@@ -231,8 +232,21 @@ bool IsErrorStopReason(const std::string& stop_reason) {
 
 ToolConfigData TranslateToolDefinitions(
     const std::vector<chat::ToolDefinition>& tools) {
+  // Bedrock requires tool names to match ^[a-zA-Z0-9_-]+$ and be ≤64 chars.
+  // OpenAI accepts a broader set (including '.'), so this check is scoped to
+  // the Bedrock translator rather than the cross-provider tool catalog.
+  static const std::regex kBedrockToolNameRegex("^[a-zA-Z0-9_-]+$");
+
   ToolConfigData data;
   for (const auto& def : tools) {
+    if (def.name.size() > 64 ||
+        !std::regex_match(def.name, kBedrockToolNameRegex)) {
+      throw std::runtime_error(
+          "[bedrock-validation] Tool name '" + def.name +
+          "' violates Bedrock compliance: must match ^[a-zA-Z0-9_-]+$ and be "
+          "<=64 chars");
+    }
+
     Aws::Utils::Document schema_doc(def.parameters_schema_json);
     if (!schema_doc.WasParseSuccessful()) {
       throw std::runtime_error(
