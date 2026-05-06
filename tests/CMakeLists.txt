@@ -11,6 +11,21 @@ function(yac_add_test name source)
   catch_discover_tests(${name} TEST_PREFIX "${name}::")
 endfunction()
 
+# Variant of yac_add_test for Bedrock tests that include AWS SDK headers
+# directly (e.g. translator/protocol unit tests). Adds the AWS include paths
+# and links the bedrock-runtime + core libraries.
+function(yac_add_aws_test name source)
+  yac_add_test(${name} ${source})
+  target_include_directories(${name} SYSTEM PRIVATE
+    ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
+    ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
+  )
+  target_link_libraries(${name} PRIVATE
+    aws-cpp-sdk-bedrock-runtime
+    aws-cpp-sdk-core
+  )
+endfunction()
+
 yac_add_test(yac_test_message          test_message.cpp)
 yac_add_test(yac_test_string_util      test_string_util.cpp)
 yac_add_test(yac_test_count_summary    test_count_summary.cpp)
@@ -49,23 +64,8 @@ yac_add_test(yac_test_chat_event_bridge_mcp test_chat_event_bridge_mcp.cpp)
 yac_add_test(yac_test_model_discovery  test_model_discovery.cpp)
 yac_add_test(yac_test_openai_compatible_chat_provider test_openai_compatible_chat_provider.cpp)
 yac_add_test(yac_test_openai_compatible_chat_protocol test_openai_compatible_chat_protocol.cpp)
-yac_add_test(yac_test_bedrock_chat_protocol test_bedrock_chat_protocol.cpp)
-target_include_directories(yac_test_bedrock_chat_protocol SYSTEM PRIVATE
-  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-)
-target_link_libraries(yac_test_bedrock_chat_protocol PRIVATE
-  aws-cpp-sdk-bedrock-runtime aws-cpp-sdk-core
-)
-yac_add_test(yac_test_bedrock_tool_translator         test_bedrock_tool_translator.cpp)
-target_link_libraries(yac_test_bedrock_tool_translator PRIVATE
-  aws-cpp-sdk-bedrock-runtime
-  aws-cpp-sdk-core
-)
-target_include_directories(yac_test_bedrock_tool_translator PRIVATE
-  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-)
+yac_add_aws_test(yac_test_bedrock_chat_protocol test_bedrock_chat_protocol.cpp)
+yac_add_aws_test(yac_test_bedrock_tool_translator test_bedrock_tool_translator.cpp)
 yac_add_test(yac_test_model_context_windows test_model_context_windows.cpp)
 yac_add_test(yac_test_provider_context_window test_provider_context_window.cpp)
 yac_add_test(yac_test_auto_compact      test_auto_compact.cpp)
@@ -80,13 +80,8 @@ yac_add_test(yac_test_chat_config_bedrock test_chat_config_bedrock.cpp)
 yac_add_test(yac_test_prompt_library   test_prompt_library.cpp)
 yac_add_test(yac_test_ask_user         test_ask_user.cpp)
 yac_add_test(yac_test_sub_agent_manager test_sub_agent_manager.cpp)
-yac_add_test(yac_test_bedrock_history_coalescing
-  test_bedrock_history_coalescing.cpp
-)
-target_link_libraries(yac_test_bedrock_history_coalescing PRIVATE
-  aws-cpp-sdk-bedrock-runtime
-  aws-cpp-sdk-core
-)
+yac_add_aws_test(yac_test_bedrock_history_coalescing
+  test_bedrock_history_coalescing.cpp)
 yac_add_test(yac_test_sub_agent_mcp     test_sub_agent_mcp.cpp)
 target_include_directories(yac_test_sub_agent_mcp PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -115,15 +110,7 @@ yac_add_test(yac_test_subprocess_runner test_subprocess_runner.cpp)
 yac_add_test(yac_test_mcp_protocol_constants test_mcp_protocol_constants.cpp)
 yac_add_test(yac_test_mcp_tool_naming test_mcp_tool_naming.cpp)
 yac_add_test(yac_test_mcp_tool_name_invariant test_mcp_tool_name_invariant.cpp)
-yac_add_test(yac_test_bedrock_mcp_interop test_bedrock_mcp_interop.cpp)
-target_include_directories(yac_test_bedrock_mcp_interop SYSTEM PRIVATE
-  ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-  ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-)
-target_link_libraries(yac_test_bedrock_mcp_interop PRIVATE
-  aws-cpp-sdk-bedrock-runtime
-  aws-cpp-sdk-core
-)
+yac_add_aws_test(yac_test_bedrock_mcp_interop test_bedrock_mcp_interop.cpp)
 yac_add_test(yac_test_mcp_secret_redaction test_mcp_secret_redaction.cpp)
 yac_add_test(yac_test_mcp_debug_log test_mcp_debug_log.cpp)
 yac_add_test(yac_test_mcp_file_token_store test_mcp_file_token_store.cpp)
