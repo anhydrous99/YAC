@@ -62,6 +62,8 @@ chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
 
 bool IsErrorStopReason(const std::string& stop_reason);
 
+bool IsCredentialError(const std::string& exception_name);
+
 struct ToolConfigData {
   Aws::BedrockRuntime::Model::ToolConfiguration config;
 };

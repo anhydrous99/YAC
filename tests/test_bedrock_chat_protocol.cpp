@@ -104,6 +104,46 @@ TEST_CASE("MapBedrockSyncError appends original message to error text") {
 }
 
 TEST_CASE(
+    "MapBedrockSyncError produces credential-specific prefixes for new "
+    "exception types") {
+  SECTION("ExpiredTokenException") {
+    const auto err =
+        MapBedrockSyncError("ExpiredTokenException", "token expired");
+    REQUIRE(err.text.find("expired-token") != std::string::npos);
+    REQUIRE(err.text.find("token expired") != std::string::npos);
+  }
+  SECTION("InvalidSignatureException") {
+    const auto err =
+        MapBedrockSyncError("InvalidSignatureException", "bad sig");
+    REQUIRE(err.text.find("invalid-signature") != std::string::npos);
+    REQUIRE(err.text.find("bad sig") != std::string::npos);
+  }
+  SECTION("UnauthorizedException") {
+    const auto err =
+        MapBedrockSyncError("UnauthorizedException", "not authorized");
+    REQUIRE(err.text.find("unauthorized") != std::string::npos);
+    REQUIRE(err.text.find("not authorized") != std::string::npos);
+  }
+}
+
+TEST_CASE("IsCredentialError returns true for credential-failure exceptions") {
+  REQUIRE(IsCredentialError("ExpiredTokenException"));
+  REQUIRE(IsCredentialError("InvalidSignatureException"));
+  REQUIRE(IsCredentialError("UnauthorizedException"));
+  REQUIRE(IsCredentialError("AccessDeniedException"));
+}
+
+TEST_CASE("IsCredentialError returns false for non-credential exceptions") {
+  REQUIRE_FALSE(IsCredentialError("ThrottlingException"));
+  REQUIRE_FALSE(IsCredentialError("ValidationException"));
+  REQUIRE_FALSE(IsCredentialError("InternalServerException"));
+  REQUIRE_FALSE(IsCredentialError("ResourceNotFoundException"));
+  REQUIRE_FALSE(IsCredentialError("ModelErrorException"));
+  REQUIRE_FALSE(IsCredentialError(""));
+  REQUIRE_FALSE(IsCredentialError("SomeUnknownException"));
+}
+
+TEST_CASE(
     "MapBedrockStreamError produces ErrorEvent with stream-specific prefix") {
   SECTION("throttlingException") {
     const auto err = MapBedrockStreamError("throttlingException", "too fast");

@@ -188,6 +188,14 @@ chat::ErrorEvent MapBedrockSyncError(const std::string& error_type,
     prefix = "[bedrock-validation] Request validation failed: ";
   } else if (error_type == "InternalServerException") {
     prefix = "[bedrock-internal] Bedrock internal error: ";
+  } else if (error_type == "ExpiredTokenException") {
+    prefix = "[bedrock-expired-token] AWS credentials have expired: ";
+  } else if (error_type == "InvalidSignatureException") {
+    prefix =
+        "[bedrock-invalid-signature] AWS request signature is invalid "
+        "(credentials may be expired): ";
+  } else if (error_type == "UnauthorizedException") {
+    prefix = "[bedrock-unauthorized] AWS request unauthorized: ";
   } else {
     prefix = "[bedrock-error] " + error_type + ": ";
   }
@@ -228,6 +236,13 @@ bool IsErrorStopReason(const std::string& stop_reason) {
   }
 
   return false;
+}
+
+bool IsCredentialError(const std::string& exception_name) {
+  return exception_name == "ExpiredTokenException" ||
+         exception_name == "InvalidSignatureException" ||
+         exception_name == "UnauthorizedException" ||
+         exception_name == "AccessDeniedException";
 }
 
 ToolConfigData TranslateToolDefinitions(

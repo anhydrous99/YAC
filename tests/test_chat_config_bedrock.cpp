@@ -158,3 +158,25 @@ TEST_CASE("non-bedrock provider does not validate max_tokens") {
   const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
   REQUIRE_FALSE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
 }
+
+TEST_CASE("bedrock credential_refresh_command is absent when env var unset") {
+  TempFile file("yac_test_bedrock_refresh_cmd_default.toml");
+  WriteFile(file.Path(), kBedrockToml);
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+  const auto it = result.config.options.find("credential_refresh_command");
+  const bool absent_or_empty =
+      it == result.config.options.end() || it->second.empty();
+  REQUIRE(absent_or_empty);
+}
+
+TEST_CASE("bedrock credential_refresh_command is populated from env var") {
+  TempFile file("yac_test_bedrock_refresh_cmd_env.toml");
+  WriteFile(file.Path(), kBedrockToml);
+
+  ScopedEnvVar override("YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND",
+                        "aws sso login --profile my-profile");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+  REQUIRE(result.config.options.at("credential_refresh_command") ==
+          "aws sso login --profile my-profile");
+}

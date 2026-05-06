@@ -39,6 +39,7 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # options.max_tokens         = "4096"
 # options.profile            = ""            # AWS profile (optional)
 # options.endpoint_override  = ""            # VPC endpoint (optional)
+# options.credential_refresh_command = ""    # shell command to run on auth failure before retrying (e.g. "aws sso login --profile foo"); also settable via YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND
 
 [lsp.clangd]
 command = "clangd"

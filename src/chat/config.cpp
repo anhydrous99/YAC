@@ -263,6 +263,9 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     if (auto val = GetEnv("YAC_BEDROCK_ENDPOINT_OVERRIDE")) {
       config.options["endpoint_override"] = std::move(*val);
     }
+    if (auto val = GetEnv("YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND")) {
+      config.options["credential_refresh_command"] = std::move(*val);
+    }
     if (auto val = GetEnv("YAC_BEDROCK_MAX_TOKENS")) {
       config.options["max_tokens"] = std::move(*val);
     }

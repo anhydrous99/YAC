@@ -2,6 +2,7 @@
 
 #include "chat/types.hpp"
 #include "provider/bedrock_chat_protocol.hpp"
+#include "tool_call/subprocess_runner.hpp"
 
 #include <aws/bedrock-runtime/BedrockRuntimeClient.h>
 #include <aws/core/auth/AWSCredentialsProvider.h>
@@ -103,46 +104,70 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
       profile_name = it->second;
     }
 
-    std::unique_ptr<Aws::BedrockRuntime::BedrockRuntimeClient> client;
-    if (!profile_name.empty()) {
-      auto creds =
-          Aws::MakeShared<Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
-              "yac-bedrock", profile_name.c_str());
-      client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
-          creds, client_config);
-    } else {
-      client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
-          client_config);
+    std::string refresh_cmd;
+    if (auto it = opts.find("credential_refresh_command");
+        it != opts.end() && !it->second.empty()) {
+      refresh_cmd = it->second;
     }
+    const int max_attempts = refresh_cmd.empty() ? 1 : 2;
 
-    CancellationWatchdog watchdog(stop_token, client.get());
+    for (int attempt = 0; attempt < max_attempts; ++attempt) {
+      if (stop_token.stop_requested()) {
+        sink(chat::ChatEvent{chat::CancelledEvent{}});
+        return;
+      }
 
-    auto req_data = BuildConverseStreamRequest(request, impl_->config);
+      std::unique_ptr<Aws::BedrockRuntime::BedrockRuntimeClient> client;
+      if (!profile_name.empty()) {
+        auto creds =
+            Aws::MakeShared<Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
+                "yac-bedrock", profile_name.c_str());
+        client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
+            creds, client_config);
+      } else {
+        client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
+            client_config);
+      }
 
-    auto handler_handle =
-        MakeStreamHandler(sink, impl_->config.id, request.model);
-    req_data.request.SetEventStreamHandler(GetSdkHandler(handler_handle));
+      CancellationWatchdog watchdog(stop_token, client.get());
 
-    auto outcome = client->ConverseStream(req_data.request);
+      auto req_data = BuildConverseStreamRequest(request, impl_->config);
+      auto handler_handle =
+          MakeStreamHandler(sink, impl_->config.id, request.model);
+      req_data.request.SetEventStreamHandler(GetSdkHandler(handler_handle));
 
-    if (!outcome.IsSuccess()) {
-      const auto& err = outcome.GetError();
-      const auto& name = err.GetExceptionName();
-      const auto& message = err.GetMessage();
-      auto error_event =
-          MapBedrockSyncError(std::string(name.c_str(), name.size()),
-                              std::string(message.c_str(), message.size()));
-      error_event.provider_id = impl_->config.id;
-      error_event.model = request.model;
-      sink(chat::ChatEvent{std::move(error_event)});
-      sink(chat::ChatEvent{chat::FinishedEvent{}});
+      auto outcome = client->ConverseStream(req_data.request);
+
+      if (!outcome.IsSuccess()) {
+        const auto& err = outcome.GetError();
+        std::string name(err.GetExceptionName().c_str(),
+                         err.GetExceptionName().size());
+        std::string message(err.GetMessage().c_str(), err.GetMessage().size());
+
+        if (attempt == 0 && !refresh_cmd.empty() && IsCredentialError(name)) {
+          tool_call::SubprocessOptions sub_opts{
+              .argv = {"/bin/sh", "-c", refresh_cmd.c_str()},
+          };
+          auto result = tool_call::RunSubprocessCapture(sub_opts, stop_token);
+          if (result.exit_code == 0 && !stop_token.stop_requested()) {
+            continue;
+          }
+        }
+
+        auto error_event = MapBedrockSyncError(name, message);
+        error_event.provider_id = impl_->config.id;
+        error_event.model = request.model;
+        sink(chat::ChatEvent{std::move(error_event)});
+        sink(chat::ChatEvent{chat::FinishedEvent{}});
+        return;
+      }
+
+      if (stop_token.stop_requested()) {
+        sink(chat::ChatEvent{chat::CancelledEvent{}});
+      } else {
+        sink(chat::ChatEvent{chat::FinishedEvent{}});
+      }
       return;
-    }
-
-    if (stop_token.stop_requested()) {
-      sink(chat::ChatEvent{chat::CancelledEvent{}});
-    } else {
-      sink(chat::ChatEvent{chat::FinishedEvent{}});
     }
   } catch (const std::exception& e) {
     sink(chat::ChatEvent{
