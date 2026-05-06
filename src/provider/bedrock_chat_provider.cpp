@@ -4,9 +4,12 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
 #include <aws/bedrock-runtime/BedrockRuntimeClient.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/auth/AWSCredentialsProvider.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <chrono>
 #include <exception>
+#include <memory>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -91,9 +94,28 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
       client_config.endpointOverride = it->second;
     }
 
-    Aws::BedrockRuntime::BedrockRuntimeClient client(client_config);
+    // When options.profile is non-empty, use the named profile from
+    // ~/.aws/credentials directly. Otherwise fall back to the SDK's default
+    // chain (env vars, instance metadata, SSO, default profile).
+    std::string profile_name;
+    if (auto it = opts.find("profile");
+        it != opts.end() && !it->second.empty()) {
+      profile_name = it->second;
+    }
 
-    CancellationWatchdog watchdog(stop_token, &client);
+    std::unique_ptr<Aws::BedrockRuntime::BedrockRuntimeClient> client;
+    if (!profile_name.empty()) {
+      auto creds = Aws::MakeShared<
+          Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
+          "yac-bedrock", profile_name.c_str());
+      client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
+          creds, client_config);
+    } else {
+      client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
+          client_config);
+    }
+
+    CancellationWatchdog watchdog(stop_token, client.get());
 
     auto req_data = BuildConverseStreamRequest(request, impl_->config);
 
@@ -101,7 +123,7 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
         MakeStreamHandler(sink, impl_->config.id, request.model);
     req_data.request.SetEventStreamHandler(GetSdkHandler(handler_handle));
 
-    auto outcome = client.ConverseStream(req_data.request);
+    auto outcome = client->ConverseStream(req_data.request);
 
     if (!outcome.IsSuccess()) {
       const auto& err = outcome.GetError();
@@ -136,7 +158,15 @@ bool BedrockChatProvider::SupportsModelDiscovery() const {
 }
 
 int BedrockChatProvider::GetContextWindow(const std::string& model_id) const {
-  (void)model_id;
+  if (model_id.empty()) {
+    return 0;
+  }
+  if (impl_->config.context_window > 0) {
+    return impl_->config.context_window;
+  }
+  // Defer to app::LookupContextWindow at the call site (see
+  // app/model_context_windows.cpp::ResolveContextWindow), which knows the
+  // Bedrock model table and inference-profile prefix stripping.
   return 0;
 }
 
