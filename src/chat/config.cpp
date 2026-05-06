@@ -266,6 +266,33 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     if (auto val = GetEnv("YAC_BEDROCK_MAX_TOKENS")) {
       config.options["max_tokens"] = std::move(*val);
     }
+    // Validate max_tokens after all sources have had a chance to set it.
+    // Bedrock InferenceConfiguration requires a positive integer; bound the
+    // upper end against what current Bedrock models accept so a typo like
+    // "9999999" doesn't produce a confusing API rejection.
+    constexpr int kMinBedrockMaxTokens = 1;
+    constexpr int kMaxBedrockMaxTokens = 200000;
+    constexpr const char* kDefaultBedrockMaxTokens = "4096";
+    try {
+      const std::string& raw = config.options.at("max_tokens");
+      size_t consumed = 0;
+      const int parsed = std::stoi(raw, &consumed);
+      if (consumed != raw.size()) {
+        throw std::invalid_argument(
+            "Bedrock max_tokens must be an integer");
+      }
+      if (parsed < kMinBedrockMaxTokens || parsed > kMaxBedrockMaxTokens) {
+        throw std::out_of_range(
+            "Bedrock max_tokens must be between " +
+            std::to_string(kMinBedrockMaxTokens) + " and " +
+            std::to_string(kMaxBedrockMaxTokens));
+      }
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid Bedrock max_tokens",
+                        .detail = error.what()});
+      config.options["max_tokens"] = kDefaultBedrockMaxTokens;
+    }
   }
 
   for (auto& server : config.mcp.servers) {

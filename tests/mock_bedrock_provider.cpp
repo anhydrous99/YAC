@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <thread>
