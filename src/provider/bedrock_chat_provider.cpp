@@ -4,8 +4,8 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
 #include <aws/bedrock-runtime/BedrockRuntimeClient.h>
-#include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <aws/core/auth/AWSCredentialsProvider.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
 #include <aws/core/client/ClientConfiguration.h>
 #include <chrono>
 #include <exception>
@@ -105,9 +105,9 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
 
     std::unique_ptr<Aws::BedrockRuntime::BedrockRuntimeClient> client;
     if (!profile_name.empty()) {
-      auto creds = Aws::MakeShared<
-          Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
-          "yac-bedrock", profile_name.c_str());
+      auto creds =
+          Aws::MakeShared<Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
+              "yac-bedrock", profile_name.c_str());
       client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
           creds, client_config);
     } else {

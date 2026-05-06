@@ -86,9 +86,10 @@ TEST_CASE("TranslateToolDefinitions: invalid JSON schema throws") {
 }
 
 TEST_CASE("TranslateToolDefinitions: tool name with '.' rejected") {
-  std::vector<ToolDefinition> tools = {{.name = "namespace.tool",
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+  std::vector<ToolDefinition> tools = {
+      {.name = "namespace.tool",
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   try {
     TranslateToolDefinitions(tools);
     FAIL("Expected std::runtime_error for invalid Bedrock tool name");
@@ -100,24 +101,27 @@ TEST_CASE("TranslateToolDefinitions: tool name with '.' rejected") {
 }
 
 TEST_CASE("TranslateToolDefinitions: tool name with ':' rejected") {
-  std::vector<ToolDefinition> tools = {{.name = "tool:bad",
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+  std::vector<ToolDefinition> tools = {
+      {.name = "tool:bad",
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   REQUIRE_THROWS_AS(TranslateToolDefinitions(tools), std::runtime_error);
 }
 
 TEST_CASE("TranslateToolDefinitions: tool name with whitespace rejected") {
-  std::vector<ToolDefinition> tools = {{.name = "bad name",
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+  std::vector<ToolDefinition> tools = {
+      {.name = "bad name",
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   REQUIRE_THROWS_AS(TranslateToolDefinitions(tools), std::runtime_error);
 }
 
 TEST_CASE("TranslateToolDefinitions: tool name >64 chars rejected") {
   std::string too_long(65, 'a');
-  std::vector<ToolDefinition> tools = {{.name = too_long,
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+  std::vector<ToolDefinition> tools = {
+      {.name = too_long,
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   try {
     TranslateToolDefinitions(tools);
     FAIL("Expected std::runtime_error for too-long tool name");
@@ -129,16 +133,19 @@ TEST_CASE("TranslateToolDefinitions: tool name >64 chars rejected") {
 
 TEST_CASE("TranslateToolDefinitions: tool name exactly 64 chars accepted") {
   std::string boundary(64, 'a');
-  std::vector<ToolDefinition> tools = {{.name = boundary,
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+  std::vector<ToolDefinition> tools = {
+      {.name = boundary,
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   REQUIRE_NOTHROW(TranslateToolDefinitions(tools));
 }
 
-TEST_CASE("TranslateToolDefinitions: tool name with hyphen and underscore accepted") {
-  std::vector<ToolDefinition> tools = {{.name = "tool_name-v2",
-                                        .description = "x",
-                                        .parameters_schema_json = kSimpleSchema}};
+TEST_CASE(
+    "TranslateToolDefinitions: tool name with hyphen and underscore accepted") {
+  std::vector<ToolDefinition> tools = {
+      {.name = "tool_name-v2",
+       .description = "x",
+       .parameters_schema_json = kSimpleSchema}};
   REQUIRE_NOTHROW(TranslateToolDefinitions(tools));
 }
 

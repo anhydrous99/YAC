@@ -278,14 +278,12 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
       size_t consumed = 0;
       const int parsed = std::stoi(raw, &consumed);
       if (consumed != raw.size()) {
-        throw std::invalid_argument(
-            "Bedrock max_tokens must be an integer");
+        throw std::invalid_argument("Bedrock max_tokens must be an integer");
       }
       if (parsed < kMinBedrockMaxTokens || parsed > kMaxBedrockMaxTokens) {
-        throw std::out_of_range(
-            "Bedrock max_tokens must be between " +
-            std::to_string(kMinBedrockMaxTokens) + " and " +
-            std::to_string(kMaxBedrockMaxTokens));
+        throw std::out_of_range("Bedrock max_tokens must be between " +
+                                std::to_string(kMinBedrockMaxTokens) + " and " +
+                                std::to_string(kMaxBedrockMaxTokens));
       }
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,

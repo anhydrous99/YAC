@@ -150,13 +150,12 @@ TEST_CASE(
               &provider, "anthropic.claude-3-5-haiku-20241022-v1:0") == 200000);
   REQUIRE(ResolveContextWindow(&provider, "amazon.nova-pro-v1:0") == 300000);
   // Inference-profile prefix is handled by LookupContextWindow.
-  REQUIRE(ResolveContextWindow(
-              &provider,
-              "us.anthropic.claude-3-5-haiku-20241022-v1:0") == 200000);
+  REQUIRE(ResolveContextWindow(&provider,
+                               "us.anthropic.claude-3-5-haiku-20241022-v1:0") ==
+          200000);
 }
 
-TEST_CASE(
-    "BedrockChatProvider::GetContextWindow honours the manual override") {
+TEST_CASE("BedrockChatProvider::GetContextWindow honours the manual override") {
   yac::chat::ProviderConfig config;
   config.id = "bedrock";
   config.model = "anthropic.claude-3-5-haiku-20241022-v1:0";

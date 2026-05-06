@@ -70,10 +70,9 @@ void WriteFile(const std::filesystem::path& path, std::string_view content) {
 
 bool HasIssue(const std::vector<yac::chat::ConfigIssue>& issues,
               std::string_view substring) {
-  return std::ranges::any_of(
-      issues, [&](const yac::chat::ConfigIssue& issue) {
-        return issue.message.find(substring) != std::string::npos;
-      });
+  return std::ranges::any_of(issues, [&](const yac::chat::ConfigIssue& issue) {
+    return issue.message.find(substring) != std::string::npos;
+  });
 }
 
 constexpr const char* kBedrockToml =
