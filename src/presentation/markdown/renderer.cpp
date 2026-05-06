@@ -72,6 +72,14 @@ ftxui::Element MarkdownRenderer::RenderBlock(const BlockNode& block,
 
 namespace {
 
+constexpr const char* kGlyphHeavyHorizontal = "\xe2\x95\x81";       // ╁
+constexpr const char* kGlyphLightHorizontal = "\xe2\x94\x80";       // ─
+constexpr const char* kGlyphLightVertical = "\xe2\x94\x82";         // │
+constexpr const char* kGlyphBlockquoteMarker = "\xe2\x96\x8e ";     // ▎
+constexpr const char* kGlyphTaskCheckedMarker = "\xe2\x98\x91 ";    // ☑
+constexpr const char* kGlyphTaskUncheckedMarker = "\xe2\x98\x90 ";  // ☐
+constexpr const char* kGlyphBulletMarker = "\xe2\x80\xa2 ";         // •
+
 std::string RepeatUtf8(std::string_view unit, int count) {
   std::string result;
   result.reserve(unit.size() * static_cast<size_t>(count));
@@ -222,7 +230,7 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
       RenderInline(h.children, context, std::move(trailing_inline));
 
   if (h.level == 1) {
-    auto line = ftxui::text(RepeatUtf8("\xe2\x95\x81", 20)) |
+    auto line = ftxui::text(RepeatUtf8(kGlyphHeavyHorizontal, 20)) |
                 ftxui::color(theme.markdown.heading) | ftxui::dim;
     return ftxui::vbox({
         inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
@@ -231,7 +239,7 @@ ftxui::Element MarkdownRenderer::RenderHeading(const Heading& h,
   }
 
   if (h.level == 2) {
-    auto line = ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+    auto line = ftxui::text(RepeatUtf8(kGlyphLightHorizontal, 20)) |
                 ftxui::color(theme.markdown.heading) | ftxui::dim;
     return ftxui::vbox({
         inline_elem | ftxui::bold | ftxui::color(theme.markdown.heading),
@@ -288,7 +296,7 @@ ftxui::Element MarkdownRenderer::RenderCodeBlock(
     auto bg = (i % 2 == 1) ? odd_bg : even_bg;
     ftxui::Elements row_children = {
         ftxui::text(std::string(layout::kCardPadX, ' ')) | ftxui::bgcolor(bg),
-        ftxui::text("\xe2\x94\x82") |
+        ftxui::text(kGlyphLightVertical) |
             ftxui::color(theme.semantic.border_subtle) | ftxui::bgcolor(bg),
         ftxui::text(padded_num) | ftxui::color(theme.chrome.dim_text) |
             ftxui::dim | ftxui::bgcolor(bg),
@@ -316,7 +324,8 @@ ftxui::Element MarkdownRenderer::RenderBlockquote(
     body = Render(bq.children, context, std::move(trailing_inline));
   }
   return ftxui::hbox({
-             ftxui::text("\xe2\x96\x8e ") | ftxui::color(theme.chrome.dim_text),
+             ftxui::text(kGlyphBlockquoteMarker) |
+                 ftxui::color(theme.chrome.dim_text),
              body | ftxui::flex,
          }) |
          ftxui::bgcolor(theme.markdown.quote_bg);
@@ -332,13 +341,13 @@ ftxui::Element MarkdownRenderer::RenderUnorderedList(
     const auto& item = ul.items[i];
     ftxui::Element marker_elem;
     if (item.task) {
-      const char* glyph = item.checked ? "\xe2\x98\x91 "   // ☑
-                                       : "\xe2\x98\x90 ";  // ☐
+      const char* glyph =
+          item.checked ? kGlyphTaskCheckedMarker : kGlyphTaskUncheckedMarker;
       marker_elem =
           ftxui::text(glyph) | ftxui::bold |
           ftxui::color(item.checked ? theme.role.agent : theme.chrome.dim_text);
     } else {
-      marker_elem = ftxui::text("\xe2\x80\xa2 ") |
+      marker_elem = ftxui::text(kGlyphBulletMarker) |
                     ftxui::color(theme.role.agent) | ftxui::bold;
     }
     auto body = Render(item.children, context,
@@ -380,7 +389,7 @@ ftxui::Element MarkdownRenderer::RenderOrderedList(
 ftxui::Element MarkdownRenderer::RenderHorizontalRule(
     const RenderContext& context, ftxui::Element trailing_inline) {
   const auto& theme = context.Colors();
-  auto hr = ftxui::text(RepeatUtf8("\xe2\x94\x80", 20)) |
+  auto hr = ftxui::text(RepeatUtf8(kGlyphLightHorizontal, 20)) |
             ftxui::color(theme.chrome.dim_text) | ftxui::dim;
   if (trailing_inline) {
     return ftxui::vbox({hr, std::move(trailing_inline)});

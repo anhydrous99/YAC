@@ -1,5 +1,6 @@
 #include "mcp/protocol_messages.hpp"
 
+#include "mcp/json_helpers.hpp"
 #include "mcp/protocol_constants.hpp"
 
 #include <string>
@@ -9,51 +10,6 @@
 namespace yac::mcp {
 
 namespace pc = protocol;
-
-namespace {
-
-[[nodiscard]] std::string GetString(const Json& j, std::string_view field) {
-  const std::string key{field};
-  if (!j.contains(key) || !j[key].is_string()) {
-    throw McpProtocolError("missing string field: " + key);
-  }
-  return j[key].get<std::string>();
-}
-
-[[nodiscard]] std::optional<std::string> GetOptString(const Json& j,
-                                                      std::string_view field) {
-  const std::string key{field};
-  if (!j.contains(key) || j[key].is_null()) {
-    return std::nullopt;
-  }
-  if (!j[key].is_string()) {
-    throw McpProtocolError("field not a string: " + key);
-  }
-  return j[key].get<std::string>();
-}
-
-[[nodiscard]] bool GetBool(const Json& j, std::string_view field,
-                           bool default_val = false) {
-  const std::string key{field};
-  if (!j.contains(key) || !j[key].is_boolean()) {
-    return default_val;
-  }
-  return j[key].get<bool>();
-}
-
-[[nodiscard]] std::optional<double> GetOptDouble(const Json& j,
-                                                 std::string_view field) {
-  const std::string key{field};
-  if (!j.contains(key) || j[key].is_null()) {
-    return std::nullopt;
-  }
-  if (!j[key].is_number()) {
-    throw McpProtocolError("field not a number: " + key);
-  }
-  return j[key].get<double>();
-}
-
-}  // namespace
 
 ImplementationInfo ImplementationInfo::FromJson(const Json& j) {
   if (!j.is_object()) {

@@ -70,21 +70,17 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
       ftxui::Color gutter_fg = theme.tool.edit_context;
       ftxui::Color fallback_fg = theme.tool.edit_context;
       std::string gutter = std::string(layout::kCardPadX, ' ');
-      bool tint = false;
       if (line.type == tool_data::DiffLine::Add) {
         gutter = "+ ";
         gutter_fg = theme.tool.edit_add;
         fallback_fg = theme.tool.edit_add;
-        tint = false;
       } else if (line.type == tool_data::DiffLine::Remove) {
         gutter = "- ";
         gutter_fg = theme.tool.edit_remove;
         fallback_fg = theme.tool.edit_remove;
-        tint = false;
       }
       auto body =
-          RenderHighlightedLine(lexer_ptr, line.content, context, fallback_fg,
-                                theme.tool.header_bg, tint);
+          RenderHighlightedLine(lexer_ptr, line.content, context, fallback_fg);
       content.push_back(ftxui::hbox({
           ftxui::text(gutter) | ftxui::color(gutter_fg),
           body,
@@ -148,8 +144,7 @@ ftxui::Element ToolCallRenderer::RenderFileWrite(
 
     auto render_at = [&](size_t index) -> ftxui::Element {
       return RenderHighlightedLine(lexer_ptr, lines[index], context,
-                                   theme.semantic.text_body,
-                                   theme.tool.header_bg, false);
+                                   theme.semantic.text_body);
     };
 
     if (call.is_streaming && lines.size() > kMaxPreviewRows) {
@@ -309,39 +304,39 @@ ftxui::Element ToolCallRenderer::RenderWebSearch(
                          std::move(content), theme);
 }
 
+namespace {
+
+struct SubAgentChrome {
+  const char* icon = ".";
+  ftxui::Color accent;
+};
+
+SubAgentChrome ChromeForSubAgentStatus(tool_data::SubAgentStatus status,
+                                       const theme::SubAgentColors& colors) {
+  switch (status) {
+    case tool_data::SubAgentStatus::Running:
+      return {.icon = ">", .accent = colors.running_accent};
+    case tool_data::SubAgentStatus::Complete:
+      return {.icon = "v", .accent = colors.success_accent};
+    case tool_data::SubAgentStatus::Error:
+      return {.icon = "x", .accent = colors.error_accent};
+    case tool_data::SubAgentStatus::Timeout:
+      return {.icon = "~", .accent = colors.timeout_accent};
+    case tool_data::SubAgentStatus::Cancelled:
+      return {.icon = "-", .accent = colors.running_accent};
+    case tool_data::SubAgentStatus::Pending:
+      return {.icon = ".", .accent = colors.pending_bg};
+  }
+  return {.icon = ".", .accent = colors.pending_bg};
+}
+
+}  // namespace
+
 ftxui::Element ToolCallRenderer::RenderSubAgent(
     const tool_data::SubAgentCall& call, const RenderContext& context) {
   const auto& theme = context.Colors();
   const auto& colors = theme.sub_agent;
-
-  std::string icon;
-  ftxui::Color accent;
-  switch (call.status) {
-    case tool_data::SubAgentStatus::Running:
-      icon = ">";
-      accent = colors.running_accent;
-      break;
-    case tool_data::SubAgentStatus::Complete:
-      icon = "v";
-      accent = colors.success_accent;
-      break;
-    case tool_data::SubAgentStatus::Error:
-      icon = "x";
-      accent = colors.error_accent;
-      break;
-    case tool_data::SubAgentStatus::Timeout:
-      icon = "~";
-      accent = colors.timeout_accent;
-      break;
-    case tool_data::SubAgentStatus::Cancelled:
-      icon = "-";
-      accent = colors.running_accent;
-      break;
-    case tool_data::SubAgentStatus::Pending:
-      icon = ".";
-      accent = colors.pending_bg;
-      break;
-  }
+  const auto chrome = ChromeForSubAgentStatus(call.status, colors);
 
   ftxui::Elements content;
 
@@ -388,7 +383,8 @@ ftxui::Element ToolCallRenderer::RenderSubAgent(
       break;
   }
 
-  return RenderContainer(icon, "Sub-agent", accent, std::move(content), theme);
+  return RenderContainer(chrome.icon, "Sub-agent", chrome.accent,
+                         std::move(content), theme);
 }
 
 ftxui::Element ToolCallRenderer::RenderTodoWrite(

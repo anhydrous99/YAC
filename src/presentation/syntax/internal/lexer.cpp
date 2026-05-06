@@ -160,6 +160,78 @@ std::vector<TokenSpan> Lexer::NextLineDiff(std::string_view line) {
   return {{TokenKind::Plain, std::string(line)}};
 }
 
+namespace {
+
+// Try-consumers used by NextLineDefault. Each takes the line, the current
+// scan position `i` (advanced on success), the running plain-text buffer, and
+// the emitted spans. They return true when the helper consumed at least one
+// character so the dispatch loop can `continue` rather than fall through to
+// the plain-text accumulation step.
+
+bool TryConsumeVariable(std::string_view line, size_t& i, std::string& buf,
+                        std::vector<TokenSpan>& spans) {
+  if (i + 1 >= line.size()) {
+    return false;
+  }
+  if (line[i + 1] == '{') {
+    EmitPlain(spans, buf);
+    auto close = line.find('}', i + 2);
+    size_t end = close == std::string_view::npos ? line.size() : close + 1;
+    spans.push_back(
+        {TokenKind::Variable, std::string(line.substr(i, end - i))});
+    i = end;
+    return true;
+  }
+  if (!IsIdentStart(line[i + 1])) {
+    return false;
+  }
+  EmitPlain(spans, buf);
+  size_t j = i + 1;
+  while (j < line.size() && IsIdentChar(line[j])) {
+    ++j;
+  }
+  spans.push_back({TokenKind::Variable, std::string(line.substr(i, j - i))});
+  i = j;
+  return true;
+}
+
+bool TryConsumeIdentifier(std::string_view line, size_t& i, std::string& buf,
+                          std::vector<TokenSpan>& spans,
+                          const LanguageDef& lang) {
+  if (!IsIdentStart(line[i])) {
+    return false;
+  }
+  size_t j = i + 1;
+  while (j < line.size() && IsIdentChar(line[j])) {
+    ++j;
+  }
+  auto word = std::string(line.substr(i, j - i));
+  TokenKind kind = TokenKind::Plain;
+  if (lang.keywords.contains(word)) {
+    kind = TokenKind::Keyword;
+  } else if (lang.types.contains(word)) {
+    kind = TokenKind::Type;
+  } else {
+    size_t k = j;
+    while (k < line.size() && (line[k] == ' ' || line[k] == '\t')) {
+      ++k;
+    }
+    if (k < line.size() && line[k] == '(') {
+      kind = TokenKind::FunctionCall;
+    }
+  }
+  if (kind == TokenKind::Plain) {
+    buf += word;
+  } else {
+    EmitPlain(spans, buf);
+    spans.push_back({kind, std::move(word)});
+  }
+  i = j;
+  return true;
+}
+
+}  // namespace
+
 std::vector<TokenSpan> Lexer::NextLineDefault(std::string_view line) {
   std::vector<TokenSpan> spans;
   std::string buf;
@@ -291,56 +363,12 @@ std::vector<TokenSpan> Lexer::NextLineDefault(std::string_view line) {
       continue;
     }
 
-    if (lang_->variable_dollar && c == '$' && i + 1 < line.size()) {
-      if (line[i + 1] == '{') {
-        EmitPlain(spans, buf);
-        auto close = line.find('}', i + 2);
-        size_t end = close == std::string_view::npos ? line.size() : close + 1;
-        spans.push_back(
-            {TokenKind::Variable, std::string(line.substr(i, end - i))});
-        i = end;
-        continue;
-      }
-      if (IsIdentStart(line[i + 1])) {
-        EmitPlain(spans, buf);
-        size_t j = i + 1;
-        while (j < line.size() && IsIdentChar(line[j])) {
-          ++j;
-        }
-        spans.push_back(
-            {TokenKind::Variable, std::string(line.substr(i, j - i))});
-        i = j;
-        continue;
-      }
+    if (lang_->variable_dollar && c == '$' &&
+        TryConsumeVariable(line, i, buf, spans)) {
+      continue;
     }
 
-    if (IsIdentStart(c)) {
-      size_t j = i + 1;
-      while (j < line.size() && IsIdentChar(line[j])) {
-        ++j;
-      }
-      auto word = std::string(line.substr(i, j - i));
-      TokenKind kind = TokenKind::Plain;
-      if (lang_->keywords.contains(word)) {
-        kind = TokenKind::Keyword;
-      } else if (lang_->types.contains(word)) {
-        kind = TokenKind::Type;
-      } else {
-        size_t k = j;
-        while (k < line.size() && (line[k] == ' ' || line[k] == '\t')) {
-          ++k;
-        }
-        if (k < line.size() && line[k] == '(') {
-          kind = TokenKind::FunctionCall;
-        }
-      }
-      if (kind == TokenKind::Plain) {
-        buf += word;
-      } else {
-        EmitPlain(spans, buf);
-        spans.push_back({kind, std::move(word)});
-      }
-      i = j;
+    if (TryConsumeIdentifier(line, i, buf, spans, *lang_)) {
       continue;
     }
 

@@ -1,5 +1,6 @@
 #include "tool_call/executor.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/executor_catalog.hpp"
 #include "tool_call/todo_state.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
@@ -11,18 +12,11 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
-#include <string_view>
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
 using namespace yac::tool_call;
-
-namespace yac::tool_call {
-bool HasToolExecutorDispatchEntry(std::string_view name);
-bool HasToolExecutorPrepareRegistryEntry(std::string_view name);
-std::size_t ToolExecutorPrepareRegistrySize();
-}  // namespace yac::tool_call
 
 namespace {
 
@@ -141,7 +135,7 @@ TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   const auto json = Json::parse(result.result_json);
   REQUIRE(json["error"] == "Unknown tool: does_not_exist");
   REQUIRE(json["tool_name"] == "does_not_exist");
-  REQUIRE(json["received_arguments"].empty());
+  REQUIRE(json["received_arguments"].get<std::string>().empty());
   REQUIRE_FALSE(json.contains("expected_schema"));
   REQUIRE(std::holds_alternative<FileWriteCall>(result.block));
   REQUIRE(std::get<FileWriteCall>(result.block).is_error);
@@ -150,17 +144,13 @@ TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("ToolExecutor dispatch registry keys match tool definitions") {
+TEST_CASE("ToolExecutor handler registry keys match tool definitions") {
+  REQUIRE(ToolHandlerCount() == ToolExecutor::Definitions().size());
   for (const auto& definition : ToolExecutor::Definitions()) {
-    REQUIRE(HasToolExecutorDispatchEntry(definition.name));
-  }
-}
-
-TEST_CASE("ToolExecutor prepare registry keys match tool definitions") {
-  REQUIRE(ToolExecutorPrepareRegistrySize() ==
-          ToolExecutor::Definitions().size());
-  for (const auto& definition : ToolExecutor::Definitions()) {
-    REQUIRE(HasToolExecutorPrepareRegistryEntry(definition.name));
+    const auto* handler = LookupToolHandler(definition.name);
+    REQUIRE(handler != nullptr);
+    REQUIRE(handler->prepare != nullptr);
+    REQUIRE(handler->execute != nullptr);
   }
 }
 

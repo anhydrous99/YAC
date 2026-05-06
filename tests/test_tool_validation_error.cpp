@@ -68,7 +68,7 @@ TEST_CASE("BuildValidationErrorJson handles empty raw arguments") {
                           "");
   const auto definitions = yac::tool_call::ToolExecutor::Definitions();
   const auto json = Json::parse(BuildValidationErrorJson(err, definitions));
-  REQUIRE(json["received_arguments"].empty());
+  REQUIRE(json["received_arguments"].get<std::string>().empty());
   REQUIRE(json.contains("expected_schema"));
 }
 

@@ -52,8 +52,7 @@ void AddOmittedRows(ftxui::Elements& content, size_t total,
                                          const theme::Theme& theme);
 [[nodiscard]] ftxui::Element RenderHighlightedLine(
     syntax::internal::Lexer* lexer, std::string_view content,
-    const RenderContext& context, ftxui::Color fallback_fg,
-    ftxui::Color tint_bg, bool tint);
+    const RenderContext& context, ftxui::Color fallback_fg);
 
 }  // namespace tool_call
 }  // namespace yac::presentation

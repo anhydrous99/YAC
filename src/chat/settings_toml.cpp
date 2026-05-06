@@ -421,6 +421,343 @@ std::string WithThemeName(std::string_view content,
   return JoinLines(lines);
 }
 
+void LoadProviderSection(toml::table& root, ChatConfig& config,
+                         ChatConfigFieldSet& fields,
+                         std::vector<ConfigIssue>& issues) {
+  const auto provider = root["provider"];
+  if (!provider.is_table()) {
+    if (root.contains("provider")) {
+      AddError(issues, "Invalid type for [provider] in settings.toml",
+               "Expected a table.");
+    }
+    return;
+  }
+  fields.provider_id = ApplyStringField(provider["id"], "provider.id",
+                                        config.provider_id, issues);
+  fields.model = ApplyStringField(provider["model"], "provider.model",
+                                  config.model, issues);
+  fields.base_url = ApplyStringField(provider["base_url"], "provider.base_url",
+                                     config.base_url, issues);
+  fields.api_key_env =
+      ApplyStringField(provider["api_key_env"], "provider.api_key_env",
+                       config.api_key_env, issues);
+  fields.api_key = ApplyStringField(provider["api_key"], "provider.api_key",
+                                    config.api_key, issues);
+  fields.context_window = ApplyIntegerField(
+      provider["context_window"], "provider.context_window", kMinContextWindow,
+      kMaxContextWindow, config.context_window, issues);
+}
+
+void LoadLspSection(toml::table& root, ChatConfig& config,
+                    ChatConfigFieldSet& fields,
+                    std::vector<ConfigIssue>& issues) {
+  const auto clangd = root["lsp"]["clangd"];
+  if (clangd.is_table()) {
+    fields.lsp_clangd_command =
+        ApplyStringField(clangd["command"], "lsp.clangd.command",
+                         config.lsp_clangd_command, issues);
+    fields.lsp_clangd_args = ApplyStringArray(clangd["args"], "lsp.clangd.args",
+                                              config.lsp_clangd_args, issues);
+    return;
+  }
+  if (root.contains("lsp") && !root["lsp"].is_table()) {
+    AddError(issues, "Invalid type for [lsp] in settings.toml",
+             "Expected a table.");
+  }
+}
+
+void LoadThemeSection(toml::table& root, ChatConfig& config,
+                      ChatConfigFieldSet& fields,
+                      std::vector<ConfigIssue>& issues) {
+  const auto theme_section = root["theme"];
+  if (!theme_section.is_table()) {
+    if (root.contains("theme")) {
+      AddError(issues, "Invalid type for [theme] in settings.toml",
+               "Expected a table.");
+    }
+    return;
+  }
+  ApplyBoolField(theme_section["sync_terminal_background"],
+                 "theme.sync_terminal_background",
+                 config.sync_terminal_background, issues);
+  if (ApplyStringField(theme_section["name"], "theme.name", config.theme_name,
+                       issues)) {
+    fields.theme_name = true;
+    if (config.theme_name.empty()) {
+      AddWarning(issues, "theme.name is empty in settings.toml",
+                 "Falling back to default theme 'vivid'.");
+      config.theme_name = "vivid";
+      fields.theme_name = false;
+    }
+  }
+  if (ApplyStringField(theme_section["density"], "theme.density",
+                       config.theme_density, issues)) {
+    fields.theme_density = true;
+    if (config.theme_density != "compact" &&
+        config.theme_density != "comfortable") {
+      AddWarning(issues, "Unknown theme.density in settings.toml",
+                 "Falling back to default theme density 'comfortable'.");
+      config.theme_density = "comfortable";
+    }
+  }
+}
+
+void LoadCompactSection(toml::table& root, ChatConfig& config,
+                        std::vector<ConfigIssue>& issues) {
+  const auto compact_section = root["compact"];
+  if (!compact_section.is_table()) {
+    if (root.contains("compact")) {
+      AddError(issues, "Invalid type for [compact] in settings.toml",
+               "Expected a table.");
+    }
+    return;
+  }
+  ApplyBoolField(compact_section["auto_enabled"], "compact.auto_enabled",
+                 config.auto_compact_enabled, issues);
+  ApplyDoubleField(compact_section["threshold"], "compact.threshold",
+                   kMinAutoCompactThreshold, kMaxAutoCompactThreshold,
+                   config.auto_compact_threshold, issues);
+  ApplyIntegerField(compact_section["keep_last"], "compact.keep_last",
+                    kMinAutoCompactKeepLast, kMaxAutoCompactKeepLast,
+                    config.auto_compact_keep_last, issues);
+  if (ApplyStringField(compact_section["mode"], "compact.mode",
+                       config.auto_compact_mode, issues)) {
+    if (config.auto_compact_mode != "summarize" &&
+        config.auto_compact_mode != "truncate") {
+      AddError(issues, "Invalid compact.mode in settings.toml",
+               "Value must be 'summarize' or 'truncate'.");
+      config.auto_compact_mode = "summarize";
+    }
+  }
+}
+
+// Reads the [auth] sub-table for an MCP server and returns the parsed auth
+// variant, or std::nullopt when no valid auth is configured. Errors are
+// recorded in `issues` and the bearer's api_key_env flag is mirrored into
+// `field_set` so presets only fill unset fields.
+std::optional<std::variant<mcp::McpAuthBearer, mcp::McpAuthOAuth>> ParseMcpAuth(
+    toml::table& auth_tbl, std::string_view server_id,
+    McpServerFieldSet& field_set, std::vector<ConfigIssue>& issues) {
+  auto* type_v = auth_tbl["type"].as_string();
+  if (type_v == nullptr) {
+    AddError(
+        issues,
+        "mcp.servers.auth missing 'type' for '" + std::string(server_id) + "'",
+        "Expected 'bearer' or 'oauth'.");
+    return std::nullopt;
+  }
+  const std::string auth_type = type_v->get();
+  if (auth_type == "bearer") {
+    mcp::McpAuthBearer bearer;
+    if (auto* v = auth_tbl["api_key_env"].as_string()) {
+      bearer.api_key_env = v->get();
+      field_set.api_key_env = true;
+    }
+    return std::variant<mcp::McpAuthBearer, mcp::McpAuthOAuth>{
+        std::move(bearer)};
+  }
+  if (auth_type == "oauth") {
+    mcp::McpAuthOAuth oauth;
+    if (auto* v = auth_tbl["authorization_url"].as_string()) {
+      oauth.authorization_url = v->get();
+    }
+    if (auto* v = auth_tbl["token_url"].as_string()) {
+      oauth.token_url = v->get();
+    }
+    if (auto* v = auth_tbl["client_id"].as_string()) {
+      oauth.client_id = v->get();
+    }
+    ApplyStringArray(auth_tbl["scopes"], "mcp.servers.auth.scopes",
+                     oauth.scopes, issues);
+    return std::variant<mcp::McpAuthBearer, mcp::McpAuthOAuth>{
+        std::move(oauth)};
+  }
+  AddError(issues, "Unknown mcp.servers.auth.type: " + auth_type,
+           "Expected 'bearer' or 'oauth'.");
+  return std::nullopt;
+}
+
+// Parses a single [[mcp.servers]] entry. Returns std::nullopt for entries
+// rejected by validation (missing id, duplicate id, bad transport); the caller
+// must skip such entries without recording them.
+std::optional<std::pair<mcp::McpServerConfig, McpServerFieldSet>>
+LoadOneMcpServer(toml::table& server_tbl,
+                 std::unordered_set<std::string>& seen_ids,
+                 std::vector<ConfigIssue>& issues) {
+  mcp::McpServerConfig srv;
+  McpServerFieldSet field_set;
+
+  if (auto* v = server_tbl["id"].as_string()) {
+    srv.id = v->get();
+  }
+  if (srv.id.empty()) {
+    AddError(issues, "Missing or empty id in [[mcp.servers]]",
+             "Each server entry must have a non-empty id.");
+    return std::nullopt;
+  }
+  if (seen_ids.contains(srv.id)) {
+    AddError(issues, "Duplicate mcp.servers id: " + srv.id,
+             "duplicate server id; keeping first entry.");
+    return std::nullopt;
+  }
+  seen_ids.insert(srv.id);
+
+  if (auto* v = server_tbl["transport"].as_string()) {
+    srv.transport = v->get();
+  }
+  if (auto* v = server_tbl["command"].as_string()) {
+    srv.command = v->get();
+    field_set.command = true;
+  }
+  ApplyStringArray(server_tbl["args"], "mcp.servers.args", srv.args, issues);
+  if (server_tbl["args"]) {
+    field_set.args = true;
+  }
+  if (auto* v = server_tbl["url"].as_string()) {
+    srv.url = v->get();
+    field_set.url = true;
+  }
+
+  if (auto* env_tbl = server_tbl["env"].as_table()) {
+    for (auto& [k, v] : *env_tbl) {
+      if (auto* sv = v.as_string()) {
+        srv.env.emplace(std::string(k), sv->get());
+      } else {
+        AddError(issues, "Invalid value in mcp.servers.env",
+                 "All env values must be strings.");
+      }
+    }
+  } else if (server_tbl["env"]) {
+    AddError(issues, "Invalid type for mcp.servers.env",
+             "Expected a table of string values.");
+  }
+
+  const auto& presets = mcp::McpServerPresets();
+  if (auto it = presets.find(srv.id); it != presets.end()) {
+    const auto& preset = it->second;
+    if (srv.transport.empty()) {
+      srv.transport = preset.transport;
+    }
+    if (srv.command.empty()) {
+      srv.command = preset.command;
+    }
+    if (srv.args.empty()) {
+      srv.args = preset.args;
+    }
+    if (srv.url.empty()) {
+      srv.url = preset.url;
+    }
+  }
+
+  if (srv.transport != "stdio" && srv.transport != "http") {
+    AddError(issues, "Invalid transport for mcp server '" + srv.id + "'",
+             "Must be 'stdio' or 'http'.");
+    return std::nullopt;
+  }
+  if (srv.transport == "stdio" && srv.command.empty()) {
+    AddError(issues, "mcp server '" + srv.id + "' requires command",
+             "transport='stdio' servers must specify command.");
+    return std::nullopt;
+  }
+  if (srv.transport == "http" && srv.url.empty()) {
+    AddError(issues, "mcp server '" + srv.id + "' requires url",
+             "transport='http' servers must specify url.");
+    return std::nullopt;
+  }
+
+  if (auto* v = server_tbl["enabled"].as_boolean()) {
+    srv.enabled = v->get();
+    field_set.enabled = true;
+  }
+  if (auto* v = server_tbl["requires_approval"].as_boolean()) {
+    srv.requires_approval = v->get();
+  }
+  if (auto* v = server_tbl["auto_start"].as_boolean()) {
+    srv.auto_start = v->get();
+  }
+  ApplyStringArray(server_tbl["approval_required_tools"],
+                   "mcp.servers.approval_required_tools",
+                   srv.approval_required_tools, issues);
+
+  if (auto* auth_tbl = server_tbl["auth"].as_table()) {
+    if (auto auth = ParseMcpAuth(*auth_tbl, srv.id, field_set, issues)) {
+      srv.auth = std::move(*auth);
+    }
+  } else if (server_tbl["auth"]) {
+    AddError(issues, "Invalid type for mcp.servers.auth for '" + srv.id + "'",
+             "Expected a table.");
+  }
+
+  if (auto* headers_tbl = server_tbl["headers"].as_table()) {
+    for (auto& [k, v] : *headers_tbl) {
+      if (auto* sv = v.as_string()) {
+        srv.headers.emplace(std::string(k), sv->get());
+      } else {
+        AddError(issues,
+                 "Invalid value in mcp.servers.headers for '" + srv.id + "'",
+                 "All header values must be strings.");
+      }
+    }
+  } else if (server_tbl["headers"]) {
+    AddError(issues,
+             "Invalid type for mcp.servers.headers for '" + srv.id + "'",
+             "Expected a table of string values.");
+  }
+
+  return std::make_pair(std::move(srv), std::move(field_set));
+}
+
+void LoadMcpSection(toml::table& root, ChatConfig& config,
+                    ChatConfigFieldSet& fields,
+                    std::vector<ConfigIssue>& issues) {
+  const auto mcp_section = root["mcp"];
+  if (!mcp_section.is_table()) {
+    if (root.contains("mcp")) {
+      AddError(issues, "Invalid type for [mcp] in settings.toml",
+               "Expected a table.");
+    }
+    return;
+  }
+
+  if (const auto* v = mcp_section["result_max_bytes"].as_integer()) {
+    const auto raw = v->get();
+    if (raw <= 0) {
+      AddError(issues, "Invalid mcp.result_max_bytes in settings.toml",
+               "Must be a positive integer.");
+    } else {
+      config.mcp.result_max_bytes = static_cast<uintmax_t>(raw);
+    }
+  } else if (mcp_section["result_max_bytes"]) {
+    AddError(issues, "Invalid type for mcp.result_max_bytes in settings.toml",
+             "Expected an integer.");
+  }
+
+  const auto servers_node = mcp_section["servers"];
+  if (!servers_node.is_array()) {
+    if (mcp_section["servers"]) {
+      AddError(issues, "Invalid type for [[mcp.servers]] in settings.toml",
+               "Expected an array of tables.");
+    }
+    return;
+  }
+
+  std::unordered_set<std::string> seen_ids;
+  for (auto& server_elem : *servers_node.as_array()) {
+    auto* server_tbl = server_elem.as_table();
+    if (server_tbl == nullptr) {
+      AddError(issues, "Invalid element in [[mcp.servers]]",
+               "Expected a table.");
+      continue;
+    }
+    auto loaded = LoadOneMcpServer(*server_tbl, seen_ids, issues);
+    if (!loaded) {
+      continue;
+    }
+    fields.mcp_servers.emplace(loaded->first.id, std::move(loaded->second));
+    config.mcp.servers.push_back(std::move(loaded->first));
+  }
+}
+
 }  // namespace
 
 ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
@@ -461,284 +798,11 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
   fields.workspace_root = ApplyStringField(
       table["workspace_root"], "workspace_root", config.workspace_root, issues);
 
-  const auto provider = table["provider"];
-  if (provider.is_table()) {
-    fields.provider_id = ApplyStringField(provider["id"], "provider.id",
-                                          config.provider_id, issues);
-    fields.model = ApplyStringField(provider["model"], "provider.model",
-                                    config.model, issues);
-    fields.base_url = ApplyStringField(
-        provider["base_url"], "provider.base_url", config.base_url, issues);
-    fields.api_key_env =
-        ApplyStringField(provider["api_key_env"], "provider.api_key_env",
-                         config.api_key_env, issues);
-    fields.api_key = ApplyStringField(provider["api_key"], "provider.api_key",
-                                      config.api_key, issues);
-    fields.context_window = ApplyIntegerField(
-        provider["context_window"], "provider.context_window",
-        kMinContextWindow, kMaxContextWindow, config.context_window, issues);
-  } else if (table.contains("provider")) {
-    AddError(issues, "Invalid type for [provider] in settings.toml",
-             "Expected a table.");
-  }
-
-  const auto clangd = table["lsp"]["clangd"];
-  if (clangd.is_table()) {
-    fields.lsp_clangd_command =
-        ApplyStringField(clangd["command"], "lsp.clangd.command",
-                         config.lsp_clangd_command, issues);
-    fields.lsp_clangd_args = ApplyStringArray(clangd["args"], "lsp.clangd.args",
-                                              config.lsp_clangd_args, issues);
-  } else if (table.contains("lsp")) {
-    if (const auto lsp = table["lsp"]; !lsp.is_table()) {
-      AddError(issues, "Invalid type for [lsp] in settings.toml",
-               "Expected a table.");
-    }
-  }
-
-  const auto theme_section = table["theme"];
-  if (theme_section.is_table()) {
-    ApplyBoolField(theme_section["sync_terminal_background"],
-                   "theme.sync_terminal_background",
-                   config.sync_terminal_background, issues);
-    if (ApplyStringField(theme_section["name"], "theme.name", config.theme_name,
-                         issues)) {
-      fields.theme_name = true;
-      if (config.theme_name.empty()) {
-        AddWarning(issues, "theme.name is empty in settings.toml",
-                   "Falling back to default theme 'vivid'.");
-        config.theme_name = "vivid";
-        fields.theme_name = false;
-      }
-    }
-    if (ApplyStringField(theme_section["density"], "theme.density",
-                         config.theme_density, issues)) {
-      fields.theme_density = true;
-      if (config.theme_density != "compact" &&
-          config.theme_density != "comfortable") {
-        AddWarning(issues, "Unknown theme.density in settings.toml",
-                   "Falling back to default theme density 'comfortable'.");
-        config.theme_density = "comfortable";
-      }
-    }
-  } else if (table.contains("theme")) {
-    AddError(issues, "Invalid type for [theme] in settings.toml",
-             "Expected a table.");
-  }
-
-  const auto compact_section = table["compact"];
-  if (compact_section.is_table()) {
-    ApplyBoolField(compact_section["auto_enabled"], "compact.auto_enabled",
-                   config.auto_compact_enabled, issues);
-    ApplyDoubleField(compact_section["threshold"], "compact.threshold",
-                     kMinAutoCompactThreshold, kMaxAutoCompactThreshold,
-                     config.auto_compact_threshold, issues);
-    ApplyIntegerField(compact_section["keep_last"], "compact.keep_last",
-                      kMinAutoCompactKeepLast, kMaxAutoCompactKeepLast,
-                      config.auto_compact_keep_last, issues);
-    if (ApplyStringField(compact_section["mode"], "compact.mode",
-                         config.auto_compact_mode, issues)) {
-      if (config.auto_compact_mode != "summarize" &&
-          config.auto_compact_mode != "truncate") {
-        AddError(issues, "Invalid compact.mode in settings.toml",
-                 "Value must be 'summarize' or 'truncate'.");
-        config.auto_compact_mode = "summarize";
-      }
-    }
-  } else if (table.contains("compact")) {
-    AddError(issues, "Invalid type for [compact] in settings.toml",
-             "Expected a table.");
-  }
-
-  const auto mcp_section = table["mcp"];
-  if (mcp_section.is_table()) {
-    if (const auto* v = mcp_section["result_max_bytes"].as_integer()) {
-      const auto raw = v->get();
-      if (raw <= 0) {
-        AddError(issues, "Invalid mcp.result_max_bytes in settings.toml",
-                 "Must be a positive integer.");
-      } else {
-        config.mcp.result_max_bytes = static_cast<uintmax_t>(raw);
-      }
-    } else if (mcp_section["result_max_bytes"]) {
-      AddError(issues, "Invalid type for mcp.result_max_bytes in settings.toml",
-               "Expected an integer.");
-    }
-
-    const auto servers_node = mcp_section["servers"];
-    if (servers_node.is_array()) {
-      auto* servers_arr = servers_node.as_array();
-      std::unordered_set<std::string> seen_ids;
-      for (auto& server_elem : *servers_arr) {
-        auto* server_tbl = server_elem.as_table();
-        if (server_tbl == nullptr) {
-          AddError(issues, "Invalid element in [[mcp.servers]]",
-                   "Expected a table.");
-          continue;
-        }
-        mcp::McpServerConfig srv;
-        McpServerFieldSet server_fields;
-
-        if (auto* v = (*server_tbl)["id"].as_string()) {
-          srv.id = v->get();
-        }
-        if (srv.id.empty()) {
-          AddError(issues, "Missing or empty id in [[mcp.servers]]",
-                   "Each server entry must have a non-empty id.");
-          continue;
-        }
-        if (seen_ids.contains(srv.id)) {
-          AddError(issues, "Duplicate mcp.servers id: " + srv.id,
-                   "duplicate server id; keeping first entry.");
-          continue;
-        }
-        seen_ids.insert(srv.id);
-
-        if (auto* v = (*server_tbl)["transport"].as_string()) {
-          srv.transport = v->get();
-        }
-        if (auto* v = (*server_tbl)["command"].as_string()) {
-          srv.command = v->get();
-          server_fields.command = true;
-        }
-        ApplyStringArray((*server_tbl)["args"], "mcp.servers.args", srv.args,
-                         issues);
-        if ((*server_tbl)["args"]) {
-          server_fields.args = true;
-        }
-        if (auto* v = (*server_tbl)["url"].as_string()) {
-          srv.url = v->get();
-          server_fields.url = true;
-        }
-
-        if (auto* env_tbl = (*server_tbl)["env"].as_table()) {
-          for (auto& [k, v] : *env_tbl) {
-            if (auto* sv = v.as_string()) {
-              srv.env.emplace(std::string(k), sv->get());
-            } else {
-              AddError(issues, "Invalid value in mcp.servers.env",
-                       "All env values must be strings.");
-            }
-          }
-        } else if ((*server_tbl)["env"]) {
-          AddError(issues, "Invalid type for mcp.servers.env",
-                   "Expected a table of string values.");
-        }
-
-        const auto& presets = mcp::McpServerPresets();
-        if (auto it = presets.find(srv.id); it != presets.end()) {
-          const auto& preset = it->second;
-          if (srv.transport.empty()) {
-            srv.transport = preset.transport;
-          }
-          if (srv.command.empty()) {
-            srv.command = preset.command;
-          }
-          if (srv.args.empty()) {
-            srv.args = preset.args;
-          }
-          if (srv.url.empty()) {
-            srv.url = preset.url;
-          }
-        }
-
-        if (srv.transport != "stdio" && srv.transport != "http") {
-          AddError(issues, "Invalid transport for mcp server '" + srv.id + "'",
-                   "Must be 'stdio' or 'http'.");
-          continue;
-        }
-        if (srv.transport == "stdio" && srv.command.empty()) {
-          AddError(issues, "mcp server '" + srv.id + "' requires command",
-                   "transport='stdio' servers must specify command.");
-          continue;
-        }
-        if (srv.transport == "http" && srv.url.empty()) {
-          AddError(issues, "mcp server '" + srv.id + "' requires url",
-                   "transport='http' servers must specify url.");
-          continue;
-        }
-
-        if (auto* v = (*server_tbl)["enabled"].as_boolean()) {
-          srv.enabled = v->get();
-          server_fields.enabled = true;
-        }
-        if (auto* v = (*server_tbl)["requires_approval"].as_boolean()) {
-          srv.requires_approval = v->get();
-        }
-        if (auto* v = (*server_tbl)["auto_start"].as_boolean()) {
-          srv.auto_start = v->get();
-        }
-        ApplyStringArray((*server_tbl)["approval_required_tools"],
-                         "mcp.servers.approval_required_tools",
-                         srv.approval_required_tools, issues);
-
-        if (auto* auth_tbl = (*server_tbl)["auth"].as_table()) {
-          if (auto* type_v = (*auth_tbl)["type"].as_string()) {
-            const std::string auth_type = type_v->get();
-            if (auth_type == "bearer") {
-              mcp::McpAuthBearer bearer;
-              if (auto* v = (*auth_tbl)["api_key_env"].as_string()) {
-                bearer.api_key_env = v->get();
-                server_fields.api_key_env = true;
-              }
-              srv.auth = std::move(bearer);
-            } else if (auth_type == "oauth") {
-              mcp::McpAuthOAuth oauth;
-              if (auto* v = (*auth_tbl)["authorization_url"].as_string()) {
-                oauth.authorization_url = v->get();
-              }
-              if (auto* v = (*auth_tbl)["token_url"].as_string()) {
-                oauth.token_url = v->get();
-              }
-              if (auto* v = (*auth_tbl)["client_id"].as_string()) {
-                oauth.client_id = v->get();
-              }
-              ApplyStringArray((*auth_tbl)["scopes"], "mcp.servers.auth.scopes",
-                               oauth.scopes, issues);
-              srv.auth = std::move(oauth);
-            } else {
-              AddError(issues, "Unknown mcp.servers.auth.type: " + auth_type,
-                       "Expected 'bearer' or 'oauth'.");
-            }
-          } else {
-            AddError(issues,
-                     "mcp.servers.auth missing 'type' for '" + srv.id + "'",
-                     "Expected 'bearer' or 'oauth'.");
-          }
-        } else if ((*server_tbl)["auth"]) {
-          AddError(issues,
-                   "Invalid type for mcp.servers.auth for '" + srv.id + "'",
-                   "Expected a table.");
-        }
-
-        if (auto* headers_tbl = (*server_tbl)["headers"].as_table()) {
-          for (auto& [k, v] : *headers_tbl) {
-            if (auto* sv = v.as_string()) {
-              srv.headers.emplace(std::string(k), sv->get());
-            } else {
-              AddError(
-                  issues,
-                  "Invalid value in mcp.servers.headers for '" + srv.id + "'",
-                  "All header values must be strings.");
-            }
-          }
-        } else if ((*server_tbl)["headers"]) {
-          AddError(issues,
-                   "Invalid type for mcp.servers.headers for '" + srv.id + "'",
-                   "Expected a table of string values.");
-        }
-
-        fields.mcp_servers.emplace(srv.id, std::move(server_fields));
-        config.mcp.servers.push_back(std::move(srv));
-      }
-    } else if (mcp_section["servers"]) {
-      AddError(issues, "Invalid type for [[mcp.servers]] in settings.toml",
-               "Expected an array of tables.");
-    }
-  } else if (table.contains("mcp")) {
-    AddError(issues, "Invalid type for [mcp] in settings.toml",
-             "Expected a table.");
-  }
+  LoadProviderSection(table, config, fields, issues);
+  LoadLspSection(table, config, fields, issues);
+  LoadThemeSection(table, config, fields, issues);
+  LoadCompactSection(table, config, issues);
+  LoadMcpSection(table, config, fields, issues);
 
   return fields;
 }

@@ -174,6 +174,92 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
       on_usage_reported_(std::move(on_usage_reported)),
       last_usage_(std::move(last_usage)) {}
 
+ChatServicePromptProcessor::RoundOutcome
+ChatServicePromptProcessor::RunOneRound(
+    provider::LanguageModelProvider& provider,
+    const ChatServiceRequestBuilder& request_builder,
+    ChatMessageId assistant_id, uint64_t generation,
+    std::stop_token stop_token) {
+  RoundOutcome outcome;
+  bool round_aborted = false;
+  const ChatRequest request =
+      BuildRoundRequest(request_builder, generation, round_aborted);
+  if (round_aborted) {
+    outcome.stop = RoundOutcome::Stop::Aborted;
+    return outcome;
+  }
+
+  auto sink = [this, &outcome, assistant_id,
+               generation](ChatEvent event) mutable {
+    if (generation_value_() != generation) {
+      return;
+    }
+    if (auto* tool_requested = event.As<ToolCallRequestedEvent>()) {
+      outcome.requested_tools = std::move(tool_requested->tool_calls);
+      return;
+    }
+    if (auto* delta = event.As<TextDeltaEvent>()) {
+      if (delta->text.empty()) {
+        return;
+      }
+      outcome.round_text += delta->text;
+      emit_event_(
+          ChatEvent{TextDeltaEvent{.message_id = assistant_id,
+                                   .role = ChatRole::Assistant,
+                                   .text = std::move(delta->text),
+                                   .provider_id = std::move(delta->provider_id),
+                                   .model = std::move(delta->model)}});
+      return;
+    }
+    if (auto* arg_delta = event.As<ToolCallArgumentDeltaEvent>()) {
+      auto [it, inserted] = outcome.streaming_card_ids.try_emplace(
+          arg_delta->tool_call_id, ChatMessageId{0});
+      if (inserted) {
+        it->second = next_message_id_();
+      }
+      arg_delta->message_id = assistant_id;
+      arg_delta->card_message_id = it->second;
+      emit_event_(std::move(event));
+      return;
+    }
+    if (auto* error = event.As<ErrorEvent>()) {
+      outcome.stop = RoundOutcome::Stop::StreamError;
+      emit_event_(
+          ChatEvent{ErrorEvent{.message_id = assistant_id,
+                               .role = ChatRole::Assistant,
+                               .text = std::move(error->text),
+                               .provider_id = std::move(error->provider_id),
+                               .model = std::move(error->model),
+                               .status = ChatMessageStatus::Error}});
+      return;
+    }
+    // FinishedEvent from the provider signals stream end; ProcessPrompt emits
+    // its own authoritative FinishedEvent (with message_id) after all rounds.
+    if (event.As<FinishedEvent>()) {
+      return;
+    }
+    if (auto* usage = event.As<UsageReportedEvent>();
+        usage != nullptr && on_usage_reported_) {
+      on_usage_reported_(usage->usage);
+    }
+    emit_event_(std::move(event));
+  };
+
+  provider.CompleteStream(request, std::move(sink), stop_token);
+
+  if (generation_value_() != generation) {
+    outcome.stop = RoundOutcome::Stop::Aborted;
+    return outcome;
+  }
+  if (outcome.stop == RoundOutcome::Stop::StreamError) {
+    return outcome;
+  }
+  outcome.stop = outcome.requested_tools.empty()
+                     ? RoundOutcome::Stop::ModelDone
+                     : RoundOutcome::Stop::CallTools;
+  return outcome;
+}
+
 void ChatServicePromptProcessor::ProcessPrompt(
     ChatMessageId prompt_id, const std::string& prompt_content,
     uint64_t generation, std::stop_token stop_token) {
@@ -242,111 +328,28 @@ void ChatServicePromptProcessor::ProcessPrompt(
                    .status = ChatMessageStatus::Active}});
 
   std::string visible_assistant_text;
-  bool assistant_error = false;
-  // Hoisted so the post-loop check can inspect the final iteration's value:
-  // non-empty after the loop exits means the model still wanted to call tools
-  // when we hit the configured tool-round cap.
-  std::vector<ToolCallRequest> requested_tools;
+  bool model_wants_more_tools = false;
   const int max_tool_rounds =
       std::max(kMinToolRoundLimit, request_builder.Config().max_tool_rounds);
   for (int round = 0; round < max_tool_rounds; ++round) {
-    std::string round_text;
-    requested_tools.clear();
-    std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
-    bool round_aborted = false;
-    const ChatRequest request =
-        BuildRoundRequest(request_builder, generation, round_aborted);
-    if (round_aborted) {
-      // ResetConversation/CancelActiveResponse fired between rounds.
-      // Don't issue an empty request to the provider; emit the standard
-      // cancellation pair and bail.
-      emit_event_(ChatEvent{
-          MessageStatusChangedEvent{.message_id = assistant_id,
-                                    .role = ChatRole::Assistant,
-                                    .status = ChatMessageStatus::Cancelled}});
+    auto outcome = RunOneRound(*provider, request_builder, assistant_id,
+                               generation, stop_token);
+    visible_assistant_text += outcome.round_text;
+    if (outcome.stop == RoundOutcome::Stop::Aborted) {
+      EmitCancellation(assistant_id);
+      return;
+    }
+    if (outcome.stop == RoundOutcome::Stop::StreamError) {
       emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
       return;
     }
-
-    auto sink = [this, &round_text, assistant_id, generation, &assistant_error,
-                 &requested_tools,
-                 &streaming_card_ids](ChatEvent event) mutable {
-      if (generation_value_() != generation) {
-        return;
-      }
-      if (auto* tool_requested = event.As<ToolCallRequestedEvent>()) {
-        requested_tools = std::move(tool_requested->tool_calls);
-        return;
-      }
-      if (auto* delta = event.As<TextDeltaEvent>()) {
-        if (delta->text.empty()) {
-          return;
-        }
-        round_text += delta->text;
-        emit_event_(ChatEvent{
-            TextDeltaEvent{.message_id = assistant_id,
-                           .role = ChatRole::Assistant,
-                           .text = std::move(delta->text),
-                           .provider_id = std::move(delta->provider_id),
-                           .model = std::move(delta->model)}});
-        return;
-      }
-      if (auto* arg_delta = event.As<ToolCallArgumentDeltaEvent>()) {
-        auto [it, inserted] = streaming_card_ids.try_emplace(
-            arg_delta->tool_call_id, ChatMessageId{0});
-        if (inserted) {
-          it->second = next_message_id_();
-        }
-        arg_delta->message_id = assistant_id;
-        arg_delta->card_message_id = it->second;
-        emit_event_(std::move(event));
-        return;
-      }
-      if (auto* error = event.As<ErrorEvent>()) {
-        assistant_error = true;
-        emit_event_(
-            ChatEvent{ErrorEvent{.message_id = assistant_id,
-                                 .role = ChatRole::Assistant,
-                                 .text = std::move(error->text),
-                                 .provider_id = std::move(error->provider_id),
-                                 .model = std::move(error->model),
-                                 .status = ChatMessageStatus::Error}});
-        return;
-      }
-      // FinishedEvent from the provider signals stream end; ProcessPrompt emits
-      // its own authoritative FinishedEvent (with message_id) after all rounds.
-      if (event.As<FinishedEvent>()) {
-        return;
-      }
-      if (auto* usage = event.As<UsageReportedEvent>();
-          usage != nullptr && on_usage_reported_) {
-        on_usage_reported_(usage->usage);
-      }
-      emit_event_(std::move(event));
-    };
-
-    provider->CompleteStream(request, std::move(sink), stop_token);
-
-    if (generation_value_() != generation) {
-      emit_event_(ChatEvent{
-          MessageStatusChangedEvent{.message_id = assistant_id,
-                                    .role = ChatRole::Assistant,
-                                    .status = ChatMessageStatus::Cancelled}});
-      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
-      return;
-    }
-
-    if (assistant_error) {
-      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
-      return;
-    }
-
-    visible_assistant_text += round_text;
-
-    if (requested_tools.empty()) {
+    if (outcome.stop == RoundOutcome::Stop::ModelDone) {
+      model_wants_more_tools = false;
       break;
     }
 
+    // Stop::CallTools — append the assistant turn under the lock, then run
+    // the tool round outside it (emit_event_ re-enters history_mutex_).
     bool tool_round_aborted = false;
     {
       std::scoped_lock lock(*history_mutex_);
@@ -354,25 +357,19 @@ void ChatServicePromptProcessor::ProcessPrompt(
         tool_round_aborted = true;
       } else {
         ChatServiceHistory(*history_).AppendAssistantToolRound(
-            assistant_id, round_text, requested_tools);
+            assistant_id, outcome.round_text, outcome.requested_tools);
       }
     }
-    // Emit cancellation events outside the lock — emit_event_ routes through
-    // ChatService::EmitEvent, which acquires the same mutex history_mutex_
-    // points to. Re-locking std::mutex from the same thread is UB.
     if (tool_round_aborted) {
-      emit_event_(ChatEvent{
-          MessageStatusChangedEvent{.message_id = assistant_id,
-                                    .role = ChatRole::Assistant,
-                                    .status = ChatMessageStatus::Cancelled}});
-      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+      EmitCancellation(assistant_id);
       return;
     }
-
-    RunToolRound(requested_tools, streaming_card_ids, generation, stop_token);
+    RunToolRound(outcome.requested_tools, outcome.streaming_card_ids,
+                 generation, stop_token);
+    model_wants_more_tools = true;
   }
 
-  if (!requested_tools.empty()) {
+  if (model_wants_more_tools) {
     emit_event_(ChatEvent{
         ErrorEvent{.message_id = assistant_id,
                    .role = ChatRole::Assistant,
@@ -398,11 +395,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
     // See note above: emit_event_ re-enters history_mutex_, so the
     // cancellation events must be emitted after the scoped_lock releases.
     if (final_message_aborted) {
-      emit_event_(ChatEvent{
-          MessageStatusChangedEvent{.message_id = assistant_id,
-                                    .role = ChatRole::Assistant,
-                                    .status = ChatMessageStatus::Cancelled}});
-      emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+      EmitCancellation(assistant_id);
       return;
     }
   }
@@ -442,6 +435,116 @@ bool ChatServicePromptProcessor::ShouldAbortLocked(uint64_t generation) const {
   return generation_value_() != generation;
 }
 
+void ChatServicePromptProcessor::EmitCancellation(
+    ChatMessageId assistant_id) const {
+  emit_event_(ChatEvent{
+      MessageStatusChangedEvent{.message_id = assistant_id,
+                                .role = ChatRole::Assistant,
+                                .status = ChatMessageStatus::Cancelled}});
+  emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
+}
+
+ChatServicePromptProcessor::ToolPrep
+ChatServicePromptProcessor::PrepareOneToolCall(const ToolCallRequest& request,
+                                               bool is_mcp_tool) const {
+  ToolPrep prep{.prepared = MakeFallbackPreparedToolCall(request)};
+  try {
+    if (is_mcp_tool) {
+      if (chat_service_mcp_ == nullptr) {
+        throw std::invalid_argument(
+            "MCP tool requested but MCP is unavailable: " + request.name);
+      }
+      prep.prepared = chat_service_mcp_->PrepareMcpToolCall(request);
+    } else {
+      prep.prepared = prepare_built_in_tool_call_(request);
+    }
+  } catch (const ::yac::tool_call::ToolValidationError& error) {
+    auto definitions = ::yac::tool_call::ToolExecutor::Definitions();
+    if (chat_service_mcp_ != nullptr) {
+      definitions = ChatServiceMcp::MergeBuiltInsAndMcp(
+          definitions, chat_service_mcp_->BuildToolCatalogSnapshot());
+    }
+    prep.failure = ToolPrepFailure{
+        .error = error.what(),
+        .result_json =
+            ::yac::tool_call::BuildValidationErrorJson(error, definitions),
+    };
+  } catch (const std::exception& error) {
+    prep.failure = ToolPrepFailure{
+        .error = error.what(),
+        .result_json = ::yac::tool_call::BuildValidationErrorJson(
+            error.what(), request.name, request.arguments_json),
+    };
+  }
+  return prep;
+}
+
+bool ChatServicePromptProcessor::MaybeAwaitApproval(
+    ::yac::tool_call::PreparedToolCall& prepared,
+    const ToolCallRequest& tool_request, ChatMessageId tool_message_id,
+    std::stop_token stop_token, bool& gate_aborted) {
+  std::unique_lock<std::mutex> gate_lock;
+  if (approval_gate_ != nullptr) {
+    gate_lock = std::unique_lock<std::mutex>(*approval_gate_);
+    if (stop_token.stop_requested()) {
+      gate_aborted = true;
+      return false;
+    }
+  }
+  auto approval_id = tool_approval_->BeginPendingApproval();
+  prepared.approval_id = approval_id;
+  std::string question;
+  std::vector<std::string> options;
+  if (const auto* ask_user =
+          std::get_if<::yac::tool_call::AskUserCall>(&prepared.preview);
+      ask_user != nullptr) {
+    question = ask_user->question;
+    options = ask_user->options;
+  }
+  emit_event_(
+      ChatEvent{ToolApprovalRequestedEvent{.message_id = tool_message_id,
+                                           .role = ChatRole::Tool,
+                                           .text = prepared.approval_prompt,
+                                           .tool_call_id = tool_request.id,
+                                           .tool_name = tool_request.name,
+                                           .approval_id = approval_id,
+                                           .tool_call = prepared.preview,
+                                           .status = ChatMessageStatus::Queued,
+                                           .question = std::move(question),
+                                           .options = std::move(options)}});
+  // ask_user has its own resolution wait inside ExecuteAskUserDispatch; here
+  // we just want to surface the approval card without blocking on it.
+  if (tool_request.name == ::yac::tool_call::kAskUserToolName) {
+    return true;
+  }
+  return tool_approval_->WaitForResolution(approval_id, stop_token).approved;
+}
+
+::yac::tool_call::ToolExecutionResult
+ChatServicePromptProcessor::ExecuteOneToolCall(
+    const ::yac::tool_call::PreparedToolCall& prepared,
+    const std::optional<ToolPrepFailure>& failure, bool approved,
+    bool is_mcp_tool, std::stop_token stop_token) {
+  if (failure.has_value()) {
+    auto result = MakeErrorToolResult(prepared.preview, failure->error);
+    if (!failure->result_json.empty()) {
+      result.result_json = failure->result_json;
+    }
+    return result;
+  }
+  if (!approved) {
+    return MakeRejectedToolResult(prepared);
+  }
+  if (is_mcp_tool) {
+    try {
+      return chat_service_mcp_->ExecuteMcpToolCall(prepared, stop_token);
+    } catch (const std::exception& error) {
+      return MakeErrorToolResult(prepared.preview, error.what());
+    }
+  }
+  return execute_built_in_tool_call_(prepared, stop_token);
+}
+
 void ChatServicePromptProcessor::RunToolRound(
     const std::vector<ToolCallRequest>& requested_tools,
     const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
@@ -455,97 +558,28 @@ void ChatServicePromptProcessor::RunToolRound(
       tool_message_id = next_message_id_();
     }
     const bool is_mcp_tool = ::yac::mcp::IsMcpToolName(tool_request.name);
-    auto prepared = MakeFallbackPreparedToolCall(tool_request);
-    std::string preparation_error;
-    std::string preparation_result_json;
-    try {
-      if (is_mcp_tool) {
-        if (chat_service_mcp_ == nullptr) {
-          throw std::invalid_argument(
-              "MCP tool requested but MCP is unavailable: " +
-              tool_request.name);
-        }
-        prepared = chat_service_mcp_->PrepareMcpToolCall(tool_request);
-      } else {
-        prepared = prepare_built_in_tool_call_(tool_request);
-      }
-    } catch (const ::yac::tool_call::ToolValidationError& error) {
-      preparation_error = error.what();
-      auto definitions = ::yac::tool_call::ToolExecutor::Definitions();
-      if (chat_service_mcp_ != nullptr) {
-        definitions = ChatServiceMcp::MergeBuiltInsAndMcp(
-            definitions, chat_service_mcp_->BuildToolCatalogSnapshot());
-      }
-      preparation_result_json =
-          ::yac::tool_call::BuildValidationErrorJson(error, definitions);
-    } catch (const std::exception& error) {
-      preparation_error = error.what();
-      preparation_result_json = ::yac::tool_call::BuildValidationErrorJson(
-          preparation_error, tool_request.name, tool_request.arguments_json);
-    }
-    prepared.card_message_id = tool_message_id;
+    auto prep = PrepareOneToolCall(tool_request, is_mcp_tool);
+    prep.prepared.card_message_id = tool_message_id;
     emit_event_(
         ChatEvent{ToolCallStartedEvent{.message_id = tool_message_id,
                                        .role = ChatRole::Tool,
                                        .tool_call_id = tool_request.id,
                                        .tool_name = tool_request.name,
-                                       .tool_call = prepared.preview,
+                                       .tool_call = prep.prepared.preview,
                                        .status = ChatMessageStatus::Active}});
 
     bool approved = true;
-    if (preparation_error.empty() && prepared.requires_approval) {
-      std::unique_lock<std::mutex> gate_lock;
-      if (approval_gate_ != nullptr) {
-        gate_lock = std::unique_lock<std::mutex>(*approval_gate_);
-        if (stop_token.stop_requested()) {
-          return;
-        }
-      }
-      auto approval_id = tool_approval_->BeginPendingApproval();
-      prepared.approval_id = approval_id;
-      std::string question;
-      std::vector<std::string> options;
-      if (const auto* ask_user =
-              std::get_if<::yac::tool_call::AskUserCall>(&prepared.preview);
-          ask_user != nullptr) {
-        question = ask_user->question;
-        options = ask_user->options;
-      }
-      emit_event_(ChatEvent{
-          ToolApprovalRequestedEvent{.message_id = tool_message_id,
-                                     .role = ChatRole::Tool,
-                                     .text = prepared.approval_prompt,
-                                     .tool_call_id = tool_request.id,
-                                     .tool_name = tool_request.name,
-                                     .approval_id = approval_id,
-                                     .tool_call = prepared.preview,
-                                     .status = ChatMessageStatus::Queued,
-                                     .question = std::move(question),
-                                     .options = std::move(options)}});
-      if (tool_request.name != ::yac::tool_call::kAskUserToolName) {
-        auto resolution =
-            tool_approval_->WaitForResolution(approval_id, stop_token);
-        approved = resolution.approved;
+    if (!prep.failure.has_value() && prep.prepared.requires_approval) {
+      bool gate_aborted = false;
+      approved = MaybeAwaitApproval(prep.prepared, tool_request,
+                                    tool_message_id, stop_token, gate_aborted);
+      if (gate_aborted) {
+        return;
       }
     }
 
-    ::yac::tool_call::ToolExecutionResult result;
-    if (!preparation_error.empty()) {
-      result = MakeErrorToolResult(prepared.preview, preparation_error);
-      if (!preparation_result_json.empty()) {
-        result.result_json = std::move(preparation_result_json);
-      }
-    } else if (!approved) {
-      result = MakeRejectedToolResult(prepared);
-    } else if (is_mcp_tool) {
-      try {
-        result = chat_service_mcp_->ExecuteMcpToolCall(prepared, stop_token);
-      } catch (const std::exception& error) {
-        result = MakeErrorToolResult(prepared.preview, error.what());
-      }
-    } else {
-      result = execute_built_in_tool_call_(prepared, stop_token);
-    }
+    auto result = ExecuteOneToolCall(prep.prepared, prep.failure, approved,
+                                     is_mcp_tool, stop_token);
 
     // For a background sub_agent call, the tool itself has "completed" (the
     // spawn succeeded) but the sub-agent session is still running. Keep the

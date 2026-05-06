@@ -1,5 +1,7 @@
 #include "provider/bedrock_chat_protocol.hpp"
 
+#include <algorithm>
+#include <array>
 #include <aws/bedrock-runtime/BedrockRuntimeErrors.h>
 #include <aws/bedrock-runtime/model/ContentBlock.h>
 #include <aws/bedrock-runtime/model/ConversationRole.h>
@@ -18,7 +20,9 @@
 #include <aws/core/client/AWSError.h>
 #include <aws/core/utils/Document.h>
 #include <regex>
+#include <span>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 namespace yac::provider {
@@ -165,84 +169,119 @@ std::vector<BedrockMessageData> CoalesceToolResults(
   return out;
 }
 
+namespace {
+
+struct BedrockErrorEntry {
+  std::string_view aws_name;
+  std::string_view prefix;
+};
+
+inline constexpr std::array<BedrockErrorEntry, 12> kSyncErrorPrefixes = {{
+    {.aws_name = "AccessDeniedException",
+     .prefix =
+         "[bedrock-access-denied] Check AWS credentials and IAM permissions: "},
+    {.aws_name = "ModelErrorException",
+     .prefix = "[bedrock-model-error] Model returned an error: "},
+    {.aws_name = "ModelNotReadyException",
+     .prefix = "[bedrock-model-not-ready] Model is not ready, retry later: "},
+    {.aws_name = "ModelTimeoutException",
+     .prefix = "[bedrock-model-timeout] Model request timed out: "},
+    {.aws_name = "ResourceNotFoundException",
+     .prefix = "[bedrock-not-found] Model or resource not found: "},
+    {.aws_name = "ServiceUnavailableException",
+     .prefix = "[bedrock-unavailable] Bedrock service unavailable: "},
+    {.aws_name = "ThrottlingException",
+     .prefix = "[bedrock-throttle] Rate limit exceeded, retry after backoff: "},
+    {.aws_name = "ValidationException",
+     .prefix = "[bedrock-validation] Request validation failed: "},
+    {.aws_name = "InternalServerException",
+     .prefix = "[bedrock-internal] Bedrock internal error: "},
+    {.aws_name = "ExpiredTokenException",
+     .prefix = "[bedrock-expired-token] AWS credentials have expired: "},
+    {.aws_name = "InvalidSignatureException",
+     .prefix = "[bedrock-invalid-signature] AWS request signature is invalid "
+               "(credentials may be expired): "},
+    {.aws_name = "UnauthorizedException",
+     .prefix = "[bedrock-unauthorized] AWS request unauthorized: "},
+}};
+
+inline constexpr std::array<BedrockErrorEntry, 5> kStreamErrorPrefixes = {{
+    {.aws_name = "internalServerException",
+     .prefix = "[bedrock-stream-internal] Stream internal error: "},
+    {.aws_name = "modelStreamErrorException",
+     .prefix = "[bedrock-stream-model-error] Model stream error: "},
+    {.aws_name = "serviceUnavailableException",
+     .prefix = "[bedrock-stream-unavailable] Stream service unavailable: "},
+    {.aws_name = "throttlingException",
+     .prefix = "[bedrock-stream-throttle] Stream rate limited: "},
+    {.aws_name = "validationException",
+     .prefix = "[bedrock-stream-validation] Stream validation error: "},
+}};
+
+inline constexpr std::array<std::string_view, 4> kCredentialErrorNames = {
+    "ExpiredTokenException",
+    "InvalidSignatureException",
+    "UnauthorizedException",
+    "AccessDeniedException",
+};
+
+inline constexpr std::array<std::string_view, 4> kBenignStopReasons = {
+    "end_turn",
+    "tool_use",
+    "max_tokens",
+    "stop_sequence",
+};
+
+inline constexpr std::array<std::string_view, 2> kErrorStopReasons = {
+    "guardrail_intervened",
+    "content_filtered",
+};
+
+[[nodiscard]] std::string_view LookupErrorPrefix(
+    std::span<const BedrockErrorEntry> table, std::string_view aws_name) {
+  for (const auto& entry : table) {
+    if (entry.aws_name == aws_name) {
+      return entry.prefix;
+    }
+  }
+  return {};
+}
+
+}  // namespace
+
 chat::ErrorEvent MapBedrockSyncError(const std::string& error_type,
                                      const std::string& message) {
-  std::string prefix;
-
-  if (error_type == "AccessDeniedException") {
-    prefix =
-        "[bedrock-access-denied] Check AWS credentials and IAM permissions: ";
-  } else if (error_type == "ModelErrorException") {
-    prefix = "[bedrock-model-error] Model returned an error: ";
-  } else if (error_type == "ModelNotReadyException") {
-    prefix = "[bedrock-model-not-ready] Model is not ready, retry later: ";
-  } else if (error_type == "ModelTimeoutException") {
-    prefix = "[bedrock-model-timeout] Model request timed out: ";
-  } else if (error_type == "ResourceNotFoundException") {
-    prefix = "[bedrock-not-found] Model or resource not found: ";
-  } else if (error_type == "ServiceUnavailableException") {
-    prefix = "[bedrock-unavailable] Bedrock service unavailable: ";
-  } else if (error_type == "ThrottlingException") {
-    prefix = "[bedrock-throttle] Rate limit exceeded, retry after backoff: ";
-  } else if (error_type == "ValidationException") {
-    prefix = "[bedrock-validation] Request validation failed: ";
-  } else if (error_type == "InternalServerException") {
-    prefix = "[bedrock-internal] Bedrock internal error: ";
-  } else if (error_type == "ExpiredTokenException") {
-    prefix = "[bedrock-expired-token] AWS credentials have expired: ";
-  } else if (error_type == "InvalidSignatureException") {
-    prefix =
-        "[bedrock-invalid-signature] AWS request signature is invalid "
-        "(credentials may be expired): ";
-  } else if (error_type == "UnauthorizedException") {
-    prefix = "[bedrock-unauthorized] AWS request unauthorized: ";
-  } else {
-    prefix = "[bedrock-error] " + error_type + ": ";
+  const auto known = LookupErrorPrefix(kSyncErrorPrefixes, error_type);
+  if (!known.empty()) {
+    return {.text = std::string(known) + message};
   }
-
-  return {.text = prefix + message};
+  return {.text = "[bedrock-error] " + error_type + ": " + message};
 }
 
 chat::ErrorEvent MapBedrockStreamError(const std::string& error_type,
                                        const std::string& message) {
-  std::string prefix;
-
-  if (error_type == "internalServerException") {
-    prefix = "[bedrock-stream-internal] Stream internal error: ";
-  } else if (error_type == "modelStreamErrorException") {
-    prefix = "[bedrock-stream-model-error] Model stream error: ";
-  } else if (error_type == "serviceUnavailableException") {
-    prefix = "[bedrock-stream-unavailable] Stream service unavailable: ";
-  } else if (error_type == "throttlingException") {
-    prefix = "[bedrock-stream-throttle] Stream rate limited: ";
-  } else if (error_type == "validationException") {
-    prefix = "[bedrock-stream-validation] Stream validation error: ";
-  } else {
-    prefix = "[bedrock-stream-error] " + error_type + ": ";
+  const auto known = LookupErrorPrefix(kStreamErrorPrefixes, error_type);
+  if (!known.empty()) {
+    return {.text = std::string(known) + message};
   }
-
-  return {.text = prefix + message};
+  return {.text = "[bedrock-stream-error] " + error_type + ": " + message};
 }
 
 bool IsErrorStopReason(const std::string& stop_reason) {
-  if (stop_reason == "end_turn" || stop_reason == "tool_use" ||
-      stop_reason == "max_tokens" || stop_reason == "stop_sequence") {
+  if (std::ranges::any_of(kBenignStopReasons, [&](std::string_view benign) {
+        return benign == stop_reason;
+      })) {
     return false;
   }
-
-  if (stop_reason == "guardrail_intervened" ||
-      stop_reason == "content_filtered") {
-    return true;
-  }
-
-  return false;
+  return std::ranges::any_of(kErrorStopReasons, [&](std::string_view error) {
+    return error == stop_reason;
+  });
 }
 
 bool IsCredentialError(const std::string& exception_name) {
-  return exception_name == "ExpiredTokenException" ||
-         exception_name == "InvalidSignatureException" ||
-         exception_name == "UnauthorizedException" ||
-         exception_name == "AccessDeniedException";
+  return std::ranges::any_of(kCredentialErrorNames, [&](std::string_view name) {
+    return name == exception_name;
+  });
 }
 
 ToolConfigData TranslateToolDefinitions(

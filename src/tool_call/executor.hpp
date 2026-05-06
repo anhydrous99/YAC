@@ -32,6 +32,18 @@ struct PreparedToolCall {
 
 using ToolExecutionResult = yac::core_types::ToolExecutionResult;
 
+// Bundle of per-call dependencies threaded through every dispatch function.
+// Lets dispatch helpers take two args instead of seven (most of which they
+// ignore) and keeps the dependency surface explicit at the call site.
+struct ExecutionContext {
+  const WorkspaceFilesystem& workspace_filesystem;
+  const std::shared_ptr<ILspClient>& lsp_client;
+  TodoState& todo_state;
+  chat::SubAgentManager* sub_agent_manager;
+  chat::internal::ChatServiceToolApproval* tool_approval;
+  std::stop_token stop;
+};
+
 class ToolExecutor {
  public:
   explicit ToolExecutor(std::filesystem::path workspace_root,

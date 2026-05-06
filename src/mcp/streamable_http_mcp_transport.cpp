@@ -200,7 +200,7 @@ Json StreamableHttpMcpTransport::SendRequest(std::string_view method,
       {std::string(pc::kFieldId), next_request_id_.fetch_add(1)},
       {std::string(pc::kFieldMethod), method},
       {std::string(pc::kFieldParams), params}};
-  return PerformJsonRpcRequest(message, timeout, stop, true);
+  return PerformJsonRpcRequest(message, timeout, stop, SessionRetry::Allow);
 }
 
 void StreamableHttpMcpTransport::SendNotification(std::string_view method,
@@ -210,7 +210,7 @@ void StreamableHttpMcpTransport::SendNotification(std::string_view method,
       {std::string(pc::kFieldMethod), method},
       {std::string(pc::kFieldParams), params}};
   (void)PerformJsonRpcRequest(message, kDefaultNotificationTimeout,
-                              std::stop_token{}, true);
+                              std::stop_token{}, SessionRetry::Allow);
 }
 
 void StreamableHttpMcpTransport::SetNotificationCallback(
@@ -226,10 +226,11 @@ TransportStatus StreamableHttpMcpTransport::Status() const {
 
 Json StreamableHttpMcpTransport::PerformJsonRpcRequest(
     const Json& message, std::chrono::milliseconds timeout,
-    std::stop_token stop, bool allow_session_retry) {
+    std::stop_token stop, SessionRetry session_retry) {
   std::scoped_lock request_lock(request_mutex_);
   HttpResponse response = PerformHttpRequest(message, timeout, stop);
-  if (response.status_code == 404 && allow_session_retry && SessionId()) {
+  if (response.status_code == 404 && session_retry == SessionRetry::Allow &&
+      SessionId()) {
     {
       std::scoped_lock lock(mutex_);
       status_ = TransportStatus::Reconnecting;

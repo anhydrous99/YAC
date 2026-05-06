@@ -42,10 +42,12 @@ class StreamableHttpMcpTransport : public IMcpTransport {
   static std::size_t WriteCallback(char* ptr, std::size_t size,
                                    std::size_t nmemb, void* userdata);
 
+  enum class SessionRetry { Allow, Deny };
+
   [[nodiscard]] Json PerformJsonRpcRequest(const Json& message,
                                            std::chrono::milliseconds timeout,
                                            std::stop_token stop,
-                                           bool allow_session_retry);
+                                           SessionRetry session_retry);
   [[nodiscard]] HttpResponse PerformHttpRequest(
       const Json& message, std::chrono::milliseconds timeout,
       std::stop_token stop);

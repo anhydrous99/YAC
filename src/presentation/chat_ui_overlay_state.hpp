@@ -81,14 +81,25 @@ class ChatUiOverlayState {
   bool show_tool_approval_ = false;
   bool show_ask_user_ = false;
   bool show_help_ = false;
-  std::string approval_id_;
-  std::string approval_tool_name_;
-  std::string approval_prompt_;
-  std::optional<::yac::tool_call::ToolCallBlock> approval_preview_;
-  std::string ask_user_approval_id_;
-  std::string ask_user_question_;
-  std::vector<std::string> ask_user_options_;
-  std::string ask_user_input_;
+  // Tool-approval dialog state. Populated by ShowToolApproval; consumed by
+  // DispatchToolApproval. Empty `id` means no approval is currently pending.
+  struct ToolApprovalDialog {
+    std::string id;
+    std::string tool_name;
+    std::string prompt;
+    std::optional<::yac::tool_call::ToolCallBlock> preview;
+  };
+  ToolApprovalDialog tool_approval_dialog_;
+
+  // Ask-user dialog state. Populated by ShowAskUserDialog; consumed by
+  // DispatchAskUserSubmit / DispatchAskUserCancel.
+  struct AskUserDialog {
+    std::string approval_id;
+    std::string question;
+    std::vector<std::string> options;
+    std::string input;
+  };
+  AskUserDialog ask_user_dialog_;
   std::vector<Command> commands_;
   std::vector<Command> model_commands_;
   std::vector<Command> theme_commands_;

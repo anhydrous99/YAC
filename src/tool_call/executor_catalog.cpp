@@ -1,6 +1,16 @@
 #include "tool_call/executor_catalog.hpp"
 
+#include "chat/chat_service_tool_approval.hpp"
+#include "tool_call/bash_tool_executor.hpp"
+#include "tool_call/edit_tool_executor.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "tool_call/filesystem_tool_executor.hpp"
+#include "tool_call/glob_tool_executor.hpp"
+#include "tool_call/grep_tool_executor.hpp"
+#include "tool_call/lsp_tool_executor.hpp"
+#include "tool_call/sub_agent_tool_executor.hpp"
+#include "tool_call/todo_state.hpp"
+#include "tool_call/tool_error_result.hpp"
 #include "tool_call/tool_validation_error.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
@@ -15,9 +25,6 @@
 namespace yac::tool_call {
 
 namespace {
-
-using PrepareFn = PreparedToolCall (*)(const chat::ToolCallRequest&,
-                                       const Json& args);
 
 PreparedToolCall PrepareFileWriteTool(const chat::ToolCallRequest& request,
                                       const Json& args) {
@@ -200,34 +207,175 @@ PreparedToolCall PrepareGlobTool(const chat::ToolCallRequest& request,
                           .requires_approval = false};
 }
 
-using PrepareRegistry = std::unordered_map<std::string_view, PrepareFn>;
+// Execute helpers — one per tool. Each takes the prepared call plus the
+// shared ExecutionContext and returns a ToolExecutionResult. Most ignore
+// most of `ctx`; that is fine — packing the deps in one struct keeps the
+// signature uniform without polluting the call site with /*unused*/ args.
 
-const PrepareRegistry kPrepareRegistry = {
-    {kFileWriteToolName, &PrepareFileWriteTool},
-    {kFileReadToolName, &PrepareFileReadTool},
-    {kListDirToolName, &PrepareListDirTool},
-    {kLspDiagnosticsToolName, &PrepareLspDiagnosticsTool},
-    {kLspReferencesToolName, &PrepareLspReferencesTool},
-    {kLspGotoDefinitionToolName, &PrepareLspGotoDefinitionTool},
-    {kLspRenameToolName, &PrepareLspRenameTool},
-    {kLspSymbolsToolName, &PrepareLspSymbolsTool},
-    {kSubAgentToolName, &PrepareSubAgentTool},
-    {kTodoWriteToolName, &PrepareTodoWriteTool},
-    {kAskUserToolName, &PrepareAskUserTool},
-    {kBashToolName, &PrepareBashTool},
-    {kFileEditToolName, &PrepareFileEditTool},
-    {kGrepToolName, &PrepareGrepTool},
-    {kGlobToolName, &PrepareGlobTool},
+ToolExecutionResult ExecuteFileReadDispatch(const PreparedToolCall& prepared,
+                                            const ExecutionContext& ctx) {
+  return ExecuteFileReadTool(prepared.request, ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteFileWriteDispatch(const PreparedToolCall& prepared,
+                                             const ExecutionContext& ctx) {
+  return ExecuteFileWriteTool(prepared.request, ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteListDirDispatch(const PreparedToolCall& prepared,
+                                           const ExecutionContext& ctx) {
+  return ExecuteListDirTool(prepared.request, ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteLspDiagnosticsDispatch(
+    const PreparedToolCall& prepared, const ExecutionContext& ctx) {
+  return ExecuteLspDiagnosticsTool(prepared.request, *ctx.lsp_client,
+                                   ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteLspReferencesDispatch(
+    const PreparedToolCall& prepared, const ExecutionContext& ctx) {
+  return ExecuteLspReferencesTool(prepared.request, *ctx.lsp_client,
+                                  ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteLspGotoDefinitionDispatch(
+    const PreparedToolCall& prepared, const ExecutionContext& ctx) {
+  return ExecuteLspGotoDefinitionTool(prepared.request, *ctx.lsp_client,
+                                      ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteLspRenameDispatch(const PreparedToolCall& prepared,
+                                             const ExecutionContext& ctx) {
+  return ExecuteLspRenameTool(prepared.request, *ctx.lsp_client,
+                              ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteLspSymbolsDispatch(const PreparedToolCall& prepared,
+                                              const ExecutionContext& ctx) {
+  return ExecuteLspSymbolsTool(prepared.request, *ctx.lsp_client,
+                               ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteSubAgentDispatch(const PreparedToolCall& prepared,
+                                            const ExecutionContext& ctx) {
+  return ExecuteSubAgentTool(prepared, ctx.sub_agent_manager, ctx.stop);
+}
+
+ToolExecutionResult ExecuteTodoWriteDispatch(const PreparedToolCall& prepared,
+                                             const ExecutionContext& ctx) {
+  const auto* call = std::get_if<TodoWriteCall>(&prepared.preview);
+  if (call == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: todo_write preview type mismatch.");
+  }
+  ctx.todo_state.Update(call->todos);
+  auto current = ctx.todo_state.Current();
+  Json todos_json = Json::array();
+  for (const auto& item : current) {
+    todos_json.push_back({{"content", item.content},
+                          {"status", item.status},
+                          {"priority", item.priority}});
+  }
+  return ToolExecutionResult{
+      .block = prepared.preview,
+      .result_json = Json{{"todos", std::move(todos_json)}}.dump(),
+  };
+}
+
+ToolExecutionResult ExecuteBashDispatch(const PreparedToolCall& prepared,
+                                        const ExecutionContext& ctx) {
+  return ExecuteBashTool(prepared.request, ctx.workspace_filesystem.Root(),
+                         ctx.stop);
+}
+
+ToolExecutionResult ExecuteAskUserDispatch(const PreparedToolCall& prepared,
+                                           const ExecutionContext& ctx) {
+  const auto* call_ptr = std::get_if<AskUserCall>(&prepared.preview);
+  if (call_ptr == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: ask_user preview type mismatch.");
+  }
+  auto call = *call_ptr;
+  if (ctx.tool_approval == nullptr || prepared.approval_id.empty()) {
+    return ErrorResult(std::move(call),
+                       "Ask user approval pipeline unavailable.");
+  }
+  auto resolution =
+      ctx.tool_approval->WaitForResolution(prepared.approval_id, ctx.stop);
+  if (!resolution.approved) {
+    return ErrorResult(std::move(call), "Cancelled by user");
+  }
+  call.response = std::move(resolution.response);
+  return ToolExecutionResult{
+      .block = call,
+      .result_json = Json{{"result", call.response}}.dump(),
+  };
+}
+
+ToolExecutionResult ExecuteFileEditDispatch(const PreparedToolCall& prepared,
+                                            const ExecutionContext& ctx) {
+  return ExecuteEditTool(prepared.request, ctx.workspace_filesystem);
+}
+
+ToolExecutionResult ExecuteGrepDispatch(const PreparedToolCall& prepared,
+                                        const ExecutionContext& ctx) {
+  return ExecuteGrepTool(prepared.request, ctx.workspace_filesystem, ctx.stop);
+}
+
+ToolExecutionResult ExecuteGlobDispatch(const PreparedToolCall& prepared,
+                                        const ExecutionContext& ctx) {
+  return ExecuteGlobTool(prepared.request, ctx.workspace_filesystem);
+}
+
+using HandlerRegistry = std::unordered_map<std::string_view, ToolHandler>;
+
+const HandlerRegistry kToolHandlers = {
+    {kFileWriteToolName,
+     {.prepare = &PrepareFileWriteTool, .execute = &ExecuteFileWriteDispatch}},
+    {kFileReadToolName,
+     {.prepare = &PrepareFileReadTool, .execute = &ExecuteFileReadDispatch}},
+    {kListDirToolName,
+     {.prepare = &PrepareListDirTool, .execute = &ExecuteListDirDispatch}},
+    {kLspDiagnosticsToolName,
+     {.prepare = &PrepareLspDiagnosticsTool,
+      .execute = &ExecuteLspDiagnosticsDispatch}},
+    {kLspReferencesToolName,
+     {.prepare = &PrepareLspReferencesTool,
+      .execute = &ExecuteLspReferencesDispatch}},
+    {kLspGotoDefinitionToolName,
+     {.prepare = &PrepareLspGotoDefinitionTool,
+      .execute = &ExecuteLspGotoDefinitionDispatch}},
+    {kLspRenameToolName,
+     {.prepare = &PrepareLspRenameTool, .execute = &ExecuteLspRenameDispatch}},
+    {kLspSymbolsToolName,
+     {.prepare = &PrepareLspSymbolsTool,
+      .execute = &ExecuteLspSymbolsDispatch}},
+    {kSubAgentToolName,
+     {.prepare = &PrepareSubAgentTool, .execute = &ExecuteSubAgentDispatch}},
+    {kTodoWriteToolName,
+     {.prepare = &PrepareTodoWriteTool, .execute = &ExecuteTodoWriteDispatch}},
+    {kAskUserToolName,
+     {.prepare = &PrepareAskUserTool, .execute = &ExecuteAskUserDispatch}},
+    {kBashToolName,
+     {.prepare = &PrepareBashTool, .execute = &ExecuteBashDispatch}},
+    {kFileEditToolName,
+     {.prepare = &PrepareFileEditTool, .execute = &ExecuteFileEditDispatch}},
+    {kGrepToolName,
+     {.prepare = &PrepareGrepTool, .execute = &ExecuteGrepDispatch}},
+    {kGlobToolName,
+     {.prepare = &PrepareGlobTool, .execute = &ExecuteGlobDispatch}},
 };
 
 }  // namespace
 
-bool HasToolExecutorPrepareRegistryEntry(std::string_view name) {
-  return kPrepareRegistry.contains(name);
+const ToolHandler* LookupToolHandler(std::string_view name) {
+  const auto it = kToolHandlers.find(name);
+  return it == kToolHandlers.end() ? nullptr : &it->second;
 }
 
-std::size_t ToolExecutorPrepareRegistrySize() {
-  return kPrepareRegistry.size();
+std::size_t ToolHandlerCount() {
+  return kToolHandlers.size();
 }
 
 std::vector<chat::ToolDefinition> ToolDefinitions() {
@@ -306,10 +454,15 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
   };
 }
 
-PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
-  Json args;
+namespace {
+
+// Re-throws any exception from `step` as a ToolValidationError attached to
+// the originating request, so callers see a uniform error shape regardless of
+// whether parsing or the per-tool prepare function was the source.
+template <typename Step>
+auto WrapAsValidationError(const chat::ToolCallRequest& request, Step step) {
   try {
-    args = ParseArguments(request);
+    return step();
   } catch (const ToolValidationError& error) {
     throw ToolValidationError(error.what(), request.name,
                               request.arguments_json);
@@ -317,20 +470,20 @@ PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
     throw ToolValidationError(error.what(), request.name,
                               request.arguments_json);
   }
-  const auto it = kPrepareRegistry.find(request.name);
-  if (it == kPrepareRegistry.end()) {
+}
+
+}  // namespace
+
+PreparedToolCall PrepareToolCall(const chat::ToolCallRequest& request) {
+  const Json args =
+      WrapAsValidationError(request, [&] { return ParseArguments(request); });
+  const auto* handler = LookupToolHandler(request.name);
+  if (handler == nullptr) {
     throw ToolValidationError("Unknown tool: " + request.name, request.name,
                               request.arguments_json);
   }
-  try {
-    return it->second(request, args);
-  } catch (const ToolValidationError& error) {
-    throw ToolValidationError(error.what(), request.name,
-                              request.arguments_json);
-  } catch (const std::exception& error) {
-    throw ToolValidationError(error.what(), request.name,
-                              request.arguments_json);
-  }
+  return WrapAsValidationError(request,
+                               [&] { return handler->prepare(request, args); });
 }
 
 }  // namespace yac::tool_call

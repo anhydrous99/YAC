@@ -99,15 +99,10 @@ ftxui::Element RenderError(const std::string& error,
 ftxui::Element RenderHighlightedLine(syntax::internal::Lexer* lexer,
                                      std::string_view content,
                                      const RenderContext& context,
-                                     ftxui::Color fallback_fg,
-                                     ftxui::Color tint_bg, bool tint) {
+                                     ftxui::Color fallback_fg) {
   if (lexer == nullptr) {
-    auto element =
-        ftxui::paragraph(std::string(content)) | ftxui::color(fallback_fg);
-    if (tint) {
-      element = element | ftxui::bgcolor(tint_bg);
-    }
-    return element | ftxui::flex;
+    return ftxui::paragraph(std::string(content)) | ftxui::color(fallback_fg) |
+           ftxui::flex;
   }
   auto spans = lexer->NextLine(content);
   ftxui::Elements segments;
@@ -116,9 +111,6 @@ ftxui::Element RenderHighlightedLine(syntax::internal::Lexer* lexer,
     segments.push_back(syntax::internal::RenderToken(span, context));
   }
   auto row = segments.empty() ? ftxui::text("") : ftxui::hbox(segments);
-  if (tint) {
-    row = row | ftxui::bgcolor(tint_bg);
-  }
   return row | ftxui::flex;
 }
 

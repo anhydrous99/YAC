@@ -342,6 +342,34 @@ class InlineTokenizer {
     return true;
   }
 
+  // Skips past an inline code span starting at `scan` (`text_[scan]` must be
+  // a backtick). Returns the position after the matching close run, or
+  // `scan + 1` when no matching close exists — preserving the prior
+  // single-byte advance behavior so emphasis scanning makes forward progress.
+  [[nodiscard]] size_t SkipCodeSpan(size_t scan) const {
+    size_t code_run = 0;
+    while (scan + code_run < text_.size() && text_[scan + code_run] == '`') {
+      ++code_run;
+    }
+    size_t close_scan = scan + code_run;
+    while (close_scan < text_.size()) {
+      if (text_[close_scan] != '`') {
+        ++close_scan;
+        continue;
+      }
+      size_t close_run = 0;
+      while (close_scan + close_run < text_.size() &&
+             text_[close_scan + close_run] == '`') {
+        ++close_run;
+      }
+      if (close_run == code_run) {
+        return close_scan + close_run;
+      }
+      close_scan += close_run;
+    }
+    return scan + 1;
+  }
+
   bool TryEmphasis(char delim) {
     size_t run_len = 0;
     while (pos_ + run_len < text_.size() && text_[pos_ + run_len] == delim) {
@@ -360,34 +388,7 @@ class InlineTokenizer {
         continue;
       }
       if (c == '`') {
-        size_t code_run = 0;
-        while (scan + code_run < text_.size() &&
-               text_[scan + code_run] == '`') {
-          ++code_run;
-        }
-        size_t close_scan = scan + code_run;
-        bool found_close = false;
-        while (close_scan < text_.size()) {
-          if (text_[close_scan] != '`') {
-            ++close_scan;
-            continue;
-          }
-          size_t close_run = 0;
-          while (close_scan + close_run < text_.size() &&
-                 text_[close_scan + close_run] == '`') {
-            ++close_run;
-          }
-          if (close_run == code_run) {
-            close_scan += close_run;
-            scan = close_scan;
-            found_close = true;
-            break;
-          }
-          close_scan += close_run;
-        }
-        if (!found_close) {
-          ++scan;
-        }
+        scan = SkipCodeSpan(scan);
         continue;
       }
       if (c != delim) {

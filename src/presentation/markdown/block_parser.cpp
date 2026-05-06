@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace yac::presentation::markdown::parser_detail {
@@ -61,6 +63,27 @@ struct ListItemHeader {
   std::string first_line_content;
 };
 
+// Recognizes the GFM task-list `[ ]` / `[x]` / `[X]` prefix at the start of a
+// list item's content. Returns nullopt when the prefix is absent.
+struct TaskMarker {
+  bool checked = false;
+  size_t consumed = 0;  // Bytes from `text` belonging to the marker.
+};
+
+std::optional<TaskMarker> ParseTaskMarker(std::string_view text) {
+  if (text.size() < 3 || text[0] != '[' ||
+      (text[1] != ' ' && text[1] != 'x' && text[1] != 'X') || text[2] != ']') {
+    return std::nullopt;
+  }
+  if (text.size() != 3 && text[3] != ' ') {
+    return std::nullopt;
+  }
+  return TaskMarker{
+      .checked = (text[1] == 'x' || text[1] == 'X'),
+      .consumed = text.size() <= 4 ? text.size() : 4,
+  };
+}
+
 std::optional<ListItemHeader> ParseListItemHeader(const std::string& line) {
   const size_t indent = LeadingSpaces(line);
   if (indent >= line.size()) {
@@ -104,16 +127,17 @@ std::optional<ListItemHeader> ParseListItemHeader(const std::string& line) {
   }
   header.content_col = after_marker + 1;
   std::string remainder = line.substr(content_start);
-  if (!header.ordered && remainder.size() >= 3 && remainder[0] == '[' &&
-      (remainder[1] == ' ' || remainder[1] == 'x' || remainder[1] == 'X') &&
-      remainder[2] == ']' && (remainder.size() == 3 || remainder[3] == ' ')) {
-    header.task = true;
-    header.task_checked = (remainder[1] == 'x' || remainder[1] == 'X');
-    header.first_line_content =
-        remainder.size() <= 4 ? std::string{} : remainder.substr(4);
-  } else {
-    header.first_line_content = std::move(remainder);
+  if (!header.ordered) {
+    if (auto task = ParseTaskMarker(remainder); task.has_value()) {
+      header.task = true;
+      header.task_checked = task->checked;
+      header.first_line_content = task->consumed < remainder.size()
+                                      ? remainder.substr(task->consumed)
+                                      : std::string{};
+      return header;
+    }
   }
+  header.first_line_content = std::move(remainder);
   return header;
 }
 
@@ -376,6 +400,61 @@ std::optional<Blockquote> TryParseBlockquote(
   return blockquote;
 }
 
+// Skips a blank-line run from `index` and, if the next non-blank line is a
+// list item header at the same marker column with matching ordering, advances
+// `index` to that line. Returns true when the list should continue, false
+// when the run terminates the list (EOF or different marker shape).
+bool SkipBlankRunUntilNextItem(const std::vector<std::string>& lines,
+                               size_t& index, size_t marker_col, bool ordered) {
+  size_t look = index + 1;
+  while (look < lines.size() && Trim(lines[look]).empty()) {
+    ++look;
+  }
+  if (look >= lines.size()) {
+    index = look;
+    return false;
+  }
+  auto peek = ParseListItemHeader(lines[look]);
+  if (!peek || peek->marker_col != marker_col || peek->ordered != ordered) {
+    return false;
+  }
+  index = look;
+  return true;
+}
+
+// Reads the continuation lines of a single list item starting at `index` and
+// returns them dedented to `content_col`. Stops when a non-indented line or
+// an inter-item blank run is reached. `index` is advanced to the next line
+// the outer loop should consider.
+std::vector<std::string> CollectListItemBody(
+    const std::vector<std::string>& lines, size_t& index, size_t content_col) {
+  std::vector<std::string> body;
+  while (index < lines.size()) {
+    const auto& line = lines[index];
+    if (Trim(line).empty()) {
+      size_t look = index + 1;
+      while (look < lines.size() && Trim(lines[look]).empty()) {
+        ++look;
+      }
+      if (look >= lines.size() || LeadingSpaces(lines[look]) < content_col) {
+        break;
+      }
+      body.emplace_back();
+      ++index;
+      continue;
+    }
+    if (LeadingSpaces(line) < content_col) {
+      break;
+    }
+    body.push_back(DedentLine(line, content_col));
+    ++index;
+  }
+  while (!body.empty() && Trim(body.back()).empty()) {
+    body.pop_back();
+  }
+  return body;
+}
+
 std::optional<BlockNode> TryParseList(const std::vector<std::string>& lines,
                                       size_t& index, const ParseOptions& opts) {
   if (index >= lines.size()) {
@@ -397,19 +476,9 @@ std::optional<BlockNode> TryParseList(const std::vector<std::string>& lines,
 
   while (index < lines.size()) {
     if (Trim(lines[index]).empty()) {
-      size_t look = index + 1;
-      while (look < lines.size() && Trim(lines[look]).empty()) {
-        ++look;
-      }
-      if (look >= lines.size()) {
-        index = look;
+      if (!SkipBlankRunUntilNextItem(lines, index, marker_col, ordered)) {
         break;
       }
-      auto peek = ParseListItemHeader(lines[look]);
-      if (!peek || peek->marker_col != marker_col || peek->ordered != ordered) {
-        break;
-      }
-      index = look;
       continue;
     }
 
@@ -423,31 +492,10 @@ std::optional<BlockNode> TryParseList(const std::vector<std::string>& lines,
     std::vector<std::string> body;
     body.push_back(header_value.first_line_content);
     ++index;
-    const size_t content_col = header_value.content_col;
-
-    while (index < lines.size()) {
-      const auto& line = lines[index];
-      if (Trim(line).empty()) {
-        size_t look = index + 1;
-        while (look < lines.size() && Trim(lines[look]).empty()) {
-          ++look;
-        }
-        if (look >= lines.size() || LeadingSpaces(lines[look]) < content_col) {
-          break;
-        }
-        body.emplace_back();
-        ++index;
-        continue;
-      }
-      if (LeadingSpaces(line) < content_col) {
-        break;
-      }
-      body.push_back(DedentLine(line, content_col));
-      ++index;
-    }
-    while (!body.empty() && Trim(body.back()).empty()) {
-      body.pop_back();
-    }
+    auto continuation =
+        CollectListItemBody(lines, index, header_value.content_col);
+    body.insert(body.end(), std::make_move_iterator(continuation.begin()),
+                std::make_move_iterator(continuation.end()));
 
     auto children = ParseBlockNodes(body, opts);
     if (ordered) {

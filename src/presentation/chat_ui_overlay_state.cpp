@@ -236,20 +236,24 @@ void ChatUiOverlayState::ShowHelp() {
 void ChatUiOverlayState::ShowToolApproval(
     std::string approval_id, std::string tool_name, std::string prompt,
     std::optional<::yac::tool_call::ToolCallBlock> preview) {
-  approval_id_ = std::move(approval_id);
-  approval_tool_name_ = std::move(tool_name);
-  approval_prompt_ = std::move(prompt);
-  approval_preview_ = std::move(preview);
+  tool_approval_dialog_ = ToolApprovalDialog{
+      .id = std::move(approval_id),
+      .tool_name = std::move(tool_name),
+      .prompt = std::move(prompt),
+      .preview = std::move(preview),
+  };
   show_tool_approval_ = true;
 }
 
 void ChatUiOverlayState::ShowAskUserDialog(std::string approval_id,
                                            std::string question,
                                            std::vector<std::string> options) {
-  ask_user_approval_id_ = std::move(approval_id);
-  ask_user_question_ = std::move(question);
-  ask_user_options_ = std::move(options);
-  ask_user_input_.clear();
+  ask_user_dialog_ = AskUserDialog{
+      .approval_id = std::move(approval_id),
+      .question = std::move(question),
+      .options = std::move(options),
+      .input = {},
+  };
   show_ask_user_ = true;
 }
 
@@ -289,13 +293,13 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
 
   auto approval_content = ftxui::Renderer([this] {
     ftxui::Elements rows{
-        ApprovalToolLabel(approval_tool_name_),
+        ApprovalToolLabel(tool_approval_dialog_.tool_name),
         ftxui::text(""),
     };
-    const auto* mcp =
-        approval_preview_.has_value()
-            ? std::get_if<::yac::tool_call::McpToolCall>(&*approval_preview_)
-            : nullptr;
+    const auto* mcp = tool_approval_dialog_.preview.has_value()
+                          ? std::get_if<::yac::tool_call::McpToolCall>(
+                                &*tool_approval_dialog_.preview)
+                          : nullptr;
     if (mcp != nullptr) {
       rows.push_back(McpServerBanner(mcp->server_id));
       rows.push_back(ftxui::text(""));
@@ -305,12 +309,12 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
                                         mcp->approval_required_tools));
       rows.push_back(ftxui::text(""));
     } else {
-      rows.push_back(ApprovalArgumentsBlock(approval_prompt_));
+      rows.push_back(ApprovalArgumentsBlock(tool_approval_dialog_.prompt));
       rows.push_back(ftxui::text(""));
     }
-    if (approval_preview_.has_value()) {
+    if (tool_approval_dialog_.preview.has_value()) {
       rows.push_back(tool_call::ToolCallRenderer::Render(
-          *approval_preview_, RenderContext{.terminal_width = 72}));
+          *tool_approval_dialog_.preview, RenderContext{.terminal_width = 72}));
       rows.push_back(ftxui::text(""));
     }
     rows.push_back(ApprovalActions());
@@ -324,11 +328,11 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
   auto ask_user_content = ftxui::Renderer([this] {
     const auto& t = theme::CurrentTheme();
     ftxui::Elements rows;
-    rows.push_back(ftxui::paragraph(ask_user_question_) |
+    rows.push_back(ftxui::paragraph(ask_user_dialog_.question) |
                    ftxui::color(t.semantic.text_strong) | ftxui::bold);
     rows.push_back(ftxui::text(""));
-    if (!ask_user_options_.empty()) {
-      for (const auto& opt : ask_user_options_) {
+    if (!ask_user_dialog_.options.empty()) {
+      for (const auto& opt : ask_user_dialog_.options) {
         rows.push_back(ftxui::hbox({
             ftxui::text("  \xe2\x80\xa2 ") |
                 ftxui::color(t.semantic.text_muted),
@@ -338,7 +342,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
       }
       rows.push_back(ftxui::text(""));
     }
-    rows.push_back(AskUserInputField(ask_user_input_));
+    rows.push_back(AskUserInputField(ask_user_dialog_.input));
     rows.push_back(ftxui::text(""));
     rows.push_back(AskUserActions());
     return ftxui::vbox(std::move(rows));
@@ -365,13 +369,13 @@ bool ChatUiOverlayState::HandleGlobalEvent(const ftxui::Event& event) {
       return true;
     }
     if (event == ftxui::Event::Backspace) {
-      if (!ask_user_input_.empty()) {
-        ask_user_input_.pop_back();
+      if (!ask_user_dialog_.input.empty()) {
+        ask_user_dialog_.input.pop_back();
       }
       return true;
     }
     if (event.is_character()) {
-      ask_user_input_ += event.character();
+      ask_user_dialog_.input += event.character();
       return true;
     }
     return true;
@@ -488,37 +492,28 @@ void ChatUiOverlayState::HandleThemeSelection(int index) {
 }
 
 void ChatUiOverlayState::DispatchToolApproval(bool approved) {
-  auto approval_id = approval_id_;
+  auto approval_id = std::move(tool_approval_dialog_.id);
   show_tool_approval_ = false;
-  approval_id_.clear();
-  approval_tool_name_.clear();
-  approval_prompt_.clear();
-  approval_preview_.reset();
+  tool_approval_dialog_ = ToolApprovalDialog{};
   if (on_tool_approval_ && !approval_id.empty()) {
     on_tool_approval_(approval_id, approved);
   }
 }
 
 void ChatUiOverlayState::DispatchAskUserSubmit() {
-  auto approval_id = ask_user_approval_id_;
-  auto response = ask_user_input_;
+  auto approval_id = std::move(ask_user_dialog_.approval_id);
+  auto response = std::move(ask_user_dialog_.input);
   show_ask_user_ = false;
-  ask_user_approval_id_.clear();
-  ask_user_question_.clear();
-  ask_user_options_.clear();
-  ask_user_input_.clear();
+  ask_user_dialog_ = AskUserDialog{};
   if (on_ask_user_submit_ && !approval_id.empty()) {
     on_ask_user_submit_(std::move(approval_id), std::move(response));
   }
 }
 
 void ChatUiOverlayState::DispatchAskUserCancel() {
-  auto approval_id = ask_user_approval_id_;
+  auto approval_id = std::move(ask_user_dialog_.approval_id);
   show_ask_user_ = false;
-  ask_user_approval_id_.clear();
-  ask_user_question_.clear();
-  ask_user_options_.clear();
-  ask_user_input_.clear();
+  ask_user_dialog_ = AskUserDialog{};
   if (on_ask_user_cancel_ && !approval_id.empty()) {
     on_ask_user_cancel_(std::move(approval_id));
   }
