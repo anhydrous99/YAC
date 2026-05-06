@@ -25,11 +25,9 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
   auto config_result = chat::LoadChatConfigResult();
   const auto& config = config_result.config;
 
-  // Conditionally register Bedrock or OpenAI provider
   std::shared_ptr<provider::LanguageModelProvider> provider;
   if (config.provider_id == "bedrock") {
-    // AwsApiGuard must outlive all Bedrock usage — store as static local
-    static provider::AwsApiGuard aws_guard;
+    provider::EnsureAwsApiGuardInstalled();
     provider =
         std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
             .id = config.provider_id,

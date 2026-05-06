@@ -442,11 +442,9 @@ int RunApp() {
   auto prompt_result = chat::LoadPromptLibrary(/*seed_defaults=*/true);
   auto startup_issues = prompt_result.issues;
 
-  // Conditionally register Bedrock or OpenAI provider
   std::shared_ptr<provider::LanguageModelProvider> provider;
   if (config.provider_id == "bedrock") {
-    // AwsApiGuard must outlive all Bedrock usage — store as static local
-    static provider::AwsApiGuard aws_guard;
+    provider::EnsureAwsApiGuardInstalled();
     provider =
         std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
             .id = config.provider_id,
