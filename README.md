@@ -57,6 +57,22 @@ The SVG previews show the current chat surface and command palette.
 
 ### Configure
 
+The recommended workflow uses the bundled vcpkg toolchain for the AWS SDK.
+Requires CMake ≥ 3.21 and git submodules.
+
+```bash
+git submodule update --init --recursive
+./external/vcpkg/bootstrap-vcpkg.sh  # one-time, ~30s
+cmake --preset debug
+```
+
+The first configure will download and build aws-sdk-cpp (~15 min on a
+cold cache). Subsequent configures are <30 seconds because vcpkg caches
+installed packages under `external/vcpkg/`.
+
+**Alternative: legacy FetchContent workflow** (aws-sdk-cpp built from
+source every clean build, no vcpkg required):
+
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 ```
@@ -66,6 +82,8 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 ```bash
 cmake --build build
 ```
+
+For the Release preset use `cmake --build build-release` instead.
 
 ### Run
 
@@ -341,11 +359,16 @@ flowchart TD
 ## Notes
 
 - The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
-- Dependencies are fetched by CMake with `FetchContent`.
+- Most dependencies are fetched by CMake with `FetchContent`; `aws-sdk-cpp` is
+  sourced via the bundled vcpkg toolchain (`external/vcpkg`) when the `debug` or
+  `release` preset is used.
+- Using a CMake preset requires CMake ≥ 3.21. Without a preset, CMake ≥ 3.18 is
+  sufficient (legacy FetchContent path).
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
 - `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
-- libcurl is required for the OpenAI-compatible streaming provider.
+- libcurl is required for the OpenAI-compatible streaming provider (the vcpkg
+  path bundles its own libcurl; the legacy path uses the system-installed one).
 - `build/compile_commands.json` is generated during configure and is used by
   `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure
