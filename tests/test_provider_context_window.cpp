@@ -1,4 +1,5 @@
 #include "app/model_context_windows.hpp"
+#include "provider/bedrock_chat_provider.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/zai_context_windows.hpp"
 
@@ -6,6 +7,7 @@
 
 using yac::app::LookupContextWindow;
 using yac::app::ResolveContextWindow;
+using yac::provider::BedrockChatProvider;
 using yac::provider::KnownZaiContextWindow;
 using yac::provider::OpenAiCompatibleChatProvider;
 
@@ -129,4 +131,44 @@ TEST_CASE("ResolveContextWindow chains provider then cross-provider table") {
     REQUIRE(ResolveContextWindow(nullptr, "gpt-4o") == 128000);
     REQUIRE(ResolveContextWindow(nullptr, "totally-unknown") == 0);
   }
+}
+
+TEST_CASE(
+    "BedrockChatProvider::GetContextWindow returns 0 by default and defers "
+    "to LookupContextWindow via ResolveContextWindow") {
+  yac::chat::ProviderConfig config;
+  config.id = "bedrock";
+  config.model = "anthropic.claude-3-5-haiku-20241022-v1:0";
+  BedrockChatProvider provider(config);
+
+  REQUIRE(provider.GetContextWindow("") == 0);
+  // No override and no discovered cache -> provider returns 0 so the app
+  // chain can consult LookupContextWindow.
+  REQUIRE(provider.GetContextWindow(
+              "anthropic.claude-3-5-haiku-20241022-v1:0") == 0);
+  REQUIRE(ResolveContextWindow(
+              &provider, "anthropic.claude-3-5-haiku-20241022-v1:0") == 200000);
+  REQUIRE(ResolveContextWindow(&provider, "amazon.nova-pro-v1:0") == 300000);
+  // Inference-profile prefix is handled by LookupContextWindow.
+  REQUIRE(ResolveContextWindow(
+              &provider,
+              "us.anthropic.claude-3-5-haiku-20241022-v1:0") == 200000);
+}
+
+TEST_CASE(
+    "BedrockChatProvider::GetContextWindow honours the manual override") {
+  yac::chat::ProviderConfig config;
+  config.id = "bedrock";
+  config.model = "anthropic.claude-3-5-haiku-20241022-v1:0";
+  config.context_window = 50000;
+  BedrockChatProvider provider(config);
+
+  REQUIRE(provider.GetContextWindow(
+              "anthropic.claude-3-5-haiku-20241022-v1:0") == 50000);
+  // Override wins even for an unknown model id.
+  REQUIRE(provider.GetContextWindow("totally-made-up.model") == 50000);
+  // Empty model id still returns 0 — matches the OpenAI provider.
+  REQUIRE(provider.GetContextWindow("") == 0);
+  REQUIRE(ResolveContextWindow(
+              &provider, "anthropic.claude-3-5-haiku-20241022-v1:0") == 50000);
 }
