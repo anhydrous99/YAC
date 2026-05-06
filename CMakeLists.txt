@@ -72,26 +72,33 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tomlplusplus)
 
 set(YAC_AWS_SDK_TAG "1.11.580" CACHE STRING "aws-sdk-cpp tag to fetch")
-FetchContent_Declare(
-  aws-sdk-cpp
-  GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
-  GIT_TAG ${YAC_AWS_SDK_TAG}
-  GIT_SHALLOW TRUE
-)
-set(BUILD_ONLY "bedrock-runtime" CACHE STRING "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-set(AUTORUN_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-set(AWS_SDK_WARNINGS_ARE_ERRORS OFF CACHE BOOL "" FORCE)
-set(MINIMIZE_SIZE ON CACHE BOOL "" FORCE)
-set(ENABLE_UNITY_BUILD ON CACHE BOOL "" FORCE)
-set(USE_OPENSSL ON CACHE BOOL "" FORCE)
-set(CUSTOM_MEMORY_MANAGEMENT 0 CACHE STRING "" FORCE)
-set(CPP_STANDARD 17 CACHE STRING "" FORCE)
-if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-  set(CMAKE_OSX_ARCHITECTURES "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "" FORCE)
-endif()
-FetchContent_MakeAvailable(aws-sdk-cpp)
+
+# Wrap aws-sdk-cpp's FetchContent in a function so the option overrides below
+# are scoped to the SDK's add_subdirectory and do not leak into the parent
+# project's cache (block(SCOPE_FOR VARIABLES) would be cleaner but requires
+# CMake >= 3.25; YAC currently targets 3.18).
+function(_yac_fetch_aws_sdk)
+  FetchContent_Declare(
+    aws-sdk-cpp
+    GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
+    GIT_TAG ${YAC_AWS_SDK_TAG}
+    GIT_SHALLOW TRUE
+  )
+  set(BUILD_ONLY "bedrock-runtime")
+  set(BUILD_SHARED_LIBS OFF)
+  set(ENABLE_TESTING OFF)
+  set(AUTORUN_UNIT_TESTS OFF)
+  set(AWS_SDK_WARNINGS_ARE_ERRORS OFF)
+  set(MINIMIZE_SIZE ON)
+  set(ENABLE_UNITY_BUILD ON)
+  set(USE_OPENSSL ON)
+  set(CUSTOM_MEMORY_MANAGEMENT 0)
+  set(CPP_STANDARD 17)
+  FetchContent_MakeAvailable(aws-sdk-cpp)
+  # Re-export the SDK source dir to the caller so include paths still resolve.
+  set(aws-sdk-cpp_SOURCE_DIR "${aws-sdk-cpp_SOURCE_DIR}" PARENT_SCOPE)
+endfunction()
+_yac_fetch_aws_sdk()
 
 FetchContent_Declare(
   keychain
@@ -296,14 +303,14 @@ add_library(yac_service STATIC
   src/chat/settings_toml.cpp
   src/chat/sub_agent_event_adapter.cpp
   src/app/model_context_windows.cpp
-   src/provider/bedrock_logger.cpp
-   src/provider/bedrock_aws_api_guard.cpp
-   src/provider/bedrock_chat_provider.cpp
-   src/provider/bedrock_chat_protocol.cpp
-   src/provider/openai_compatible_chat_provider.cpp
-   src/provider/openai_compatible_chat_protocol.cpp
-   src/provider/zai_context_windows.cpp
-   src/provider/provider_registry.cpp
+  src/provider/bedrock_logger.cpp
+  src/provider/bedrock_aws_api_guard.cpp
+  src/provider/bedrock_chat_provider.cpp
+  src/provider/bedrock_chat_protocol.cpp
+  src/provider/openai_compatible_chat_provider.cpp
+  src/provider/openai_compatible_chat_protocol.cpp
+  src/provider/zai_context_windows.cpp
+  src/provider/provider_registry.cpp
   src/tool_call/bash_tool_executor.cpp
   src/tool_call/edit_tool_executor.cpp
   src/tool_call/edit_replacers.cpp
