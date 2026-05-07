@@ -15,6 +15,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -92,22 +93,18 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
 
   service.SubmitUserMessage(prompt);
 
-  // Start cancellation timer if requested
-  std::thread cancel_timer;
+  std::jthread cancel_timer;
   if (cancel_after_ms > 0) {
-    cancel_timer = std::thread([&service, cancel_after_ms]() {
+    cancel_timer = std::jthread([&service, cancel_after_ms](std::stop_token st) {
       std::this_thread::sleep_for(std::chrono::milliseconds(cancel_after_ms));
-      service.CancelActiveResponse();
+      if (!st.stop_requested()) {
+        service.CancelActiveResponse();
+      }
     });
   }
 
   std::unique_lock<std::mutex> lock(done_mutex);
   done_cv.wait(lock, [&] { return done; });
-
-  // Wait for cancel timer to finish if it was started
-  if (cancel_timer.joinable()) {
-    cancel_timer.join();
-  }
 
   return exit_code.load();
 }

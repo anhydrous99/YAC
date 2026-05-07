@@ -8,6 +8,8 @@
 #include "presentation/slash_command_registry.hpp"
 
 #include <exception>
+#include <memory>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -78,8 +80,17 @@ void RegisterMcpSlashCommandHandlers(
     presentation::ChatUI& chat_ui, ftxui::App& screen,
     std::shared_ptr<cli::McpAdminCommand> mcp_admin) {
   presentation::RegisterMcpSlashCommands(slash_registry);
-  slash_registry.SetArgumentsHandler("mcp", [&chat_ui, &screen,
-                                             mcp_admin](std::string args) {
+
+  // Holds the auth jthread so it RAII-joins when the slash handler is
+  // destroyed, eliminating the UAF risk of the former detached thread.
+  struct McpAuthRunner {
+    std::jthread thread;
+  };
+  auto auth_runner = std::make_shared<McpAuthRunner>();
+
+  slash_registry.SetArgumentsHandler(
+      "mcp", [&chat_ui, &screen, mcp_admin,
+               auth_runner](std::string args) {
     const auto [subcmd, rest] = ParseMcpSubcmd(args);
 
     if (subcmd.empty()) {
@@ -173,40 +184,43 @@ void RegisterMcpSlashCommandHandlers(
           .title = "Starting MCP auth...",
           .detail = server_id,
       });
-      std::thread([mcp_admin, server_id,  // NOLINT(bugprone-exception-escape)
-                   &chat_ui, &screen]() noexcept {
-        try {
-          mcp_admin->Authenticate(server_id,
-                                  mcp::oauth::OAuthInteractionMode{});
-          screen.Post([&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
-                       server_id]() noexcept {
+      auth_runner->thread = std::jthread(
+          [mcp_admin, server_id,  // NOLINT(bugprone-exception-escape)
+           &chat_ui, &screen](std::stop_token /*st*/) noexcept {
             try {
-              chat_ui.SetTransientStatus(presentation::UiNotice{
-                  .severity = presentation::UiSeverity::Info,
-                  .title = "MCP auth complete",
-                  .detail = server_id,
-              });
-              screen.PostEvent(ftxui::Event::Custom);
+              mcp_admin->Authenticate(server_id,
+                                      mcp::oauth::OAuthInteractionMode{});
+              screen.Post(
+                  [&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
+                   server_id]() noexcept {
+                    try {
+                      chat_ui.SetTransientStatus(presentation::UiNotice{
+                          .severity = presentation::UiSeverity::Info,
+                          .title = "MCP auth complete",
+                          .detail = server_id,
+                      });
+                      screen.PostEvent(ftxui::Event::Custom);
+                    } catch (...) {  // best-effort
+                    }
+                  });
+            } catch (const std::exception& error) {
+              std::string err = error.what();
+              screen.Post(
+                  [&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
+                   server_id, err]() mutable noexcept {
+                    try {
+                      chat_ui.SetTransientStatus(presentation::UiNotice{
+                          .severity = presentation::UiSeverity::Error,
+                          .title = "MCP auth failed: " + server_id,
+                          .detail = err,
+                      });
+                      screen.PostEvent(ftxui::Event::Custom);
+                    } catch (...) {  // best-effort
+                    }
+                  });
             } catch (...) {  // best-effort
             }
           });
-        } catch (const std::exception& error) {
-          std::string err = error.what();
-          screen.Post([&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
-                       server_id, err]() mutable noexcept {
-            try {
-              chat_ui.SetTransientStatus(presentation::UiNotice{
-                  .severity = presentation::UiSeverity::Error,
-                  .title = "MCP auth failed: " + server_id,
-                  .detail = err,
-              });
-              screen.PostEvent(ftxui::Event::Custom);
-            } catch (...) {  // best-effort
-            }
-          });
-        } catch (...) {  // best-effort
-        }
-      }).detach();
       return;
     }
 

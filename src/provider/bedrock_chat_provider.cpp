@@ -49,23 +49,15 @@ class CancellationWatchdog {
  public:
   CancellationWatchdog(std::stop_token stop_token,
                        YacBedrockRuntimeClient* client) {
-    std::stop_token completion_token = completion_source_.get_token();
-    thread_ = std::thread([external = std::move(stop_token),
-                           completion = std::move(completion_token), client]() {
-      while (!external.stop_requested() && !completion.stop_requested()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      }
-      if (external.stop_requested()) {
-        client->DisableRequestProcessing();
-      }
-    });
-  }
-
-  ~CancellationWatchdog() {
-    completion_source_.request_stop();
-    if (thread_.joinable()) {
-      thread_.join();
-    }
+    thread_ = std::jthread(
+        [external = std::move(stop_token), client](std::stop_token completion) {
+          while (!external.stop_requested() && !completion.stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+          }
+          if (external.stop_requested()) {
+            client->DisableRequestProcessing();
+          }
+        });
   }
 
   CancellationWatchdog(const CancellationWatchdog&) = delete;
@@ -74,8 +66,7 @@ class CancellationWatchdog {
   CancellationWatchdog& operator=(CancellationWatchdog&&) = delete;
 
  private:
-  std::stop_source completion_source_;
-  std::thread thread_;
+  std::jthread thread_;
 };
 
 }  // namespace
