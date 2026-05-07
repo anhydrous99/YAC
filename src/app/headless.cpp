@@ -95,7 +95,8 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
 
   std::jthread cancel_timer;
   if (cancel_after_ms > 0) {
-    cancel_timer = std::jthread([&service, cancel_after_ms](std::stop_token st) {
+    cancel_timer = std::jthread([&service,
+                                 cancel_after_ms](std::stop_token st) {
       std::this_thread::sleep_for(std::chrono::milliseconds(cancel_after_ms));
       if (!st.stop_requested()) {
         service.CancelActiveResponse();

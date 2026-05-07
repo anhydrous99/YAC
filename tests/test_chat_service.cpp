@@ -1274,7 +1274,8 @@ TEST_CASE(
   // round resumes against a stale generation and the per-append guards
   // make sure no append leaks into the cleared history.
   blocking->Release();
-  // SLEEP-RATIONALE: stability check — verify no stale-generation append leaks into cleared history
+  // SLEEP-RATIONALE: stability check — verify no stale-generation append leaks
+  // into cleared history
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   REQUIRE(service.History().empty());
 }
@@ -1316,14 +1317,16 @@ TEST_CASE("ChatService Reset survives concurrent SubmitUserMessage") {
     int i = 0;
     while (!stop.load(std::memory_order_relaxed)) {
       service.SubmitUserMessage("submit-" + std::to_string(i++));
-      // SLEEP-RATIONALE: stress test pacing — throttles submit rate to exercise concurrent-reset races
+      // SLEEP-RATIONALE: stress test pacing — throttles submit rate to exercise
+      // concurrent-reset races
       std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
   });
 
   for (int i = 0; i < 25; ++i) {
     service.ResetConversation();
-    // SLEEP-RATIONALE: stress test pacing — yields between resets to let submitter thread progress
+    // SLEEP-RATIONALE: stress test pacing — yields between resets to let
+    // submitter thread progress
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
 

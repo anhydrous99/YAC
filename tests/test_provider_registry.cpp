@@ -20,8 +20,7 @@ class MockProvider final : public LanguageModelProvider {
   [[nodiscard]] std::string Id() const override { return id_; }
 
   void CompleteStream(const yac::chat::ChatRequest&,
-                      yac::provider::ChatEventSink,
-                      std::stop_token) override {}
+                      yac::provider::ChatEventSink, std::stop_token) override {}
 
  private:
   std::string id_;

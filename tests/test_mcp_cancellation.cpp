@@ -33,7 +33,8 @@ TEST_CASE("emits_notification_on_cancel") {
     if (method == std::string(pc::kMethodInitialize)) {
       request_received = true;
       while (!stop.stop_requested()) {
-        // SLEEP-RATIONALE: request handler must poll stop_token without busy-waiting
+        // SLEEP-RATIONALE: request handler must poll stop_token without
+        // busy-waiting
         std::this_thread::sleep_for(5ms);
       }
       throw std::runtime_error("cancelled");
@@ -68,7 +69,8 @@ TEST_CASE("ignores_late_response") {
     if (method == std::string(pc::kMethodInitialize)) {
       request_received = true;
       while (!stop.stop_requested()) {
-        // SLEEP-RATIONALE: request handler must poll stop_token without busy-waiting
+        // SLEEP-RATIONALE: request handler must poll stop_token without
+        // busy-waiting
         std::this_thread::sleep_for(5ms);
       }
       return InitializeResponse{

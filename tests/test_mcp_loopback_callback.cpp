@@ -101,7 +101,8 @@ TEST_CASE("abort_accept") {
     return server.RunUntilCallback(stop_source.get_token());
   });
 
-  // SLEEP-RATIONALE: let server reach accept() before requesting stop; no observable predicate
+  // SLEEP-RATIONALE: let server reach accept() before requesting stop; no
+  // observable predicate
   std::this_thread::sleep_for(50ms);
   stop_source.request_stop();
 

@@ -3,6 +3,7 @@
 #include "core_types/agent_mode.hpp"
 #include "core_types/chat_ids.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "core_types/typed_ids.hpp"
 #include "mcp/mcp_server_config.hpp"
 #include "model_info.hpp"
 

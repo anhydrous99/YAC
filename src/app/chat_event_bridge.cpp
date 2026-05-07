@@ -1,11 +1,11 @@
 #include "app/chat_event_bridge.hpp"
 
-#include "provider/model_context_windows.hpp"
 #include "chat/tool_call_argument_parser.hpp"
 #include "core_types/tool_call_types.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/chat_ui_overlay_state.hpp"
 #include "presentation/util/terminal.hpp"
+#include "provider/model_context_windows.hpp"
 
 #include <algorithm>
 #include <utility>
