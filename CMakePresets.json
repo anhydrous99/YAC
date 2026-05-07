@@ -10,8 +10,7 @@
           "value": "${sourceDir}/external/vcpkg/scripts/buildsystems/vcpkg.cmake",
           "type": "FILEPATH"
         },
-        "VCPKG_MANIFEST_MODE": "ON",
-        "YAC_USE_VCPKG_AWSSDK": "ON"
+        "VCPKG_MANIFEST_MODE": "ON"
       }
     },
     {

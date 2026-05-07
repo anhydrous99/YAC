@@ -57,8 +57,8 @@ The SVG previews show the current chat surface and command palette.
 
 ### Configure
 
-The recommended workflow uses the bundled vcpkg toolchain for the AWS SDK.
-Requires CMake ≥ 3.21 and git submodules.
+YAC uses the bundled vcpkg toolchain for `aws-sdk-cpp`. Requires CMake ≥ 3.21
+and git submodules.
 
 ```bash
 git submodule update --init --recursive
@@ -70,12 +70,7 @@ The first configure will download and build aws-sdk-cpp (~15 min on a
 cold cache). Subsequent configures are <30 seconds because vcpkg caches
 installed packages under `external/vcpkg/`.
 
-**Alternative: legacy FetchContent workflow** (aws-sdk-cpp built from
-source every clean build, no vcpkg required):
-
-```bash
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-```
+For a release build, use `cmake --preset release` instead.
 
 ### Build
 
@@ -83,7 +78,7 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
-For the Release preset use `cmake --build build-release` instead.
+For the release preset use `cmake --build build-release` instead.
 
 ### Run
 
@@ -359,16 +354,14 @@ flowchart TD
 ## Notes
 
 - The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
-- Most dependencies are fetched by CMake with `FetchContent`; `aws-sdk-cpp` is
-  sourced via the bundled vcpkg toolchain (`external/vcpkg`) when the `debug` or
-  `release` preset is used.
-- Using a CMake preset requires CMake ≥ 3.21. Without a preset, CMake ≥ 3.18 is
-  sufficient (legacy FetchContent path).
+- `aws-sdk-cpp` is sourced via the bundled vcpkg toolchain (`external/vcpkg`);
+  the remaining dependencies are fetched by CMake with `FetchContent`.
+- The build requires CMake ≥ 3.21 (configure presets v3) and Ninja.
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
 - `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
-- libcurl is required for the OpenAI-compatible streaming provider (the vcpkg
-  path bundles its own libcurl; the legacy path uses the system-installed one).
+- libcurl is required for the OpenAI-compatible streaming provider; vcpkg
+  bundles its own libcurl, so no system libcurl install is required.
 - `build/compile_commands.json` is generated during configure and is used by
   `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure

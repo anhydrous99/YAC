@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.21)
 project(YAC VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -71,45 +71,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-option(YAC_USE_VCPKG_AWSSDK
-  "Use vcpkg-provided aws-sdk-cpp via find_package instead of FetchContent"
-  OFF)
-
-if(NOT YAC_USE_VCPKG_AWSSDK)
-  set(YAC_AWS_SDK_TAG "1.11.580" CACHE STRING "aws-sdk-cpp tag to fetch")
-
-  # Wrap aws-sdk-cpp's FetchContent in a function so the option overrides below
-  # are scoped to the SDK's add_subdirectory and do not leak into the parent
-  # project's cache (block(SCOPE_FOR VARIABLES) would be cleaner but requires
-  # CMake >= 3.25; YAC currently targets 3.18).
-  function(_yac_fetch_aws_sdk)
-    FetchContent_Declare(
-      aws-sdk-cpp
-      GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
-      GIT_TAG ${YAC_AWS_SDK_TAG}
-      GIT_SHALLOW TRUE
-    )
-    set(BUILD_ONLY "bedrock-runtime")
-    set(BUILD_SHARED_LIBS OFF)
-    set(ENABLE_TESTING OFF)
-    set(AUTORUN_UNIT_TESTS OFF)
-    set(AWS_SDK_WARNINGS_ARE_ERRORS OFF)
-    set(MINIMIZE_SIZE ON)
-    set(ENABLE_UNITY_BUILD ON)
-    set(USE_OPENSSL ON)
-    set(CUSTOM_MEMORY_MANAGEMENT 0)
-    set(CPP_STANDARD 17)
-    FetchContent_MakeAvailable(aws-sdk-cpp)
-    # Re-export the SDK source dir to the caller so include paths still resolve.
-    set(aws-sdk-cpp_SOURCE_DIR "${aws-sdk-cpp_SOURCE_DIR}" PARENT_SCOPE)
-  endfunction()
-  _yac_fetch_aws_sdk()
-else()
-  # vcpkg-managed aws-sdk-cpp. The vcpkg toolchain file adds the installed tree
-  # to CMAKE_PREFIX_PATH so find_package resolves AWSSDKConfig.cmake from
-  # build/vcpkg_installed/<triplet>/share/AWSSDK/.
-  find_package(AWSSDK REQUIRED COMPONENTS bedrock-runtime)
-endif()
+# aws-sdk-cpp is provided by vcpkg. The toolchain file (configured via
+# CMakePresets.json or -DCMAKE_TOOLCHAIN_FILE) adds the installed tree to
+# CMAKE_PREFIX_PATH so find_package resolves AWSSDKConfig.cmake from
+# build/vcpkg_installed/<triplet>/share/AWSSDK/.
+find_package(AWSSDK REQUIRED COMPONENTS bedrock-runtime)
 
 FetchContent_Declare(
   keychain
@@ -361,16 +327,9 @@ add_library(yac_service STATIC
   src/tool_call/glob_tool_executor.cpp
 )
 target_include_directories(yac_service PUBLIC src)
-if(NOT YAC_USE_VCPKG_AWSSDK)
-  target_include_directories(yac_service SYSTEM PRIVATE
-    ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-    ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-  )
-endif()
 target_link_libraries(yac_service
   PUBLIC yac_core_types openai_cpp CURL::libcurl OpenSSL::Crypto
-  PRIVATE tomlplusplus::tomlplusplus yac_keychain
-          $<IF:$<BOOL:${YAC_USE_VCPKG_AWSSDK}>,${AWSSDK_LINK_LIBRARIES},aws-cpp-sdk-bedrock-runtime;aws-cpp-sdk-core>)
+  PRIVATE tomlplusplus::tomlplusplus yac_keychain ${AWSSDK_LINK_LIBRARIES})
 
 include(src/chat/CMakeLists.txt)
 

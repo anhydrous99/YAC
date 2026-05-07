@@ -12,22 +12,11 @@ function(yac_add_test name source)
 endfunction()
 
 # Variant of yac_add_test for Bedrock tests that include AWS SDK headers
-# directly (e.g. translator/protocol unit tests). Adds the AWS include paths
-# and links the bedrock-runtime + core libraries.
+# directly (e.g. translator/protocol unit tests). Links the bedrock-runtime
+# + core libraries via the vcpkg-provided AWSSDK package.
 function(yac_add_aws_test name source)
   yac_add_test(${name} ${source})
-  if(NOT YAC_USE_VCPKG_AWSSDK)
-    target_include_directories(${name} SYSTEM PRIVATE
-      ${aws-sdk-cpp_SOURCE_DIR}/src/aws-cpp-sdk-core/include
-      ${aws-sdk-cpp_SOURCE_DIR}/generated/src/aws-cpp-sdk-bedrock-runtime/include
-    )
-    target_link_libraries(${name} PRIVATE
-      aws-cpp-sdk-bedrock-runtime
-      aws-cpp-sdk-core
-    )
-  else()
-    target_link_libraries(${name} PRIVATE ${AWSSDK_LINK_LIBRARIES})
-  endif()
+  target_link_libraries(${name} PRIVATE ${AWSSDK_LINK_LIBRARIES})
 endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
