@@ -32,6 +32,8 @@ std::shared_ptr<LambdaMockProvider> MakeBlockingProvider() {
       "blocking-mock",
       [](const ChatRequest&, ChatEventSink, std::stop_token stop) {
         while (!stop.stop_requested()) {
+          // SLEEP-RATIONALE: mock provider polls stop_token without
+          // busy-waiting
           std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
       });
@@ -42,6 +44,8 @@ std::shared_ptr<LambdaMockProvider> MakeSleepingProvider() {
       "sleeping-mock",
       [](const ChatRequest&, ChatEventSink, std::stop_token stop) {
         for (int i = 0; i < 20 && !stop.stop_requested(); ++i) {
+          // SLEEP-RATIONALE: mock provider polls stop_token without
+          // busy-waiting
           std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
       });
@@ -52,6 +56,7 @@ std::shared_ptr<LambdaMockProvider> MakePeriodicEventProvider() {
       "periodic-event-mock",
       [](const ChatRequest&, ChatEventSink sink, std::stop_token stop) {
         while (!stop.stop_requested()) {
+          // SLEEP-RATIONALE: simulate slow provider to test cancellation timing
           std::this_thread::sleep_for(std::chrono::milliseconds(200));
           if (stop.stop_requested()) {
             break;
@@ -91,6 +96,7 @@ bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout) {
     if (predicate()) {
       return true;
     }
+    // SLEEP-RATIONALE: let sub-agent thread start before checking state
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   return predicate();
@@ -218,6 +224,7 @@ TEST_CASE("Background timeout triggers cancellation") {
   // NOLINTNEXTLINE(bugprone-unused-local-non-trivial-variable)
   [[maybe_unused]] const auto agent = ctx.Spawn("long running task");
 
+  // SLEEP-RATIONALE: test spawn/cancel
   std::this_thread::sleep_for(std::chrono::seconds(3));
 
   REQUIRE_FALSE(ctx.manager->IsAtCapacity());

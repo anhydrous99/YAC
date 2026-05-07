@@ -27,6 +27,7 @@ bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout = 500ms) {
     if (predicate()) {
       return true;
     }
+    // SLEEP-RATIONALE: let session thread initialize before sending messages
     std::this_thread::sleep_for(5ms);
   }
   return predicate();

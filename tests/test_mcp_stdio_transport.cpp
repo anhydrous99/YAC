@@ -60,6 +60,7 @@ class TempFile {
     if (buffer.str().find(needle) != std::string::npos) {
       return true;
     }
+    // SLEEP-RATIONALE: let server thread start before sending data
     std::this_thread::sleep_for(10ms);
   }
 
@@ -103,6 +104,7 @@ TEST_CASE("cancellation_emits_notification") {
     }
   });
 
+  // SLEEP-RATIONALE: let server process the request before checking state
   std::this_thread::sleep_for(100ms);
   transport.Stop(std::stop_token{});
   request_thread.join();

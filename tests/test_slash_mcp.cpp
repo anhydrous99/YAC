@@ -106,6 +106,8 @@ TEST_CASE("auth_non_blocking") {
   registry.SetArgumentsHandler("mcp", [&](std::string args) {
     if (args.starts_with("auth")) {
       std::thread([&] {
+        // SLEEP-RATIONALE: let MCP server thread start before sending slash
+        // command
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         auth_done = true;
       }).detach();
