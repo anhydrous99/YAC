@@ -1,0 +1,61 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2am UTC
+
+jobs:
+  analyze:
+    name: Analyze (cpp)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
+        queries: security-and-quality
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build ripgrep wget gnupg lsb-release software-properties-common
+        # YAC pins clang tooling to version 21; install via apt.llvm.org
+        # because Ubuntu's default repos lag behind.
+        wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
+        sudo add-apt-repository -y "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
+        sudo apt-get update
+        sudo apt-get install -y clang-format-21 clang-tidy-21
+
+    - name: Verify vcpkg baseline
+      run: scripts/verify-vcpkg-baseline.sh
+
+    - name: Setup vcpkg (binary caching via GHA cache)
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
+        vcpkgJsonGlob: 'vcpkg.json'
+
+    - name: Configure
+      run: cmake --preset debug
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:cpp"
