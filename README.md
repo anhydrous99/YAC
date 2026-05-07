@@ -366,3 +366,7 @@ flowchart TD
   `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure
   after adding or renaming source files.
+
+## License
+
+YAC is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for full text.
