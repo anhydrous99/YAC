@@ -2,6 +2,7 @@
 
 #include "chat_event_sink.hpp"
 #include "chat_session.hpp"
+#include "chat_ui_actions.hpp"
 #include "chat_ui_clock_ticker.hpp"
 #include "chat_ui_input_controller.hpp"
 #include "chat_ui_overlay_state.hpp"
@@ -32,20 +33,13 @@ namespace yac::presentation {
 
 class ChatUI : public ChatEventSink {
  public:
-  using OnSendCallback = std::function<void(const std::string&)>;
-  using OnCommandCallback = std::function<void(const std::string&)>;
-  using OnToolApprovalCallback =
-      std::function<void(const ::yac::ApprovalId&, bool)>;
-  using OnAskUserResponseCallback =
-      std::function<void(::yac::ApprovalId, std::string)>;
-  using OnAskUserCancelCallback = std::function<void(::yac::ApprovalId)>;
   using UiTask = std::function<void()>;
   using UiTaskRunner = std::function<void(UiTask)>;
 
   static constexpr int kMaxInputLines = 3;
 
   ChatUI();
-  explicit ChatUI(OnSendCallback on_send);
+  explicit ChatUI(IChatActions& actions);
   ~ChatUI() override;
   ChatUI(const ChatUI&) = delete;
   ChatUI(ChatUI&&) = delete;
@@ -54,12 +48,6 @@ class ChatUI : public ChatEventSink {
 
   [[nodiscard]] ftxui::Component Build();
 
-  void SetOnSend(OnSendCallback on_send);
-  void SetOnCommand(OnCommandCallback on_command);
-  void SetOnToolApproval(OnToolApprovalCallback on_tool_approval);
-  void SetOnAskUserCallbacks(OnAskUserResponseCallback on_response,
-                             OnAskUserCancelCallback on_cancel);
-  void SetOnModeToggle(std::function<void()> on_mode_toggle);
   void SetAgentMode(chat::AgentMode mode);
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
@@ -153,11 +141,9 @@ class ChatUI : public ChatEventSink {
   ChatUiScrollState scroll_state_;
   ChatUiClockTicker clock_ticker_;
   ChatUiThinkingAnimation thinking_animation_;
-  OnSendCallback on_send_;
-  std::function<void()> on_mode_toggle_;
+  NoOpChatActions default_actions_;
+  IChatActions& actions_;
   chat::AgentMode agent_mode_ = chat::AgentMode::Build;
-  OnAskUserResponseCallback on_ask_user_response_;
-  OnAskUserCancelCallback on_ask_user_cancel_;
   bool is_typing_ = false;
   SlashCommandRegistry slash_commands_;
   mutable int last_terminal_width_ = -1;

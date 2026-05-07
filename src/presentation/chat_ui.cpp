@@ -26,40 +26,27 @@ using detail::SeverityColor;
 
 }  // namespace
 
-ChatUI::ChatUI()
-    : input_controller_(composer_, slash_commands_),
-      on_send_([](const std::string&) {}) {}
+ChatUI::ChatUI() : ChatUI(default_actions_) {}
 
-ChatUI::ChatUI(OnSendCallback on_send)
-    : input_controller_(composer_, slash_commands_),
-      on_send_(std::move(on_send)) {}
+ChatUI::ChatUI(IChatActions& actions)
+    : input_controller_(composer_, slash_commands_), actions_(actions) {
+  overlay_state_.SetOnCommand(
+      [this](const std::string& command) { actions_.OnCommand(command); });
+  overlay_state_.SetOnToolApproval(
+      [this](const ::yac::ApprovalId& approval_id, bool approved) {
+        actions_.OnToolApproval(approval_id, approved);
+      });
+  overlay_state_.SetOnAskUserSubmit(
+      [this](::yac::ApprovalId approval_id, std::string response) {
+        actions_.OnAskUserResponse(std::move(approval_id), std::move(response));
+      });
+  overlay_state_.SetOnAskUserCancel([this](::yac::ApprovalId approval_id) {
+    actions_.OnAskUserCancel(std::move(approval_id));
+  });
+  input_controller_.SetOnModeToggle([this] { actions_.OnModeToggle(); });
+}
 
 ChatUI::~ChatUI() = default;
-
-void ChatUI::SetOnSend(OnSendCallback on_send) {
-  on_send_ = std::move(on_send);
-}
-
-void ChatUI::SetOnCommand(OnCommandCallback on_command) {
-  overlay_state_.SetOnCommand(std::move(on_command));
-}
-
-void ChatUI::SetOnToolApproval(OnToolApprovalCallback on_tool_approval) {
-  overlay_state_.SetOnToolApproval(std::move(on_tool_approval));
-}
-
-void ChatUI::SetOnAskUserCallbacks(OnAskUserResponseCallback on_response,
-                                   OnAskUserCancelCallback on_cancel) {
-  on_ask_user_response_ = std::move(on_response);
-  on_ask_user_cancel_ = std::move(on_cancel);
-  overlay_state_.SetOnAskUserSubmit(on_ask_user_response_);
-  overlay_state_.SetOnAskUserCancel(on_ask_user_cancel_);
-}
-
-void ChatUI::SetOnModeToggle(std::function<void()> on_mode_toggle) {
-  on_mode_toggle_ = on_mode_toggle;
-  input_controller_.SetOnModeToggle(std::move(on_mode_toggle));
-}
 
 void ChatUI::SetAgentMode(chat::AgentMode mode) {
   agent_mode_ = mode;

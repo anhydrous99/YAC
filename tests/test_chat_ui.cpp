@@ -2,6 +2,7 @@
 #include "presentation/chat_ui.hpp"
 #include "presentation/theme.hpp"
 #include "tool_call/types.hpp"
+#include "util/mock_chat_actions.hpp"
 
 #include <chrono>
 #include <condition_variable>
@@ -19,6 +20,7 @@
 
 using namespace yac::presentation;
 using yac::ApprovalId;
+using yac::test::MockChatActions;
 
 namespace {
 
@@ -70,15 +72,11 @@ TEST_CASE("Default constructor creates empty message list") {
   REQUIRE(ui.GetMessages().empty());
 }
 
-TEST_CASE("Constructor with callback stores it") {
-  bool called = false;
-  std::string captured;
-  ChatUI ui([&](const std::string& msg) {
-    called = true;
-    captured = msg;
-  });
+TEST_CASE("Constructor with actions injects send-handler") {
+  MockChatActions actions;
+  ChatUI ui(actions);
 
-  SECTION("Callback fires on submit") {
+  SECTION("AddMessage stores text under user sender") {
     ui.AddMessage(Sender::User, "hello");
     REQUIRE(ui.GetMessages().size() == 1);
     REQUIRE(ui.GetMessages()[0].CombinedText() == "hello");
@@ -381,24 +379,22 @@ TEST_CASE("HandleInputEvent returns false for mouse events") {
 }
 
 TEST_CASE("HandleInputEvent toggles mode on Shift+Tab") {
-  int toggle_count = 0;
-  ChatUI ui;
-  ui.SetOnModeToggle([&] { ++toggle_count; });
+  MockChatActions actions;
+  ChatUI ui(actions);
 
   REQUIRE(ui.HandleInputEvent(ftxui::Event::TabReverse));
-  REQUIRE(toggle_count == 1);
+  REQUIRE(actions.mode_toggles == 1);
 
   REQUIRE(ui.HandleInputEvent(MakeKittyShiftTab()));
-  REQUIRE(toggle_count == 2);
+  REQUIRE(actions.mode_toggles == 2);
 }
 
 TEST_CASE("HandleInputEvent does not toggle mode on plain Tab") {
-  int toggle_count = 0;
-  ChatUI ui;
-  ui.SetOnModeToggle([&] { ++toggle_count; });
+  MockChatActions actions;
+  ChatUI ui(actions);
 
   REQUIRE_FALSE(ui.HandleInputEvent(ftxui::Event::Tab));
-  REQUIRE(toggle_count == 0);
+  REQUIRE(actions.mode_toggles == 0);
 }
 
 TEST_CASE("HandleInputEvent inserts newline on Shift+Enter escape") {
@@ -446,31 +442,22 @@ TEST_CASE("HandleInputEvent inserts newline on Alt+Enter (LF variant)") {
 }
 
 TEST_CASE("HandleInputEvent Enter submits and clears content") {
-  bool sent = false;
-  std::string captured;
-  ChatUI ui([&](const std::string& msg) {
-    sent = true;
-    captured = msg;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
 
   (void)ui.HandleInputEvent(ftxui::Event::Return);
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 
   auto component = ui.Build();
   TypeText(component, "hello");
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(sent);
-  REQUIRE(captured == "hello");
+  REQUIRE(actions.sent_messages == std::vector<std::string>{"hello"});
   REQUIRE(ui.CalculateInputHeight() == 1);
 }
 
 TEST_CASE("HandleInputEvent submits soft-wrapped content unchanged") {
-  bool sent = false;
-  std::string captured;
-  ChatUI ui([&](const std::string& msg) {
-    sent = true;
-    captured = msg;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
   auto component = ui.Build();
   std::string typed;
   for (int i = 0; i < 30; ++i) {
@@ -483,25 +470,24 @@ TEST_CASE("HandleInputEvent submits soft-wrapped content unchanged") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("3/3"));
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(sent);
-  REQUIRE(captured == typed);
+  REQUIRE(actions.sent_messages == std::vector<std::string>{typed});
 }
 
 TEST_CASE("Whitespace-only input is not submitted") {
-  bool sent = false;
-  ChatUI ui([&](const std::string&) { sent = true; });
+  MockChatActions actions;
+  ChatUI ui(actions);
   auto component = ui.Build();
 
   TypeText(component, "   ");
   REQUIRE(component->OnEvent(ftxui::Event::Return));
 
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 }
 
 TEST_CASE("Slash clear command dispatches without sending a message") {
-  bool sent = false;
+  MockChatActions actions;
   int clear_count = 0;
-  ChatUI ui([&](const std::string&) { sent = true; });
+  ChatUI ui(actions);
   SlashCommandRegistry registry;
   RegisterBuiltinSlashCommands(registry);
   registry.SetHandler("clear", [&] { ++clear_count; });
@@ -512,18 +498,18 @@ TEST_CASE("Slash clear command dispatches without sending a message") {
   REQUIRE(component->OnEvent(ftxui::Event::Return));
 
   REQUIRE(clear_count == 1);
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
   REQUIRE(clear_count == 1);
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 }
 
 TEST_CASE("Slash menu Return dispatches argument command without arguments") {
-  bool sent = false;
+  MockChatActions actions;
   bool called = false;
   std::string captured = "not called";
-  ChatUI ui([&](const std::string&) { sent = true; });
+  ChatUI ui(actions);
   SlashCommandRegistry registry;
   registry.Define("init", "init", "Initialize repository");
   registry.SetArgumentsHandler("init", [&](std::string args) {
@@ -538,16 +524,12 @@ TEST_CASE("Slash menu Return dispatches argument command without arguments") {
 
   REQUIRE(called);
   REQUIRE(captured.empty());
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 }
 
 TEST_CASE("Slash menu Return dismisses unmatched command before raw submit") {
-  bool sent = false;
-  std::string captured;
-  ChatUI ui([&](const std::string& msg) {
-    sent = true;
-    captured = msg;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
   SlashCommandRegistry registry;
   RegisterBuiltinSlashCommands(registry);
   ui.SetSlashCommands(std::move(registry));
@@ -556,20 +538,15 @@ TEST_CASE("Slash menu Return dismisses unmatched command before raw submit") {
   TypeText(component, "/does-not-exist");
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(sent);
-  REQUIRE(captured == "/does-not-exist");
+  REQUIRE(actions.sent_messages == std::vector<std::string>{"/does-not-exist"});
 }
 
 TEST_CASE("Slash menu Escape preserves raw slash input for later submit") {
-  bool sent = false;
-  std::string captured;
-  ChatUI ui([&](const std::string& msg) {
-    sent = true;
-    captured = msg;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
   SlashCommandRegistry registry;
   RegisterBuiltinSlashCommands(registry);
   ui.SetSlashCommands(std::move(registry));
@@ -578,17 +555,15 @@ TEST_CASE("Slash menu Escape preserves raw slash input for later submit") {
   TypeText(component, "/quit-later");
 
   REQUIRE(component->OnEvent(ftxui::Event::Escape));
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.sent_messages.empty());
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(sent);
-  REQUIRE(captured == "/quit-later");
+  REQUIRE(actions.sent_messages == std::vector<std::string>{"/quit-later"});
 }
 
 TEST_CASE("Slash menu Tab navigation does not toggle mode") {
-  int toggle_count = 0;
-  ChatUI ui;
-  ui.SetOnModeToggle([&] { ++toggle_count; });
+  MockChatActions actions;
+  ChatUI ui(actions);
   SlashCommandRegistry registry;
   RegisterBuiltinSlashCommands(registry);
   ui.SetSlashCommands(std::move(registry));
@@ -597,37 +572,29 @@ TEST_CASE("Slash menu Tab navigation does not toggle mode") {
   TypeText(component, "/");
 
   REQUIRE(component->OnEvent(ftxui::Event::Tab));
-  REQUIRE(toggle_count == 0);
+  REQUIRE(actions.mode_toggles == 0);
 }
 
 TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {
-  bool sent = false;
-  int approval_calls = 0;
-  ApprovalId approval_id;
-  bool approved = true;
-  ChatUI ui([&](const std::string&) { sent = true; });
-  ui.SetOnToolApproval([&](const ApprovalId& id, bool value) {
-    ++approval_calls;
-    approval_id = id;
-    approved = value;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
   auto component = ui.Build();
 
   ui.ShowToolApproval(ApprovalId{"approval-1"}, "file_write",
                       "Write notes.txt");
 
   REQUIRE(component->OnEvent(ftxui::Event::Character('x')));
-  REQUIRE(approval_calls == 0);
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.tool_approvals.empty());
+  REQUIRE(actions.sent_messages.empty());
 
   REQUIRE(component->OnEvent(ftxui::Event::Escape));
-  REQUIRE(approval_calls == 1);
-  REQUIRE(approval_id == ApprovalId{"approval-1"});
-  REQUIRE_FALSE(approved);
+  REQUIRE(actions.tool_approvals.size() == 1);
+  REQUIRE(actions.tool_approvals[0].first == ApprovalId{"approval-1"});
+  REQUIRE_FALSE(actions.tool_approvals[0].second);
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(approval_calls == 1);
-  REQUIRE_FALSE(sent);
+  REQUIRE(actions.tool_approvals.size() == 1);
+  REQUIRE(actions.sent_messages.empty());
 }
 
 TEST_CASE("Tool approval modal renders prominent permission prompt") {
@@ -667,23 +634,16 @@ TEST_CASE("Tool approval modal renders tool preview") {
 }
 
 TEST_CASE("Tool approval modal approves on uppercase Y") {
-  int approval_calls = 0;
-  ApprovalId approval_id;
-  bool approved = false;
-  ChatUI ui;
-  ui.SetOnToolApproval([&](const ApprovalId& id, bool value) {
-    ++approval_calls;
-    approval_id = id;
-    approved = value;
-  });
+  MockChatActions actions;
+  ChatUI ui(actions);
   auto component = ui.Build();
 
   ui.ShowToolApproval(ApprovalId{"approval-2"}, "lsp_rename", "Rename symbol");
 
   REQUIRE(component->OnEvent(ftxui::Event::Character('Y')));
-  REQUIRE(approval_calls == 1);
-  REQUIRE(approval_id == ApprovalId{"approval-2"});
-  REQUIRE(approved);
+  REQUIRE(actions.tool_approvals.size() == 1);
+  REQUIRE(actions.tool_approvals[0].first == ApprovalId{"approval-2"});
+  REQUIRE(actions.tool_approvals[0].second);
 }
 
 namespace {

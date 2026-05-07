@@ -41,7 +41,7 @@ void ChatUI::SubmitMessage() {
   if (slash_commands_.TryDispatch(sent)) {
     return;
   }
-  on_send_(sent);
+  actions_.OnSend(sent);
 }
 
 ftxui::Component ChatUI::BuildInput() {

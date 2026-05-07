@@ -13,6 +13,7 @@
 #include "cli/mcp_admin_command.hpp"
 #include "mcp/mcp_manager.hpp"
 #include "presentation/chat_ui.hpp"
+#include "presentation/chat_ui_actions.hpp"
 #include "presentation/mcp/mcp_slash_commands.hpp"
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
@@ -257,96 +258,126 @@ void ConfigureServiceEventCallback(StreamingCoalescer& coalescer,
   });
 }
 
-void ConfigureChatUiCallbacks(
-    const std::vector<chat::ModelInfo>& models, const chat::ChatConfig& config,
-    const std::shared_ptr<
-        std::optional<presentation::terminal::BackgroundGuard>>&
-        terminal_bg_guard,
-    ftxui::App& screen, chat::ChatService& chat_service,
-    presentation::ChatUI& chat_ui,
-    std::shared_ptr<cli::McpAdminCommand> mcp_admin) {
-  chat_ui.SetOnSend([&chat_service](const std::string& message) {
-    chat_service.SubmitUserMessage(message);
-  });
+class ChatActionsImpl : public presentation::IChatActions {
+ public:
+  ChatActionsImpl(
+      chat::ChatService& chat_service, const chat::ChatConfig& config,
+      std::shared_ptr<std::optional<presentation::terminal::BackgroundGuard>>
+          terminal_bg_guard,
+      ftxui::App& screen, std::shared_ptr<cli::McpAdminCommand> mcp_admin)
+      : chat_service_(chat_service),
+        config_(config),
+        terminal_bg_guard_(std::move(terminal_bg_guard)),
+        screen_(screen),
+        mcp_admin_(std::move(mcp_admin)) {}
 
-  chat_ui.SetOnCommand([&chat_service, &chat_ui, &config, terminal_bg_guard,
-                        &screen, mcp_admin](const std::string& command) {
+  void SetChatUi(presentation::ChatUI& chat_ui) { chat_ui_ = &chat_ui; }
+
+  void OnSend(const std::string& message) override {
+    chat_service_.SubmitUserMessage(message);
+  }
+
+  void OnCommand(const std::string& command) override {
     if (command == "new_chat" || command == "clear_messages") {
-      chat_service.ResetConversation();
+      chat_service_.ResetConversation();
     } else if (command == "cancel_response") {
-      chat_service.CancelActiveResponse();
+      chat_service_.CancelActiveResponse();
     } else if (command == "help") {
-      chat_ui.ShowHelp();
+      if (chat_ui_) {
+        chat_ui_->ShowHelp();
+      }
     } else if (command.starts_with(presentation::kSwitchModelPrefix)) {
-      chat_service.SetModel(::yac::ModelId{command.substr(
+      chat_service_.SetModel(::yac::ModelId{command.substr(
           std::string(presentation::kSwitchModelPrefix).size())});
     } else if (command.starts_with(presentation::kSwitchThemePrefix)) {
-      auto theme_name =
-          command.substr(std::string(presentation::kSwitchThemePrefix).size());
-      auto theme = presentation::theme::GetTheme(theme_name);
-      if (config.theme_density == "compact") {
-        theme.density = presentation::theme::ThemeDensity::Compact;
+      ApplyThemeCommand(command);
+    } else if (command == "mcp_list") {
+      if (chat_ui_) {
+        HandleMcpListCommand(*chat_ui_, mcp_admin_);
       }
-      presentation::theme::ReinitializeTheme(std::move(theme));
-      if (config.sync_terminal_background) {
-        if (theme_name == "system") {
-          (*terminal_bg_guard).reset();
-        } else {
-          const auto rgb = presentation::theme::CurrentCanvasRgb();
-          (*terminal_bg_guard).reset();
-          if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
-            terminal_bg_guard->emplace(rgb.r, rgb.g, rgb.b);
-          }
+    } else if (command == "mcp_add") {
+      if (chat_ui_) {
+        ShowMcpAddUsage(*chat_ui_);
+      }
+    }
+  }
+
+  void OnToolApproval(const ::yac::ApprovalId& approval_id,
+                      bool approved) override {
+    chat_service_.ResolveToolApproval(approval_id, approved);
+  }
+
+  void OnAskUserResponse(::yac::ApprovalId approval_id,
+                         std::string response) override {
+    chat_service_.ResolveAskUser(approval_id, std::move(response));
+  }
+
+  void OnAskUserCancel(::yac::ApprovalId approval_id) override {
+    chat_service_.ResolveToolApproval(std::move(approval_id), false);
+  }
+
+  void OnModeToggle() override {
+    screen_.Post([this] {
+      auto current = chat_service_.GetAgentMode();
+      auto next = (current == chat::AgentMode::Build) ? chat::AgentMode::Plan
+                                                      : chat::AgentMode::Build;
+      chat_service_.SetAgentMode(next);
+    });
+  }
+
+ private:
+  void ApplyThemeCommand(const std::string& command) {
+    auto theme_name =
+        command.substr(std::string(presentation::kSwitchThemePrefix).size());
+    auto theme = presentation::theme::GetTheme(theme_name);
+    if (config_.theme_density == "compact") {
+      theme.density = presentation::theme::ThemeDensity::Compact;
+    }
+    presentation::theme::ReinitializeTheme(std::move(theme));
+    if (config_.sync_terminal_background) {
+      if (theme_name == "system") {
+        (*terminal_bg_guard_).reset();
+      } else {
+        const auto rgb = presentation::theme::CurrentCanvasRgb();
+        (*terminal_bg_guard_).reset();
+        if (rgb.r != 0 || rgb.g != 0 || rgb.b != 0) {
+          terminal_bg_guard_->emplace(rgb.r, rgb.g, rgb.b);
         }
       }
+    }
+    if (chat_ui_) {
       try {
         const auto settings_path = chat::GetSettingsPath();
         std::vector<chat::ConfigIssue> save_issues;
         const bool saved = chat::SaveThemeNameToSettingsToml(
             settings_path, theme_name, save_issues);
-        ReportThemeSaveResult(chat_ui, theme_name, settings_path, saved,
+        ReportThemeSaveResult(*chat_ui_, theme_name, settings_path, saved,
                               save_issues);
       } catch (const std::exception& error) {
-        chat_ui.SetTransientStatus(
+        chat_ui_->SetTransientStatus(
             {.severity = presentation::UiSeverity::Warning,
              .title = "Theme not saved",
              .detail = error.what()});
       }
-      screen.PostEvent(ftxui::Event::Custom);
-    } else if (command == "mcp_list") {
-      HandleMcpListCommand(chat_ui, mcp_admin);
-    } else if (command == "mcp_add") {
-      ShowMcpAddUsage(chat_ui);
     }
-  });
-  chat_ui.SetOnToolApproval(
-      [&chat_service](const ::yac::ApprovalId& approval_id, bool approved) {
-        chat_service.ResolveToolApproval(approval_id, approved);
-      });
-
-  chat_ui.SetOnAskUserCallbacks(
-      [&chat_service](::yac::ApprovalId approval_id, std::string response) {
-        chat_service.ResolveAskUser(approval_id, std::move(response));
-      },
-      [&chat_service](::yac::ApprovalId approval_id) {
-        chat_service.ResolveToolApproval(std::move(approval_id), false);
-      });
-
-  chat_ui.SetOnModeToggle([&chat_service, &screen] {
-    screen.Post([&chat_service] {
-      auto current = chat_service.GetAgentMode();
-      auto next = (current == chat::AgentMode::Build) ? chat::AgentMode::Plan
-                                                      : chat::AgentMode::Build;
-      chat_service.SetAgentMode(next);
-    });
-  });
-
-  {
-    auto cmds = BuildCommands(models);
-    auto mcp_cmds = presentation::BuildMcpPaletteCommands();
-    cmds.insert(cmds.end(), mcp_cmds.begin(), mcp_cmds.end());
-    chat_ui.SetCommands(std::move(cmds));
+    screen_.PostEvent(ftxui::Event::Custom);
   }
+
+  chat::ChatService& chat_service_;
+  const chat::ChatConfig& config_;
+  std::shared_ptr<std::optional<presentation::terminal::BackgroundGuard>>
+      terminal_bg_guard_;
+  ftxui::App& screen_;
+  std::shared_ptr<cli::McpAdminCommand> mcp_admin_;
+  presentation::ChatUI* chat_ui_ = nullptr;
+};
+
+void InstallChatUiCommandPalette(presentation::ChatUI& chat_ui,
+                                 const std::vector<chat::ModelInfo>& models) {
+  auto cmds = BuildCommands(models);
+  auto mcp_cmds = presentation::BuildMcpPaletteCommands();
+  cmds.insert(cmds.end(), mcp_cmds.begin(), mcp_cmds.end());
+  chat_ui.SetCommands(std::move(cmds));
   chat_ui.SetModelCommands(BuildModelCommands(models));
   chat_ui.SetThemeCommands(BuildThemeCommands());
 }
@@ -487,7 +518,28 @@ int RunApp() {
     }
   }
 
-  presentation::ChatUI chat_ui;
+  auto mcp_admin = std::make_shared<cli::McpAdminCommand>();
+
+  auto mcp_mgr_event_sink =
+      std::make_shared<std::function<void(chat::ChatEvent)>>();
+  auto mcp_mgr = std::make_unique<mcp::McpManager>(
+      config.mcp, [mcp_mgr_event_sink](chat::ChatEvent event) {
+        if (*mcp_mgr_event_sink) {
+          (*mcp_mgr_event_sink)(std::move(event));
+        }
+      });
+
+  provider::ProviderRegistry registry;
+  registry.Register(provider);
+  chat::ChatService chat_service(std::move(registry), config,
+                                 std::move(mcp_mgr));
+
+  ChatActionsImpl chat_actions(chat_service, config, terminal_bg_guard, screen,
+                               mcp_admin);
+
+  presentation::ChatUI chat_ui(chat_actions);
+  chat_actions.SetChatUi(chat_ui);
+
   ConfigureUiTaskRunner(screen, chat_ui);
   chat_ui.SetContextWindowTokens(
       provider::ResolveContextWindow(provider.get(), config.model.value));
@@ -500,22 +552,12 @@ int RunApp() {
                          });
 
   StreamingCoalescer event_coalescer(screen, bridge);
-
-  auto mcp_mgr = std::make_unique<mcp::McpManager>(
-      config.mcp, [&event_coalescer](chat::ChatEvent event) {
-        event_coalescer.Dispatch(std::move(event));
-      });
-
-  provider::ProviderRegistry registry;
-  registry.Register(provider);
-  chat::ChatService chat_service(std::move(registry), config,
-                                 std::move(mcp_mgr));
-
-  auto mcp_admin = std::make_shared<cli::McpAdminCommand>();
+  *mcp_mgr_event_sink = [&event_coalescer](chat::ChatEvent event) {
+    event_coalescer.Dispatch(std::move(event));
+  };
 
   ConfigureServiceEventCallback(event_coalescer, chat_service);
-  ConfigureChatUiCallbacks({}, config, terminal_bg_guard, screen, chat_service,
-                           chat_ui, mcp_admin);
+  InstallChatUiCommandPalette(chat_ui, /*models=*/{});
 
   chat_ui.SetSlashCommands(BuildSlashCommandRegistry(
       screen.ExitLoopClosure(), chat_service, chat_ui, prompt_result.prompts,

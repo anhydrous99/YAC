@@ -1,4 +1,5 @@
 #include "presentation/chat_ui.hpp"
+#include "util/mock_chat_actions.hpp"
 
 #include <optional>
 #include <string>
@@ -10,6 +11,7 @@
 #include <ftxui/screen/screen.hpp>
 
 using namespace yac::presentation;
+using yac::test::MockChatActions;
 
 namespace {
 
@@ -122,14 +124,15 @@ TEST_CASE("ChatUI opens and closes command palette dialog") {
 }
 
 TEST_CASE("ChatUI opens help from command palette") {
-  ChatUI ui;
-  ui.SetHelpText("Help body with shortcuts and setup.");
-  ui.SetCommands({{"help", "Help", "Show shortcuts and setup status"}});
-  ui.SetOnCommand([&](const std::string& command) {
+  MockChatActions actions;
+  ChatUI ui(actions);
+  actions.on_command = [&](const std::string& command) {
     if (command == "help") {
       ui.ShowHelp();
     }
-  });
+  };
+  ui.SetHelpText("Help body with shortcuts and setup.");
+  ui.SetCommands({{"help", "Help", "Show shortcuts and setup status"}});
   auto component = ui.Build();
 
   REQUIRE(component->OnEvent(MakeCtrlP()));
@@ -148,13 +151,11 @@ TEST_CASE("ChatUI opens help from command palette") {
 }
 
 TEST_CASE("ChatUI opens model picker from command palette") {
-  ChatUI ui;
-  std::optional<std::string> selected_command;
+  MockChatActions actions;
+  ChatUI ui(actions);
   ui.SetCommands({{"switch_model", "Switch Model",
                    "Choose the model for future responses"}});
   ui.SetModelCommands(SampleModelCommands());
-  ui.SetOnCommand(
-      [&](const std::string& command) { selected_command = command; });
   auto component = ui.Build();
 
   REQUIRE(component->OnEvent(MakeCtrlP()));
@@ -169,6 +170,5 @@ TEST_CASE("ChatUI opens model picker from command palette") {
                Catch::Matchers::ContainsSubstring("glm-4.7"));
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
-  REQUIRE(selected_command ==
-          std::optional<std::string>{"switch_model:glm-5.1"});
+  REQUIRE(actions.commands == std::vector<std::string>{"switch_model:glm-5.1"});
 }
