@@ -87,6 +87,8 @@ TEST_CASE("SubprocessRunner: stop_token cancels the run") {
   std::stop_source ss;
 
   std::thread cancel_thread([&] {
+    // SLEEP-RATIONALE: this IS the cancel timer — wall-clock delay is the
+    // behaviour under test (cancel fires after 150ms)
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     ss.request_stop();
   });

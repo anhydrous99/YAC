@@ -78,6 +78,7 @@ void WaitForReady(int fd) {
         line += ch;
       }
     } else {
+      // SLEEP-RATIONALE: polls server-readiness without busy-waiting
       std::this_thread::sleep_for(5ms);
     }
   }
