@@ -276,6 +276,7 @@ add_library(yac_service STATIC
   src/chat/chat_service_request_builder.cpp
   src/chat/tool_approval_manager.cpp
   src/chat/config.cpp
+  src/chat/config_loader.cpp
   src/chat/config_paths.cpp
   src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp

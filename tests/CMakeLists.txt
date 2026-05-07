@@ -91,6 +91,10 @@ yac_add_test(yac_test_settings_toml    test_settings_toml.cpp)
 yac_add_test(yac_test_config_paths     test_config_paths.cpp)
 yac_add_test(yac_test_chat_config_bedrock test_chat_config_bedrock.cpp)
 yac_add_test(yac_test_prompt_library   test_prompt_library.cpp)
+yac_add_test(yac_test_config_loader    test_config_loader.cpp)
+target_compile_definitions(yac_test_config_loader PRIVATE
+  SETTINGS_EXAMPLE_TOML_PATH="${CMAKE_SOURCE_DIR}/settings.example.toml"
+)
 yac_add_test(yac_test_ask_user         test_ask_user.cpp)
 yac_add_test(yac_test_sub_agent_manager test_sub_agent_manager.cpp)
 yac_add_aws_test(yac_test_bedrock_history_coalescing

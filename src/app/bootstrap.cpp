@@ -7,6 +7,7 @@
 #include "app/streaming_coalescer.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
+#include "chat/config_loader.hpp"
 #include "chat/config_paths.hpp"
 #include "chat/prompt_library.hpp"
 #include "chat/settings_toml.hpp"
@@ -471,9 +472,10 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 }  // namespace
 
 int RunApp() {
-  auto config_result = chat::LoadChatConfigResult();
+  auto loaded = chat::LoadConfig();
+  auto& config_result = loaded.chat;
   auto config = config_result.config;
-  auto prompt_result = chat::LoadPromptLibrary(/*seed_defaults=*/true);
+  auto& prompt_result = loaded.prompt_library;
   auto startup_issues = prompt_result.issues;
 
   std::shared_ptr<provider::LanguageModelProvider> provider;
