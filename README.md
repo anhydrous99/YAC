@@ -53,6 +53,41 @@ The SVG previews show the current chat surface and command palette.
 - Selectable theme presets (`vivid`, `system`) with a bright, high-saturation
   visual language built around semantic color roles
 
+## System Setup
+
+Install system dependencies before building.
+
+### Linux (Ubuntu/Debian)
+
+```bash
+sudo apt-get install -y ninja-build ripgrep
+```
+
+For contributors (lint + format-check): install clang-format-21 / clang-tidy-21 from [apt.llvm.org](https://apt.llvm.org/).
+
+### macOS (Homebrew)
+
+```bash
+brew install ninja ripgrep
+```
+
+For contributors: `brew install llvm` provides `clang-format` / `clang-tidy` at `/opt/homebrew/opt/llvm/bin/`. Prepend to PATH:
+
+```bash
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+```
+
+### Prerequisites
+
+After installing system dependencies, initialize submodules and vcpkg:
+
+```bash
+git submodule update --init --recursive
+./external/vcpkg/bootstrap-vcpkg.sh  # one-time, ~30s
+```
+
+CMake >= 3.21 is required (`cmake --version` to check).
+
 ## Quick Start
 
 ### Configure
