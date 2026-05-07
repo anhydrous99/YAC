@@ -169,7 +169,7 @@ TEST_CASE("Composer and status rail share the canvas background color") {
 
 TEST_CASE("ChatUI renders active provider and model in footer") {
   ChatUI ui;
-  ui.SetProviderModel("zai", "glm-5.1");
+  ui.SetProviderModel(::yac::ProviderId{"zai"}, ::yac::ModelId{"glm-5.1"});
   auto component = ui.Build();
 
   auto output = RenderComponent(component);
@@ -207,8 +207,8 @@ TEST_CASE("Build returns non-null component with typing enabled") {
 TEST_CASE("ChatUI renders startup status in empty transcript") {
   ChatUI ui;
   ui.SetStartupStatus(StartupStatus{
-      .provider_id = "openai-compatible",
-      .model = "gpt-4o-mini",
+      .provider_id = ::yac::ProviderId{"openai-compatible"},
+      .model = ::yac::ModelId{"gpt-4o-mini"},
       .workspace_root = "/workspace",
       .api_key_env = "OPENAI_API_KEY",
       .api_key_configured = false,

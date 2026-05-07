@@ -433,9 +433,9 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
     return;
   }
   fields.provider_id = ApplyStringField(provider["id"], "provider.id",
-                                        config.provider_id, issues);
+                                        config.provider_id.value, issues);
   fields.model = ApplyStringField(provider["model"], "provider.model",
-                                  config.model, issues);
+                                  config.model.value, issues);
   fields.base_url = ApplyStringField(provider["base_url"], "provider.base_url",
                                      config.base_url, issues);
   fields.api_key_env =

@@ -65,8 +65,8 @@ class FakeDiscoveryProvider : public LanguageModelProvider {
 ChatConfig MakeConfig(std::string provider_id = "openai-compatible",
                       std::string model = "") {
   ChatConfig config;
-  config.provider_id = std::move(provider_id);
-  config.model = std::move(model);
+  config.provider_id = ::yac::ProviderId{std::move(provider_id)};
+  config.model = ::yac::ModelId{std::move(model)};
   return config;
 }
 
@@ -225,7 +225,7 @@ TEST_CASE(
   ProviderRegistry registry;
 
   registry.Register(provider);
-  const auto resolved = registry.Resolve("zai");
+  const auto resolved = registry.Resolve(::yac::ProviderId{"zai"});
 
   REQUIRE(resolved == provider);
   const auto models = DiscoverModels(*resolved, MakeConfig("zai"));
@@ -238,5 +238,5 @@ TEST_CASE("ProviderRegistry ignores null providers and missing IDs") {
 
   registry.Register(nullptr);
 
-  REQUIRE(registry.Resolve("missing") == nullptr);
+  REQUIRE(registry.Resolve(::yac::ProviderId{"missing"}) == nullptr);
 }

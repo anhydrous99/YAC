@@ -115,8 +115,8 @@ struct SubAgentTestContext {
     workspace = std::filesystem::temp_directory_path() /
                 ("yac_sam_test_" + std::to_string(counter.fetch_add(1)));
     std::filesystem::create_directories(workspace);
-    config.provider_id = prov->Id();
-    config.model = "test-model";
+    config.provider_id = ::yac::ProviderId{prov->Id()};
+    config.model = ::yac::ModelId{"test-model"};
     registry.Register(std::move(prov));
     executor = std::make_shared<ToolExecutor>(workspace, nullptr, todo_state);
     manager = std::make_unique<SubAgentManager>(

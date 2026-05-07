@@ -39,7 +39,7 @@ class ChatUiOverlayState {
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);
   void SetThemeCommands(std::vector<Command> commands);
-  void SetProviderModel(std::string provider_id, std::string model);
+  void SetProviderModel(::yac::ProviderId provider_id, ::yac::ModelId model);
   void SetLastUsage(UsageStats usage);
   void SetContextWindowTokens(int tokens);
   void SetStartupStatus(StartupStatus status);
@@ -106,8 +106,8 @@ class ChatUiOverlayState {
   std::vector<Command> commands_;
   std::vector<Command> model_commands_;
   std::vector<Command> theme_commands_;
-  std::string provider_id_;
-  std::string model_;
+  ::yac::ProviderId provider_id_;
+  ::yac::ModelId model_;
   std::optional<UsageStats> last_usage_;
   int context_window_tokens_ = 0;
   StartupStatus startup_;

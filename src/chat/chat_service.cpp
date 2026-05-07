@@ -91,9 +91,9 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   return id;
 }
 
-void ChatService::SetModel(std::string model) {
-  std::string provider_id;
-  std::string new_model;
+void ChatService::SetModel(ModelId model) {
+  ProviderId provider_id;
+  ModelId new_model;
   {
     std::scoped_lock lock(mutex_);
     if (config_.model == model) {
@@ -108,7 +108,7 @@ void ChatService::SetModel(std::string model) {
                                         .model = std::move(new_model)}});
 }
 
-void ChatService::SetProvider(std::string provider_id) {
+void ChatService::SetProvider(ProviderId provider_id) {
   {
     std::scoped_lock lock(mutex_);
     if (config_.provider_id == provider_id) {

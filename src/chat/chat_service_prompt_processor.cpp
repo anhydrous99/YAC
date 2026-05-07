@@ -276,7 +276,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
         ErrorEvent{.message_id = assistant_id,
                    .role = ChatRole::Assistant,
                    .text = "No provider registered for '" +
-                           request_builder.Config().provider_id + "'.",
+                           request_builder.Config().provider_id.value + "'.",
                    .status = ChatMessageStatus::Error}});
     emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
     return;
@@ -295,8 +295,8 @@ void ChatServicePromptProcessor::ProcessPrompt(
   if (cfg.auto_compact_enabled && last_usage_) {
     const auto prior_usage = last_usage_();
     if (prior_usage && prior_usage->prompt_tokens > 0) {
-      const int window =
-          ::yac::provider::ResolveContextWindow(provider.get(), cfg.model);
+      const int window = ::yac::provider::ResolveContextWindow(provider.get(),
+                                                               cfg.model.value);
       if (window > 0) {
         const double pct = static_cast<double>(prior_usage->prompt_tokens) /
                            static_cast<double>(window);

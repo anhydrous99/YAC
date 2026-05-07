@@ -57,8 +57,8 @@ struct CollectedEvents {
 CollectedEvents RunStream(MockResponseProvider& provider,
                           const std::string& user_message) {
   ChatRequest req;
-  req.provider_id = "mock";
-  req.model = "mock-model";
+  req.provider_id = ::yac::ProviderId{"mock"};
+  req.model = ::yac::ModelId{"mock-model"};
   req.messages.push_back(
       ChatMessage{.role = ChatRole::User, .content = user_message});
 
@@ -167,8 +167,8 @@ TEST_CASE("MockResponseProvider: stop token prevents emission") {
   MockResponseProvider provider(script.Path().string());
 
   ChatRequest req;
-  req.provider_id = "mock";
-  req.model = "mock-model";
+  req.provider_id = ::yac::ProviderId{"mock"};
+  req.model = ::yac::ModelId{"mock-model"};
   req.messages.push_back(
       ChatMessage{.role = ChatRole::User, .content = "hello"});
 

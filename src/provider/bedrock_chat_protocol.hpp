@@ -38,9 +38,9 @@ using BedrockStreamHandlerHandle =
 // into ChatEvents and dispatches them to `sink`. The returned handle owns the
 // underlying handler; it must outlive any in-flight ConverseStream call that
 // references it. Not thread-safe; callers must keep one handle per stream.
-BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
-                                             const std::string& provider_id,
-                                             const std::string& model);
+BedrockStreamHandlerHandle MakeStreamHandler(
+    const ChatEventSink& sink, const ::yac::ProviderId& provider_id,
+    const ::yac::ModelId& model);
 
 // Returns a reference to the SDK-side handler bound by `handle`. The reference
 // is valid for the lifetime of the handle and is intended for passing to

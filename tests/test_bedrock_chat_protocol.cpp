@@ -13,7 +13,7 @@ using namespace yac::provider;
 
 static ChatRequest MakeRequest(const std::string& model = "test-model") {
   ChatRequest req;
-  req.model = model;
+  req.model = ::yac::ModelId{model};
   return req;
 }
 
@@ -339,7 +339,8 @@ TEST_CASE("MakeStreamHandler returns a non-null handle") {
   ChatEventSink sink = [&events](ChatEvent e) {
     events.push_back(std::move(e));
   };
-  const auto handle = MakeStreamHandler(sink, "bedrock", "test-model");
+  const auto handle = MakeStreamHandler(sink, ::yac::ProviderId{"bedrock"},
+                                        ::yac::ModelId{"test-model"});
   REQUIRE(handle != nullptr);
 }
 
@@ -349,7 +350,8 @@ TEST_CASE(
   ChatEventSink sink = [&events](ChatEvent e) {
     events.push_back(std::move(e));
   };
-  auto handle = MakeStreamHandler(sink, "bedrock", "test-model");
+  auto handle = MakeStreamHandler(sink, ::yac::ProviderId{"bedrock"},
+                                  ::yac::ModelId{"test-model"});
   auto& sdk_handler = GetSdkHandler(handle);
   (void)sdk_handler;
   REQUIRE(handle != nullptr);

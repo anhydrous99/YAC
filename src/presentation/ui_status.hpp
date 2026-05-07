@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core_types/typed_ids.hpp"
+
 #include <string>
 #include <vector>
 
@@ -14,8 +16,8 @@ struct UiNotice {
 };
 
 struct StartupStatus {
-  std::string provider_id;
-  std::string model;
+  ::yac::ProviderId provider_id;
+  ::yac::ModelId model;
   std::string workspace_root;
   std::string api_key_env;
   bool api_key_configured = false;

@@ -100,12 +100,12 @@ const std::unordered_map<std::string, ProviderPreset>& ProviderPresets() {
 void ApplyProviderDefaults(ChatConfig& config,
                            const ChatConfigFieldSet& explicit_fields) {
   const auto& presets = ProviderPresets();
-  auto it = presets.find(config.provider_id);
+  auto it = presets.find(config.provider_id.value);
   if (it == presets.end()) {
     return;
   }
   if (!explicit_fields.model) {
-    config.model = it->second.model;
+    config.model = ModelId{it->second.model};
   }
   if (!explicit_fields.base_url) {
     config.base_url = it->second.base_url;
@@ -118,14 +118,14 @@ void ApplyProviderDefaults(ChatConfig& config,
 void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
                        std::vector<ConfigIssue>& issues) {
   if (auto val = GetEnv("YAC_PROVIDER")) {
-    config.provider_id = std::move(*val);
+    config.provider_id = ProviderId{std::move(*val)};
     // Changing provider_id invalidates preset-derived fields unless the TOML
     // (or a prior env var) already fixed them.
     fields.provider_id = true;
     ApplyProviderDefaults(config, fields);
   }
   if (auto val = GetEnv("YAC_MODEL")) {
-    config.model = std::move(*val);
+    config.model = ModelId{std::move(*val)};
     fields.model = true;
   }
   if (auto val = GetEnv("YAC_BASE_URL")) {
@@ -245,7 +245,7 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
 
   // Bedrock-specific env overrides
-  if (config.provider_id == "bedrock") {
+  if (config.provider_id.value == "bedrock") {
     if (!config.options.contains("region")) {
       config.options["region"] = "us-east-1";
     }
@@ -336,7 +336,7 @@ void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,
     }
   }
   // Bedrock uses AWS credential chain, not API key env var
-  if (config.api_key.empty() && config.provider_id != "bedrock") {
+  if (config.api_key.empty() && config.provider_id.value != "bedrock") {
     issues.push_back({.severity = ConfigIssueSeverity::Warning,
                       .message = config.api_key_env + " is not set",
                       .detail = "Set " + config.api_key_env +

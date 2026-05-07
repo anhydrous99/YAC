@@ -233,7 +233,7 @@ Json BuildChatPayload(const chat::ChatRequest& request, bool stream,
     messages.push_back(std::move(entry));
   }
 
-  Json payload{{"model", request.model},
+  Json payload{{"model", request.model.value},
                {"messages", std::move(messages)},
                {"temperature", request.temperature},
                {"stream", stream}};

@@ -74,7 +74,7 @@ void ChatEventBridge::Handle(chat::ErrorEvent event) {
   chat_ui.SetTyping(false);
   chat_ui.SetTransientStatus(presentation::UiNotice{
       .severity = presentation::UiSeverity::Error,
-      .title = event.provider_id.empty() ? "YAC error" : "Provider error",
+      .title = event.provider_id.value.empty() ? "YAC error" : "Provider error",
       .detail = event.text});
   if (!chat_ui.HasMessage(event.message_id)) {
     chat_ui.AddMessageWithId(event.message_id, SenderForRole(event.role),
@@ -89,7 +89,8 @@ void ChatEventBridge::Handle(chat::AssistantMessageDoneEvent event) {
   using yac::presentation::MessageStatus;
   chat_ui_.get().SetTyping(false);
   chat_ui_.get().SetMessageStatus(event.message_id, MessageStatus::Complete);
-  yac::presentation::terminal::SetTitle("YAC \xe2\x80\x93 " + event.model);
+  yac::presentation::terminal::SetTitle("YAC \xe2\x80\x93 " +
+                                        event.model.value);
   yac::presentation::terminal::SendNotification("Response complete");
 }
 
@@ -170,8 +171,8 @@ void ChatEventBridge::Handle(chat::ConversationCompactedEvent event) {
 void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   auto& chat_ui = chat_ui_.get();
   const int window = context_window_resolver_
-                         ? context_window_resolver_(event.model)
-                         : provider::LookupContextWindow(event.model);
+                         ? context_window_resolver_(event.model.value)
+                         : provider::LookupContextWindow(event.model.value);
   chat_ui.SetContextWindowTokens(window);
   chat_ui.SetProviderModel(std::move(event.provider_id),
                            std::move(event.model));

@@ -28,8 +28,8 @@ HeadlessResult RunWithProvider(std::shared_ptr<LanguageModelProvider> provider,
   ProviderRegistry registry;
   registry.Register(provider);
   ChatConfig config;
-  config.provider_id = "fake";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
   ChatService service(std::move(registry), config);
 
   HeadlessResult result;

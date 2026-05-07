@@ -207,7 +207,7 @@ std::string BuildHelpText(const presentation::StartupStatus& startup) {
          "  Command arguments replace $ARGUMENTS.\n\n"
          "Current session\n"
          "  Provider/model: " +
-         startup.provider_id + " / " + startup.model +
+         startup.provider_id.value + " / " + startup.model.value +
          "\n  Workspace: " + startup.workspace_root +
          "\n  API key env: " + startup.api_key_env + " (" +
          (startup.api_key_configured ? "configured" : "missing") + ")" +
@@ -278,8 +278,8 @@ void ConfigureChatUiCallbacks(
     } else if (command == "help") {
       chat_ui.ShowHelp();
     } else if (command.starts_with(presentation::kSwitchModelPrefix)) {
-      chat_service.SetModel(
-          command.substr(std::string(presentation::kSwitchModelPrefix).size()));
+      chat_service.SetModel(::yac::ModelId{command.substr(
+          std::string(presentation::kSwitchModelPrefix).size())});
     } else if (command.starts_with(presentation::kSwitchThemePrefix)) {
       auto theme_name =
           command.substr(std::string(presentation::kSwitchThemePrefix).size());
@@ -446,7 +446,7 @@ int RunApp() {
   auto startup_issues = prompt_result.issues;
 
   std::shared_ptr<provider::LanguageModelProvider> provider;
-  if (config.provider_id == "bedrock") {
+  if (config.provider_id.value == "bedrock") {
     provider::EnsureAwsApiGuardInstalled();
     provider =
         std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
@@ -490,7 +490,7 @@ int RunApp() {
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
   chat_ui.SetContextWindowTokens(
-      provider::ResolveContextWindow(provider.get(), config.model));
+      provider::ResolveContextWindow(provider.get(), config.model.value));
   chat_ui.SetProviderModel(config.provider_id, config.model);
 
   ChatEventBridge bridge(chat_ui, /*history_provider=*/{},

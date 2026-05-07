@@ -37,7 +37,7 @@ TEST_CASE("ProviderRegistry: Register then Resolve returns the same provider") {
   auto provider = MakeMock("alpha");
   registry.Register(provider);
 
-  auto resolved = registry.Resolve("alpha");
+  auto resolved = registry.Resolve(::yac::ProviderId{"alpha"});
   REQUIRE(resolved != nullptr);
   CHECK(resolved.get() == provider.get());
   CHECK(resolved->Id() == "alpha");
@@ -51,7 +51,7 @@ TEST_CASE("ProviderRegistry: second Register with same id replaces the first") {
   registry.Register(first);
   registry.Register(second);
 
-  auto resolved = registry.Resolve("p");
+  auto resolved = registry.Resolve(::yac::ProviderId{"p"});
   REQUIRE(resolved != nullptr);
   CHECK(resolved.get() == second.get());
   CHECK(resolved.get() != first.get());
@@ -60,13 +60,13 @@ TEST_CASE("ProviderRegistry: second Register with same id replaces the first") {
 TEST_CASE("ProviderRegistry: Resolve of unknown id returns nullptr") {
   ProviderRegistry registry;
 
-  CHECK(registry.Resolve("missing") == nullptr);
-  CHECK(registry.Resolve("") == nullptr);
-  CHECK(registry.Resolve("ALPHA") == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"missing"}) == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{""}) == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"ALPHA"}) == nullptr);
 
   registry.Register(MakeMock("real"));
-  CHECK(registry.Resolve("REAL") == nullptr);
-  CHECK(registry.Resolve("real2") == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"REAL"}) == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"real2"}) == nullptr);
 }
 
 TEST_CASE(
@@ -80,10 +80,10 @@ TEST_CASE(
   registry.Register(b);
   registry.Register(c);
 
-  CHECK(registry.Resolve("alpha").get() == a.get());
-  CHECK(registry.Resolve("beta").get() == b.get());
-  CHECK(registry.Resolve("gamma").get() == c.get());
-  CHECK(registry.Resolve("delta") == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"alpha"}).get() == a.get());
+  CHECK(registry.Resolve(::yac::ProviderId{"beta"}).get() == b.get());
+  CHECK(registry.Resolve(::yac::ProviderId{"gamma"}).get() == c.get());
+  CHECK(registry.Resolve(::yac::ProviderId{"delta"}) == nullptr);
 }
 
 TEST_CASE("ProviderRegistry: Register nullptr is a no-op") {
@@ -91,8 +91,8 @@ TEST_CASE("ProviderRegistry: Register nullptr is a no-op") {
 
   REQUIRE_NOTHROW(registry.Register(nullptr));
 
-  CHECK(registry.Resolve("") == nullptr);
-  CHECK(registry.Resolve("any") == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{""}) == nullptr);
+  CHECK(registry.Resolve(::yac::ProviderId{"any"}) == nullptr);
 }
 
 TEST_CASE(
@@ -116,7 +116,7 @@ TEST_CASE(
       threads.emplace_back([&registry, &hit_count, t] {
         const std::string id = "provider_" + std::to_string(t);
         for (int i = 0; i < kItersPerThread; ++i) {
-          auto p = registry.Resolve(id);
+          auto p = registry.Resolve(::yac::ProviderId{id});
           if (p != nullptr) {
             ++hit_count;
           }

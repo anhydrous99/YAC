@@ -15,8 +15,8 @@ namespace {
 
 OpenAiCompatibleChatProvider MakeZaiProvider() {
   yac::chat::ProviderConfig config;
-  config.id = "zai";
-  config.model = "glm-5.1";
+  config.id = ::yac::ProviderId{"zai"};
+  config.model = ::yac::ModelId{"glm-5.1"};
   config.base_url = "https://api.z.ai/api/coding/paas/v4";
   config.api_key_env = "ZAI_API_KEY";
   return OpenAiCompatibleChatProvider(std::move(config));
@@ -24,8 +24,8 @@ OpenAiCompatibleChatProvider MakeZaiProvider() {
 
 OpenAiCompatibleChatProvider MakeOpenAiProvider() {
   yac::chat::ProviderConfig config;
-  config.id = "openai-compatible";
-  config.model = "gpt-4o-mini";
+  config.id = ::yac::ProviderId{"openai-compatible"};
+  config.model = ::yac::ModelId{"gpt-4o-mini"};
   return OpenAiCompatibleChatProvider(std::move(config));
 }
 
@@ -96,8 +96,8 @@ TEST_CASE(
     "OpenAiCompatibleChatProvider::GetContextWindow manual override wins over "
     "all other sources") {
   yac::chat::ProviderConfig config;
-  config.id = "openai-compatible";
-  config.model = "unknown-model";
+  config.id = ::yac::ProviderId{"openai-compatible"};
+  config.model = ::yac::ModelId{"unknown-model"};
   config.context_window = 32768;
   OpenAiCompatibleChatProvider provider(std::move(config));
 
@@ -137,8 +137,8 @@ TEST_CASE(
     "BedrockChatProvider::GetContextWindow returns 0 by default and defers "
     "to LookupContextWindow via ResolveContextWindow") {
   yac::chat::ProviderConfig config;
-  config.id = "bedrock";
-  config.model = "anthropic.claude-3-5-haiku-20241022-v1:0";
+  config.id = ::yac::ProviderId{"bedrock"};
+  config.model = ::yac::ModelId{"anthropic.claude-3-5-haiku-20241022-v1:0"};
   BedrockChatProvider provider(config);
 
   REQUIRE(provider.GetContextWindow("") == 0);
@@ -157,8 +157,8 @@ TEST_CASE(
 
 TEST_CASE("BedrockChatProvider::GetContextWindow honours the manual override") {
   yac::chat::ProviderConfig config;
-  config.id = "bedrock";
-  config.model = "anthropic.claude-3-5-haiku-20241022-v1:0";
+  config.id = ::yac::ProviderId{"bedrock"};
+  config.model = ::yac::ModelId{"anthropic.claude-3-5-haiku-20241022-v1:0"};
   config.context_window = 50000;
   BedrockChatProvider provider(config);
 

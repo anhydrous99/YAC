@@ -26,7 +26,7 @@ std::vector<chat::ModelInfo> ZaiFallbackModels() {
 
 bool UsesZaiFallback(const provider::LanguageModelProvider& provider,
                      const chat::ChatConfig& config) {
-  return provider.Id() == "zai" || config.provider_id == "zai";
+  return provider.Id() == "zai" || config.provider_id.value == "zai";
 }
 
 void EnsureModelPresent(std::vector<chat::ModelInfo>& models,
@@ -70,7 +70,7 @@ ModelDiscoveryResult DiscoverModelsWithStatus(
           "Model discovery failed; using built-in Z.ai model list.";
     }
   }
-  EnsureModelPresent(result.models, config.model);
+  EnsureModelPresent(result.models, config.model.value);
   if (result.models.empty() && result.status == ModelDiscoveryStatus::Success) {
     result.status = ModelDiscoveryStatus::Failed;
     result.message = "No models were returned by the provider.";

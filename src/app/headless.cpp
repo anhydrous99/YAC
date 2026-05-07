@@ -28,7 +28,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
   const auto& config = config_result.config;
 
   std::shared_ptr<provider::LanguageModelProvider> provider;
-  if (config.provider_id == "bedrock") {
+  if (config.provider_id.value == "bedrock") {
     provider::EnsureAwsApiGuardInstalled();
     provider =
         std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{

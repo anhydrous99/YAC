@@ -42,7 +42,8 @@ class ChatEventSink {
   virtual void ShowAskUserDialog(::yac::ApprovalId approval_id,
                                  std::string question,
                                  std::vector<std::string> options) = 0;
-  virtual void SetProviderModel(std::string provider_id, std::string model) = 0;
+  virtual void SetProviderModel(::yac::ProviderId provider_id,
+                                ::yac::ModelId model) = 0;
   virtual void SetLastUsage(UsageStats usage) = 0;
   virtual void SetContextWindowTokens(int tokens) = 0;
   virtual void SetQueueDepth(int queue_depth) = 0;

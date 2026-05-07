@@ -45,8 +45,8 @@ struct ChatMessage {
 };
 
 struct ChatRequest {
-  std::string provider_id = "openai-compatible";
-  std::string model = "gpt-4o-mini";
+  ProviderId provider_id{"openai-compatible"};
+  ModelId model{"gpt-4o-mini"};
   std::vector<ChatMessage> messages;
   std::vector<ToolDefinition> tools;
   double temperature = 0.7;
@@ -88,8 +88,8 @@ struct StartedEvent {
 
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Assistant;
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
   ChatMessageStatus status = ChatMessageStatus::Active;
 };
 
@@ -99,8 +99,8 @@ struct TextDeltaEvent {
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Assistant;
   std::string text;
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
 };
 
 struct AssistantMessageDoneEvent {
@@ -108,8 +108,8 @@ struct AssistantMessageDoneEvent {
 
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Assistant;
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
   ChatMessageStatus status = ChatMessageStatus::Complete;
 };
 
@@ -141,8 +141,8 @@ struct ErrorEvent {
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Assistant;
   std::string text;
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
   ChatMessageStatus status = ChatMessageStatus::Error;
 };
 
@@ -210,8 +210,8 @@ struct ConversationCompactedEvent {
 struct ModelChangedEvent {
   static constexpr ChatEventType kType = ChatEventType::ModelChanged;
 
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
 };
 
 struct ToolCallRequestedEvent {
@@ -248,8 +248,8 @@ struct ToolApprovalRequestedEvent {
 struct UsageReportedEvent {
   static constexpr ChatEventType kType = ChatEventType::UsageReported;
 
-  std::string provider_id;
-  std::string model;
+  ProviderId provider_id;
+  ModelId model;
   TokenUsage usage;
 };
 
@@ -405,8 +405,8 @@ struct ChatEvent {
 }
 
 struct ProviderConfig {
-  std::string id = "openai-compatible";
-  std::string model = "gpt-4o-mini";
+  ProviderId id{"openai-compatible"};
+  ModelId model{"gpt-4o-mini"};
   std::string api_key;
   std::string api_key_env = "OPENAI_API_KEY";
   std::string base_url = "https://api.openai.com/v1/";
@@ -424,8 +424,8 @@ struct ConfigIssue {
 };
 
 struct ChatConfig {
-  std::string provider_id = "openai-compatible";
-  std::string model = "gpt-4o-mini";
+  ProviderId provider_id{"openai-compatible"};
+  ModelId model{"gpt-4o-mini"};
   std::string base_url = "https://api.openai.com/v1/";
   double temperature = 0.7;
   std::string api_key;

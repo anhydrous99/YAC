@@ -95,8 +95,8 @@ void MockBedrockProvider::CompleteStream(const chat::ChatRequest& request,
                                          std::stop_token stop_token) {
   if (!request_log_path_.empty()) {
     nlohmann::json j;
-    j["provider_id"] = request.provider_id;
-    j["model"] = request.model;
+    j["provider_id"] = request.provider_id.value;
+    j["model"] = request.model.value;
     j["temperature"] = request.temperature;
     auto messages = nlohmann::json::array();
     for (const auto& msg : request.messages) {

@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
 
     auto config_result = yac::chat::LoadChatConfigResult();
     yac::chat::ChatConfig config = config_result.config;
-    config.provider_id = "mock";
+    config.provider_id = ::yac::ProviderId{"mock"};
 
     auto provider = std::make_shared<yac::provider::MockResponseProvider>(
         mock_script_path, mock_request_log);

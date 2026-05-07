@@ -10,7 +10,7 @@ using namespace yac::provider;
 
 TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
   ChatRequest request;
-  request.model = "gpt-4.1";
+  request.model = ::yac::ModelId{"gpt-4.1"};
   request.temperature = 0.3;
   request.messages = {
       ChatMessage{.role = ChatRole::System, .content = "system prompt"},

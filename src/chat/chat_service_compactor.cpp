@@ -144,7 +144,7 @@ void ReplaceSliceWithSummary(std::vector<ChatMessage>& history,
 // provider. Does NOT hold the history mutex during the call. Returns the
 // concatenated assistant text on success, or an empty optional on failure.
 std::optional<std::string> RunSummarizationCall(
-    provider::LanguageModelProvider& provider, const std::string& model,
+    provider::LanguageModelProvider& provider, const ModelId& model,
     const std::vector<ChatMessage>& dropped, std::stop_token stop_token,
     std::string& failure_reason) {
   ChatRequest request;

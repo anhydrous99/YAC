@@ -126,8 +126,8 @@ struct PromptProcessorHarness {
               return built_in_executor->Execute(prepared, stop_token);
             }) {
     std::filesystem::create_directories(workspace_root);
-    config.provider_id = provider->Id();
-    config.model = "test-model";
+    config.provider_id = ::yac::ProviderId{provider->Id()};
+    config.model = ::yac::ModelId{"test-model"};
     config.workspace_root = workspace_root.string();
     registry.Register(std::move(provider));
   }

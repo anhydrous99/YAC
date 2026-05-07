@@ -197,8 +197,8 @@ void ChatUiOverlayState::SetThemeCommands(std::vector<Command> commands) {
   theme_commands_ = std::move(commands);
 }
 
-void ChatUiOverlayState::SetProviderModel(std::string provider_id,
-                                          std::string model) {
+void ChatUiOverlayState::SetProviderModel(::yac::ProviderId provider_id,
+                                          ::yac::ModelId model) {
   provider_id_ = std::move(provider_id);
   model_ = std::move(model);
   startup_.provider_id = provider_id_;
@@ -407,11 +407,11 @@ bool ChatUiOverlayState::HandleGlobalEvent(const ftxui::Event& event) {
 }
 
 const std::string& ChatUiOverlayState::ProviderId() const {
-  return provider_id_;
+  return provider_id_.value;
 }
 
 const std::string& ChatUiOverlayState::Model() const {
-  return model_;
+  return model_.value;
 }
 
 const std::optional<UsageStats>& ChatUiOverlayState::LastUsage() const {

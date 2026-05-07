@@ -71,7 +71,8 @@ TEST_CASE("ChatEventBridge updates provider and model display") {
   ChatEventBridge bridge(ui);
 
   bridge.HandleEvent(
-      ChatEvent{ModelChangedEvent{.provider_id = "zai", .model = "glm-5.1"}});
+      ChatEvent{ModelChangedEvent{.provider_id = ::yac::ProviderId{"zai"},
+                                  .model = ::yac::ModelId{"glm-5.1"}}});
 
   REQUIRE(ui.ProviderId() == "zai");
   REQUIRE(ui.Model() == "glm-5.1");
@@ -86,8 +87,9 @@ TEST_CASE(
   ChatEventBridge bridge(ui, /*history_provider=*/{},
                          [](const std::string&) { return 64000; });
 
-  bridge.HandleEvent(ChatEvent{
-      ModelChangedEvent{.provider_id = "openai", .model = "gpt-4o-mini"}});
+  bridge.HandleEvent(
+      ChatEvent{ModelChangedEvent{.provider_id = ::yac::ProviderId{"openai"},
+                                  .model = ::yac::ModelId{"gpt-4o-mini"}}});
 
   REQUIRE(ui.ContextWindowTokens() == 64000);
 }
@@ -98,8 +100,9 @@ TEST_CASE(
   ChatUI ui;
   ChatEventBridge bridge(ui);
 
-  bridge.HandleEvent(ChatEvent{
-      ModelChangedEvent{.provider_id = "openai", .model = "gpt-4o-mini"}});
+  bridge.HandleEvent(
+      ChatEvent{ModelChangedEvent{.provider_id = ::yac::ProviderId{"openai"},
+                                  .model = ::yac::ModelId{"gpt-4o-mini"}}});
 
   REQUIRE(ui.ContextWindowTokens() == 128000);
 }

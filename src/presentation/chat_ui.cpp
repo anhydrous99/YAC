@@ -374,7 +374,8 @@ void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
   slash_commands_ = std::move(registry);
 }
 
-void ChatUI::SetProviderModel(std::string provider_id, std::string model) {
+void ChatUI::SetProviderModel(::yac::ProviderId provider_id,
+                              ::yac::ModelId model) {
   overlay_state_.SetProviderModel(std::move(provider_id), std::move(model));
 }
 

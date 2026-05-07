@@ -36,8 +36,8 @@ CollectedEvents RunStream(MockBedrockProvider& provider,
                           const std::string& user_message,
                           bool request_stop = false) {
   ChatRequest req;
-  req.provider_id = "bedrock";
-  req.model = "anthropic.claude-3-5-haiku-20241022-v1:0";
+  req.provider_id = ::yac::ProviderId{"bedrock"};
+  req.model = ::yac::ModelId{"anthropic.claude-3-5-haiku-20241022-v1:0"};
   req.messages.push_back(
       ChatMessage{.role = ChatRole::User, .content = user_message});
 

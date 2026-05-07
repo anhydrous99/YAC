@@ -30,7 +30,7 @@ namespace yac::provider {
 ConverseStreamRequestData BuildConverseStreamRequest(
     const chat::ChatRequest& request, const chat::ProviderConfig& config) {
   ConverseStreamRequestData data;
-  data.request.SetModelId(request.model);
+  data.request.SetModelId(request.model.value);
 
   std::string system_text;
   for (const auto& msg : request.messages) {
@@ -347,8 +347,8 @@ namespace {
 class BedrockStreamHandler
     : public Aws::BedrockRuntime::Model::ConverseStreamHandler {
  public:
-  BedrockStreamHandler(ChatEventSink sink, std::string provider_id,
-                       std::string model)
+  BedrockStreamHandler(ChatEventSink sink, ::yac::ProviderId provider_id,
+                       ::yac::ModelId model)
       : sink_(std::move(sink)),
         provider_id_(std::move(provider_id)),
         model_(std::move(model)) {
@@ -502,8 +502,8 @@ class BedrockStreamHandler
   }
 
   ChatEventSink sink_;
-  std::string provider_id_;
-  std::string model_;
+  ::yac::ProviderId provider_id_;
+  ::yac::ModelId model_;
   std::string current_tool_use_id_;
   std::string current_tool_name_;
   std::string accumulated_tool_input_;
@@ -520,9 +520,9 @@ void DestroyBedrockStreamHandler(BedrockStreamHandlerData* data) noexcept {
   delete data;  // NOLINT(cppcoreguidelines-owning-memory)
 }
 
-BedrockStreamHandlerHandle MakeStreamHandler(const ChatEventSink& sink,
-                                             const std::string& provider_id,
-                                             const std::string& model) {
+BedrockStreamHandlerHandle MakeStreamHandler(
+    const ChatEventSink& sink, const ::yac::ProviderId& provider_id,
+    const ::yac::ModelId& model) {
   return BedrockStreamHandlerHandle(new BedrockStreamHandlerData{
       .handler = BedrockStreamHandler(sink, provider_id, model)});
 }

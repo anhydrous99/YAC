@@ -68,7 +68,7 @@ class ScopedEnvClear {
 };
 
 std::shared_ptr<LambdaMockProvider> MakeFakeProvider(
-    std::string expected_model = "fake-model") {
+    ::yac::ModelId expected_model = ::yac::ModelId{"fake-model"}) {
   return std::make_shared<LambdaMockProvider>(
       "fake", [expected_model = std::move(expected_model)](
                   const ChatRequest& request, ChatEventSink sink,
@@ -154,7 +154,7 @@ class BlockingFakeProvider : public LanguageModelProvider {
     cv_.notify_one();
   }
 
-  [[nodiscard]] std::string LastRequestModel() const {
+  [[nodiscard]] ::yac::ModelId LastRequestModel() const {
     std::scoped_lock lock(mutex_);
     return request_model_;
   }
@@ -162,7 +162,7 @@ class BlockingFakeProvider : public LanguageModelProvider {
  private:
   mutable std::mutex mutex_;
   std::condition_variable cv_;
-  std::string request_model_;
+  ::yac::ModelId request_model_;
   bool started_ = false;
   bool release_ = false;
 };
@@ -352,14 +352,14 @@ ChatService MakeService(
     ChatConfig config = {}) {
   ProviderRegistry registry;
   if (provider) {
-    if (config.provider_id == "openai-compatible") {
-      config.provider_id = provider->Id();
+    if (config.provider_id.value == "openai-compatible") {
+      config.provider_id = ::yac::ProviderId{provider->Id()};
     }
     registry.Register(std::move(provider));
   } else {
     registry.Register(MakeFakeProvider());
-    config.provider_id = "fake";
-    config.model = "fake-model";
+    config.provider_id = ::yac::ProviderId{"fake"};
+    config.model = ::yac::ModelId{"fake-model"};
   }
   return ChatService(std::move(registry), config);
 }
@@ -417,8 +417,8 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
 
   auto provider = MakeToolRoundProvider();
   ChatConfig config;
-  config.provider_id = "tool-round";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"tool-round"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
   auto service = MakeService(provider, config);
 
@@ -446,8 +446,8 @@ TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
   auto call_count = std::make_shared<std::atomic<int>>(0);
   auto provider = MakeInfiniteToolLoopProvider(call_count);
   ChatConfig config;
-  config.provider_id = "infinite-tools";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"infinite-tools"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
   config.max_tool_rounds = 3;
   auto service = MakeService(provider, config);
@@ -487,8 +487,8 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
 
   auto provider = MakeApprovalRejectionProvider();
   ChatConfig config;
-  config.provider_id = "approval-rejection";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"approval-rejection"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
   auto service = MakeService(provider, config);
 
@@ -544,8 +544,8 @@ TEST_CASE("ChatService sequences approval requests one tool at a time") {
 
   auto provider = std::make_shared<SequentialApprovalProvider>();
   ChatConfig config;
-  config.provider_id = "sequential-approval";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"sequential-approval"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
   auto service = MakeService(provider, config);
 
@@ -605,8 +605,8 @@ TEST_CASE(
 
   auto provider = MakeToolErrorProvider();
   ChatConfig config;
-  config.provider_id = "tool-error";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"tool-error"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
   auto service = MakeService(provider, config);
 
@@ -638,8 +638,8 @@ TEST_CASE("ChatService drops empty streaming deltas") {
 TEST_CASE("ChatService emits error for missing provider") {
   ProviderRegistry registry;
   ChatConfig config;
-  config.provider_id = "missing";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"missing"};
+  config.model = ::yac::ModelId{"fake-model"};
   ChatService service(std::move(registry), config);
 
   std::vector<ChatEvent> events;
@@ -689,8 +689,8 @@ TEST_CASE("ChatService preserves provider stream error status") {
 TEST_CASE("ChatService includes system prompt before history in requests") {
   auto provider = MakeFakeProvider();
   ChatConfig config;
-  config.provider_id = "fake";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
   config.system_prompt = "Use terse answers.";
   auto service = MakeService(provider, config);
 
@@ -705,10 +705,10 @@ TEST_CASE("ChatService includes system prompt before history in requests") {
 }
 
 TEST_CASE("ChatService SetModel updates future requests and emits event") {
-  auto provider = MakeFakeProvider("glm-5.1");
+  auto provider = MakeFakeProvider(::yac::ModelId{"glm-5.1"});
   ChatConfig config;
-  config.provider_id = "fake";
-  config.model = "fake-model";
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
   auto service = MakeService(provider, config);
 
   std::vector<ChatEvent> events;
@@ -725,24 +725,24 @@ TEST_CASE("ChatService SetModel updates future requests and emits event") {
     }
   });
 
-  service.SetModel("glm-5.1");
+  service.SetModel(::yac::ModelId{"glm-5.1"});
   service.SubmitUserMessage("hello");
 
   std::unique_lock lock(mtx);
   cv.wait(lock, [&] { return finished; });
 
   const auto request = provider->LastRequest();
-  REQUIRE(request.model == "glm-5.1");
+  REQUIRE(request.model.value == "glm-5.1");
   const auto& event = FindEvent(events, ChatEventType::ModelChanged);
-  REQUIRE(event.Get<ModelChangedEvent>().provider_id == "fake");
-  REQUIRE(event.Get<ModelChangedEvent>().model == "glm-5.1");
+  REQUIRE(event.Get<ModelChangedEvent>().provider_id.value == "fake");
+  REQUIRE(event.Get<ModelChangedEvent>().model.value == "glm-5.1");
 }
 
 TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
   auto provider = std::make_shared<BlockingFakeProvider>();
   ChatConfig config;
-  config.provider_id = "blocking-fake";
-  config.model = "first-model";
+  config.provider_id = ::yac::ProviderId{"blocking-fake"};
+  config.model = ::yac::ModelId{"first-model"};
   auto service = MakeService(provider, config);
 
   std::vector<ChatEvent> events;
@@ -761,16 +761,16 @@ TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
 
   service.SubmitUserMessage("hello");
   provider->WaitUntilStarted();
-  service.SetModel("second-model");
+  service.SetModel(::yac::ModelId{"second-model"});
 
-  REQUIRE(provider->LastRequestModel() == "first-model");
+  REQUIRE(provider->LastRequestModel().value == "first-model");
 
   provider->Release();
   std::unique_lock lock(mtx);
   cv.wait(lock, [&] { return finished; });
 
   const auto& event = FindEvent(events, ChatEventType::ModelChanged);
-  REQUIRE(event.Get<ModelChangedEvent>().model == "second-model");
+  REQUIRE(event.Get<ModelChangedEvent>().model.value == "second-model");
 }
 
 TEST_CASE("ChatService cancellation requests provider stop token") {
@@ -921,8 +921,8 @@ TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
   auto config =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
-  REQUIRE(config.provider_id == "openai-compatible");
-  REQUIRE(config.model == "gpt-4o-mini");
+  REQUIRE(config.provider_id.value == "openai-compatible");
+  REQUIRE(config.model.value == "gpt-4o-mini");
   REQUIRE(config.temperature == 0.7);
   REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
   REQUIRE_FALSE(config.system_prompt.has_value());
@@ -936,8 +936,8 @@ TEST_CASE(
   auto result =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/true);
   REQUIRE(std::filesystem::exists(settings.Path()));
-  REQUIRE(result.config.provider_id == "openai-compatible");
-  REQUIRE(result.config.model == "gpt-4o-mini");
+  REQUIRE(result.config.provider_id.value == "openai-compatible");
+  REQUIRE(result.config.model.value == "gpt-4o-mini");
 }
 
 TEST_CASE("LoadChatConfigResult warns when API key is missing") {
@@ -999,8 +999,8 @@ TEST_CASE("[provider].id = zai applies the Z.ai preset") {
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
 
-  REQUIRE(config.provider_id == "zai");
-  REQUIRE(config.model == "glm-5.1");
+  REQUIRE(config.provider_id.value == "zai");
+  REQUIRE(config.model.value == "glm-5.1");
   REQUIRE(config.base_url == "https://api.z.ai/api/coding/paas/v4");
   REQUIRE(config.api_key_env == "ZAI_API_KEY");
   REQUIRE(config.api_key == "zai-api-key");
@@ -1023,8 +1023,8 @@ TEST_CASE("TOML values override the Z.ai preset") {
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
 
-  REQUIRE(config.provider_id == "zai");
-  REQUIRE(config.model == "glm-4.7");
+  REQUIRE(config.provider_id.value == "zai");
+  REQUIRE(config.model.value == "glm-4.7");
   REQUIRE(config.base_url == "https://zai.example.com/v1");
   REQUIRE(config.api_key_env == "YAC_CUSTOM_ZAI_KEY");
   REQUIRE(config.api_key == "custom-zai-key");
@@ -1051,8 +1051,8 @@ TEST_CASE("settings.toml values are read end-to-end") {
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
 
-  REQUIRE(config.provider_id == "custom-provider");
-  REQUIRE(config.model == "custom-model");
+  REQUIRE(config.provider_id.value == "custom-provider");
+  REQUIRE(config.model.value == "custom-model");
   REQUIRE(config.base_url == "https://example.com/v1/");
   REQUIRE(config.temperature == 1.5);
   REQUIRE(config.max_tool_rounds == 44);
@@ -1084,8 +1084,8 @@ TEST_CASE("YAC_* env vars override settings.toml values") {
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
           .config;
 
-  REQUIRE(config.provider_id == "env-provider");
-  REQUIRE(config.model == "env-model");
+  REQUIRE(config.provider_id.value == "env-provider");
+  REQUIRE(config.model.value == "env-model");
   REQUIRE(config.temperature == 0.8);
   REQUIRE(config.max_tool_rounds == 12);
   REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_OVERRIDE");
@@ -1125,8 +1125,8 @@ TEST_CASE(
   auto result =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
 
-  REQUIRE(result.config.provider_id == "openai-compatible");
-  REQUIRE(result.config.model == "gpt-4o-mini");
+  REQUIRE(result.config.provider_id.value == "openai-compatible");
+  REQUIRE(result.config.model.value == "gpt-4o-mini");
   REQUIRE(std::ranges::any_of(result.issues, [](const ConfigIssue& issue) {
     return issue.severity == ConfigIssueSeverity::Error &&
            issue.message.find("settings.toml") != std::string::npos;
@@ -1148,8 +1148,8 @@ std::shared_ptr<LambdaMockProvider> MakeUsageReportingProvider(
         }
         sink(ChatEvent{TextDeltaEvent{.text = "ack"}});
         sink(ChatEvent{UsageReportedEvent{
-            .provider_id = "fake",
-            .model = "fake-model",
+            .provider_id = ::yac::ProviderId{"fake"},
+            .model = ::yac::ModelId{"fake-model"},
             .usage = TokenUsage{.prompt_tokens = prompt_tokens,
                                 .completion_tokens = 1,
                                 .total_tokens = prompt_tokens + 1}}});
@@ -1162,11 +1162,11 @@ TEST_CASE(
     "ChatService auto-compacts before the next prompt when usage crosses the "
     "threshold") {
   ChatConfig config;
-  config.provider_id = "fake";
+  config.provider_id = ::yac::ProviderId{"fake"};
   // gpt-4o-mini's hard-coded window is 128000; 0.85 × 128000 = 108800. With
   // threshold 0.5, this trips the trigger. keep_last is 2 so the synthetic
   // system message is observable in History().
-  config.model = "gpt-4o-mini";
+  config.model = ::yac::ModelId{"gpt-4o-mini"};
   config.auto_compact_enabled = true;
   config.auto_compact_threshold = 0.5;
   config.auto_compact_keep_last = 2;
@@ -1196,8 +1196,8 @@ TEST_CASE(
 TEST_CASE(
     "ChatService does not auto-compact when usage is below the threshold") {
   ChatConfig config;
-  config.provider_id = "fake";
-  config.model = "gpt-4o-mini";
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"gpt-4o-mini"};
   config.auto_compact_enabled = true;
   config.auto_compact_threshold = 0.9;
   config.auto_compact_keep_last = 2;
@@ -1216,8 +1216,8 @@ TEST_CASE(
 
 TEST_CASE("ChatService respects auto_compact_enabled = false") {
   ChatConfig config;
-  config.provider_id = "fake";
-  config.model = "gpt-4o-mini";
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"gpt-4o-mini"};
   config.auto_compact_enabled = false;
   config.auto_compact_threshold = 0.1;  // would trip if enabled
   config.auto_compact_keep_last = 2;
@@ -1249,8 +1249,8 @@ TEST_CASE(
     "indefinitely") {
   auto blocking = std::make_shared<BlockingFakeProvider>();
   ChatConfig config;
-  config.provider_id = blocking->Id();
-  config.model = "any";
+  config.provider_id = ::yac::ProviderId{blocking->Id()};
+  config.model = ::yac::ModelId{"any"};
 
   ProviderRegistry registry;
   registry.Register(blocking);
@@ -1286,8 +1286,8 @@ TEST_CASE(
     "ChatService Reset drains quickly when provider observes stop_token") {
   auto cancellable = std::make_shared<CancellableFakeProvider>();
   ChatConfig config;
-  config.provider_id = cancellable->Id();
-  config.model = "any";
+  config.provider_id = ::yac::ProviderId{cancellable->Id()};
+  config.model = ::yac::ModelId{"any"};
 
   ProviderRegistry registry;
   registry.Register(cancellable);

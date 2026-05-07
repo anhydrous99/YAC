@@ -60,7 +60,7 @@ OpenAiCompatibleChatProvider::OpenAiCompatibleChatProvider(
     : config_(std::move(config)) {}
 
 std::string OpenAiCompatibleChatProvider::Id() const {
-  return config_.id;
+  return config_.id.value;
 }
 
 std::vector<chat::ModelInfo> OpenAiCompatibleChatProvider::ListModels(
@@ -108,8 +108,8 @@ std::vector<chat::ModelInfo> OpenAiCompatibleChatProvider::ListModels(
   curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
   if (status >= 400) {
     std::ostringstream message;
-    message << config_.id << " model discovery failed with HTTP " << status
-            << ".";
+    message << config_.id.value << " model discovery failed with HTTP "
+            << status << ".";
     throw std::runtime_error(message.str());
   }
 
@@ -143,7 +143,7 @@ int OpenAiCompatibleChatProvider::GetContextWindow(
       return it->second;
     }
   }
-  if (config_.id == "zai") {
+  if (config_.id.value == "zai") {
     if (const int built_in = KnownZaiContextWindow(model_id); built_in > 0) {
       return built_in;
     }

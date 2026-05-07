@@ -65,7 +65,7 @@ TEST_CASE("LoadSettingsFromToml is a no-op when the file is missing") {
   auto fields = LoadSettingsFromToml(file.Path(), config, issues);
   REQUIRE(issues.empty());
   REQUIRE_FALSE(fields.provider_id);
-  REQUIRE(config.model == "gpt-4o-mini");
+  REQUIRE(config.model.value == "gpt-4o-mini");
 }
 
 TEST_CASE("LoadSettingsFromToml overlays explicit values") {
@@ -91,8 +91,8 @@ TEST_CASE("LoadSettingsFromToml overlays explicit values") {
   REQUIRE(fields.temperature);
   REQUIRE(fields.max_tool_rounds);
   REQUIRE(fields.lsp_clangd_args);
-  REQUIRE(config.provider_id == "zai");
-  REQUIRE(config.model == "glm-custom");
+  REQUIRE(config.provider_id.value == "zai");
+  REQUIRE(config.model.value == "glm-custom");
   REQUIRE(config.temperature == 1.2);
   REQUIRE(config.max_tool_rounds == 48);
   REQUIRE(config.system_prompt == std::string{"hi"});
@@ -112,8 +112,8 @@ TEST_CASE("LoadSettingsFromToml keeps defaults for absent fields") {
   REQUIRE_FALSE(fields.provider_id);
   REQUIRE(config.temperature == 0.3);
   REQUIRE(config.max_tool_rounds == kDefaultToolRoundLimit);
-  REQUIRE(config.provider_id == "openai-compatible");
-  REQUIRE(config.model == "gpt-4o-mini");
+  REQUIRE(config.provider_id.value == "openai-compatible");
+  REQUIRE(config.model.value == "gpt-4o-mini");
 }
 
 TEST_CASE("LoadSettingsFromToml defaults sync_terminal_background to true") {
