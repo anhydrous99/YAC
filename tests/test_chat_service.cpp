@@ -2,6 +2,7 @@
 #include "chat/config.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
+#include "util/wait_until.hpp"
 
 #include <algorithm>
 #include <array>
@@ -179,6 +180,7 @@ class CancellableFakeProvider : public LanguageModelProvider {
     }
 
     while (!stop_token.stop_requested()) {
+      // SLEEP-RATIONALE: provider polls stop_token without busy-waiting
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -818,13 +820,20 @@ TEST_CASE("ChatService queues prompts while active") {
 
   blocking->Release();
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  REQUIRE(yac::test::WaitUntil(
+      [&] {
+        std::scoped_lock lock(mtx);
+        return std::count_if(events.begin(), events.end(),
+                             [](const ChatEvent& e) {
+                               return e.Type() == ChatEventType::Finished;
+                             }) >= 2;
+      },
+      std::chrono::milliseconds{5000}));
 
   std::scoped_lock lock(mtx);
-  bool has_queued = std::ranges::any_of(events, [](const ChatEvent& e) {
+  REQUIRE(std::ranges::any_of(events, [](const ChatEvent& e) {
     return e.Type() == ChatEventType::UserMessageQueued;
-  });
-  REQUIRE(has_queued);
+  }));
 }
 
 TEST_CASE("ChatService ResetConversation clears history and pending") {
@@ -1265,6 +1274,7 @@ TEST_CASE(
   // round resumes against a stale generation and the per-append guards
   // make sure no append leaks into the cleared history.
   blocking->Release();
+  // SLEEP-RATIONALE: stability check — verify no stale-generation append leaks into cleared history
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
   REQUIRE(service.History().empty());
 }
@@ -1306,12 +1316,14 @@ TEST_CASE("ChatService Reset survives concurrent SubmitUserMessage") {
     int i = 0;
     while (!stop.load(std::memory_order_relaxed)) {
       service.SubmitUserMessage("submit-" + std::to_string(i++));
+      // SLEEP-RATIONALE: stress test pacing — throttles submit rate to exercise concurrent-reset races
       std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
   });
 
   for (int i = 0; i < 25; ++i) {
     service.ResetConversation();
+    // SLEEP-RATIONALE: stress test pacing — yields between resets to let submitter thread progress
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
 

@@ -5,6 +5,7 @@
 #include "mcp/protocol_messages.hpp"
 #include "mcp/token_store.hpp"
 #include "mock_mcp_transport.hpp"
+#include "util/wait_until.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -65,18 +66,6 @@ class ThrowingTokenStore : public ITokenStore {
 
   void Erase(std::string_view server_id) override { (void)server_id; }
 };
-
-bool WaitUntil(const std::function<bool()>& predicate,
-               std::chrono::milliseconds timeout = 500ms) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (predicate()) {
-      return true;
-    }
-    std::this_thread::sleep_for(5ms);
-  }
-  return predicate();
-}
 
 InitializeResponse MakeInitializeResponse() {
   return InitializeResponse{
@@ -139,7 +128,7 @@ TEST_CASE("snapshot_merge_two_servers") {
       });
 
   manager.Start();
-  REQUIRE(WaitUntil([&manager] {
+  REQUIRE(yac::test::WaitUntil([&manager] {
     const auto status = manager.GetServerStatusSnapshot();
     return status.size() == 2 && status[0].state == "Ready" &&
            status[1].state == "Ready";
@@ -167,7 +156,7 @@ TEST_CASE("tool_description_source_attribution") {
       });
 
   manager.Start();
-  REQUIRE(WaitUntil([&manager] {
+  REQUIRE(yac::test::WaitUntil([&manager] {
     const auto status = manager.GetServerStatusSnapshot();
     return status.size() == 1 && status[0].state == "Ready";
   }));

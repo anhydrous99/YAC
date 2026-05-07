@@ -30,6 +30,7 @@ std::shared_ptr<LambdaMockProvider> MakeSlowProvider() {
           if (stop_token.stop_requested()) {
             return;
           }
+          // SLEEP-RATIONALE: deliberately slow provider; exercises cancellation window timing
           std::this_thread::sleep_for(std::chrono::milliseconds(10));
           sink(ChatEvent{TextDeltaEvent{.text = "x"}});
         }
@@ -83,6 +84,7 @@ CancelTestResult RunWithCancelTimer(int cancel_after_ms) {
   std::thread cancel_timer;
   if (cancel_after_ms > 0) {
     cancel_timer = std::thread([&service, cancel_after_ms]() {
+      // SLEEP-RATIONALE: this IS the cancel timer — wall-clock delay is the behaviour under test
       std::this_thread::sleep_for(std::chrono::milliseconds(cancel_after_ms));
       service.CancelActiveResponse();
     });

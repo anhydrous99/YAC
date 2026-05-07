@@ -1,4 +1,5 @@
 #include "tool_call/json_rpc_stdio_base.hpp"
+#include "util/wait_until.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -165,12 +166,11 @@ TEST_CASE("notification_dispatched") {
   ContentLengthClient client;
   client.PublicStart("/bin/sh", {"-c", server_cmd});
 
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(3);
-  while (client.notification_count.load(std::memory_order_acquire) == 0 &&
-         std::chrono::steady_clock::now() < deadline) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  REQUIRE(yac::test::WaitUntil(
+      [&] {
+        return client.notification_count.load(std::memory_order_acquire) >= 1;
+      },
+      std::chrono::milliseconds{3000}));
 
   REQUIRE(client.notification_count.load() >= 1);
   REQUIRE(client.notification_methods.front() == "test/event");

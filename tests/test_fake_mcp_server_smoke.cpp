@@ -108,6 +108,7 @@ void WriteFrame(int fd, const Json& message) {
     if (n == 0) {
       return line;
     }
+    // SLEEP-RATIONALE: polls non-blocking pipe read without busy-waiting
     std::this_thread::sleep_for(5ms);
   }
   return line;
@@ -124,6 +125,7 @@ void WriteFrame(int fd, const Json& message) {
       }
       return -1;
     }
+    // SLEEP-RATIONALE: polls waitpid(WNOHANG) without busy-waiting
     std::this_thread::sleep_for(10ms);
   }
   kill(pid, SIGKILL);

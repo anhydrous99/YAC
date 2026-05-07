@@ -1,6 +1,7 @@
 #include "mcp/mcp_server_session.hpp"
 #include "mcp/protocol_constants.hpp"
 #include "mock_mcp_transport.hpp"
+#include "util/wait_until.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -15,18 +16,6 @@ namespace yac::mcp::test {
 namespace {
 
 namespace pc = yac::mcp::protocol;
-
-template <typename Predicate>
-bool WaitUntil(Predicate predicate, std::chrono::milliseconds timeout = 500ms) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (predicate()) {
-      return true;
-    }
-    std::this_thread::sleep_for(5ms);
-  }
-  return predicate();
-}
 
 McpServerConfig MakeConfig() {
   return McpServerConfig{.id = "mock-server", .transport = "stdio"};
@@ -44,6 +33,7 @@ TEST_CASE("emits_notification_on_cancel") {
     if (method == std::string(pc::kMethodInitialize)) {
       request_received = true;
       while (!stop.stop_requested()) {
+        // SLEEP-RATIONALE: request handler must poll stop_token without busy-waiting
         std::this_thread::sleep_for(5ms);
       }
       throw std::runtime_error("cancelled");
@@ -54,7 +44,7 @@ TEST_CASE("emits_notification_on_cancel") {
   McpServerSession session(MakeConfig(), &transport);
   session.Start();
 
-  REQUIRE(WaitUntil([&] { return request_received.load(); }, 2s));
+  REQUIRE(yac::test::WaitUntil([&] { return request_received.load(); }, 2s));
   session.Stop();
 
   const auto& notifications = transport.RecordedNotifications();
@@ -78,6 +68,7 @@ TEST_CASE("ignores_late_response") {
     if (method == std::string(pc::kMethodInitialize)) {
       request_received = true;
       while (!stop.stop_requested()) {
+        // SLEEP-RATIONALE: request handler must poll stop_token without busy-waiting
         std::this_thread::sleep_for(5ms);
       }
       return InitializeResponse{
@@ -94,7 +85,7 @@ TEST_CASE("ignores_late_response") {
   McpServerSession session(MakeConfig(), &transport);
   session.Start();
 
-  REQUIRE(WaitUntil([&] { return request_received.load(); }, 2s));
+  REQUIRE(yac::test::WaitUntil([&] { return request_received.load(); }, 2s));
   session.Stop();
 
   REQUIRE(session.State() == ServerState::Disconnected);

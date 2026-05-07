@@ -329,6 +329,7 @@ TEST_CASE("refresh_token_is_single_flight") {
   std::atomic<int> request_count{0};
   TestHttpServer server([&request_count](const HttpRequest&, std::size_t) {
     ++request_count;
+    // SLEEP-RATIONALE: deliberate server delay ensures both concurrent callers observe single-flight
     std::this_thread::sleep_for(100ms);
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},

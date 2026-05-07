@@ -53,6 +53,7 @@ TEST_CASE("Ask user preparation and approval resolution work") {
       resolution = approval.WaitForResolution(approval_id, stop_token);
     });
 
+    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to avoid approval-miss race
     std::this_thread::sleep_for(10ms);
     approval.ResolveWithResponse(approval_id, true, "Need one more change");
     waiter.join();
@@ -70,6 +71,7 @@ TEST_CASE("Ask user preparation and approval resolution work") {
       resolution = approval.WaitForResolution(approval_id, stop_token);
     });
 
+    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to avoid approval-miss race
     std::this_thread::sleep_for(10ms);
     approval.Resolve(approval_id, false);
     waiter.join();
