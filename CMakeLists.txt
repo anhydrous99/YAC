@@ -279,6 +279,8 @@ add_library(yac_service STATIC
   src/chat/prompt_library.cpp
   src/chat/settings_toml.cpp
   src/chat/sub_agent_event_adapter.cpp
+  # model_context_windows is intentionally compiled into yac_service (not yac_app) because the chat
+  # layer needs the context-window resolver during request building. After T08 it lives in src/provider/.
   src/app/model_context_windows.cpp
   src/provider/bedrock_logger.cpp
   src/provider/bedrock_aws_api_guard.cpp
