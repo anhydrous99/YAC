@@ -135,11 +135,10 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
         auto creds =
             Aws::MakeShared<Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
                 "yac-bedrock", profile_name.c_str());
-        client = std::make_unique<YacBedrockRuntimeClient>(
-            creds, client_config);
+        client =
+            std::make_unique<YacBedrockRuntimeClient>(creds, client_config);
       } else {
-        client = std::make_unique<YacBedrockRuntimeClient>(
-            client_config);
+        client = std::make_unique<YacBedrockRuntimeClient>(client_config);
       }
 
       CancellationWatchdog watchdog(stop_token, client.get());
