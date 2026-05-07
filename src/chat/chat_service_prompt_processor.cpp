@@ -1,6 +1,6 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
-#include "app/model_context_windows.hpp"
+#include "provider/model_context_windows.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
@@ -295,7 +295,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
     const auto prior_usage = last_usage_();
     if (prior_usage && prior_usage->prompt_tokens > 0) {
       const int window =
-          ::yac::app::ResolveContextWindow(provider.get(), cfg.model);
+          ::yac::provider::ResolveContextWindow(provider.get(), cfg.model);
       if (window > 0) {
         const double pct = static_cast<double>(prior_usage->prompt_tokens) /
                            static_cast<double>(window);

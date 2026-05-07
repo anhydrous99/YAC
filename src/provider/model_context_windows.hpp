@@ -4,10 +4,8 @@
 #include <string_view>
 
 namespace yac::provider {
-class LanguageModelProvider;
-}
 
-namespace yac::app {
+class LanguageModelProvider;
 
 // Best-effort lookup of a model's context-window size in tokens. Returns 0 for
 // unknown model identifiers; callers should render an "unknown" state in that
@@ -20,8 +18,7 @@ namespace yac::app {
 // discovered cache before any provider built-in table) → cross-provider
 // `LookupContextWindow` table → 0. `provider` may be null, in which case
 // only the cross-provider table is consulted.
-[[nodiscard]] int ResolveContextWindow(
-    const provider::LanguageModelProvider* provider,
-    const std::string& model_id);
+[[nodiscard]] int ResolveContextWindow(const LanguageModelProvider* provider,
+                                       const std::string& model_id);
 
-}  // namespace yac::app
+}  // namespace yac::provider

@@ -1,8 +1,8 @@
-#include "app/model_context_windows.hpp"
+#include "provider/model_context_windows.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
-using yac::app::LookupContextWindow;
+using yac::provider::LookupContextWindow;
 
 TEST_CASE("LookupContextWindow returns zero for unknown ids") {
   REQUIRE(LookupContextWindow("") == 0);

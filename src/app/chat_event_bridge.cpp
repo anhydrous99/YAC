@@ -1,6 +1,6 @@
 #include "app/chat_event_bridge.hpp"
 
-#include "app/model_context_windows.hpp"
+#include "provider/model_context_windows.hpp"
 #include "chat/tool_call_argument_parser.hpp"
 #include "core_types/tool_call_types.hpp"
 #include "presentation/chat_ui.hpp"
@@ -171,7 +171,7 @@ void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   auto& chat_ui = chat_ui_.get();
   const int window = context_window_resolver_
                          ? context_window_resolver_(event.model)
-                         : LookupContextWindow(event.model);
+                         : provider::LookupContextWindow(event.model);
   chat_ui.SetContextWindowTokens(window);
   chat_ui.SetProviderModel(std::move(event.provider_id),
                            std::move(event.model));

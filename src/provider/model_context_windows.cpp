@@ -1,4 +1,4 @@
-#include "app/model_context_windows.hpp"
+#include "provider/model_context_windows.hpp"
 
 #include "provider/language_model_provider.hpp"
 
@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace yac::app {
+namespace yac::provider {
 namespace {
 
 std::string_view StripInferenceProfilePrefix(std::string_view model_id) {
@@ -82,7 +82,7 @@ int LookupContextWindow(std::string_view model_id) {
   return 0;
 }
 
-int ResolveContextWindow(const provider::LanguageModelProvider* provider,
+int ResolveContextWindow(const LanguageModelProvider* provider,
                          const std::string& model_id) {
   if (provider != nullptr) {
     if (const int advertised = provider->GetContextWindow(model_id);
@@ -93,4 +93,4 @@ int ResolveContextWindow(const provider::LanguageModelProvider* provider,
   return LookupContextWindow(model_id);
 }
 
-}  // namespace yac::app
+}  // namespace yac::provider

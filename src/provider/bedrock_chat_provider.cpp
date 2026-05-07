@@ -201,8 +201,8 @@ int BedrockChatProvider::GetContextWindow(const std::string& model_id) const {
   if (impl_->config.context_window > 0) {
     return impl_->config.context_window;
   }
-  // Defer to app::LookupContextWindow at the call site (see
-  // app/model_context_windows.cpp::ResolveContextWindow), which knows the
+  // Defer to provider::LookupContextWindow at the call site (see
+  // provider/model_context_windows.cpp::ResolveContextWindow), which knows the
   // Bedrock model table and inference-profile prefix stripping.
   return 0;
 }

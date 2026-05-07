@@ -31,7 +31,7 @@ class LanguageModelProvider {
   }
   // Best-effort context-window lookup for a model id. Returns 0 for unknown
   // ids; callers fall through to the cross-provider table in
-  // `app/model_context_windows.cpp`. Implementations should consult any
+  // `provider/model_context_windows.cpp`. Implementations should consult any
   // discovered cache (populated from `ListModels`) before any built-in table.
   [[nodiscard]] virtual int GetContextWindow(
       const std::string& model_id) const {

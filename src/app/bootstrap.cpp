@@ -2,7 +2,7 @@
 
 #include "app/chat_event_bridge.hpp"
 #include "app/mcp_command_handlers.hpp"
-#include "app/model_context_windows.hpp"
+#include "provider/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
 #include "app/streaming_coalescer.hpp"
@@ -487,13 +487,13 @@ int RunApp() {
   presentation::ChatUI chat_ui;
   ConfigureUiTaskRunner(screen, chat_ui);
   chat_ui.SetContextWindowTokens(
-      ResolveContextWindow(provider.get(), config.model));
+      provider::ResolveContextWindow(provider.get(), config.model));
   chat_ui.SetProviderModel(config.provider_id, config.model);
 
   ChatEventBridge bridge(chat_ui, /*history_provider=*/{},
                          [provider](const std::string& model_id) {
-                           return ResolveContextWindow(provider.get(),
-                                                       model_id);
+                           return provider::ResolveContextWindow(
+                               provider.get(), model_id);
                          });
 
   StreamingCoalescer event_coalescer(screen, bridge);
