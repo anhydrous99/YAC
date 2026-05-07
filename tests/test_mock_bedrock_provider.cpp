@@ -76,9 +76,9 @@ CollectedEvents RunStream(MockBedrockProvider& provider,
         } else if (auto* err = ev.As<ErrorEvent>()) {
           out.errors.push_back(err->text);
         } else if (auto* started = ev.As<ToolCallStartedEvent>()) {
-          out.tool_call_ids_started.push_back(started->tool_call_id);
+          out.tool_call_ids_started.push_back(started->tool_call_id.value);
         } else if (auto* done = ev.As<ToolCallDoneEvent>()) {
-          out.tool_call_ids_done.push_back(done->tool_call_id);
+          out.tool_call_ids_done.push_back(done->tool_call_id.value);
         } else if (auto* arg = ev.As<ToolCallArgumentDeltaEvent>()) {
           out.argument_deltas.push_back(arg->arguments_json);
         } else if (auto* usage = ev.As<UsageReportedEvent>()) {

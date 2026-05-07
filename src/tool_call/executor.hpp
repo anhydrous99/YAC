@@ -2,6 +2,7 @@
 
 #include "chat/types.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "core_types/typed_ids.hpp"
 #include "tool_call/lsp_client.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
@@ -24,7 +25,7 @@ struct PreparedToolCall {
   ToolCallBlock preview;
   bool requires_approval = false;
   std::string approval_prompt;
-  std::string approval_id;
+  ::yac::ApprovalId approval_id;
   chat::ChatMessageId card_message_id = 0;
 };
 

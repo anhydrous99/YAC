@@ -19,7 +19,7 @@ template <typename Tag>
 struct StringId {
   std::string value;
 
-  explicit StringId() = default;
+  StringId() = default;
   explicit StringId(std::string v) : value(std::move(v)) {}
   explicit StringId(std::string_view v) : value(v) {}
   explicit StringId(const char* v) : value(v) {}

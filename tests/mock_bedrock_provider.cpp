@@ -154,16 +154,16 @@ void MockBedrockProvider::CompleteStream(const chat::ChatRequest& request,
 
     for (const auto& tu : entry.tool_uses) {
       sink(chat::ChatEvent{chat::ToolCallStartedEvent{
-          .tool_call_id = tu.id,
+          .tool_call_id = ::yac::ToolCallId{tu.id},
           .tool_name = tu.name,
       }});
       sink(chat::ChatEvent{chat::ToolCallArgumentDeltaEvent{
-          .tool_call_id = tu.id,
+          .tool_call_id = ::yac::ToolCallId{tu.id},
           .tool_name = tu.name,
           .arguments_json = tu.input_json,
       }});
       sink(chat::ChatEvent{chat::ToolCallDoneEvent{
-          .tool_call_id = tu.id,
+          .tool_call_id = ::yac::ToolCallId{tu.id},
           .tool_name = tu.name,
       }});
     }

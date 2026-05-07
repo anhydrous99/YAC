@@ -257,8 +257,9 @@ TEST_CASE(
                   .tool_calls = {{.id = "tc-1",
                                   .name = "list_dir",
                                   .arguments_json = R"({"path":"."})"}}},
-      ChatMessage{
-          .role = ChatRole::Tool, .content = "result", .tool_call_id = "tc-1"},
+      ChatMessage{.role = ChatRole::Tool,
+                  .content = "result",
+                  .tool_call_id = yac::ToolCallId{"tc-1"}},
   };
   const auto data = BuildConverseStreamRequest(req, ProviderConfig{});
 

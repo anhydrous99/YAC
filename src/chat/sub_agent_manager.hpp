@@ -54,10 +54,10 @@ class SubAgentManager {
 
   [[nodiscard]] std::string SpawnForeground(
       const std::string& task, ChatMessageId card_message_id,
-      std::string tool_call_id, std::stop_token parent_stop_token = {});
+      ToolCallId tool_call_id, std::stop_token parent_stop_token = {});
   [[nodiscard]] std::string SpawnBackground(const std::string& task,
                                             ChatMessageId card_message_id,
-                                            std::string tool_call_id);
+                                            ToolCallId tool_call_id);
   // Spawns a user-initiated background sub-agent (e.g., the /task slash
   // command). Allocates a card id via the configured NextMessageIdFn,
   // emits the synthetic ToolCallStarted event, and delegates to
@@ -76,7 +76,7 @@ class SubAgentManager {
 
   [[nodiscard]] std::shared_ptr<SubAgentSession> CreateSession(
       const std::string& task, tool_call::SubAgentMode mode,
-      ChatMessageId card_message_id, std::string tool_call_id);
+      ChatMessageId card_message_id, ToolCallId tool_call_id);
   [[nodiscard]] bool TryStoreSession(
       const std::shared_ptr<SubAgentSession>& session);
   void RemoveSession(const std::string& agent_id);

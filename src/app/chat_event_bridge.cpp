@@ -215,7 +215,7 @@ void ChatEventBridge::Handle(chat::ToolCallDoneEvent event) {
 void ChatEventBridge::Handle(chat::ToolCallArgumentDeltaEvent event) {
   namespace tool_data = ::yac::tool_call;
 
-  if (event.card_message_id == 0 || event.tool_call_id.empty()) {
+  if (event.card_message_id == 0 || event.tool_call_id.value.empty()) {
     return;
   }
   if (!event.tool_name.empty() &&

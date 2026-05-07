@@ -11,6 +11,7 @@
 #include "command_palette.hpp"
 #include "composer_state.hpp"
 #include "core_types/agent_mode.hpp"
+#include "core_types/typed_ids.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "mcp/mcp_status_panel.hpp"
@@ -33,10 +34,11 @@ class ChatUI : public ChatEventSink {
  public:
   using OnSendCallback = std::function<void(const std::string&)>;
   using OnCommandCallback = std::function<void(const std::string&)>;
-  using OnToolApprovalCallback = std::function<void(const std::string&, bool)>;
+  using OnToolApprovalCallback =
+      std::function<void(const ::yac::ApprovalId&, bool)>;
   using OnAskUserResponseCallback =
-      std::function<void(std::string, std::string)>;
-  using OnAskUserCancelCallback = std::function<void(std::string)>;
+      std::function<void(::yac::ApprovalId, std::string)>;
+  using OnAskUserCancelCallback = std::function<void(::yac::ApprovalId)>;
   using UiTask = std::function<void()>;
   using UiTaskRunner = std::function<void(UiTask)>;
 
@@ -77,15 +79,15 @@ class ChatUI : public ChatEventSink {
                              ::yac::tool_call::ToolCallBlock block,
                              MessageStatus status) override;
   void UpdateSubAgentToolCallMessage(MessageId parent_id,
-                                     std::string tool_call_id,
+                                     ::yac::ToolCallId tool_call_id,
                                      std::string tool_name,
                                      ::yac::tool_call::ToolCallBlock block,
                                      MessageStatus status) override;
-  void ShowToolApproval(std::string approval_id, std::string tool_name,
+  void ShowToolApproval(::yac::ApprovalId approval_id, std::string tool_name,
                         std::string prompt,
                         std::optional<::yac::tool_call::ToolCallBlock> preview =
                             std::nullopt) override;
-  void ShowAskUserDialog(std::string approval_id, std::string question,
+  void ShowAskUserDialog(::yac::ApprovalId approval_id, std::string question,
                          std::vector<std::string> options) override;
   void SetCommands(std::vector<Command> commands);
   void SetModelCommands(std::vector<Command> commands);

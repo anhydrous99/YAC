@@ -73,7 +73,7 @@ class ChatServicePromptProcessor {
     Stop stop = Stop::ModelDone;
     std::string round_text;
     std::vector<ToolCallRequest> requested_tools;
-    std::unordered_map<std::string, ChatMessageId> streaming_card_ids;
+    std::unordered_map<ToolCallId, ChatMessageId> streaming_card_ids;
   };
 
   // Drives one provider stream: builds the request under the history lock,
@@ -95,7 +95,7 @@ class ChatServicePromptProcessor {
       bool& aborted) const;
   void RunToolRound(
       const std::vector<ToolCallRequest>& requested_tools,
-      const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
+      const std::unordered_map<ToolCallId, ChatMessageId>& streaming_card_ids,
       uint64_t generation, std::stop_token stop_token);
 
   // Holds a successful Prepare result alongside any preparation failure that

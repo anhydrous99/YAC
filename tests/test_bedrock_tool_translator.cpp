@@ -196,7 +196,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: tool_call_id maps to ToolUseId") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "output";
-  msg.tool_call_id = "call-result-1";
+  msg.tool_call_id = yac::ToolCallId{"call-result-1"};
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetToolUseId() == "call-result-1");
 }
@@ -205,7 +205,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: content maps to text block") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "file contents here";
-  msg.tool_call_id = "call-result-2";
+  msg.tool_call_id = yac::ToolCallId{"call-result-2"};
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
   REQUIRE(result.block.GetContent()[0].GetText() == "file contents here");
@@ -215,7 +215,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: empty content is preserved") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "";
-  msg.tool_call_id = "call-empty-result";
+  msg.tool_call_id = yac::ToolCallId{"call-empty-result"};
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetContent().size() == 1);
   REQUIRE(result.block.GetContent()[0].GetText().empty());
@@ -225,7 +225,7 @@ TEST_CASE("TranslateYacToolResultToBedrock: all fields mapped in one call") {
   ChatMessage msg;
   msg.role = ChatRole::Tool;
   msg.content = "tool output";
-  msg.tool_call_id = "call-full-result";
+  msg.tool_call_id = yac::ToolCallId{"call-full-result"};
   auto result = TranslateYacToolResultToBedrock(msg);
   REQUIRE(result.block.GetToolUseId() == "call-full-result");
   REQUIRE(result.block.GetContent().size() == 1);

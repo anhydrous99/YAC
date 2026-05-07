@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core_types/typed_ids.hpp"
 #include "message.hpp"
 
 #include <cstddef>
@@ -14,7 +15,7 @@
 namespace yac::presentation {
 
 struct SubAgentToolMessage {
-  SubAgentToolMessage(std::string tool_call_id, std::string tool_name,
+  SubAgentToolMessage(::yac::ToolCallId tool_call_id, std::string tool_name,
                       ::yac::tool_call::ToolCallBlock block,
                       MessageStatus status);
   ~SubAgentToolMessage() = default;
@@ -23,7 +24,7 @@ struct SubAgentToolMessage {
   SubAgentToolMessage(SubAgentToolMessage&&) noexcept = default;
   SubAgentToolMessage& operator=(SubAgentToolMessage&&) noexcept = default;
 
-  std::string tool_call_id;
+  ::yac::ToolCallId tool_call_id;
   std::string tool_name;
   ::yac::tool_call::ToolCallBlock block;
   MessageStatus status = MessageStatus::Complete;
@@ -55,8 +56,9 @@ class ChatSession {
   void AppendToAgentMessage(MessageId id, std::string delta);
   void SetMessageStatus(MessageId id, MessageStatus status);
   [[nodiscard]] bool UpsertSubAgentToolCall(
-      MessageId parent_id, std::string tool_call_id, std::string tool_name,
-      ::yac::tool_call::ToolCallBlock block, MessageStatus status);
+      MessageId parent_id, ::yac::ToolCallId tool_call_id,
+      std::string tool_name, ::yac::tool_call::ToolCallBlock block,
+      MessageStatus status);
   void SetToolExpanded(MessageId tool_id, bool expanded);
   void ClearMessages();
 

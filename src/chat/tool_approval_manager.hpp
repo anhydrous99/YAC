@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chat/types.hpp"
+#include "core_types/typed_ids.hpp"
 
 #include <atomic>
 #include <condition_variable>
@@ -37,20 +38,20 @@ class ToolApprovalManager {
   ToolApprovalManager(ToolApprovalManager&&) = delete;
   ToolApprovalManager& operator=(ToolApprovalManager&&) = delete;
 
-  [[nodiscard]] std::string RequestApproval(std::string tool_call_id = {},
-                                            std::string tool_name = {},
-                                            std::string tool_args = {});
-  void ResolveToolApproval(const std::string& approval_id, bool approved);
-  void ResolveAskUser(const std::string& approval_id, std::string response);
+  [[nodiscard]] ApprovalId RequestApproval(ToolCallId tool_call_id = {},
+                                           std::string tool_name = {},
+                                           std::string tool_args = {});
+  void ResolveToolApproval(const ApprovalId& approval_id, bool approved);
+  void ResolveAskUser(const ApprovalId& approval_id, std::string response);
   void CancelPending();
   [[nodiscard]] bool IsAwaitingApproval() const;
   [[nodiscard]] ApprovalResolution WaitForResolution(
-      const std::string& approval_id, std::stop_token stop_token);
+      const ApprovalId& approval_id, std::stop_token stop_token);
 
  private:
   struct PendingApproval {
-    std::string id;
-    std::string tool_call_id;
+    ApprovalId id;
+    ToolCallId tool_call_id;
     std::string tool_name;
     std::string tool_args;
     std::optional<bool> approved;
@@ -60,7 +61,7 @@ class ToolApprovalManager {
   EmitEventFn emit_event_;
   mutable std::mutex mutex_;
   std::condition_variable_any wake_;
-  std::unordered_map<std::string, PendingApproval> pending_;
+  std::unordered_map<ApprovalId, PendingApproval> pending_;
   std::atomic<uint64_t> next_approval_id_{1};
 };
 

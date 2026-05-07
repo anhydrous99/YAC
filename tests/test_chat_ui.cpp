@@ -1,3 +1,4 @@
+#include "core_types/typed_ids.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/theme.hpp"
 #include "tool_call/types.hpp"
@@ -17,6 +18,7 @@
 #include <ftxui/screen/screen.hpp>
 
 using namespace yac::presentation;
+using yac::ApprovalId;
 
 namespace {
 
@@ -601,17 +603,18 @@ TEST_CASE("Slash menu Tab navigation does not toggle mode") {
 TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {
   bool sent = false;
   int approval_calls = 0;
-  std::string approval_id;
+  ApprovalId approval_id;
   bool approved = true;
   ChatUI ui([&](const std::string&) { sent = true; });
-  ui.SetOnToolApproval([&](const std::string& id, bool value) {
+  ui.SetOnToolApproval([&](const ApprovalId& id, bool value) {
     ++approval_calls;
     approval_id = id;
     approved = value;
   });
   auto component = ui.Build();
 
-  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt");
+  ui.ShowToolApproval(ApprovalId{"approval-1"}, "file_write",
+                      "Write notes.txt");
 
   REQUIRE(component->OnEvent(ftxui::Event::Character('x')));
   REQUIRE(approval_calls == 0);
@@ -619,7 +622,7 @@ TEST_CASE("Tool approval modal swallows unrelated keys and rejects once") {
 
   REQUIRE(component->OnEvent(ftxui::Event::Escape));
   REQUIRE(approval_calls == 1);
-  REQUIRE(approval_id == "approval-1");
+  REQUIRE(approval_id == ApprovalId{"approval-1"});
   REQUIRE_FALSE(approved);
 
   REQUIRE(component->OnEvent(ftxui::Event::Return));
@@ -631,7 +634,8 @@ TEST_CASE("Tool approval modal renders prominent permission prompt") {
   ChatUI ui;
   auto component = ui.Build();
 
-  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt");
+  ui.ShowToolApproval(ApprovalId{"approval-1"}, "file_write",
+                      "Write notes.txt");
 
   auto output = RenderComponent(component, 80, 24);
   REQUIRE_THAT(output,
@@ -651,7 +655,7 @@ TEST_CASE("Tool approval modal renders tool preview") {
                                       .content_preview = "hello\n",
                                       .content_tail = "hello\n",
                                       .lines_added = 1};
-  ui.ShowToolApproval("approval-1", "file_write", "Write notes.txt",
+  ui.ShowToolApproval(ApprovalId{"approval-1"}, "file_write", "Write notes.txt",
                       std::move(preview));
 
   auto output = RenderComponent(component, 100, 30);
@@ -664,21 +668,21 @@ TEST_CASE("Tool approval modal renders tool preview") {
 
 TEST_CASE("Tool approval modal approves on uppercase Y") {
   int approval_calls = 0;
-  std::string approval_id;
+  ApprovalId approval_id;
   bool approved = false;
   ChatUI ui;
-  ui.SetOnToolApproval([&](const std::string& id, bool value) {
+  ui.SetOnToolApproval([&](const ApprovalId& id, bool value) {
     ++approval_calls;
     approval_id = id;
     approved = value;
   });
   auto component = ui.Build();
 
-  ui.ShowToolApproval("approval-2", "lsp_rename", "Rename symbol");
+  ui.ShowToolApproval(ApprovalId{"approval-2"}, "lsp_rename", "Rename symbol");
 
   REQUIRE(component->OnEvent(ftxui::Event::Character('Y')));
   REQUIRE(approval_calls == 1);
-  REQUIRE(approval_id == "approval-2");
+  REQUIRE(approval_id == ApprovalId{"approval-2"});
   REQUIRE(approved);
 }
 

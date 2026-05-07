@@ -22,7 +22,7 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
                       .arguments_json = R"({"path":"src"})"}}},
       ChatMessage{.role = ChatRole::Tool,
                   .content = "src/main.cpp",
-                  .tool_call_id = "call-1",
+                  .tool_call_id = yac::ToolCallId{"call-1"},
                   .tool_name = "list_dir"},
   };
   request.tools = {ToolDefinition{
@@ -129,7 +129,7 @@ TEST_CASE(
   REQUIRE(events[1].Type() == ChatEventType::ToolCallArgumentDelta);
   REQUIRE(events[2].Type() == ChatEventType::ToolCallArgumentDelta);
   const auto& first_delta = events[1].Get<ToolCallArgumentDeltaEvent>();
-  REQUIRE(first_delta.tool_call_id == "call-3");
+  REQUIRE(first_delta.tool_call_id == yac::ToolCallId{"call-3"});
   REQUIRE(first_delta.tool_name == "list_dir");
   REQUIRE(first_delta.arguments_json == R"({"path":")");
   const auto& second_delta = events[2].Get<ToolCallArgumentDeltaEvent>();
@@ -171,7 +171,7 @@ TEST_CASE(
   REQUIRE(events.size() == 1);
   REQUIRE(events[0].Type() == ChatEventType::ToolCallArgumentDelta);
   const auto& delta = events[0].Get<ToolCallArgumentDeltaEvent>();
-  REQUIRE(delta.tool_call_id == "call-4");
+  REQUIRE(delta.tool_call_id == yac::ToolCallId{"call-4"});
   REQUIRE(delta.tool_name == "file_write");
   REQUIRE(delta.arguments_json == R"({"filepath":"foo.txt","content":"hi"})");
 }

@@ -92,7 +92,7 @@ void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
       .sub_agent_task = task,
       .sub_agent_tool_count = 1,
       .child_tool = SubAgentChildToolEvent{
-          .tool_call_id = "tool-1",
+          .tool_call_id = yac::ToolCallId{"tool-1"},
           .tool_name = std::string(kListDirToolName),
           .tool_call = ListDirCall{.path = "src",
                                    .entries = {{"main.cpp",

@@ -5,7 +5,7 @@
 
 namespace yac::presentation {
 
-SubAgentToolMessage::SubAgentToolMessage(std::string tool_call_id,
+SubAgentToolMessage::SubAgentToolMessage(::yac::ToolCallId tool_call_id,
                                          std::string tool_name,
                                          ::yac::tool_call::ToolCallBlock block,
                                          MessageStatus status)
@@ -165,15 +165,17 @@ void ChatSession::SetMessageStatus(MessageId id, MessageStatus status) {
 }
 
 bool ChatSession::UpsertSubAgentToolCall(MessageId parent_id,
-                                         std::string tool_call_id,
+                                         ::yac::ToolCallId tool_call_id,
                                          std::string tool_name,
                                          ::yac::tool_call::ToolCallBlock block,
                                          MessageStatus status) {
   auto& child_tools = sub_agent_tool_messages_[parent_id];
-  if (tool_call_id.empty()) {
-    tool_call_id = tool_name.empty()
-                       ? "tool-" + std::to_string(child_tools.size() + 1)
-                       : tool_name;
+  if (tool_call_id.value.empty()) {
+    tool_call_id =
+        tool_name.empty()
+            ? ::yac::ToolCallId{"tool-" +
+                                std::to_string(child_tools.size() + 1)}
+            : ::yac::ToolCallId{tool_name};
   }
 
   auto existing = std::ranges::find_if(

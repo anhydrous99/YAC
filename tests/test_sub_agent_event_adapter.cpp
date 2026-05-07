@@ -23,9 +23,9 @@ TEST_CASE(
       ChatEvent{ToolApprovalRequestedEvent{
           .message_id = 7,
           .text = "Allow reading the workspace?",
-          .tool_call_id = "approval-1",
+          .tool_call_id = yac::ToolCallId{"approval-1"},
           .tool_name = "file_read",
-          .approval_id = "request-1",
+          .approval_id = yac::ApprovalId{"request-1"},
           .tool_call = FileReadCall{.filepath = "README.md",
                                     .lines_loaded = 12,
                                     .excerpt = "intro"}}},
@@ -72,7 +72,7 @@ TEST_CASE(
     REQUIRE(progress.sub_agent_task == "inspect source tree");
     REQUIRE(progress.sub_agent_tool_count == 0);
     REQUIRE(progress.child_tool.has_value());
-    REQUIRE(progress.child_tool->tool_call_id == "agent-2:11");
+    REQUIRE(progress.child_tool->tool_call_id == yac::ToolCallId{"agent-2:11"});
     REQUIRE(progress.child_tool->tool_name == "list_dir");
     REQUIRE(progress.child_tool->status == ChatMessageStatus::Active);
   }
@@ -82,7 +82,7 @@ TEST_CASE(
         context,
         ChatEvent{
             ToolCallDoneEvent{.message_id = 12,
-                              .tool_call_id = "call-12",
+                              .tool_call_id = yac::ToolCallId{"call-12"},
                               .tool_name = "file_read",
                               .tool_call = FileReadCall{.filepath = "README.md",
                                                         .lines_loaded = 20,
@@ -95,7 +95,7 @@ TEST_CASE(
     const auto& progress = adapted->Get<SubAgentProgressEvent>();
     REQUIRE(progress.sub_agent_tool_count == 1);
     REQUIRE(progress.child_tool.has_value());
-    REQUIRE(progress.child_tool->tool_call_id == "call-12");
+    REQUIRE(progress.child_tool->tool_call_id == yac::ToolCallId{"call-12"});
     REQUIRE(progress.child_tool->tool_name == "file_read");
     REQUIRE(progress.child_tool->status == ChatMessageStatus::Complete);
     REQUIRE(completed_tool_count.load() == 1);

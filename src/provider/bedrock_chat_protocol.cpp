@@ -107,7 +107,7 @@ std::vector<BedrockMessageData> CoalesceToolResults(
       trc.SetText(msg.content);
 
       Aws::BedrockRuntime::Model::ToolResultBlock trb;
-      trb.SetToolUseId(msg.tool_call_id);
+      trb.SetToolUseId(msg.tool_call_id.value);
       trb.AddContent(std::move(trc));
 
       ContentBlock cb;
@@ -336,7 +336,7 @@ ToolResultData TranslateYacToolResultToBedrock(
   content_block.SetText(tool_msg.content);
 
   Aws::BedrockRuntime::Model::ToolResultBlock result_block;
-  result_block.SetToolUseId(tool_msg.tool_call_id);
+  result_block.SetToolUseId(tool_msg.tool_call_id.value);
   result_block.AddContent(std::move(content_block));
 
   return {.block = std::move(result_block)};
@@ -405,7 +405,7 @@ class BedrockStreamHandler
     in_tool_block_ = true;
 
     sink_(chat::ChatEvent{chat::ToolCallStartedEvent{
-        .tool_call_id = current_tool_use_id_,
+        .tool_call_id = ::yac::ToolCallId{current_tool_use_id_},
         .tool_name = current_tool_name_,
     }});
   }
@@ -433,7 +433,7 @@ class BedrockStreamHandler
       const auto& fragment = tool_use_delta.GetInput();
       accumulated_tool_input_.append(fragment.c_str(), fragment.size());
       sink_(chat::ChatEvent{chat::ToolCallArgumentDeltaEvent{
-          .tool_call_id = current_tool_use_id_,
+          .tool_call_id = ::yac::ToolCallId{current_tool_use_id_},
           .tool_name = current_tool_name_,
           .arguments_json = accumulated_tool_input_,
       }});
@@ -446,7 +446,7 @@ class BedrockStreamHandler
       return;
     }
     sink_(chat::ChatEvent{chat::ToolCallDoneEvent{
-        .tool_call_id = current_tool_use_id_,
+        .tool_call_id = ::yac::ToolCallId{current_tool_use_id_},
         .tool_name = current_tool_name_,
     }});
     in_tool_block_ = false;

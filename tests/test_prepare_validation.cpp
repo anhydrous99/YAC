@@ -61,7 +61,8 @@ std::shared_ptr<LambdaMockProvider> MakeMalformedToolProvider(
           return;
         }
         for (const auto& msg : request.messages) {
-          if (msg.role == ChatRole::Tool && msg.tool_call_id == "call-1") {
+          if (msg.role == ChatRole::Tool &&
+              msg.tool_call_id == ::yac::ToolCallId{"call-1"}) {
             captured->seen = true;
             captured->content = msg.content;
             captured->tool_name = msg.tool_name;

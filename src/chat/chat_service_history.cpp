@@ -73,7 +73,7 @@ void ChatServiceHistory::AppendToolResult(
       .status = result.is_error ? ChatMessageStatus::Error
                                 : ChatMessageStatus::Complete,
       .content = result.result_json,
-      .tool_call_id = tool_request.id,
+      .tool_call_id = ToolCallId{tool_request.id},
       .tool_name = tool_request.name,
   });
 }

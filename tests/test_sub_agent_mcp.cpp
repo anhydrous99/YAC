@@ -101,7 +101,7 @@ struct SubAgentMcpTestContext {
   SubAgentMcpTestContext& operator=(SubAgentMcpTestContext&&) = delete;
 
   std::string SpawnFg(const std::string& task) const {
-    return manager->SpawnForeground(task, 1, "tc-fg");
+    return manager->SpawnForeground(task, 1, ::yac::ToolCallId{"tc-fg"});
   }
 };
 

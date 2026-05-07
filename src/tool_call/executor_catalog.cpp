@@ -297,7 +297,7 @@ ToolExecutionResult ExecuteAskUserDispatch(const PreparedToolCall& prepared,
                        "Internal error: ask_user preview type mismatch.");
   }
   auto call = *call_ptr;
-  if (ctx.tool_approval == nullptr || prepared.approval_id.empty()) {
+  if (ctx.tool_approval == nullptr || prepared.approval_id.value.empty()) {
     return ErrorResult(std::move(call),
                        "Ask user approval pipeline unavailable.");
   }

@@ -284,7 +284,7 @@ TEST_CASE("ChatSession UpsertSubAgentToolCall does not bump generation") {
   const auto gen = session.PlanGeneration();
 
   (void)session.UpsertSubAgentToolCall(
-      parent, "tool-1", "bash",
+      parent, ::yac::ToolCallId{"tool-1"}, "bash",
       BashCall{
           .command = "ls", .output = "/", .exit_code = 0, .is_error = false},
       MessageStatus::Complete);

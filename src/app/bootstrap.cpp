@@ -320,16 +320,15 @@ void ConfigureChatUiCallbacks(
     }
   });
   chat_ui.SetOnToolApproval(
-      [&chat_service](const std::string& approval_id, bool approved) {
+      [&chat_service](const ::yac::ApprovalId& approval_id, bool approved) {
         chat_service.ResolveToolApproval(approval_id, approved);
       });
 
   chat_ui.SetOnAskUserCallbacks(
-      [&chat_service](std::string approval_id, std::string response) {
-        chat_service.ResolveAskUser(std::move(approval_id),
-                                    std::move(response));
+      [&chat_service](::yac::ApprovalId approval_id, std::string response) {
+        chat_service.ResolveAskUser(approval_id, std::move(response));
       },
-      [&chat_service](std::string approval_id) {
+      [&chat_service](::yac::ApprovalId approval_id) {
         chat_service.ResolveToolApproval(std::move(approval_id), false);
       });
 

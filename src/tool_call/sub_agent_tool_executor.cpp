@@ -40,7 +40,8 @@ ToolExecutionResult ExecuteSubAgentTool(
 
   if (call->mode == SubAgentMode::Background) {
     const auto agent_id = sub_agent_manager->SpawnBackground(
-        call->task, prepared.card_message_id, prepared.request.id);
+        call->task, prepared.card_message_id,
+        ::yac::ToolCallId{prepared.request.id});
     auto block = SubAgentCall{.task = call->task,
                               .mode = SubAgentMode::Background,
                               .status = SubAgentStatus::Running,
@@ -56,7 +57,8 @@ ToolExecutionResult ExecuteSubAgentTool(
   }
 
   const auto result = sub_agent_manager->SpawnForeground(
-      call->task, prepared.card_message_id, prepared.request.id, stop_token);
+      call->task, prepared.card_message_id,
+      ::yac::ToolCallId{prepared.request.id}, stop_token);
   auto block = SubAgentCall{.task = call->task,
                             .mode = SubAgentMode::Foreground,
                             .status = SubAgentStatus::Complete,

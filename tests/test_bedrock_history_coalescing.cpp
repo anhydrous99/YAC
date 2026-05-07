@@ -66,7 +66,9 @@ TEST_CASE(
        .tool_calls = {ToolCallRequest{.id = "call-1",
                                       .name = "bash",
                                       .arguments_json = R"({"cmd":"ls"})"}}},
-      {.role = ChatRole::Tool, .content = "file.txt", .tool_call_id = "call-1"},
+      {.role = ChatRole::Tool,
+       .content = "file.txt",
+       .tool_call_id = yac::ToolCallId{"call-1"}},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 3);
@@ -98,9 +100,15 @@ TEST_CASE(
                ToolCallRequest{.id = "c-b", .name = "bash"},
                ToolCallRequest{.id = "c-c", .name = "bash"},
            }},
-      {.role = ChatRole::Tool, .content = "out-a", .tool_call_id = "c-a"},
-      {.role = ChatRole::Tool, .content = "out-b", .tool_call_id = "c-b"},
-      {.role = ChatRole::Tool, .content = "out-c", .tool_call_id = "c-c"},
+      {.role = ChatRole::Tool,
+       .content = "out-a",
+       .tool_call_id = yac::ToolCallId{"c-a"}},
+      {.role = ChatRole::Tool,
+       .content = "out-b",
+       .tool_call_id = yac::ToolCallId{"c-b"}},
+      {.role = ChatRole::Tool,
+       .content = "out-c",
+       .tool_call_id = yac::ToolCallId{"c-c"}},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 3);
@@ -124,7 +132,9 @@ TEST_CASE("CoalesceToolResults: mixed messages - only tool run coalesces") {
       {.role = ChatRole::Assistant,
        .content = "",
        .tool_calls = {ToolCallRequest{.id = "t1", .name = "bash"}}},
-      {.role = ChatRole::Tool, .content = "tool output", .tool_call_id = "t1"},
+      {.role = ChatRole::Tool,
+       .content = "tool output",
+       .tool_call_id = yac::ToolCallId{"t1"}},
       {.role = ChatRole::User, .content = "final"},
       {.role = ChatRole::Assistant, .content = "done"},
   };
@@ -148,7 +158,9 @@ TEST_CASE("CoalesceToolResults: tool_call_id preserved as toolUseId") {
       {.role = ChatRole::Assistant,
        .content = "",
        .tool_calls = {ToolCallRequest{.id = k_id, .name = "bash"}}},
-      {.role = ChatRole::Tool, .content = "my output", .tool_call_id = k_id},
+      {.role = ChatRole::Tool,
+       .content = "my output",
+       .tool_call_id = yac::ToolCallId{k_id}},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 3);
@@ -168,7 +180,7 @@ TEST_CASE(
   std::vector<ChatMessage> msgs = {
       {.role = ChatRole::Tool,
        .content = "orphan data",
-       .tool_call_id = "orphan-id"},
+       .tool_call_id = yac::ToolCallId{"orphan-id"}},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 1);
@@ -194,9 +206,13 @@ TEST_CASE(
     "CoalesceToolResults: system message between tool results resets "
     "coalescing") {
   std::vector<ChatMessage> msgs = {
-      {.role = ChatRole::Tool, .content = "r1", .tool_call_id = "id1"},
+      {.role = ChatRole::Tool,
+       .content = "r1",
+       .tool_call_id = yac::ToolCallId{"id1"}},
       {.role = ChatRole::System, .content = "injected system"},
-      {.role = ChatRole::Tool, .content = "r2", .tool_call_id = "id2"},
+      {.role = ChatRole::Tool,
+       .content = "r2",
+       .tool_call_id = yac::ToolCallId{"id2"}},
   };
   const auto result = CoalesceToolResults(msgs);
   REQUIRE(result.size() == 2);

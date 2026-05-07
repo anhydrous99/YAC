@@ -234,7 +234,7 @@ void ChatUiOverlayState::ShowHelp() {
 }
 
 void ChatUiOverlayState::ShowToolApproval(
-    std::string approval_id, std::string tool_name, std::string prompt,
+    ::yac::ApprovalId approval_id, std::string tool_name, std::string prompt,
     std::optional<::yac::tool_call::ToolCallBlock> preview) {
   tool_approval_dialog_ = ToolApprovalDialog{
       .id = std::move(approval_id),
@@ -245,7 +245,7 @@ void ChatUiOverlayState::ShowToolApproval(
   show_tool_approval_ = true;
 }
 
-void ChatUiOverlayState::ShowAskUserDialog(std::string approval_id,
+void ChatUiOverlayState::ShowAskUserDialog(::yac::ApprovalId approval_id,
                                            std::string question,
                                            std::vector<std::string> options) {
   ask_user_dialog_ = AskUserDialog{
@@ -495,7 +495,7 @@ void ChatUiOverlayState::DispatchToolApproval(bool approved) {
   auto approval_id = std::move(tool_approval_dialog_.id);
   show_tool_approval_ = false;
   tool_approval_dialog_ = ToolApprovalDialog{};
-  if (on_tool_approval_ && !approval_id.empty()) {
+  if (on_tool_approval_ && !approval_id.value.empty()) {
     on_tool_approval_(approval_id, approved);
   }
 }
@@ -505,7 +505,7 @@ void ChatUiOverlayState::DispatchAskUserSubmit() {
   auto response = std::move(ask_user_dialog_.input);
   show_ask_user_ = false;
   ask_user_dialog_ = AskUserDialog{};
-  if (on_ask_user_submit_ && !approval_id.empty()) {
+  if (on_ask_user_submit_ && !approval_id.value.empty()) {
     on_ask_user_submit_(std::move(approval_id), std::move(response));
   }
 }
@@ -514,7 +514,7 @@ void ChatUiOverlayState::DispatchAskUserCancel() {
   auto approval_id = std::move(ask_user_dialog_.approval_id);
   show_ask_user_ = false;
   ask_user_dialog_ = AskUserDialog{};
-  if (on_ask_user_cancel_ && !approval_id.empty()) {
+  if (on_ask_user_cancel_ && !approval_id.value.empty()) {
     on_ask_user_cancel_(std::move(approval_id));
   }
 }

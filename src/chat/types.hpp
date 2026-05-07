@@ -40,7 +40,7 @@ struct ChatMessage {
   ChatMessageStatus status = ChatMessageStatus::Complete;
   std::string content;
   std::vector<ToolCallRequest> tool_calls;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
 };
 
@@ -118,7 +118,7 @@ struct ToolCallStartedEvent {
 
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Tool;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
   ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Active;
@@ -129,7 +129,7 @@ struct ToolCallDoneEvent {
 
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Tool;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
   ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Complete;
@@ -225,7 +225,7 @@ struct ToolCallArgumentDeltaEvent {
 
   ChatMessageId message_id = 0;
   ChatMessageId card_message_id = 0;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
   std::string arguments_json;
 };
@@ -236,9 +236,9 @@ struct ToolApprovalRequestedEvent {
   ChatMessageId message_id = 0;
   ChatRole role = ChatRole::Tool;
   std::string text;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
-  std::string approval_id;
+  ApprovalId approval_id;
   ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Queued;
   std::string question;
@@ -254,7 +254,7 @@ struct UsageReportedEvent {
 };
 
 struct SubAgentChildToolEvent {
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   std::string tool_name;
   ::yac::tool_call::ToolCallBlock tool_call;
   ChatMessageStatus status = ChatMessageStatus::Complete;

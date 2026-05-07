@@ -143,11 +143,11 @@ void ChatService::CancelActiveResponse() {
   tool_approval_->CancelPending();
 }
 
-void ChatService::ResolveToolApproval(std::string approval_id, bool approved) {
+void ChatService::ResolveToolApproval(ApprovalId approval_id, bool approved) {
   tool_approval_->ResolveToolApproval(approval_id, approved);
 }
 
-void ChatService::ResolveAskUser(const std::string& approval_id,
+void ChatService::ResolveAskUser(const ApprovalId& approval_id,
                                  std::string response) {
   tool_approval_->ResolveAskUser(approval_id, std::move(response));
 }

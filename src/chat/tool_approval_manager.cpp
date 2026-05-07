@@ -8,10 +8,11 @@ namespace yac::chat {
 ToolApprovalManager::ToolApprovalManager(EmitEventFn emit_event)
     : emit_event_(std::move(emit_event)) {}
 
-std::string ToolApprovalManager::RequestApproval(std::string tool_call_id,
-                                                 std::string tool_name,
-                                                 std::string tool_args) {
-  auto approval_id = "tool-" + std::to_string(next_approval_id_.fetch_add(1));
+ApprovalId ToolApprovalManager::RequestApproval(ToolCallId tool_call_id,
+                                                std::string tool_name,
+                                                std::string tool_args) {
+  ApprovalId approval_id{"tool-" +
+                         std::to_string(next_approval_id_.fetch_add(1))};
   PendingApproval entry{
       .id = approval_id,
       .tool_call_id = std::move(tool_call_id),
@@ -25,7 +26,7 @@ std::string ToolApprovalManager::RequestApproval(std::string tool_call_id,
   return approval_id;
 }
 
-void ToolApprovalManager::ResolveToolApproval(const std::string& approval_id,
+void ToolApprovalManager::ResolveToolApproval(const ApprovalId& approval_id,
                                               bool approved) {
   {
     std::scoped_lock lock(mutex_);
@@ -38,7 +39,7 @@ void ToolApprovalManager::ResolveToolApproval(const std::string& approval_id,
   wake_.notify_all();
 }
 
-void ToolApprovalManager::ResolveAskUser(const std::string& approval_id,
+void ToolApprovalManager::ResolveAskUser(const ApprovalId& approval_id,
                                          std::string response) {
   {
     std::scoped_lock lock(mutex_);
@@ -75,7 +76,7 @@ bool ToolApprovalManager::IsAwaitingApproval() const {
 }
 
 ApprovalResolution ToolApprovalManager::WaitForResolution(
-    const std::string& approval_id, std::stop_token stop_token) {
+    const ApprovalId& approval_id, std::stop_token stop_token) {
   // libc++#76807 workaround: see chat_service.cpp WorkerLoop.
   std::stop_callback wake_on_stop(stop_token, [this] { wake_.notify_all(); });
   std::unique_lock lock(mutex_);

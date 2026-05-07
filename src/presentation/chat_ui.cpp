@@ -332,7 +332,7 @@ void ChatUI::UpdateToolCallMessage(MessageId tool_id,
 }
 
 void ChatUI::UpdateSubAgentToolCallMessage(
-    MessageId parent_id, std::string tool_call_id, std::string tool_name,
+    MessageId parent_id, ::yac::ToolCallId tool_call_id, std::string tool_name,
     ::yac::tool_call::ToolCallBlock block, MessageStatus status) {
   const bool inserted = session_.UpsertSubAgentToolCall(
       parent_id, std::move(tool_call_id), std::move(tool_name),
@@ -345,13 +345,14 @@ void ChatUI::UpdateSubAgentToolCallMessage(
 }
 
 void ChatUI::ShowToolApproval(
-    std::string approval_id, std::string tool_name, std::string prompt,
+    ::yac::ApprovalId approval_id, std::string tool_name, std::string prompt,
     std::optional<::yac::tool_call::ToolCallBlock> preview) {
   overlay_state_.ShowToolApproval(std::move(approval_id), std::move(tool_name),
                                   std::move(prompt), std::move(preview));
 }
 
-void ChatUI::ShowAskUserDialog(std::string approval_id, std::string question,
+void ChatUI::ShowAskUserDialog(::yac::ApprovalId approval_id,
+                               std::string question,
                                std::vector<std::string> options) {
   overlay_state_.ShowAskUserDialog(std::move(approval_id), std::move(question),
                                    std::move(options));

@@ -29,10 +29,10 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
   }
 
   if (auto* started = event.As<ToolCallStartedEvent>()) {
-    auto tool_call_id =
-        started->tool_call_id.empty()
-            ? context.agent_id + ":" + std::to_string(started->message_id)
-            : std::move(started->tool_call_id);
+    auto tool_call_id = started->tool_call_id.value.empty()
+                            ? ToolCallId{context.agent_id + ":" +
+                                         std::to_string(started->message_id)}
+                            : std::move(started->tool_call_id);
     return ChatEvent{SubAgentProgressEvent{
         .message_id = context.card_message_id,
         .sub_agent_id = context.agent_id,
@@ -47,10 +47,10 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
   }
 
   if (auto* done = event.As<ToolCallDoneEvent>()) {
-    auto tool_call_id =
-        done->tool_call_id.empty()
-            ? context.agent_id + ":" + std::to_string(done->message_id)
-            : std::move(done->tool_call_id);
+    auto tool_call_id = done->tool_call_id.value.empty()
+                            ? ToolCallId{context.agent_id + ":" +
+                                         std::to_string(done->message_id)}
+                            : std::move(done->tool_call_id);
     return ChatEvent{SubAgentProgressEvent{
         .message_id = context.card_message_id,
         .sub_agent_id = context.agent_id,

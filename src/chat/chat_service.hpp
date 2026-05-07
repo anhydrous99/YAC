@@ -50,8 +50,8 @@ class ChatService {
   void SetModel(std::string model);
   void SetProvider(std::string provider_id);
   void CancelActiveResponse();
-  void ResolveToolApproval(std::string approval_id, bool approved);
-  void ResolveAskUser(const std::string& approval_id, std::string response);
+  void ResolveToolApproval(ApprovalId approval_id, bool approved);
+  void ResolveAskUser(const ApprovalId& approval_id, std::string response);
   [[nodiscard]] AgentMode GetAgentMode() const;
   void SetAgentMode(AgentMode mode);
   void ResetConversation();

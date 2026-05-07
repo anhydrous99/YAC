@@ -1,5 +1,6 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
+#include "core_types/typed_ids.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 #include "util/wait_until.hpp"
@@ -95,7 +96,7 @@ std::shared_ptr<LambdaMockProvider> MakeToolRoundProvider() {
         const bool has_tool_result = std::ranges::any_of(
             request.messages, [](const ChatMessage& message) {
               return message.role == ChatRole::Tool &&
-                     message.tool_call_id == "tool_1";
+                     message.tool_call_id == yac::ToolCallId{"tool_1"};
             });
         if (!has_tool_result) {
           REQUIRE_FALSE(request.tools.empty());
@@ -246,7 +247,7 @@ std::shared_ptr<LambdaMockProvider> MakeApprovalRejectionProvider() {
         REQUIRE(std::ranges::any_of(
             request.messages, [](const ChatMessage& message) {
               return message.role == ChatRole::Tool &&
-                     message.tool_call_id == "tool_1" &&
+                     message.tool_call_id == yac::ToolCallId{"tool_1"} &&
                      message.content ==
                          R"({"error":"User rejected tool execution."})";
             }));
@@ -275,7 +276,7 @@ std::shared_ptr<LambdaMockProvider> MakeToolErrorProvider() {
         REQUIRE(std::ranges::any_of(
             request.messages, [](const ChatMessage& message) {
               return message.role == ChatRole::Tool &&
-                     message.tool_call_id == "tool_1" &&
+                     message.tool_call_id == yac::ToolCallId{"tool_1"} &&
                      message.content.find("Path is outside the workspace") !=
                          std::string::npos;
             }));
@@ -430,7 +431,8 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
 
   const auto history = service.History();
   REQUIRE(std::ranges::any_of(history, [](const auto& message) {
-    return message.role == ChatRole::Tool && message.tool_call_id == "tool_1" &&
+    return message.role == ChatRole::Tool &&
+           message.tool_call_id == yac::ToolCallId{"tool_1"} &&
            message.content.find("note.txt") != std::string::npos;
   }));
   std::filesystem::remove_all(root);
@@ -493,7 +495,7 @@ TEST_CASE("ChatService records rejected approval as tool error and continues") {
   std::vector<ChatEvent> events;
   std::mutex mutex;
   std::condition_variable cv;
-  std::string approval_id;
+  yac::ApprovalId approval_id;
   bool approval_requested = false;
   bool finished = false;
 
@@ -550,7 +552,7 @@ TEST_CASE("ChatService sequences approval requests one tool at a time") {
   std::vector<ChatEvent> events;
   std::mutex mutex;
   std::condition_variable cv;
-  std::vector<std::string> approval_ids;
+  std::vector<yac::ApprovalId> approval_ids;
   bool finished = false;
 
   service.SetEventCallback([&](ChatEvent event) {

@@ -1,3 +1,4 @@
+#include "core_types/typed_ids.hpp"
 #include "presentation/chat_ui.hpp"
 
 #include <string>
@@ -8,6 +9,7 @@
 
 using namespace yac::presentation;
 using namespace yac::tool_call;
+using yac::ApprovalId;
 
 namespace {
 
@@ -50,7 +52,7 @@ TEST_CASE("mcp_banner_and_cap") {
       .approval_required_tools = {},
   };
 
-  ui.ShowToolApproval("approval-1", "mcp_github__create_issue",
+  ui.ShowToolApproval(ApprovalId{"approval-1"}, "mcp_github__create_issue",
                       "Call MCP tool github/create_issue", mcp_call);
 
   auto raw = RenderComponent(component, 80, 30);
@@ -75,7 +77,7 @@ TEST_CASE("mcp_banner_and_cap") {
 
     ChatUI big_ui;
     auto big_component = big_ui.Build();
-    big_ui.ShowToolApproval("approval-2", "mcp_large__bulk",
+    big_ui.ShowToolApproval(ApprovalId{"approval-2"}, "mcp_large__bulk",
                             "Call MCP tool large/bulk", big_call);
 
     auto big_output = StripAnsi(RenderComponent(big_component, 80, 30));
@@ -99,7 +101,7 @@ TEST_CASE("per_tool_override") {
       .approval_required_tools = {"delete_repo", "create_repo"},
   };
 
-  ui.ShowToolApproval("approval-3", "mcp_github__delete_repo",
+  ui.ShowToolApproval(ApprovalId{"approval-3"}, "mcp_github__delete_repo",
                       "Call MCP tool github/delete_repo", mcp_call);
 
   auto raw = RenderComponent(component, 80, 30);

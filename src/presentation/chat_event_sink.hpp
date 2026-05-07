@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core_types/typed_ids.hpp"
 #include "message.hpp"
 #include "ui_status.hpp"
 
@@ -32,12 +33,14 @@ class ChatEventSink {
                                      ::yac::tool_call::ToolCallBlock block,
                                      MessageStatus status) = 0;
   virtual void UpdateSubAgentToolCallMessage(
-      MessageId parent_id, std::string tool_call_id, std::string tool_name,
-      ::yac::tool_call::ToolCallBlock block, MessageStatus status) = 0;
+      MessageId parent_id, ::yac::ToolCallId tool_call_id,
+      std::string tool_name, ::yac::tool_call::ToolCallBlock block,
+      MessageStatus status) = 0;
   virtual void ShowToolApproval(
-      std::string approval_id, std::string tool_name, std::string prompt,
+      ::yac::ApprovalId approval_id, std::string tool_name, std::string prompt,
       std::optional<::yac::tool_call::ToolCallBlock> preview) = 0;
-  virtual void ShowAskUserDialog(std::string approval_id, std::string question,
+  virtual void ShowAskUserDialog(::yac::ApprovalId approval_id,
+                                 std::string question,
                                  std::vector<std::string> options) = 0;
   virtual void SetProviderModel(std::string provider_id, std::string model) = 0;
   virtual void SetLastUsage(UsageStats usage) = 0;

@@ -121,7 +121,7 @@ void DispatchSseData(const std::string& data, StreamState& state) {
             continue;
           }
           (*state.sink)(chat::ChatEvent{chat::ToolCallArgumentDeltaEvent{
-              .tool_call_id = pending.id,
+              .tool_call_id = ::yac::ToolCallId{pending.id},
               .tool_name = pending.name,
               .arguments_json = pending.arguments_json,
           }});
@@ -212,7 +212,7 @@ Json BuildChatPayload(const chat::ChatRequest& request, bool stream,
     Json entry{{"role", RoleToOpenAi(message.role)}};
     if (message.role == chat::ChatRole::Tool) {
       entry["content"] = message.content;
-      entry["tool_call_id"] = message.tool_call_id;
+      entry["tool_call_id"] = message.tool_call_id.value;
       if (!message.tool_name.empty()) {
         entry["name"] = message.tool_name;
       }

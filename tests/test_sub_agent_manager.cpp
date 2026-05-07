@@ -130,7 +130,8 @@ struct SubAgentTestContext {
 
   std::string Spawn(const std::string& task) {
     const auto id = next_id.fetch_add(1);
-    return manager->SpawnBackground(task, id, "tc-" + std::to_string(id));
+    return manager->SpawnBackground(
+        task, id, ::yac::ToolCallId{"tc-" + std::to_string(id)});
   }
 
   ~SubAgentTestContext() {

@@ -117,7 +117,7 @@ struct SubAgentManager::SubAgentSession {
 
   std::string agent_id;
   std::string task;
-  std::string tool_call_id;
+  ToolCallId tool_call_id;
   tool_call::SubAgentMode mode = tool_call::SubAgentMode::Foreground;
   ChatMessageId card_message_id = 0;
   std::stop_source stop_source;
@@ -185,7 +185,7 @@ std::shared_ptr<SubAgentManager::SubAgentSession>
 SubAgentManager::CreateSession(const std::string& task,
                                tool_call::SubAgentMode mode,
                                ChatMessageId card_message_id,
-                               std::string tool_call_id) {
+                               ToolCallId tool_call_id) {
   auto session = std::make_shared<SubAgentSession>();
   session->agent_id = MakeAgentId();
   session->task = task;
@@ -381,7 +381,7 @@ void SubAgentManager::RequestSessionStop(SubAgentSession& session,
 
 std::string SubAgentManager::SpawnForeground(
     const std::string& task, ChatMessageId card_message_id,
-    std::string tool_call_id, std::stop_token parent_stop_token) {
+    ToolCallId tool_call_id, std::stop_token parent_stop_token) {
   auto session = CreateSession(task, tool_call::SubAgentMode::Foreground,
                                card_message_id, std::move(tool_call_id));
   if (!TryStoreSession(session)) {
@@ -396,7 +396,7 @@ std::string SubAgentManager::SpawnForeground(
 
 std::string SubAgentManager::SpawnBackground(const std::string& task,
                                              ChatMessageId card_message_id,
-                                             std::string tool_call_id) {
+                                             ToolCallId tool_call_id) {
   auto session = CreateSession(task, tool_call::SubAgentMode::Background,
                                card_message_id, std::move(tool_call_id));
   if (!TryStoreSession(session)) {
@@ -422,7 +422,7 @@ std::string SubAgentManager::SpawnBackgroundFromUser(std::string task) {
     return {};
   }
   const auto card_id = next_message_id_();
-  std::string synthetic_tool_call_id = "user-task-" + std::to_string(card_id);
+  ToolCallId synthetic_tool_call_id{"user-task-" + std::to_string(card_id)};
 
   tool_call::SubAgentCall preview{.task = task,
                                   .mode = tool_call::SubAgentMode::Background,

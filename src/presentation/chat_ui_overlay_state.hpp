@@ -2,6 +2,7 @@
 
 #include "command_palette.hpp"
 #include "core_types/tool_call_types.hpp"
+#include "core_types/typed_ids.hpp"
 #include "ftxui/component/component.hpp"
 #include "ftxui/component/event.hpp"
 #include "ui_status.hpp"
@@ -24,10 +25,12 @@ struct UsageStats {
 class ChatUiOverlayState {
  public:
   using OnCommandCallback = std::function<void(const std::string&)>;
-  using OnToolApprovalCallback = std::function<void(const std::string&, bool)>;
+  using OnToolApprovalCallback =
+      std::function<void(const ::yac::ApprovalId&, bool)>;
   using OnAskUserSubmitCallback =
-      std::function<void(std::string approval_id, std::string response)>;
-  using OnAskUserCancelCallback = std::function<void(std::string approval_id)>;
+      std::function<void(::yac::ApprovalId approval_id, std::string response)>;
+  using OnAskUserCancelCallback =
+      std::function<void(::yac::ApprovalId approval_id)>;
 
   void SetOnCommand(OnCommandCallback on_command);
   void SetOnToolApproval(OnToolApprovalCallback on_tool_approval);
@@ -45,9 +48,9 @@ class ChatUiOverlayState {
   void SetHelpText(std::string help_text);
   void ShowHelp();
   void ShowToolApproval(
-      std::string approval_id, std::string tool_name, std::string prompt,
+      ::yac::ApprovalId approval_id, std::string tool_name, std::string prompt,
       std::optional<::yac::tool_call::ToolCallBlock> preview = std::nullopt);
-  void ShowAskUserDialog(std::string approval_id, std::string question,
+  void ShowAskUserDialog(::yac::ApprovalId approval_id, std::string question,
                          std::vector<std::string> options);
 
   [[nodiscard]] ftxui::Component Wrap(ftxui::Component main_ui);
@@ -84,7 +87,7 @@ class ChatUiOverlayState {
   // Tool-approval dialog state. Populated by ShowToolApproval; consumed by
   // DispatchToolApproval. Empty `id` means no approval is currently pending.
   struct ToolApprovalDialog {
-    std::string id;
+    ::yac::ApprovalId id;
     std::string tool_name;
     std::string prompt;
     std::optional<::yac::tool_call::ToolCallBlock> preview;
@@ -94,7 +97,7 @@ class ChatUiOverlayState {
   // Ask-user dialog state. Populated by ShowAskUserDialog; consumed by
   // DispatchAskUserSubmit / DispatchAskUserCancel.
   struct AskUserDialog {
-    std::string approval_id;
+    ::yac::ApprovalId approval_id;
     std::string question;
     std::vector<std::string> options;
     std::string input;

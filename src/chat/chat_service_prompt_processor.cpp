@@ -492,7 +492,8 @@ bool ChatServicePromptProcessor::MaybeAwaitApproval(
     }
   }
   auto approval_id = tool_approval_->RequestApproval(
-      tool_request.id, tool_request.name, tool_request.arguments_json);
+      ToolCallId{tool_request.id}, tool_request.name,
+      tool_request.arguments_json);
   prepared.approval_id = approval_id;
   std::string question;
   std::vector<std::string> options;
@@ -502,17 +503,17 @@ bool ChatServicePromptProcessor::MaybeAwaitApproval(
     question = ask_user->question;
     options = ask_user->options;
   }
-  emit_event_(
-      ChatEvent{ToolApprovalRequestedEvent{.message_id = tool_message_id,
-                                           .role = ChatRole::Tool,
-                                           .text = prepared.approval_prompt,
-                                           .tool_call_id = tool_request.id,
-                                           .tool_name = tool_request.name,
-                                           .approval_id = approval_id,
-                                           .tool_call = prepared.preview,
-                                           .status = ChatMessageStatus::Queued,
-                                           .question = std::move(question),
-                                           .options = std::move(options)}});
+  emit_event_(ChatEvent{
+      ToolApprovalRequestedEvent{.message_id = tool_message_id,
+                                 .role = ChatRole::Tool,
+                                 .text = prepared.approval_prompt,
+                                 .tool_call_id = ToolCallId{tool_request.id},
+                                 .tool_name = tool_request.name,
+                                 .approval_id = approval_id,
+                                 .tool_call = prepared.preview,
+                                 .status = ChatMessageStatus::Queued,
+                                 .question = std::move(question),
+                                 .options = std::move(options)}});
   // ask_user has its own resolution wait inside ExecuteAskUserDispatch; here
   // we just want to surface the approval card without blocking on it.
   if (tool_request.name == ::yac::tool_call::kAskUserToolName) {
@@ -548,11 +549,11 @@ ChatServicePromptProcessor::ExecuteOneToolCall(
 
 void ChatServicePromptProcessor::RunToolRound(
     const std::vector<ToolCallRequest>& requested_tools,
-    const std::unordered_map<std::string, ChatMessageId>& streaming_card_ids,
+    const std::unordered_map<ToolCallId, ChatMessageId>& streaming_card_ids,
     uint64_t generation, std::stop_token stop_token) {
   for (const auto& tool_request : requested_tools) {
     ChatMessageId tool_message_id = 0;
-    if (auto it = streaming_card_ids.find(tool_request.id);
+    if (auto it = streaming_card_ids.find(ToolCallId{tool_request.id});
         it != streaming_card_ids.end()) {
       tool_message_id = it->second;
     } else {
@@ -561,13 +562,13 @@ void ChatServicePromptProcessor::RunToolRound(
     const bool is_mcp_tool = ::yac::mcp::IsMcpToolName(tool_request.name);
     auto prep = PrepareOneToolCall(tool_request, is_mcp_tool);
     prep.prepared.card_message_id = tool_message_id;
-    emit_event_(
-        ChatEvent{ToolCallStartedEvent{.message_id = tool_message_id,
-                                       .role = ChatRole::Tool,
-                                       .tool_call_id = tool_request.id,
-                                       .tool_name = tool_request.name,
-                                       .tool_call = prep.prepared.preview,
-                                       .status = ChatMessageStatus::Active}});
+    emit_event_(ChatEvent{
+        ToolCallStartedEvent{.message_id = tool_message_id,
+                             .role = ChatRole::Tool,
+                             .tool_call_id = ToolCallId{tool_request.id},
+                             .tool_name = tool_request.name,
+                             .tool_call = prep.prepared.preview,
+                             .status = ChatMessageStatus::Active}});
 
     bool approved = true;
     if (!prep.failure.has_value() && prep.prepared.requires_approval) {
@@ -595,12 +596,13 @@ void ChatServicePromptProcessor::RunToolRound(
       done_status = ChatMessageStatus::Active;
     }
 
-    emit_event_(ChatEvent{ToolCallDoneEvent{.message_id = tool_message_id,
-                                            .role = ChatRole::Tool,
-                                            .tool_call_id = tool_request.id,
-                                            .tool_name = tool_request.name,
-                                            .tool_call = result.block,
-                                            .status = done_status}});
+    emit_event_(
+        ChatEvent{ToolCallDoneEvent{.message_id = tool_message_id,
+                                    .role = ChatRole::Tool,
+                                    .tool_call_id = ToolCallId{tool_request.id},
+                                    .tool_name = tool_request.name,
+                                    .tool_call = result.block,
+                                    .status = done_status}});
     {
       std::scoped_lock lock(*history_mutex_);
       if (ShouldAbortLocked(generation)) {

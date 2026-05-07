@@ -55,11 +55,11 @@ std::shared_ptr<LambdaMockProvider> MakeTwoRoundToolProvider(
                                      }}}});
           return;
         }
-        REQUIRE(std::ranges::any_of(request.messages,
-                                    [](const ChatMessage& message) {
-                                      return message.role == ChatRole::Tool &&
-                                             message.tool_call_id == "tool-1";
-                                    }));
+        REQUIRE(std::ranges::any_of(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == ::yac::ToolCallId{"tool-1"};
+            }));
         sink(ChatEvent{TextDeltaEvent{.text = "done"}});
       });
 }
