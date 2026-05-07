@@ -217,7 +217,7 @@ ToolCallDescriptor DescribeToolCall(const tool_data::ToolCallBlock& block) {
           }
           return ToolCallDescriptor{
               .tag = "mcp",
-              .label = "[MCP: " + call.server_id + "] " + call.tool_name,
+              .label = "[MCP: " + call.server_id.value + "] " + call.tool_name,
               .summary = std::move(summary),
           };
         } else {

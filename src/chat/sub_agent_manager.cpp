@@ -322,7 +322,7 @@ void SubAgentManager::EmitSessionCompleted(
     parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentCancelled,
         .message_id = session.card_message_id,
-        .sub_agent_id = session.agent_id,
+        .sub_agent_id = ::yac::SubAgentId{session.agent_id},
         .sub_agent_task = session.task,
     }));
     return;
@@ -331,7 +331,7 @@ void SubAgentManager::EmitSessionCompleted(
     parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentError,
         .message_id = session.card_message_id,
-        .sub_agent_id = session.agent_id,
+        .sub_agent_id = ::yac::SubAgentId{session.agent_id},
         .sub_agent_task = session.task,
         .sub_agent_result = completion.result,
         .sub_agent_tool_count = completion.tool_count,
@@ -342,7 +342,7 @@ void SubAgentManager::EmitSessionCompleted(
   parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
       .type = ChatEventType::SubAgentCompleted,
       .message_id = session.card_message_id,
-      .sub_agent_id = session.agent_id,
+      .sub_agent_id = ::yac::SubAgentId{session.agent_id},
       .sub_agent_task = session.task,
       .sub_agent_result = completion.result,
       .sub_agent_tool_count = completion.tool_count,

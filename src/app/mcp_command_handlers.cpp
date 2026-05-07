@@ -139,8 +139,8 @@ void RegisterMcpSlashCommandHandlers(
       try {
         const auto result = mcp_admin->Debug(rest);
         const std::string text =
-            "=== MCP Debug: " + result.server_id + " ===\n" + "\nStatus:\n" +
-            result.status + "\nAuth:\n" + result.auth +
+            "=== MCP Debug: " + result.server_id.value + " ===\n" +
+            "\nStatus:\n" + result.status + "\nAuth:\n" + result.auth +
             "\nConnectivity: " + result.connectivity + "\nLog:\n" + result.log;
         chat_ui.AddMessage(presentation::Sender::Agent, text);
       } catch (const std::exception& error) {
@@ -178,17 +178,17 @@ void RegisterMcpSlashCommandHandlers(
         });
         return;
       }
-      const std::string server_id = rest;
+      const ::yac::McpServerId server_id{rest};
       chat_ui.SetTransientStatus(presentation::UiNotice{
           .severity = presentation::UiSeverity::Info,
           .title = "Starting MCP auth...",
-          .detail = server_id,
+          .detail = server_id.value,
       });
       auth_runner->thread = std::jthread(
           [mcp_admin, server_id,  // NOLINT(bugprone-exception-escape)
            &chat_ui, &screen](std::stop_token /*st*/) noexcept {
             try {
-              mcp_admin->Authenticate(server_id,
+              mcp_admin->Authenticate(server_id.value,
                                       mcp::oauth::OAuthInteractionMode{});
               screen.Post([&chat_ui,
                            &screen,  // NOLINT(bugprone-exception-escape)
@@ -197,7 +197,7 @@ void RegisterMcpSlashCommandHandlers(
                   chat_ui.SetTransientStatus(presentation::UiNotice{
                       .severity = presentation::UiSeverity::Info,
                       .title = "MCP auth complete",
-                      .detail = server_id,
+                      .detail = server_id.value,
                   });
                   screen.PostEvent(ftxui::Event::Custom);
                 } catch (...) {
@@ -216,7 +216,7 @@ void RegisterMcpSlashCommandHandlers(
                 try {
                   chat_ui.SetTransientStatus(presentation::UiNotice{
                       .severity = presentation::UiSeverity::Error,
-                      .title = "MCP auth failed: " + server_id,
+                      .title = "MCP auth failed: " + server_id.value,
                       .detail = err,
                   });
                   screen.PostEvent(ftxui::Event::Custom);

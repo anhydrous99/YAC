@@ -35,7 +35,7 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
                             : std::move(started->tool_call_id);
     return ChatEvent{SubAgentProgressEvent{
         .message_id = context.card_message_id,
-        .sub_agent_id = context.agent_id,
+        .sub_agent_id = SubAgentId{context.agent_id},
         .sub_agent_task = context.task,
         .sub_agent_tool_count = completed_tool_count.load(),
         .status = ChatMessageStatus::Active,
@@ -53,7 +53,7 @@ std::optional<ChatEvent> AdaptSubAgentPromptEvent(
                             : std::move(done->tool_call_id);
     return ChatEvent{SubAgentProgressEvent{
         .message_id = context.card_message_id,
-        .sub_agent_id = context.agent_id,
+        .sub_agent_id = SubAgentId{context.agent_id},
         .sub_agent_task = context.task,
         .sub_agent_tool_count = completed_tool_count.fetch_add(1) + 1,
         .status = ChatMessageStatus::Active,

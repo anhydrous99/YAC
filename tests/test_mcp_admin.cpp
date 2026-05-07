@@ -171,7 +171,7 @@ TEST_CASE("debug_output") {
 
   const auto report = cmd.Debug("debug-srv");
 
-  REQUIRE(report.server_id == "debug-srv");
+  REQUIRE(report.server_id == ::yac::McpServerId{"debug-srv"});
 
   REQUIRE(report.status.find("debug-srv") != std::string::npos);
   REQUIRE(report.status.find("transport") != std::string::npos);

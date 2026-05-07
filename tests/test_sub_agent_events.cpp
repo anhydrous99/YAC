@@ -1,4 +1,5 @@
 #include "app/chat_event_bridge.hpp"
+#include "core_types/typed_ids.hpp"
 #include "presentation/chat_ui.hpp"
 #include "tool_call/types.hpp"
 
@@ -18,6 +19,7 @@ using namespace yac::app;
 using namespace yac::chat;
 using namespace yac::presentation;
 using namespace yac::tool_call;
+using yac::SubAgentId;
 
 namespace {
 
@@ -88,7 +90,7 @@ void EmitSubAgentChildTool(ChatEventBridge& bridge, ChatMessageId id,
   const auto* const task = "inspect workspace";
   bridge.HandleEvent(ChatEvent{SubAgentProgressEvent{
       .message_id = id,
-      .sub_agent_id = std::move(agent_id),
+      .sub_agent_id = SubAgentId{std::move(agent_id)},
       .sub_agent_task = task,
       .sub_agent_tool_count = 1,
       .child_tool = SubAgentChildToolEvent{
@@ -140,7 +142,7 @@ TEST_CASE(
 
   bridge.HandleEvent(ChatEvent{SubAgentCompletedEvent{
       .message_id = 51,
-      .sub_agent_id = "agent-2",
+      .sub_agent_id = SubAgentId{"agent-2"},
       .sub_agent_task = "run all tests",
       .sub_agent_result = "all 42 tests passed",
       .sub_agent_tool_count = 5,
@@ -166,7 +168,7 @@ TEST_CASE("Bridge handles SubAgentError -- updates card with error status") {
 
   bridge.HandleEvent(ChatEvent{SubAgentErrorEvent{
       .message_id = 52,
-      .sub_agent_id = "agent-3",
+      .sub_agent_id = SubAgentId{"agent-3"},
       .sub_agent_task = "fetch remote data",
       .sub_agent_result = "connection refused",
   }});
@@ -190,7 +192,7 @@ TEST_CASE(
 
   bridge.HandleEvent(ChatEvent{SubAgentCancelledEvent{
       .message_id = 53,
-      .sub_agent_id = "agent-4",
+      .sub_agent_id = SubAgentId{"agent-4"},
       .sub_agent_task = "long running task",
   }});
 
@@ -210,7 +212,7 @@ TEST_CASE("Bridge handles SubAgentProgress -- updates card with tool count") {
 
   bridge.HandleEvent(ChatEvent{SubAgentProgressEvent{
       .message_id = 54,
-      .sub_agent_id = "agent-5",
+      .sub_agent_id = SubAgentId{"agent-5"},
       .sub_agent_task = "progressive task",
       .sub_agent_tool_count = 3,
   }});
@@ -270,7 +272,7 @@ TEST_CASE("Completed sub-agent and nested tool boxes remain mouse toggleable") {
 
   bridge.HandleEvent(ChatEvent{SubAgentCompletedEvent{
       .message_id = 56,
-      .sub_agent_id = "agent-7",
+      .sub_agent_id = SubAgentId{"agent-7"},
       .sub_agent_task = "inspect workspace",
       .sub_agent_result = "done",
       .sub_agent_tool_count = 1,

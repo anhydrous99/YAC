@@ -1,4 +1,5 @@
 #include "app/chat_event_bridge.hpp"
+#include "core_types/typed_ids.hpp"
 #include "presentation/chat_ui.hpp"
 
 #include <functional>
@@ -10,6 +11,7 @@
 using namespace yac::app;
 using namespace yac::chat;
 using namespace yac::presentation;
+using yac::McpServerId;
 
 TEST_CASE("mcp_state_changed_posts") {
   ChatUI ui;
@@ -21,8 +23,10 @@ TEST_CASE("mcp_state_changed_posts") {
     fn();
   });
 
-  bridge.HandleEvent(ChatEvent{McpServerStateChangedEvent{
-      .server_id = "my-server", .state = "connected", .error = ""}});
+  bridge.HandleEvent(ChatEvent{
+      McpServerStateChangedEvent{.server_id = McpServerId{"my-server"},
+                                 .state = "connected",
+                                 .error = ""}});
 
   REQUIRE(post_count == 1);
   auto snapshot = bridge.GetMcpStatusSink().GetSnapshot();

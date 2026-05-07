@@ -97,7 +97,7 @@ std::string PartialField(const std::string& arguments_json,
     return ::yac::tool_call::PreparedToolCall{
         .request = request,
         .preview = ::yac::tool_call::McpToolCall{
-            .server_id = parsed->first,
+            .server_id = ::yac::McpServerId{parsed->first},
             .tool_name = request.name,
             .original_tool_name = parsed->second,
             .arguments_json = request.arguments_json,

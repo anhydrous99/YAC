@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core_types/typed_ids.hpp"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -252,7 +254,7 @@ struct McpResultBlock {
 };
 
 struct McpToolCall {
-  std::string server_id;
+  ::yac::McpServerId server_id;
   std::string tool_name;
   std::string original_tool_name;
   std::string arguments_json;

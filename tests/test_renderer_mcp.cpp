@@ -1,3 +1,4 @@
+#include "core_types/typed_ids.hpp"
 #include "presentation/tool_call/renderer.hpp"
 #include "tool_call/types.hpp"
 
@@ -9,6 +10,7 @@
 
 using namespace yac::presentation::tool_call;
 using namespace yac::tool_call;
+using yac::McpServerId;
 
 namespace {
 
@@ -41,7 +43,7 @@ std::string RenderToString(const ToolCallBlock& block, int width = 80,
 
 TEST_CASE("mcp_tool_call_text_and_link") {
   McpToolCall call{
-      .server_id = "github",
+      .server_id = McpServerId{"github"},
       .tool_name = "search_repos",
       .original_tool_name = "search_repos",
       .arguments_json = R"({"query": "yac"})",
@@ -79,7 +81,7 @@ TEST_CASE("mcp_image_placeholder") {
   std::string fake_base64(500, 'A');
 
   McpToolCall call{
-      .server_id = "images",
+      .server_id = McpServerId{"images"},
       .tool_name = "generate",
       .original_tool_name = "generate",
       .arguments_json = "{}",
@@ -106,7 +108,7 @@ TEST_CASE("mcp_image_placeholder") {
 
 TEST_CASE("mcp_audio_placeholder") {
   McpToolCall call{
-      .server_id = "tts",
+      .server_id = McpServerId{"tts"},
       .tool_name = "speak",
       .original_tool_name = "speak",
       .arguments_json = "{}",
@@ -130,7 +132,7 @@ TEST_CASE("mcp_audio_placeholder") {
 
 TEST_CASE("mcp_embedded_resource_text") {
   McpToolCall call{
-      .server_id = "fs",
+      .server_id = McpServerId{"fs"},
       .tool_name = "read_file",
       .original_tool_name = "read_file",
       .arguments_json = "{}",
@@ -154,7 +156,7 @@ TEST_CASE("mcp_embedded_resource_text") {
 
 TEST_CASE("mcp_embedded_resource_binary") {
   McpToolCall call{
-      .server_id = "fs",
+      .server_id = McpServerId{"fs"},
       .tool_name = "read_binary",
       .original_tool_name = "read_binary",
       .arguments_json = "{}",
@@ -178,7 +180,7 @@ TEST_CASE("mcp_embedded_resource_binary") {
 
 TEST_CASE("mcp_truncated_indicator") {
   McpToolCall call{
-      .server_id = "large",
+      .server_id = McpServerId{"large"},
       .tool_name = "big_query",
       .original_tool_name = "big_query",
       .arguments_json = "{}",
@@ -196,7 +198,7 @@ TEST_CASE("mcp_truncated_indicator") {
 
 TEST_CASE("mcp_error_display") {
   McpToolCall call{
-      .server_id = "bad",
+      .server_id = McpServerId{"bad"},
       .tool_name = "fail_tool",
       .original_tool_name = "fail_tool",
       .arguments_json = "{}",

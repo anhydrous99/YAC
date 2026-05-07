@@ -55,7 +55,7 @@ tool_call::PreparedToolCall ChatServiceMcp::PrepareMcpToolCall(
   const bool requires_approval = policy_it != snapshot.approval_policy.end() &&
                                  policy_it->second.requires_approval;
 
-  tool_call::McpToolCall block{.server_id = server_id,
+  tool_call::McpToolCall block{.server_id = ::yac::McpServerId{server_id},
                                .tool_name = request.name,
                                .original_tool_name = original_tool_name,
                                .arguments_json = request.arguments_json};

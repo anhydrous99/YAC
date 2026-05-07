@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chat/types.hpp"
+#include "core_types/typed_ids.hpp"
 
 #include <atomic>
 #include <optional>
@@ -17,7 +18,7 @@ struct SubAgentEventContext {
 struct SubAgentCompletionEventData {
   ChatEventType type = ChatEventType::SubAgentCompleted;
   ChatMessageId message_id = 0;
-  std::string sub_agent_id;
+  ::yac::SubAgentId sub_agent_id;
   std::string sub_agent_task;
   std::string sub_agent_result;
   int sub_agent_tool_count = 0;

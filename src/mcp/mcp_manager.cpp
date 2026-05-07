@@ -395,7 +395,8 @@ void McpManager::EmitStateChanges() const {
     }
     record.last_emitted_state = state;
     emit_event_(chat::MakeMcpServerStateChangedEvent(
-        record.config.id, state, record.session->LastError()));
+        ::yac::McpServerId{record.config.id}, state,
+        record.session->LastError()));
   }
 }
 
@@ -487,12 +488,13 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
       stop);
   const auto response = ToolsCallResponse::FromJson(response_json);
 
-  tool_call::McpToolCall block{.server_id = record.config.id,
-                               .tool_name = std::string(qualified_name),
-                               .original_tool_name = it->second.second,
-                               .arguments_json = std::string(arguments_json),
-                               .is_error = response.is_error,
-                               .result_bytes = response_json.dump().size()};
+  tool_call::McpToolCall block{
+      .server_id = ::yac::McpServerId{record.config.id},
+      .tool_name = std::string(qualified_name),
+      .original_tool_name = it->second.second,
+      .arguments_json = std::string(arguments_json),
+      .is_error = response.is_error,
+      .result_bytes = response_json.dump().size()};
   block.result_blocks.reserve(response.result_blocks.size());
   for (const auto& result_block : response.result_blocks) {
     block.result_blocks.push_back(ConvertResultBlock(result_block));
@@ -614,7 +616,8 @@ void McpManager::Authenticate(std::string_view server_id,
   EnsureSessionsCreated();
   auto& record = RequireRecord(server_id);
   emit_event_(chat::MakeMcpAuthRequiredEvent(
-      record.config.id, "OAuth authentication required for MCP server."));
+      ::yac::McpServerId{record.config.id},
+      "OAuth authentication required for MCP server."));
 
   const oauth::OAuthTokens tokens =
       deps_.authenticate_fn(record.config, mode, stop);

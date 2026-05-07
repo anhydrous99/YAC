@@ -264,7 +264,7 @@ struct SubAgentProgressEvent {
   static constexpr ChatEventType kType = ChatEventType::SubAgentProgress;
 
   ChatMessageId message_id = 0;
-  std::string sub_agent_id;
+  SubAgentId sub_agent_id;
   std::string sub_agent_task;
   int sub_agent_tool_count = 0;
   ChatMessageStatus status = ChatMessageStatus::Active;
@@ -275,7 +275,7 @@ struct SubAgentCompletedEvent {
   static constexpr ChatEventType kType = ChatEventType::SubAgentCompleted;
 
   ChatMessageId message_id = 0;
-  std::string sub_agent_id;
+  SubAgentId sub_agent_id;
   std::string sub_agent_task;
   std::string sub_agent_result;
   int sub_agent_tool_count = 0;
@@ -286,7 +286,7 @@ struct SubAgentErrorEvent {
   static constexpr ChatEventType kType = ChatEventType::SubAgentError;
 
   ChatMessageId message_id = 0;
-  std::string sub_agent_id;
+  SubAgentId sub_agent_id;
   std::string sub_agent_task;
   std::string sub_agent_result;
   int sub_agent_tool_count = 0;
@@ -297,7 +297,7 @@ struct SubAgentCancelledEvent {
   static constexpr ChatEventType kType = ChatEventType::SubAgentCancelled;
 
   ChatMessageId message_id = 0;
-  std::string sub_agent_id;
+  SubAgentId sub_agent_id;
   std::string sub_agent_task;
 };
 
@@ -310,7 +310,7 @@ struct AgentModeChangedEvent {
 struct McpServerStateChangedEvent {
   static constexpr ChatEventType kType = ChatEventType::McpServerStateChanged;
 
-  std::string server_id;
+  McpServerId server_id;
   std::string state;
   std::string error;
 };
@@ -318,7 +318,7 @@ struct McpServerStateChangedEvent {
 struct McpAuthRequiredEvent {
   static constexpr ChatEventType kType = ChatEventType::McpAuthRequired;
 
-  std::string server_id;
+  McpServerId server_id;
   std::string hint_message;
 };
 
@@ -383,14 +383,14 @@ struct ChatEvent {
 };
 
 [[nodiscard]] inline ChatEvent MakeMcpServerStateChangedEvent(
-    std::string server_id, std::string state, std::string error) {
+    McpServerId server_id, std::string state, std::string error) {
   return ChatEvent{McpServerStateChangedEvent{.server_id = std::move(server_id),
                                               .state = std::move(state),
                                               .error = std::move(error)}};
 }
 
 [[nodiscard]] inline ChatEvent MakeMcpAuthRequiredEvent(
-    std::string server_id, std::string hint_message) {
+    McpServerId server_id, std::string hint_message) {
   return ChatEvent{
       McpAuthRequiredEvent{.server_id = std::move(server_id),
                            .hint_message = std::move(hint_message)}};

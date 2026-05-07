@@ -1,4 +1,5 @@
 #include "chat/sub_agent_event_adapter.hpp"
+#include "core_types/typed_ids.hpp"
 
 #include <atomic>
 #include <string>
@@ -8,6 +9,7 @@
 
 using namespace yac::chat;
 using namespace yac::tool_call;
+using yac::SubAgentId;
 
 TEST_CASE(
     "AdaptSubAgentPromptEvent rewrites approval prompts for the parent card") {
@@ -68,7 +70,7 @@ TEST_CASE(
     REQUIRE(adapted->Type() == ChatEventType::SubAgentProgress);
     const auto& progress = adapted->Get<SubAgentProgressEvent>();
     REQUIRE(progress.message_id == 50);
-    REQUIRE(progress.sub_agent_id == "agent-2");
+    REQUIRE(progress.sub_agent_id == SubAgentId{"agent-2"});
     REQUIRE(progress.sub_agent_task == "inspect source tree");
     REQUIRE(progress.sub_agent_tool_count == 0);
     REQUIRE(progress.child_tool.has_value());
@@ -108,7 +110,7 @@ TEST_CASE(
     const auto event = MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentCompleted,
         .message_id = 61,
-        .sub_agent_id = "agent-3",
+        .sub_agent_id = SubAgentId{"agent-3"},
         .sub_agent_task = "run tests",
         .sub_agent_result = "all passed",
         .sub_agent_tool_count = 4,
@@ -127,7 +129,7 @@ TEST_CASE(
     const auto event = MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentError,
         .message_id = 62,
-        .sub_agent_id = "agent-4",
+        .sub_agent_id = SubAgentId{"agent-4"},
         .sub_agent_task = "fetch remote state",
         .sub_agent_result = "connection refused",
         .sub_agent_tool_count = 2,
@@ -146,14 +148,14 @@ TEST_CASE(
     const auto event = MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
         .type = ChatEventType::SubAgentCancelled,
         .message_id = 63,
-        .sub_agent_id = "agent-5",
+        .sub_agent_id = SubAgentId{"agent-5"},
         .sub_agent_task = "long running task",
     });
 
     REQUIRE(event.Type() == ChatEventType::SubAgentCancelled);
     const auto& payload = event.Get<SubAgentCancelledEvent>();
     REQUIRE(payload.message_id == 63);
-    REQUIRE(payload.sub_agent_id == "agent-5");
+    REQUIRE(payload.sub_agent_id == SubAgentId{"agent-5"});
     REQUIRE(payload.sub_agent_task == "long running task");
   }
 }

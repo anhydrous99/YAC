@@ -26,8 +26,8 @@ class TestEmittingMcpManager : public yac::core_types::IMcpManager {
 
   void TriggerStateChange(std::string server_id) const {
     if (emit_fn) {
-      emit_fn(yac::chat::MakeMcpServerStateChangedEvent(std::move(server_id),
-                                                        "connected", ""));
+      emit_fn(yac::chat::MakeMcpServerStateChangedEvent(
+          ::yac::McpServerId{std::move(server_id)}, "connected", ""));
     }
   }
 

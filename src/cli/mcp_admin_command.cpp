@@ -401,7 +401,7 @@ McpDebugReport McpAdminCommand::Debug(std::string_view server_id) {
   const auto& srv = FindServer(mc, server_id);
 
   McpDebugReport report;
-  report.server_id = srv.id;
+  report.server_id = ::yac::McpServerId{srv.id};
 
   {
     std::ostringstream s;

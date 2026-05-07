@@ -89,7 +89,8 @@ ftxui::Element ToolCallRenderer::RenderMcpToolCall(
     }
   }
 
-  auto label = std::string("[MCP: ") + call.server_id + "] " + call.tool_name;
+  auto label =
+      std::string("[MCP: ") + call.server_id.value + "] " + call.tool_name;
   return RenderContainer("M", label, theme.semantic.accent_primary,
                          std::move(content), theme);
 }

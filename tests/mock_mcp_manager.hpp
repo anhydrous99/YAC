@@ -47,8 +47,8 @@ class MockMcpManager : public core_types::IMcpManager {
         snapshot_.name_to_server_tool.find(std::string{qualified_name});
     tool_call::McpToolCall call{
         .server_id = it != snapshot_.name_to_server_tool.end()
-                         ? it->second.first
-                         : std::string{},
+                         ? ::yac::McpServerId{it->second.first}
+                         : ::yac::McpServerId{},
         .tool_name = std::string{qualified_name},
         .original_tool_name = it != snapshot_.name_to_server_tool.end()
                                   ? it->second.second

@@ -93,7 +93,7 @@ TEST_CASE("prepare_execute_round_trip") {
 
     const auto* mcp_block = std::get_if<McpToolCall>(&prepared.preview);
     REQUIRE(mcp_block != nullptr);
-    CHECK(mcp_block->server_id == "fs");
+    CHECK(mcp_block->server_id == ::yac::McpServerId{"fs"});
     CHECK(mcp_block->original_tool_name == "list_files");
     CHECK(mcp_block->tool_name == "mcp_fs__list_files");
     CHECK(mcp_block->arguments_json == R"({"path":"/src"})");

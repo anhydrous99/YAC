@@ -198,7 +198,7 @@ TEST_CASE("MCP core types default construct") {
   REQUIRE(result_block.bytes == 0);
 
   McpToolCall call;
-  REQUIRE(call.server_id.empty());
+  REQUIRE(call.server_id.value.empty());
   REQUIRE(call.tool_name.empty());
   REQUIRE(call.original_tool_name.empty());
   REQUIRE(call.arguments_json.empty());

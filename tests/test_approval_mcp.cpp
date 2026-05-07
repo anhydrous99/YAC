@@ -10,6 +10,7 @@
 using namespace yac::presentation;
 using namespace yac::tool_call;
 using yac::ApprovalId;
+using yac::McpServerId;
 
 namespace {
 
@@ -43,7 +44,7 @@ TEST_CASE("mcp_banner_and_cap") {
   auto component = ui.Build();
 
   McpToolCall mcp_call{
-      .server_id = "github",
+      .server_id = McpServerId{"github"},
       .tool_name = "mcp_github__create_issue",
       .original_tool_name = "create_issue",
       .arguments_json =
@@ -68,7 +69,7 @@ TEST_CASE("mcp_banner_and_cap") {
     std::string big_arg(3000, 'X');
     auto big_json = R"({"data":")" + big_arg + R"("})";
     McpToolCall big_call{
-        .server_id = "large",
+        .server_id = McpServerId{"large"},
         .tool_name = "mcp_large__bulk",
         .original_tool_name = "bulk",
         .arguments_json = big_json,
@@ -93,7 +94,7 @@ TEST_CASE("per_tool_override") {
   auto component = ui.Build();
 
   McpToolCall mcp_call{
-      .server_id = "github",
+      .server_id = McpServerId{"github"},
       .tool_name = "mcp_github__delete_repo",
       .original_tool_name = "delete_repo",
       .arguments_json = R"({"repo":"example/yac"})",

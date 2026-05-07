@@ -301,7 +301,7 @@ ftxui::Component ChatUiOverlayState::Wrap(ftxui::Component main_ui) {
                                 &*tool_approval_dialog_.preview)
                           : nullptr;
     if (mcp != nullptr) {
-      rows.push_back(McpServerBanner(mcp->server_id));
+      rows.push_back(McpServerBanner(mcp->server_id.value));
       rows.push_back(ftxui::text(""));
       rows.push_back(McpArgsBlock(mcp->arguments_json));
       rows.push_back(ftxui::text(""));

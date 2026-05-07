@@ -1,3 +1,4 @@
+#include "core_types/typed_ids.hpp"
 #include "presentation/tool_call/descriptor.hpp"
 #include "tool_call/types.hpp"
 
@@ -5,6 +6,7 @@
 
 using namespace yac::presentation::tool_call;
 using namespace yac::tool_call;
+using yac::McpServerId;
 
 TEST_CASE("DescribeToolCall summarizes edited files by basename") {
   const auto descriptor = DescribeToolCall(FileEditCall{
@@ -69,7 +71,7 @@ TEST_CASE("DescribeToolCall summarizes sub-agent status") {
 TEST_CASE("DescribeToolCall summarizes MCP tools") {
   SECTION("result count") {
     const auto descriptor = DescribeToolCall(McpToolCall{
-        .server_id = "github",
+        .server_id = McpServerId{"github"},
         .tool_name = "search_repos",
         .result_blocks = {{.kind = McpResultBlockKind::Text},
                           {.kind = McpResultBlockKind::ResourceLink}},
@@ -82,7 +84,7 @@ TEST_CASE("DescribeToolCall summarizes MCP tools") {
 
   SECTION("empty result") {
     const auto descriptor = DescribeToolCall(McpToolCall{
-        .server_id = "fs",
+        .server_id = McpServerId{"fs"},
         .tool_name = "read_empty",
     });
 
@@ -90,10 +92,11 @@ TEST_CASE("DescribeToolCall summarizes MCP tools") {
   }
 
   SECTION("failure and truncation") {
-    auto failed =
-        McpToolCall{.server_id = "bad", .tool_name = "fail", .is_error = true};
-    auto truncated = McpToolCall{
-        .server_id = "large", .tool_name = "query", .is_truncated = true};
+    auto failed = McpToolCall{
+        .server_id = McpServerId{"bad"}, .tool_name = "fail", .is_error = true};
+    auto truncated = McpToolCall{.server_id = McpServerId{"large"},
+                                 .tool_name = "query",
+                                 .is_truncated = true};
 
     REQUIRE(DescribeToolCall(failed).summary == "failed");
     REQUIRE(DescribeToolCall(truncated).summary == "truncated");

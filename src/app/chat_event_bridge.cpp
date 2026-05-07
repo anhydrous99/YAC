@@ -283,7 +283,7 @@ void ChatEventBridge::Handle(chat::SubAgentProgressEvent event) {
   tool_data::SubAgentCall block{
       .task = event.sub_agent_task,
       .status = tool_data::SubAgentStatus::Running,
-      .agent_id = event.sub_agent_id,
+      .agent_id = event.sub_agent_id.value,
       .tool_count = event.sub_agent_tool_count,
   };
   chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
@@ -297,7 +297,7 @@ void ChatEventBridge::Handle(chat::SubAgentCompletedEvent event) {
   tool_data::SubAgentCall block{
       .task = event.sub_agent_task,
       .status = tool_data::SubAgentStatus::Complete,
-      .agent_id = event.sub_agent_id,
+      .agent_id = event.sub_agent_id.value,
       .result = event.sub_agent_result,
       .tool_count = event.sub_agent_tool_count,
       .elapsed_ms = event.sub_agent_elapsed_ms,
@@ -320,7 +320,7 @@ void ChatEventBridge::Handle(chat::SubAgentErrorEvent event) {
   tool_data::SubAgentCall block{
       .task = event.sub_agent_task,
       .status = tool_data::SubAgentStatus::Error,
-      .agent_id = event.sub_agent_id,
+      .agent_id = event.sub_agent_id.value,
       .result = event.sub_agent_result,
       .tool_count = event.sub_agent_tool_count,
       .elapsed_ms = event.sub_agent_elapsed_ms,
@@ -336,7 +336,7 @@ void ChatEventBridge::Handle(chat::SubAgentCancelledEvent event) {
   tool_data::SubAgentCall block{
       .task = event.sub_agent_task,
       .status = tool_data::SubAgentStatus::Cancelled,
-      .agent_id = event.sub_agent_id,
+      .agent_id = event.sub_agent_id.value,
   };
   chat_ui_.get().UpdateToolCallMessage(event.message_id, std::move(block),
                                        MessageStatus::Cancelled);
@@ -351,14 +351,15 @@ presentation::McpStatusSink& ChatEventBridge::GetMcpStatusSink() {
 }
 
 void ChatEventBridge::Handle(chat::McpServerStateChangedEvent event) {
-  mcp_sink_.UpdateServer(event.server_id, event.state, event.error);
+  mcp_sink_.UpdateServer(event.server_id.value, event.state, event.error);
   if (post_fn_) {
     post_fn_([] {});
   }
 }
 
 void ChatEventBridge::Handle(chat::McpAuthRequiredEvent event) {
-  mcp_sink_.UpdateServer(event.server_id, "auth_required", event.hint_message);
+  mcp_sink_.UpdateServer(event.server_id.value, "auth_required",
+                         event.hint_message);
   if (post_fn_) {
     post_fn_([] {});
   }

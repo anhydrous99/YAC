@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core_types/mcp_resource_types.hpp"
+#include "core_types/typed_ids.hpp"
 #include "mcp/mcp_server_config.hpp"
 #include "mcp/oauth/flow.hpp"
 
@@ -19,7 +20,7 @@ namespace yac::cli {
 
 // Output of McpAdminCommand::Debug. Each field is a rendered section.
 struct McpDebugReport {
-  std::string server_id;
+  ::yac::McpServerId server_id;
   // Status: state, transport, last error.
   std::string status;
   // Auth: whether a token is present and its expiry (no secret values).
