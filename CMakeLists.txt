@@ -268,6 +268,7 @@ target_include_directories(yac_presentation PUBLIC src)
 target_link_libraries(yac_presentation PUBLIC yac_core_types ftxui::screen ftxui::dom ftxui::component)
 
 add_library(yac_service STATIC
+  src/chat/chat_history_store.cpp
   src/chat/chat_service.cpp
   src/chat/chat_service_compactor.cpp
   src/chat/chat_service_history.cpp

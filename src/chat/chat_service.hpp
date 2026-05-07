@@ -1,5 +1,6 @@
 #pragma once
 
+#include "chat/chat_history_store.hpp"
 #include "chat/chat_service_mcp.hpp"
 #include "chat/sub_agent_manager.hpp"
 #include "chat/tool_approval_manager.hpp"
@@ -103,10 +104,12 @@ class ChatService {
   std::shared_ptr<::yac::tool_call::ToolExecutor> tool_executor_;
   std::unique_ptr<ToolApprovalManager> tool_approval_;
   std::unique_ptr<SubAgentManager> sub_agent_manager_;
-  std::unique_ptr<internal::ChatServicePromptProcessor> prompt_processor_;
 
   mutable std::mutex mutex_;
-  std::vector<ChatMessage> history_;
+  std::unique_ptr<ChatHistoryStore> history_store_;
+
+  std::unique_ptr<internal::ChatServicePromptProcessor> prompt_processor_;
+
   std::deque<PendingPrompt> pending_;
   std::optional<TokenUsage> last_usage_;
   ChatEventCallback callback_;

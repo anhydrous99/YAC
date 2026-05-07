@@ -1,7 +1,7 @@
 #include "chat/chat_service.hpp"
 
 #include "chat/agent_mode.hpp"
-#include "chat/chat_service_history.hpp"
+#include "chat/chat_history_store.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"
 
@@ -25,9 +25,10 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
           registry_, tool_executor_, *tool_approval_,
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
           [this] { return ConfigSnapshot(); })),
+      history_store_(std::make_unique<ChatHistoryStore>(mutex_)),
       prompt_processor_(std::make_unique<internal::ChatServicePromptProcessor>(
           registry_, *tool_executor_, *tool_approval_, mcp_helper_.get(),
-          mutex_, history_,
+          mutex_, history_store_->MutableView(),
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
           [this] { return NextMessageId(); },
           [this] { return ConfigSnapshot(); },
@@ -116,15 +117,7 @@ void ChatService::SetProvider(std::string provider_id) {
       return;
     }
 
-    bool has_non_system_messages = false;
-    for (const auto& msg : history_) {
-      if (msg.role != ChatRole::System) {
-        has_non_system_messages = true;
-        break;
-      }
-    }
-
-    if (has_non_system_messages) {
+    if (history_store_->HasNonSystemMessages()) {
       EmitEvent(ChatEvent{ErrorEvent{
           .text = "Cannot change provider mid-session. Run /clear to start a "
                   "new conversation, then change provider.",
@@ -218,7 +211,7 @@ void ChatService::ResetConversation() {
   {
     std::scoped_lock lock(mutex_);
     generation_.fetch_add(1);
-    history_.clear();
+    history_store_->Clear();
     last_usage_.reset();
     config_.agent_mode = AgentMode::Build;
   }
@@ -237,31 +230,23 @@ void ChatService::SetResetDrainBudgetForTest(std::chrono::milliseconds budget) {
 }
 
 void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
-  int messages_removed = 0;
+  std::size_t removed = 0;
   {
     std::scoped_lock lock(mutex_);
     if (active_ || !pending_.empty()) {
       return;
     }
-    const auto before_non_system = static_cast<decltype(sizeof(0))>(
-        std::ranges::count_if(history_, [](const ChatMessage& message) {
-          return message.role != ChatRole::System;
-        }));
-    internal::CompactHistory(history_, keep_last);
-    if (before_non_system > keep_last) {
-      messages_removed = static_cast<int>(before_non_system - keep_last);
-    }
+    removed = history_store_->Compact(keep_last);
   }
 
   EmitEvent(ChatEvent{ConversationCompactedEvent{
       .reason = CompactReason::Manual,
-      .messages_removed = messages_removed,
+      .messages_removed = static_cast<int>(removed),
   }});
 }
 
 std::vector<ChatMessage> ChatService::History() const {
-  std::scoped_lock lock(mutex_);
-  return history_;
+  return history_store_->Snapshot();
 }
 
 bool ChatService::IsBusy() const {
@@ -404,12 +389,10 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
     } else {
       // Worker is busy on another turn; append directly to history so the
       // next request includes this continuation in context.
-      ChatMessage message;
-      message.id = id;
-      message.role = ChatRole::User;
-      message.status = ChatMessageStatus::Complete;
-      message.content = std::move(body);
-      history_.push_back(std::move(message));
+      history_store_->Append(ChatMessage{.id = id,
+                                         .role = ChatRole::User,
+                                         .status = ChatMessageStatus::Complete,
+                                         .content = std::move(body)});
     }
   }
 

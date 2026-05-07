@@ -1,5 +1,6 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
+#include "chat/chat_history_store.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
@@ -425,9 +426,8 @@ ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
   }
   auto mode_excluded =
       mode_excluded_tools_ ? mode_excluded_tools_() : std::set<std::string>{};
-  std::erase_if(tools, [this, &mode_excluded](const auto& t) {
-    return excluded_tools_.contains(t.name) || mode_excluded.contains(t.name);
-  });
+  ChatHistoryStore::FilterToolsForAgentMode(tools, excluded_tools_,
+                                            mode_excluded);
   return request_builder.BuildRequest(*history_, tools);
 }
 
