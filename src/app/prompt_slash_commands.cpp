@@ -1,5 +1,7 @@
 #include "app/prompt_slash_commands.hpp"
 
+#include "util/log.hpp"
+
 #include <algorithm>
 #include <array>
 #include <string_view>
@@ -69,7 +71,12 @@ void RegisterPromptSlashCommands(
         id, [prompt, submit_prompt] {  // NOLINT(bugprone-exception-escape)
           try {
             submit_prompt(chat::RenderPrompt(prompt, ""));
-          } catch (...) {  // best-effort
+          } catch (...) {
+            // SAFETY: slash command handlers are noexcept-by-contract; an
+            // exception here would unwind through FTXUI, so swallow.
+            yac::log::Error("app.prompt_slash_commands",
+                            "prompt submit failed: {}",
+                            yac::log::DescribeCurrentException());
           }
         });
     registry.SetArgumentsHandler(
@@ -77,7 +84,12 @@ void RegisterPromptSlashCommands(
                 std::string arguments) {
           try {
             submit_prompt(chat::RenderPrompt(prompt, std::move(arguments)));
-          } catch (...) {  // best-effort
+          } catch (...) {
+            // SAFETY: slash command handlers are noexcept-by-contract; an
+            // exception here would unwind through FTXUI, so swallow.
+            yac::log::Error("app.prompt_slash_commands",
+                            "prompt submit (with args) failed: {}",
+                            yac::log::DescribeCurrentException());
           }
         });
   }

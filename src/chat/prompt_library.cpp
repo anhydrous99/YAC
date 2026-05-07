@@ -1,6 +1,7 @@
 #include "chat/prompt_library.hpp"
 
 #include "chat/config_paths.hpp"
+#include "util/log.hpp"
 
 #include <algorithm>
 #include <array>
@@ -329,6 +330,11 @@ void WriteSeedPrompt(const std::filesystem::path& prompts_dir,
         return;
       }
     } catch (...) {
+      // SAFETY: a malformed seed file is left untouched so the user retains
+      // their edits; no warning is surfaced because this runs at startup.
+      yac::log::Warn("chat.prompt_library",
+                     "skipping seed prompt update for '{}': {}", path.string(),
+                     yac::log::DescribeCurrentException());
       return;
     }
   }
@@ -482,8 +488,11 @@ std::string BuildRepoContext() {
       context += "\n";
     }
   } catch (...) {
-    // Best-effort directory listing; missing/unreadable entries don't
-    // belong in the prompt context.
+    // SAFETY: best-effort directory listing; missing/unreadable entries
+    // don't belong in the prompt context, so the partial output is kept.
+    yac::log::Warn("chat.prompt_library",
+                   "directory listing for repo context failed: {}",
+                   yac::log::DescribeCurrentException());
   }
   context += "\n";
   return context;
@@ -514,6 +523,11 @@ std::string RenderPrompt(const std::string& prompt,
              try {
                return std::filesystem::current_path().string();
              } catch (...) {
+               // SAFETY: workspace token degrades to empty rather than
+               // aborting prompt rendering when the cwd is unavailable.
+               yac::log::Warn("chat.prompt_library",
+                              "current_path lookup failed: {}",
+                              yac::log::DescribeCurrentException());
                return std::string{};
              }
            }()},

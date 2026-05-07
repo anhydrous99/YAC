@@ -7,6 +7,7 @@
 #include "core_types/mcp_manager_interface.hpp"
 #include "core_types/mcp_resource_types.hpp"
 #include "core_types/mcp_tool_catalog_snapshot.hpp"
+#include "util/log.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -158,7 +159,12 @@ SubAgentManager::SubAgentManager(
 SubAgentManager::~SubAgentManager() {
   try {
     CancelAll();
-  } catch (...) {  // Destructors must not propagate
+  } catch (...) {
+    // SAFETY: destructors must not propagate exceptions; sub-agent teardown
+    // is best-effort during destruction.
+    yac::log::Warn("chat.sub_agent_manager",
+                   "exception during destructor cancel: {}",
+                   yac::log::DescribeCurrentException());
   }
 }
 

@@ -6,6 +6,7 @@
 #include "presentation/chat_ui.hpp"
 #include "presentation/mcp/mcp_slash_commands.hpp"
 #include "presentation/slash_command_registry.hpp"
+#include "util/log.hpp"
 
 #include <exception>
 #include <memory>
@@ -88,9 +89,8 @@ void RegisterMcpSlashCommandHandlers(
   };
   auto auth_runner = std::make_shared<McpAuthRunner>();
 
-  slash_registry.SetArgumentsHandler(
-      "mcp", [&chat_ui, &screen, mcp_admin,
-               auth_runner](std::string args) {
+  slash_registry.SetArgumentsHandler("mcp", [&chat_ui, &screen, mcp_admin,
+                                             auth_runner](std::string args) {
     const auto [subcmd, rest] = ParseMcpSubcmd(args);
 
     if (subcmd.empty()) {
@@ -190,35 +190,50 @@ void RegisterMcpSlashCommandHandlers(
             try {
               mcp_admin->Authenticate(server_id,
                                       mcp::oauth::OAuthInteractionMode{});
-              screen.Post(
-                  [&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
-                   server_id]() noexcept {
-                    try {
-                      chat_ui.SetTransientStatus(presentation::UiNotice{
-                          .severity = presentation::UiSeverity::Info,
-                          .title = "MCP auth complete",
-                          .detail = server_id,
-                      });
-                      screen.PostEvent(ftxui::Event::Custom);
-                    } catch (...) {  // best-effort
-                    }
+              screen.Post([&chat_ui,
+                           &screen,  // NOLINT(bugprone-exception-escape)
+                           server_id]() noexcept {
+                try {
+                  chat_ui.SetTransientStatus(presentation::UiNotice{
+                      .severity = presentation::UiSeverity::Info,
+                      .title = "MCP auth complete",
+                      .detail = server_id,
                   });
+                  screen.PostEvent(ftxui::Event::Custom);
+                } catch (...) {
+                  // SAFETY: noexcept Post lambda; exception cannot
+                  // propagate across the FTXUI task boundary.
+                  yac::log::Error("app.mcp_command_handlers",
+                                  "auth-success UI post failed: {}",
+                                  yac::log::DescribeCurrentException());
+                }
+              });
             } catch (const std::exception& error) {
               std::string err = error.what();
-              screen.Post(
-                  [&chat_ui, &screen,  // NOLINT(bugprone-exception-escape)
-                   server_id, err]() mutable noexcept {
-                    try {
-                      chat_ui.SetTransientStatus(presentation::UiNotice{
-                          .severity = presentation::UiSeverity::Error,
-                          .title = "MCP auth failed: " + server_id,
-                          .detail = err,
-                      });
-                      screen.PostEvent(ftxui::Event::Custom);
-                    } catch (...) {  // best-effort
-                    }
+              screen.Post([&chat_ui,
+                           &screen,  // NOLINT(bugprone-exception-escape)
+                           server_id, err]() mutable noexcept {
+                try {
+                  chat_ui.SetTransientStatus(presentation::UiNotice{
+                      .severity = presentation::UiSeverity::Error,
+                      .title = "MCP auth failed: " + server_id,
+                      .detail = err,
                   });
-            } catch (...) {  // best-effort
+                  screen.PostEvent(ftxui::Event::Custom);
+                } catch (...) {
+                  // SAFETY: noexcept Post lambda; exception cannot
+                  // propagate across the FTXUI task boundary.
+                  yac::log::Error("app.mcp_command_handlers",
+                                  "auth-failure UI post failed: {}",
+                                  yac::log::DescribeCurrentException());
+                }
+              });
+            } catch (...) {
+              // SAFETY: jthread body is noexcept; exception cannot
+              // propagate across the thread boundary.
+              yac::log::Error("app.mcp_command_handlers",
+                              "unhandled exception in mcp auth thread: {}",
+                              yac::log::DescribeCurrentException());
             }
           });
       return;

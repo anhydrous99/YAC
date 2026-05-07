@@ -2,6 +2,7 @@
 
 #include "mcp/debug_log.hpp"
 #include "mcp/protocol_constants.hpp"
+#include "util/log.hpp"
 
 #include <chrono>
 #include <optional>
@@ -59,8 +60,10 @@ McpServerSession::~McpServerSession() {
   try {
     Stop();
   } catch (...) {
-    // Destructors must not propagate exceptions; transport teardown is
-    // best-effort during destruction anyway.
+    // SAFETY: destructors must not propagate exceptions; transport teardown
+    // is best-effort during destruction anyway.
+    yac::log::Warn("mcp.server_session", "exception during destructor stop: {}",
+                   yac::log::DescribeCurrentException());
   }
 }
 
@@ -159,6 +162,8 @@ void McpServerSession::RefreshIfDirty() {
           std::move(refreshed_tools));
     } catch (...) {
       tools_dirty_ = true;
+      yac::log::Error("mcp.server_session", "tools refresh failed: {}",
+                      yac::log::DescribeCurrentException());
       throw;
     }
   }
@@ -170,6 +175,8 @@ void McpServerSession::RefreshIfDirty() {
           std::move(refreshed_resources));
     } catch (...) {
       resources_dirty_ = true;
+      yac::log::Error("mcp.server_session", "resources refresh failed: {}",
+                      yac::log::DescribeCurrentException());
       throw;
     }
   }

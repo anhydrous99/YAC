@@ -317,7 +317,8 @@ OAuthTokens OAuthFlow::RefreshToken(const OAuthConfig& config,
       refresh_in_progress_ = false;
     }
     refresh_cv_.notify_all();
-    throw;
+    throw std::runtime_error(std::string("OAuth refresh failed: ") +
+                             error.what());
   }
 }
 

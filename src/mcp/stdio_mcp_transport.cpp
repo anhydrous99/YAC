@@ -2,6 +2,7 @@
 
 #include "mcp/protocol_constants.hpp"
 #include "tool_call/json_rpc_stdio_base.hpp"
+#include "util/log.hpp"
 
 #include <algorithm>
 #include <array>
@@ -140,8 +141,11 @@ StdioMcpTransport::~StdioMcpTransport() {
   try {
     Stop(std::stop_token{});
   } catch (...) {
-    // Destructors must not propagate exceptions; child-process teardown is
-    // best-effort during destruction.
+    // SAFETY: destructors must not propagate exceptions; child-process
+    // teardown is best-effort during destruction.
+    yac::log::Warn("mcp.stdio_transport",
+                   "exception during destructor stop: {}",
+                   yac::log::DescribeCurrentException());
   }
 }
 
@@ -159,6 +163,8 @@ void StdioMcpTransport::Start() {
     status_ = TransportStatus::Ready;
   } catch (...) {
     status_ = TransportStatus::Failed;
+    yac::log::Error("mcp.stdio_transport", "transport start failed: {}",
+                    yac::log::DescribeCurrentException());
     throw;
   }
 }
@@ -192,6 +198,8 @@ void StdioMcpTransport::Stop(std::stop_token stop) {
     status_ = TransportStatus::Stopped;
   } catch (...) {
     status_ = TransportStatus::Failed;
+    yac::log::Error("mcp.stdio_transport", "transport stop failed: {}",
+                    yac::log::DescribeCurrentException());
     throw;
   }
 }
@@ -234,6 +242,8 @@ Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
       inflight_request_ids_.erase(request_id);
       cancelled_request_ids_.erase(request_id);
     }
+    yac::log::Error("mcp.stdio_transport", "request '{}' failed: {}", method,
+                    yac::log::DescribeCurrentException());
     throw;
   }
 }

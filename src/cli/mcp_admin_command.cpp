@@ -9,6 +9,7 @@
 #include "mcp/oauth/pkce.hpp"
 #include "mcp/secret_redaction.hpp"
 #include "mcp/token_store.hpp"
+#include "util/log.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -77,7 +78,10 @@ bool ServerIdExistsInToml(std::string_view toml_text, std::string_view id) {
       }
     }
   } catch (...) {
-    // Filesystem probing is best-effort; treat any failure as "not found".
+    // SAFETY: filesystem probing is best-effort; treat any failure as "not
+    // found" so callers proceed with their default behavior.
+    yac::log::Warn("cli.mcp_admin", "TOML probe for server id failed: {}",
+                   yac::log::DescribeCurrentException());
   }
   return false;
 }
@@ -427,6 +431,10 @@ McpDebugReport McpAdminCommand::Debug(std::string_view server_id) {
           s << "expiry: " << FormatTokenExpiry(epoch) << "\n";
         }
       } catch (...) {
+        // SAFETY: token JSON is opaque to this debug command; parse failures
+        // surface a benign placeholder rather than aborting the report.
+        yac::log::Warn("cli.mcp_admin", "token JSON parse failed: {}",
+                       yac::log::DescribeCurrentException());
         s << "expiry: (cannot parse token)\n";
       }
     }

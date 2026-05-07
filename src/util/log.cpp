@@ -99,6 +99,9 @@ std::string DescribeCurrentException() {
   } catch (const std::exception& e) {
     return e.what();
   } catch (...) {
+    // SAFETY: this function is the logger's own exception describer; calling
+    // back into yac::log here would recurse, so non-std::exception types
+    // intentionally fall through to a generic descriptor.
     return "unknown exception";
   }
 }

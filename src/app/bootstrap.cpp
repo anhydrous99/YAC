@@ -2,7 +2,6 @@
 
 #include "app/chat_event_bridge.hpp"
 #include "app/mcp_command_handlers.hpp"
-#include "provider/model_context_windows.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
 #include "app/streaming_coalescer.hpp"
@@ -20,8 +19,10 @@
 #include "presentation/util/terminal.hpp"
 #include "provider/bedrock_aws_api_guard.hpp"
 #include "provider/bedrock_chat_provider.hpp"
+#include "provider/model_context_windows.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
+#include "util/log.hpp"
 
 #include <cstdlib>
 #include <exception>
@@ -388,8 +389,10 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
         context += "\n";
       }
     } catch (...) {
-      // Best-effort directory listing; missing/unreadable entries don't
-      // belong in the prompt context.
+      // SAFETY: best-effort directory listing; missing/unreadable entries
+      // don't belong in the prompt context, so the partial output is kept.
+      yac::log::Warn("app.bootstrap", "/init repo-context listing failed: {}",
+                     yac::log::DescribeCurrentException());
     }
     context += "\n";
     const std::string prompt =
@@ -492,8 +495,8 @@ int RunApp() {
 
   ChatEventBridge bridge(chat_ui, /*history_provider=*/{},
                          [provider](const std::string& model_id) {
-                           return provider::ResolveContextWindow(
-                               provider.get(), model_id);
+                           return provider::ResolveContextWindow(provider.get(),
+                                                                 model_id);
                          });
 
   StreamingCoalescer event_coalescer(screen, bridge);

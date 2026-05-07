@@ -12,6 +12,7 @@
 #include "mcp/stdio_mcp_transport.hpp"
 #include "mcp/streamable_http_mcp_transport.hpp"
 #include "mcp/tool_naming.hpp"
+#include "util/log.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -300,7 +301,11 @@ McpManager::McpManager(McpConfig config, EmitEventFn emit_event,
 McpManager::~McpManager() {
   try {
     Stop();
-  } catch (...) {  // Destructors must not propagate
+  } catch (...) {
+    // SAFETY: destructors must not propagate exceptions; session teardown is
+    // best-effort during destruction.
+    yac::log::Warn("mcp.manager", "exception during destructor stop: {}",
+                   yac::log::DescribeCurrentException());
   }
 }
 

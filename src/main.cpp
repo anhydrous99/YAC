@@ -24,6 +24,11 @@ int main(int argc, char* argv[]) {
           try {
             cancel_after_ms = std::stoi(std::string(arg.substr(18)));
           } catch (...) {
+            // SAFETY: best-effort parse of user-provided integer; the caller
+            // is informed of the failure via stderr and exit code 1.
+            yac::log::Error("main",
+                            "--cancel-after-ms requires a valid integer: {}",
+                            yac::log::DescribeCurrentException());
             std::cerr << "Error: --cancel-after-ms requires a valid integer\n";
             return 1;
           }
