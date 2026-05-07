@@ -130,6 +130,14 @@ jobs:
       - name: Install build dependencies
         run: brew install ninja ripgrep
 
+      - name: Install LLVM (macOS)
+        run: |
+          brew install llvm
+          echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
+          ln -sf /opt/homebrew/opt/llvm/bin/clang-format /opt/homebrew/opt/llvm/bin/clang-format-21
+          ln -sf /opt/homebrew/opt/llvm/bin/clang-tidy /opt/homebrew/opt/llvm/bin/clang-tidy-21
+          ln -sf /opt/homebrew/opt/llvm/bin/run-clang-tidy /opt/homebrew/opt/llvm/bin/run-clang-tidy-21 || true
+
       - name: Verify vcpkg baseline
         run: scripts/verify-vcpkg-baseline.sh
 
@@ -148,3 +156,9 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Lint
+        run: cmake --build build --target lint
+
+      - name: Format check
+        run: cmake --build build --target format-check
