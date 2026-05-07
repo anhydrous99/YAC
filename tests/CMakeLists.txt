@@ -21,6 +21,25 @@ endfunction()
 
 yac_add_test(yac_test_message          test_message.cpp)
 yac_add_test(yac_test_string_util      test_string_util.cpp)
+yac_add_test(yac_test_typed_ids        test_typed_ids.cpp)
+
+set(_typed_ids_compile_fail_cmd
+  ${CMAKE_CXX_COMPILER}
+  -std=c++20
+  -I${CMAKE_SOURCE_DIR}/src
+  -c
+  ${CMAKE_CURRENT_SOURCE_DIR}/compile_failure/cross_type_assignment_fails.cpp
+  -o
+  ${CMAKE_CURRENT_BINARY_DIR}/cross_type_assignment_fails.o
+)
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  list(APPEND _typed_ids_compile_fail_cmd -fexperimental-library)
+endif()
+add_test(
+  NAME compile_fail_typed_ids
+  COMMAND ${_typed_ids_compile_fail_cmd}
+)
+set_tests_properties(compile_fail_typed_ids PROPERTIES WILL_FAIL TRUE)
 yac_add_test(yac_test_count_summary    test_count_summary.cpp)
 yac_add_test(yac_test_mcp_json_helpers test_mcp_json_helpers.cpp)
 yac_add_test(yac_test_tool_call_types  test_tool_call_types.cpp)
