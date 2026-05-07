@@ -28,9 +28,8 @@ class SubAgentManager {
  public:
   using EmitEventFn = std::function<void(ChatEvent)>;
   using ConfigSnapshotFn = std::function<ChatConfig()>;
-  using BackgroundResultFn =
-      std::function<void(std::string tool_call_id, std::string task,
-                         std::string result, bool is_error)>;
+  using NextMessageIdFn = std::function<ChatMessageId()>;
+  using ContinuationInjectorFn = std::function<void(std::string body)>;
 
   SubAgentManager(provider::ProviderRegistry& registry,
                   std::shared_ptr<tool_call::ToolExecutor> tool_executor,
@@ -44,7 +43,13 @@ class SubAgentManager {
   SubAgentManager(SubAgentManager&&) = delete;
   SubAgentManager& operator=(SubAgentManager&&) = delete;
 
-  void SetBackgroundResultCallback(BackgroundResultFn callback);
+  // Sets the callback invoked when a background sub-agent completes. The
+  // callback receives a fully formatted continuation body that should be
+  // injected into the parent conversation as a synthetic user message.
+  void SetContinuationInjector(ContinuationInjectorFn injector);
+  // Sets the callback used by SpawnBackgroundFromUser to allocate a fresh
+  // ChatMessageId for the synthetic UI card.
+  void SetNextMessageIdFn(NextMessageIdFn next_message_id);
   void SetMcpManager(core_types::IMcpManager* mcp_manager);
 
   [[nodiscard]] std::string SpawnForeground(
@@ -53,6 +58,13 @@ class SubAgentManager {
   [[nodiscard]] std::string SpawnBackground(const std::string& task,
                                             ChatMessageId card_message_id,
                                             std::string tool_call_id);
+  // Spawns a user-initiated background sub-agent (e.g., the /task slash
+  // command). Allocates a card id via the configured NextMessageIdFn,
+  // emits the synthetic ToolCallStarted event, and delegates to
+  // SpawnBackground. Sub-agents themselves never reach this entry point;
+  // the prompt processor's excluded-tools set keeps the "no nested
+  // sub-agents" invariant intact.
+  [[nodiscard]] std::string SpawnBackgroundFromUser(std::string task);
   void Cancel(const std::string& agent_id);
   void CancelAll();
   [[nodiscard]] bool IsAtCapacity();
@@ -94,8 +106,9 @@ class SubAgentManager {
   std::unordered_map<std::string, std::shared_ptr<SubAgentSession>>
       active_sessions_;
 
-  mutable std::mutex background_result_mutex_;
-  BackgroundResultFn background_result_;
+  mutable std::mutex continuation_mutex_;
+  ContinuationInjectorFn continuation_injector_;
+  NextMessageIdFn next_message_id_;
 };
 
 }  // namespace yac::chat

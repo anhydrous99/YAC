@@ -45,12 +45,10 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   tool_executor_->SetToolApproval(tool_approval_.get());
   sub_agent_manager_->SetMcpManager(mcp_manager_.get());
-  sub_agent_manager_->SetBackgroundResultCallback(
-      [this](std::string tool_call_id, std::string task, std::string result,
-             bool is_error) {
-        HandleBackgroundSubAgentResult(std::move(tool_call_id), std::move(task),
-                                       std::move(result), is_error);
-      });
+  sub_agent_manager_->SetNextMessageIdFn([this] { return NextMessageId(); });
+  sub_agent_manager_->SetContinuationInjector([this](std::string body) {
+    InjectSubAgentContinuation(std::move(body));
+  });
   worker_ = std::jthread([this](std::stop_token st) { WorkerLoop(st); });
 }
 
@@ -339,39 +337,6 @@ ChatMessageId ChatService::NextMessageId() {
 ChatConfig ChatService::ConfigSnapshot() const {
   std::scoped_lock lock(mutex_);
   return config_;
-}
-
-std::string ChatService::SpawnBackgroundSubAgent(std::string task) {
-  auto card_id = NextMessageId();
-  std::string synthetic_tool_call_id = "user-task-" + std::to_string(card_id);
-
-  // Seed the UI card via a synthetic ToolCallStarted event. Subsequent
-  // SubAgentProgress/Completed events target the same card id.
-  ::yac::tool_call::SubAgentCall preview{
-      .task = task,
-      .mode = ::yac::tool_call::SubAgentMode::Background,
-      .status = ::yac::tool_call::SubAgentStatus::Running};
-  EmitEvent(ChatEvent{ToolCallStartedEvent{
-      .message_id = card_id,
-      .role = ChatRole::Tool,
-      .tool_call_id = synthetic_tool_call_id,
-      .tool_name = std::string(::yac::tool_call::kSubAgentToolName),
-      .tool_call = preview,
-      .status = ChatMessageStatus::Active}});
-
-  return sub_agent_manager_->SpawnBackground(task, card_id,
-                                             std::move(synthetic_tool_call_id));
-}
-
-void ChatService::HandleBackgroundSubAgentResult(std::string tool_call_id,
-                                                 std::string task,
-                                                 std::string result,
-                                                 bool is_error) {
-  (void)tool_call_id;
-  std::string header = is_error ? "[Background sub-agent failed]"
-                                : "[Background sub-agent completed]";
-  InjectSubAgentContinuation(header + " Task: " + task + "\n\nResult:\n" +
-                             result);
 }
 
 void ChatService::InjectSubAgentContinuation(std::string body) {

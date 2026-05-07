@@ -168,9 +168,13 @@ SubAgentManager::~SubAgentManager() {
   }
 }
 
-void SubAgentManager::SetBackgroundResultCallback(BackgroundResultFn callback) {
-  std::scoped_lock lock(background_result_mutex_);
-  background_result_ = std::move(callback);
+void SubAgentManager::SetContinuationInjector(ContinuationInjectorFn injector) {
+  std::scoped_lock lock(continuation_mutex_);
+  continuation_injector_ = std::move(injector);
+}
+
+void SubAgentManager::SetNextMessageIdFn(NextMessageIdFn next_message_id) {
+  next_message_id_ = std::move(next_message_id);
 }
 
 void SubAgentManager::SetMcpManager(core_types::IMcpManager* mcp_manager) {
@@ -348,17 +352,20 @@ void SubAgentManager::EmitSessionCompleted(
 
 void SubAgentManager::DeliverBackgroundResult(
     const SubAgentSession& session, const SubAgentCompletion& completion) {
-  BackgroundResultFn callback;
+  ContinuationInjectorFn injector;
   {
-    std::scoped_lock lock(background_result_mutex_);
-    callback = background_result_;
+    std::scoped_lock lock(continuation_mutex_);
+    injector = continuation_injector_;
   }
-  if (!callback) {
+  if (!injector) {
     return;
   }
   const bool is_error = completion.status == ChatMessageStatus::Error ||
                         completion.status == ChatMessageStatus::Cancelled;
-  callback(session.tool_call_id, session.task, completion.result, is_error);
+  std::string header = is_error ? "[Background sub-agent failed]"
+                                : "[Background sub-agent completed]";
+  injector(header + " Task: " + session.task + "\n\nResult:\n" +
+           completion.result);
 }
 
 void SubAgentManager::RequestSessionStop(SubAgentSession& session,
@@ -405,6 +412,30 @@ std::string SubAgentManager::SpawnBackground(const std::string& task,
   });
 
   return session->agent_id;
+}
+
+std::string SubAgentManager::SpawnBackgroundFromUser(std::string task) {
+  if (!next_message_id_) {
+    yac::log::Warn("chat.sub_agent_manager",
+                   "SpawnBackgroundFromUser called before "
+                   "NextMessageIdFn was set");
+    return {};
+  }
+  const auto card_id = next_message_id_();
+  std::string synthetic_tool_call_id = "user-task-" + std::to_string(card_id);
+
+  tool_call::SubAgentCall preview{.task = task,
+                                  .mode = tool_call::SubAgentMode::Background,
+                                  .status = tool_call::SubAgentStatus::Running};
+  parent_emit_(ChatEvent{ToolCallStartedEvent{
+      .message_id = card_id,
+      .role = ChatRole::Tool,
+      .tool_call_id = synthetic_tool_call_id,
+      .tool_name = std::string(tool_call::kSubAgentToolName),
+      .tool_call = std::move(preview),
+      .status = ChatMessageStatus::Active}});
+
+  return SpawnBackground(task, card_id, std::move(synthetic_tool_call_id));
 }
 
 void SubAgentManager::Cancel(const std::string& agent_id) {

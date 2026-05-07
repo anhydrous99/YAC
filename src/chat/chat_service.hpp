@@ -58,11 +58,6 @@ class ChatService {
   void CompactConversation(decltype(sizeof(0)) keep_last = 10);
   SubAgentManager& GetSubAgentManager() { return *sub_agent_manager_; }
   internal::ChatServiceMcp* GetMcpHelper() { return mcp_helper_.get(); }
-  // Spawns a background sub-agent initiated by the user (e.g., /task).
-  // Creates the UI card via a synthetic ToolCallStarted event and returns
-  // the agent id. On completion the result is delivered via
-  // HandleBackgroundSubAgentResult (same path as model-initiated spawns).
-  std::string SpawnBackgroundSubAgent(std::string task);
 
   [[nodiscard]] std::vector<ChatMessage> History() const;
   [[nodiscard]] bool IsBusy() const;
@@ -89,9 +84,6 @@ class ChatService {
   void EmitQueueDepth();
   [[nodiscard]] ChatMessageId NextMessageId();
   [[nodiscard]] ChatConfig ConfigSnapshot() const;
-  void HandleBackgroundSubAgentResult(std::string tool_call_id,
-                                      std::string task, std::string result,
-                                      bool is_error);
   void InjectSubAgentContinuation(std::string body);
 
   static constexpr const char* kSubAgentRoleLabel = "Sub-agent";

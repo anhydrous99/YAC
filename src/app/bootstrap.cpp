@@ -422,7 +422,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
           });
           return;
         }
-        static_cast<void>(chat_service.SpawnBackgroundSubAgent(args));
+        static_cast<void>(
+            chat_service.GetSubAgentManager().SpawnBackgroundFromUser(args));
       });
   RegisterPromptSlashCommands(
       slash_registry, prompts,
