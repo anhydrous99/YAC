@@ -1,6 +1,6 @@
 #include "tool_call/executor_catalog.hpp"
 
-#include "chat/chat_service_tool_approval.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "tool_call/bash_tool_executor.hpp"
 #include "tool_call/edit_tool_executor.hpp"
 #include "tool_call/executor_arguments.hpp"

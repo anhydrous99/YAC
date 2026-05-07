@@ -4,7 +4,6 @@
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"
-#include "chat/chat_service_tool_approval.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -21,7 +20,7 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
                                      mcp_manager_.get())
                                : nullptr),
       tool_executor_(internal::MakeChatToolExecutor(config_, todo_state_)),
-      tool_approval_(std::make_unique<internal::ChatServiceToolApproval>()),
+      tool_approval_(std::make_unique<ToolApprovalManager>()),
       sub_agent_manager_(std::make_unique<SubAgentManager>(
           registry_, tool_executor_, *tool_approval_,
           [this](ChatEvent event) { EmitEvent(std::move(event)); },
@@ -154,12 +153,12 @@ void ChatService::CancelActiveResponse() {
 }
 
 void ChatService::ResolveToolApproval(std::string approval_id, bool approved) {
-  tool_approval_->Resolve(approval_id, approved);
+  tool_approval_->ResolveToolApproval(approval_id, approved);
 }
 
 void ChatService::ResolveAskUser(const std::string& approval_id,
                                  std::string response) {
-  tool_approval_->ResolveWithResponse(approval_id, true, std::move(response));
+  tool_approval_->ResolveAskUser(approval_id, std::move(response));
 }
 
 AgentMode ChatService::GetAgentMode() const {

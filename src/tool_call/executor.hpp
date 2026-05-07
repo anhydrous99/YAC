@@ -12,9 +12,7 @@
 
 namespace yac::chat {
 class SubAgentManager;
-namespace internal {
-class ChatServiceToolApproval;
-}  // namespace internal
+class ToolApprovalManager;
 }  // namespace yac::chat
 
 namespace yac::tool_call {
@@ -40,7 +38,7 @@ struct ExecutionContext {
   const std::shared_ptr<ILspClient>& lsp_client;
   TodoState& todo_state;
   chat::SubAgentManager* sub_agent_manager;
-  chat::internal::ChatServiceToolApproval* tool_approval;
+  chat::ToolApprovalManager* tool_approval;
   std::stop_token stop;
 };
 
@@ -56,14 +54,14 @@ class ToolExecutor {
   [[nodiscard]] ToolExecutionResult Execute(const PreparedToolCall& prepared,
                                             std::stop_token stop_token) const;
   void SetSubAgentManager(chat::SubAgentManager* manager);
-  void SetToolApproval(chat::internal::ChatServiceToolApproval* tool_approval);
+  void SetToolApproval(chat::ToolApprovalManager* tool_approval);
 
  private:
   WorkspaceFilesystem workspace_filesystem_;
   std::shared_ptr<ILspClient> lsp_client_;
   TodoState& todo_state_;
   chat::SubAgentManager* sub_agent_manager_ = nullptr;
-  chat::internal::ChatServiceToolApproval* tool_approval_ = nullptr;
+  chat::ToolApprovalManager* tool_approval_ = nullptr;
 };
 
 }  // namespace yac::tool_call

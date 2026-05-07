@@ -1,4 +1,4 @@
-#include "chat/chat_service_tool_approval.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "chat/types.hpp"
 #include "tool_call/executor_catalog.hpp"
 
@@ -12,7 +12,6 @@
 using namespace std::chrono_literals;
 
 using namespace yac::chat;
-using namespace yac::chat::internal;
 using namespace yac::tool_call;
 
 TEST_CASE("Ask user preparation and approval resolution work") {
@@ -44,18 +43,19 @@ TEST_CASE("Ask user preparation and approval resolution work") {
     REQUIRE(call.options == expected_options);
   }
 
-  SECTION("ResolveWithResponse wakes WaitForResolution with response") {
-    ChatServiceToolApproval approval;
-    auto approval_id = approval.BeginPendingApproval();
+  SECTION("ResolveAskUser wakes WaitForResolution with response") {
+    ToolApprovalManager approval;
+    auto approval_id = approval.RequestApproval();
 
     ApprovalResolution resolution;
     std::jthread waiter([&](std::stop_token stop_token) {
       resolution = approval.WaitForResolution(approval_id, stop_token);
     });
 
-    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to avoid approval-miss race
+    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to
+    // avoid approval-miss race
     std::this_thread::sleep_for(10ms);
-    approval.ResolveWithResponse(approval_id, true, "Need one more change");
+    approval.ResolveAskUser(approval_id, "Need one more change");
     waiter.join();
 
     REQUIRE(resolution.approved);
@@ -63,17 +63,18 @@ TEST_CASE("Ask user preparation and approval resolution work") {
   }
 
   SECTION("ResolveToolApproval with false cancels") {
-    ChatServiceToolApproval approval;
-    auto approval_id = approval.BeginPendingApproval();
+    ToolApprovalManager approval;
+    auto approval_id = approval.RequestApproval();
 
     ApprovalResolution resolution;
     std::jthread waiter([&](std::stop_token stop_token) {
       resolution = approval.WaitForResolution(approval_id, stop_token);
     });
 
-    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to avoid approval-miss race
+    // SLEEP-RATIONALE: let jthread enter WaitForResolution before resolving to
+    // avoid approval-miss race
     std::this_thread::sleep_for(10ms);
-    approval.Resolve(approval_id, false);
+    approval.ResolveToolApproval(approval_id, false);
     waiter.join();
 
     REQUIRE_FALSE(resolution.approved);

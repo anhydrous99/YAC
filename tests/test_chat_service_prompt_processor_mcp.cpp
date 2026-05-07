@@ -1,6 +1,6 @@
 #include "chat/chat_service_mcp.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
-#include "chat/chat_service_tool_approval.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "lambda_mock_provider.hpp"
 #include "mock_mcp_manager.hpp"
 #include "provider/language_model_provider.hpp"
@@ -110,7 +110,8 @@ struct PromptProcessorHarness {
                 if (const auto* approval =
                         event.As<ToolApprovalRequestedEvent>();
                     approval != nullptr) {
-                  tool_approval.Resolve(approval->approval_id, true);
+                  tool_approval.ResolveToolApproval(approval->approval_id,
+                                                    true);
                 }
               }
               events.push_back(std::move(event));
@@ -141,7 +142,7 @@ struct PromptProcessorHarness {
   ProviderRegistry registry;
   TodoState todo_state;
   ToolExecutor tool_executor;
-  ChatServiceToolApproval tool_approval;
+  ToolApprovalManager tool_approval;
   ChatServiceMcp mcp_helper;
   std::mutex history_mutex;
   std::vector<ChatMessage> history;

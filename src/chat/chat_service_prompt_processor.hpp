@@ -1,7 +1,7 @@
 #pragma once
 
 #include "chat/chat_service_request_builder.hpp"
-#include "chat/chat_service_tool_approval.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
@@ -41,7 +41,7 @@ class ChatServicePromptProcessor {
   ChatServicePromptProcessor(
       provider::ProviderRegistry& registry,
       ::yac::tool_call::ToolExecutor& tool_executor,
-      ChatServiceToolApproval& tool_approval, ChatServiceMcp* chat_service_mcp,
+      ToolApprovalManager& tool_approval, ChatServiceMcp* chat_service_mcp,
       std::mutex& history_mutex, std::vector<ChatMessage>& history,
       EmitEventFn emit_event, NextMessageIdFn next_message_id,
       ConfigSnapshotFn config_snapshot, GenerationValueFn generation_value,
@@ -138,7 +138,7 @@ class ChatServicePromptProcessor {
 
   provider::ProviderRegistry* registry_;
   ::yac::tool_call::ToolExecutor* tool_executor_;
-  ChatServiceToolApproval* tool_approval_;
+  ToolApprovalManager* tool_approval_;
   ChatServiceMcp* chat_service_mcp_;
   std::mutex* history_mutex_;
   std::vector<ChatMessage>* history_;

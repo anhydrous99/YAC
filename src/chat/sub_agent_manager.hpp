@@ -18,11 +18,7 @@ class IMcpManager;
 
 namespace yac::chat {
 
-namespace internal {
-
-class ChatServiceToolApproval;
-
-}  // namespace internal
+class ToolApprovalManager;
 
 inline constexpr int kMaxConcurrentSubAgents = 4;
 inline constexpr int kDefaultSubAgentTimeoutSeconds = 300;
@@ -38,8 +34,7 @@ class SubAgentManager {
 
   SubAgentManager(provider::ProviderRegistry& registry,
                   std::shared_ptr<tool_call::ToolExecutor> tool_executor,
-                  internal::ChatServiceToolApproval& tool_approval,
-                  EmitEventFn parent_emit,
+                  ToolApprovalManager& tool_approval, EmitEventFn parent_emit,
                   ConfigSnapshotFn parent_config_snapshot,
                   int timeout_seconds = kDefaultSubAgentTimeoutSeconds);
   ~SubAgentManager();
@@ -88,7 +83,7 @@ class SubAgentManager {
 
   provider::ProviderRegistry* registry_;
   std::shared_ptr<tool_call::ToolExecutor> tool_executor_;
-  internal::ChatServiceToolApproval* tool_approval_;
+  ToolApprovalManager* tool_approval_;
   EmitEventFn parent_emit_;
   ConfigSnapshotFn parent_config_snapshot_;
   core_types::IMcpManager* mcp_manager_ = nullptr;

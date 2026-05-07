@@ -1,5 +1,5 @@
-#include "chat/chat_service_tool_approval.hpp"
 #include "chat/sub_agent_manager.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "lambda_mock_provider.hpp"
 #include "mock_mcp_manager.hpp"
 #include "provider/language_model_provider.hpp"
@@ -64,7 +64,7 @@ struct SubAgentMcpTestContext {
   ProviderRegistry registry;
   TodoState todo_state;
   std::shared_ptr<ToolExecutor> executor;
-  internal::ChatServiceToolApproval tool_approval;
+  ToolApprovalManager tool_approval;
   std::mutex events_mutex;
   std::vector<ChatEvent> events;
   ChatConfig config;

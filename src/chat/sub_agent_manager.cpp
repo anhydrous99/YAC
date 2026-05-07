@@ -2,8 +2,8 @@
 
 #include "chat/chat_service_mcp.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
-#include "chat/chat_service_tool_approval.hpp"
 #include "chat/sub_agent_event_adapter.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "core_types/mcp_manager_interface.hpp"
 #include "core_types/mcp_resource_types.hpp"
 #include "core_types/mcp_tool_catalog_snapshot.hpp"
@@ -147,7 +147,7 @@ struct SubAgentManager::SubAgentCompletion {
 SubAgentManager::SubAgentManager(
     provider::ProviderRegistry& registry,
     std::shared_ptr<tool_call::ToolExecutor> tool_executor,
-    internal::ChatServiceToolApproval& tool_approval, EmitEventFn parent_emit,
+    ToolApprovalManager& tool_approval, EmitEventFn parent_emit,
     ConfigSnapshotFn parent_config_snapshot, int timeout_seconds)
     : registry_(&registry),
       tool_executor_(std::move(tool_executor)),

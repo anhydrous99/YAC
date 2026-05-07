@@ -19,8 +19,7 @@ void ToolExecutor::SetSubAgentManager(chat::SubAgentManager* manager) {
   sub_agent_manager_ = manager;
 }
 
-void ToolExecutor::SetToolApproval(
-    chat::internal::ChatServiceToolApproval* tool_approval) {
+void ToolExecutor::SetToolApproval(chat::ToolApprovalManager* tool_approval) {
   tool_approval_ = tool_approval;
 }
 

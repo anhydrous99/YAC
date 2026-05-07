@@ -2,6 +2,7 @@
 
 #include "chat/chat_service_mcp.hpp"
 #include "chat/sub_agent_manager.hpp"
+#include "chat/tool_approval_manager.hpp"
 #include "chat/types.hpp"
 #include "core_types/mcp_manager_interface.hpp"
 #include "provider/provider_registry.hpp"
@@ -28,7 +29,6 @@ using ChatEventCallback = std::function<void(ChatEvent)>;
 namespace internal {
 
 class ChatServicePromptProcessor;
-class ChatServiceToolApproval;
 
 }  // namespace internal
 
@@ -101,7 +101,7 @@ class ChatService {
   std::unique_ptr<internal::ChatServiceMcp> mcp_helper_;
   ::yac::tool_call::TodoState todo_state_;
   std::shared_ptr<::yac::tool_call::ToolExecutor> tool_executor_;
-  std::unique_ptr<internal::ChatServiceToolApproval> tool_approval_;
+  std::unique_ptr<ToolApprovalManager> tool_approval_;
   std::unique_ptr<SubAgentManager> sub_agent_manager_;
   std::unique_ptr<internal::ChatServicePromptProcessor> prompt_processor_;
 

@@ -1,11 +1,11 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
-#include "provider/model_context_windows.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
 #include "chat/tool_call_argument_parser.hpp"
 #include "mcp/tool_naming.hpp"
+#include "provider/model_context_windows.hpp"
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/tool_validation_error.hpp"
 
@@ -134,7 +134,7 @@ std::string PartialField(const std::string& arguments_json,
 ChatServicePromptProcessor::ChatServicePromptProcessor(
     provider::ProviderRegistry& registry,
     ::yac::tool_call::ToolExecutor& tool_executor,
-    ChatServiceToolApproval& tool_approval, ChatServiceMcp* chat_service_mcp,
+    ToolApprovalManager& tool_approval, ChatServiceMcp* chat_service_mcp,
     std::mutex& history_mutex, std::vector<ChatMessage>& history,
     EmitEventFn emit_event, NextMessageIdFn next_message_id,
     ConfigSnapshotFn config_snapshot, GenerationValueFn generation_value,
@@ -491,7 +491,8 @@ bool ChatServicePromptProcessor::MaybeAwaitApproval(
       return false;
     }
   }
-  auto approval_id = tool_approval_->BeginPendingApproval();
+  auto approval_id = tool_approval_->RequestApproval(
+      tool_request.id, tool_request.name, tool_request.arguments_json);
   prepared.approval_id = approval_id;
   std::string question;
   std::vector<std::string> options;

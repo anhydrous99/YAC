@@ -273,7 +273,7 @@ add_library(yac_service STATIC
   src/chat/chat_service_history.cpp
   src/chat/chat_service_prompt_processor.cpp
   src/chat/chat_service_request_builder.cpp
-  src/chat/chat_service_tool_approval.cpp
+  src/chat/tool_approval_manager.cpp
   src/chat/config.cpp
   src/chat/config_paths.cpp
   src/chat/prompt_library.cpp
