@@ -1,6 +1,7 @@
 #include "theme.hpp"
 
-#include <iostream>
+#include "util/log.hpp"
+
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -61,8 +62,9 @@ Theme GetTheme(const std::string& name) {
   RegisterBuiltinThemes();
   auto it = g_theme_registry.find(name);
   if (it == g_theme_registry.end()) {
-    std::cerr << "[theme] Unknown theme name: '" << name
-              << "'. Falling back to default 'vivid'.\n";
+    yac::log::Warn("theme",
+                   "unknown theme name: '{}'. Falling back to default 'vivid'.",
+                   name);
     return g_theme_registry.at("vivid")();
   }
   return it->second();

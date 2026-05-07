@@ -328,6 +328,7 @@ add_library(yac_service STATIC
   src/tool_call/workspace_filesystem.cpp
   src/tool_call/gitignore_filter.cpp
   src/tool_call/glob_tool_executor.cpp
+  src/util/log.cpp
 )
 target_include_directories(yac_service PUBLIC src)
 target_link_libraries(yac_service

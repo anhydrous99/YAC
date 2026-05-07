@@ -1,6 +1,7 @@
 #include "app/bootstrap.hpp"
 #include "app/headless.hpp"
 #include "cli/mcp_cli_dispatch.hpp"
+#include "util/log.hpp"
 
 #include <iostream>
 #include <string>
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
             return 1;
           }
         } else if (arg == "--cancel-after-ms") {
-          std::cerr << "Error: --cancel-after-ms requires a value\n";
+          yac::log::Error("main", "--cancel-after-ms requires a value");
           return 1;
         } else {
           if (!prompt.empty()) {

@@ -7,6 +7,7 @@
 #include "provider/bedrock_chat_provider.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
+#include "util/log.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -69,7 +70,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
             done = true;
             done_cv.notify_one();
           } else if constexpr (std::is_same_v<T, chat::ErrorEvent>) {
-            std::cerr << "Error: " << e.text << '\n';
+            yac::log::Error("headless", "{}", e.text);
             exit_code = 1;
             std::unique_lock<std::mutex> lock(done_mutex);
             done = true;
@@ -79,8 +80,9 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
             if (auto_approve) {
               service.ResolveToolApproval(e.approval_id, true);
             } else {
-              std::cerr << "Tool approval required (use --auto-approve): "
-                        << e.tool_name << '\n';
+              yac::log::Error("headless",
+                              "tool approval required (use --auto-approve): {}",
+                              e.tool_name);
               service.ResolveToolApproval(e.approval_id, false);
             }
           }
