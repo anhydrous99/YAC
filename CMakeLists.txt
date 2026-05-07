@@ -497,6 +497,32 @@ endif()
 if(RUN_CLANG_TIDY)
 
 set(CLANG_TIDY_EXTRA_ARGS)
+if(APPLE)
+  # Homebrew clang-tidy does not inherit AppleClang's default SDK search path
+  # from /usr/bin/c++ compile commands, so pass the detected SDK explicitly.
+  set(YAC_CLANG_TIDY_MACOS_SYSROOT "")
+  if(CMAKE_OSX_SYSROOT)
+    if(IS_DIRECTORY "${CMAKE_OSX_SYSROOT}")
+      set(YAC_CLANG_TIDY_MACOS_SYSROOT "${CMAKE_OSX_SYSROOT}")
+    else()
+      execute_process(
+        COMMAND xcrun --sdk ${CMAKE_OSX_SYSROOT} --show-sdk-path
+        OUTPUT_VARIABLE YAC_CLANG_TIDY_MACOS_SYSROOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    endif()
+  endif()
+  if(NOT YAC_CLANG_TIDY_MACOS_SYSROOT AND CMAKE_CXX_COMPILER_APPLE_SYSROOT)
+    set(YAC_CLANG_TIDY_MACOS_SYSROOT "${CMAKE_CXX_COMPILER_APPLE_SYSROOT}")
+  endif()
+  if(YAC_CLANG_TIDY_MACOS_SYSROOT)
+    if(IS_DIRECTORY "${YAC_CLANG_TIDY_MACOS_SYSROOT}")
+      list(APPEND CLANG_TIDY_EXTRA_ARGS
+        "--extra-arg=-isysroot"
+        "--extra-arg=${YAC_CLANG_TIDY_MACOS_SYSROOT}")
+    endif()
+  endif()
+endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   foreach(IMPLICIT_INCLUDE_DIR IN LISTS CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
     if(IMPLICIT_INCLUDE_DIR MATCHES "/c\\+\\+/")
