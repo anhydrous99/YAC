@@ -20,6 +20,19 @@ namespace yac::provider {
 
 namespace {
 
+// Thin subclass of BedrockRuntimeClient that promotes DisableRequestProcessing
+// to the public interface. The method is public in aws-sdk-cpp 1.11.580 (via
+// the legacy AWSClient base) but protected in 1.11.790+ (after the client was
+// rebased onto smithy::client::AwsSmithyClientBase). A using-declaration
+// compiles cleanly in both versions: it's a no-op promotion when the base
+// method is already public, and a real promotion when it is protected.
+class YacBedrockRuntimeClient
+    : public Aws::BedrockRuntime::BedrockRuntimeClient {
+ public:
+  using BedrockRuntimeClient::BedrockRuntimeClient;
+  using BedrockRuntimeClient::DisableRequestProcessing;
+};
+
 // Polls a stop_token at 50 ms cadence and, on cancellation, calls
 // BedrockRuntimeClient::DisableRequestProcessing() from a sibling thread to
 // abort any in-flight Bedrock streaming request synchronously running on the
@@ -35,7 +48,7 @@ namespace {
 class CancellationWatchdog {
  public:
   CancellationWatchdog(std::stop_token stop_token,
-                       Aws::BedrockRuntime::BedrockRuntimeClient* client) {
+                       YacBedrockRuntimeClient* client) {
     std::stop_token completion_token = completion_source_.get_token();
     thread_ = std::thread([external = std::move(stop_token),
                            completion = std::move(completion_token), client]() {
@@ -117,16 +130,15 @@ void BedrockChatProvider::CompleteStream(const chat::ChatRequest& request,
         return;
       }
 
-      std::unique_ptr<Aws::BedrockRuntime::BedrockRuntimeClient> client;
+      std::unique_ptr<YacBedrockRuntimeClient> client;
       if (!profile_name.empty()) {
         auto creds =
             Aws::MakeShared<Aws::Auth::ProfileConfigFileAWSCredentialsProvider>(
                 "yac-bedrock", profile_name.c_str());
-        client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
-            creds, client_config);
+        client =
+            std::make_unique<YacBedrockRuntimeClient>(creds, client_config);
       } else {
-        client = std::make_unique<Aws::BedrockRuntime::BedrockRuntimeClient>(
-            client_config);
+        client = std::make_unique<YacBedrockRuntimeClient>(client_config);
       }
 
       CancellationWatchdog watchdog(stop_token, client.get());

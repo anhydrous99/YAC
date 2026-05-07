@@ -57,15 +57,28 @@ The SVG previews show the current chat surface and command palette.
 
 ### Configure
 
+YAC uses the bundled vcpkg toolchain for `aws-sdk-cpp`. Requires CMake ≥ 3.21
+and git submodules.
+
 ```bash
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+git submodule update --init --recursive
+./external/vcpkg/bootstrap-vcpkg.sh  # one-time, ~30s
+cmake --preset debug
 ```
+
+The first configure will download and build aws-sdk-cpp (~15 min on a
+cold cache). Subsequent configures are <30 seconds because vcpkg caches
+installed packages under `external/vcpkg/`.
+
+For a release build, use `cmake --preset release` instead.
 
 ### Build
 
 ```bash
 cmake --build build
 ```
+
+For the release preset use `cmake --build build-release` instead.
 
 ### Run
 
@@ -341,11 +354,14 @@ flowchart TD
 ## Notes
 
 - The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
-- Dependencies are fetched by CMake with `FetchContent`.
+- `aws-sdk-cpp` is sourced via the bundled vcpkg toolchain (`external/vcpkg`);
+  the remaining dependencies are fetched by CMake with `FetchContent`.
+- The build requires CMake ≥ 3.21 (configure presets v3) and Ninja.
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
 - `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
-- libcurl is required for the OpenAI-compatible streaming provider.
+- libcurl is required for the OpenAI-compatible streaming provider; vcpkg
+  bundles its own libcurl, so no system libcurl install is required.
 - `build/compile_commands.json` is generated during configure and is used by
   `.clangd`.
 - The `format` and `lint` targets rely on CMake source globbing, so reconfigure

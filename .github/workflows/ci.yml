@@ -8,17 +8,19 @@ on:
 
 jobs:
   linux:
-    name: Linux validation
+    name: Linux
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libcurl4-openssl-dev ripgrep wget gnupg lsb-release software-properties-common
+          sudo apt-get install -y ninja-build ripgrep wget gnupg lsb-release software-properties-common
           # YAC pins clang tooling to version 21; install via apt.llvm.org
           # because Ubuntu's default repos lag behind.
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
@@ -26,8 +28,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-format-21 clang-tidy-21
 
+      - name: Verify vcpkg baseline
+        run: scripts/verify-vcpkg-baseline.sh
+
+      # https://github.com/lukka/run-vcpkg#readme
+      - name: Setup vcpkg (binary caching via GHA cache)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
+          vcpkgJsonGlob: 'vcpkg.json'
+
       - name: Configure
-        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        run: cmake --preset debug
 
       - name: Build
         run: cmake --build build
@@ -60,24 +72,30 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build + coverage dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libcurl4-openssl-dev ripgrep wget gnupg lsb-release software-properties-common
+          sudo apt-get install -y ninja-build ripgrep wget gnupg lsb-release software-properties-common
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
           sudo add-apt-repository -y "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
           sudo apt-get update
           sudo apt-get install -y clang-21 llvm-21
 
+      # https://github.com/lukka/run-vcpkg#readme
+      - name: Setup vcpkg (binary caching via GHA cache)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
+          vcpkgJsonGlob: 'vcpkg.json'
+
       - name: Configure (coverage)
         env:
           CC: clang-21
           CXX: clang++-21
-        run: >
-          cmake -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DYAC_ENABLE_COVERAGE=ON
+        run: cmake --preset debug -DYAC_ENABLE_COVERAGE=ON
 
       - name: Build
         run: cmake --build build
@@ -100,21 +118,30 @@ jobs:
           if-no-files-found: error
 
   macos:
-    name: macOS validation
+    name: macOS
     runs-on: macos-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build dependencies
-        run: brew install ninja curl openssl@3 ripgrep
+        run: brew install ninja ripgrep
+
+      - name: Verify vcpkg baseline
+        run: scripts/verify-vcpkg-baseline.sh
+
+      # https://github.com/lukka/run-vcpkg#readme
+      - name: Setup vcpkg (binary caching via GHA cache)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
+          vcpkgJsonGlob: 'vcpkg.json'
 
       - name: Configure
-        run: >
-          cmake -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Debug
-          -DOPENSSL_ROOT_DIR=$(brew --prefix openssl@3)
+        run: cmake --preset debug
 
       - name: Build
         run: cmake --build build
