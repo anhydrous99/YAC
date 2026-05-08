@@ -122,10 +122,6 @@ ftxui::Component ChatUI::Build() {
                         std::to_string(overlay_state_.QueueDepth())) |
             ftxui::color(ftxui::Color::Yellow) | ftxui::bold);
       }
-      if (const auto& notice = overlay_state_.TransientStatus()) {
-        rail_center.push_back(ftxui::text(" " + NoticeText(*notice)) |
-                              ftxui::color(SeverityColor(notice->severity)));
-      }
     }
 
     auto mcp_element = mcp_panel->Render();

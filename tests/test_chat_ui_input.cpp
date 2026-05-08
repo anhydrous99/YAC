@@ -248,7 +248,7 @@ TEST_CASE("ChatUI renders startup status in empty transcript") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[? help]"));
 }
 
-TEST_CASE("ChatUI renders queue depth and transient status") {
+TEST_CASE("ChatUI renders queue depth") {
   ChatUI ui;
   ui.SetQueueDepth(2);
   ui.SetTransientStatus(UiNotice{.severity = UiSeverity::Warning,
@@ -259,8 +259,6 @@ TEST_CASE("ChatUI renders queue depth and transient status") {
   auto output = RenderComponent(component, 100, 30);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("queued 2"));
-  REQUIRE_THAT(output,
-               Catch::Matchers::ContainsSubstring("Model discovery failed"));
 }
 
 TEST_CASE("ChatUI schedules pending thinking animation ticks") {
