@@ -47,7 +47,10 @@ class ChatEventSink {
   virtual void SetLastUsage(UsageStats usage) = 0;
   virtual void SetContextWindowTokens(int tokens) = 0;
   virtual void SetQueueDepth(int queue_depth) = 0;
-  virtual void SetTransientStatus(UiNotice notice) = 0;
+  // Append a UI-only notice to the transcript. Notices are rendered
+  // inline alongside messages but live in a parallel container that is
+  // never serialized into LLM context.
+  virtual MessageId AppendNotice(UiNotice notice) = 0;
   virtual void SetTyping(bool typing) = 0;
   virtual void ClearMessages() = 0;
 

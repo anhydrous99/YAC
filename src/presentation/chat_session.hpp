@@ -2,7 +2,9 @@
 
 #include "core_types/typed_ids.hpp"
 #include "message.hpp"
+#include "ui_status.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -13,6 +15,18 @@
 #include <vector>
 
 namespace yac::presentation {
+
+// UI-only inline notice rendered alongside messages in the transcript.
+// Lives in a vector parallel to messages_; intentionally has no
+// representation in chat::ChatHistoryStore so it cannot leak into the
+// LLM context.
+struct NoticeEntry {
+  MessageId id = 0;
+  UiNotice notice;
+  std::chrono::system_clock::time_point created_at =
+      std::chrono::system_clock::now();
+  int repeat = 1;
+};
 
 struct SubAgentToolMessage {
   SubAgentToolMessage(::yac::ToolCallId tool_call_id, std::string tool_name,
@@ -60,10 +74,15 @@ class ChatSession {
       std::string tool_name, ::yac::tool_call::ToolCallBlock block,
       MessageStatus status);
   void SetToolExpanded(MessageId tool_id, bool expanded);
+  // Append a UI-only notice. If the new notice equals notices_.back(),
+  // its repeat counter is incremented instead (no plan-shape change);
+  // otherwise a fresh entry is pushed and the plan generation bumps.
+  MessageId AppendNotice(UiNotice notice);
   void ClearMessages();
 
   [[nodiscard]] std::optional<size_t> FindMessageIndex(MessageId id) const;
   [[nodiscard]] const std::vector<Message>& Messages() const;
+  [[nodiscard]] const std::vector<NoticeEntry>& Notices() const;
   [[nodiscard]] bool HasMessage(MessageId id) const;
   [[nodiscard]] bool HasToolSegment(MessageId tool_id) const;
   [[nodiscard]] const ToolSegment* FindToolSegment(MessageId tool_id) const;
@@ -115,6 +134,7 @@ class ChatSession {
   std::unordered_map<MessageId, std::unique_ptr<bool>> tool_expanded_;
   std::unordered_map<MessageId, std::vector<SubAgentToolMessage>>
       sub_agent_tool_messages_;
+  std::vector<NoticeEntry> notices_;
 };
 
 }  // namespace yac::presentation

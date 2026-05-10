@@ -72,10 +72,6 @@ void ChatEventBridge::Handle(chat::ErrorEvent event) {
   using yac::chat::ChatMessageStatus;
   auto& chat_ui = chat_ui_.get();
   chat_ui.SetTyping(false);
-  chat_ui.SetTransientStatus(presentation::UiNotice{
-      .severity = presentation::UiSeverity::Error,
-      .title = event.provider_id.value.empty() ? "YAC error" : "Provider error",
-      .detail = event.text});
   if (!chat_ui.HasMessage(event.message_id)) {
     chat_ui.AddMessageWithId(event.message_id, SenderForRole(event.role),
                              "Error: " + event.text, ChatMessageStatus::Error);
@@ -106,9 +102,6 @@ void ChatEventBridge::Handle(chat::CancelledEvent event) {
   auto& chat_ui = chat_ui_.get();
   chat_ui.SetTyping(false);
   chat_ui.SetMessageStatus(event.message_id, MessageStatus::Cancelled);
-  chat_ui.SetTransientStatus(
-      presentation::UiNotice{.severity = presentation::UiSeverity::Info,
-                             .title = "Response cancelled"});
 }
 
 void ChatEventBridge::Handle(chat::MessageStatusChangedEvent event) {
@@ -125,9 +118,6 @@ void ChatEventBridge::Handle(chat::ConversationClearedEvent event) {
   auto& chat_ui = chat_ui_.get();
   chat_ui.ClearMessages();
   chat_ui.SetTyping(false);
-  chat_ui.SetTransientStatus(
-      presentation::UiNotice{.severity = presentation::UiSeverity::Info,
-                             .title = "Conversation cleared"});
 }
 
 void ChatEventBridge::RefreshFromHistory() {
@@ -164,7 +154,7 @@ void ChatEventBridge::Handle(chat::ConversationCompactedEvent event) {
       title += " (" + std::to_string(event.messages_removed) + " removed)";
     }
   }
-  chat_ui_.get().SetTransientStatus(presentation::UiNotice{
+  chat_ui_.get().AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info, .title = std::move(title)});
 }
 
@@ -176,7 +166,7 @@ void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   chat_ui.SetContextWindowTokens(window);
   chat_ui.SetProviderModel(std::move(event.provider_id),
                            std::move(event.model));
-  chat_ui.SetTransientStatus(presentation::UiNotice{
+  chat_ui.AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info, .title = "Model switched"});
 }
 
@@ -307,7 +297,7 @@ void ChatEventBridge::Handle(chat::SubAgentCompletedEvent event) {
   chat_ui.UpdateToolCallMessage(event.message_id, std::move(block),
                                 MessageStatus::Complete);
   auto task_short = event.sub_agent_task.substr(0, 40);
-  chat_ui.SetTransientStatus(presentation::UiNotice{
+  chat_ui.AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info,
       .title = "Sub-agent completed",
       .detail = task_short,

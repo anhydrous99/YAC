@@ -204,6 +204,19 @@ void ChatSession::SetToolExpanded(MessageId tool_id, bool expanded) {
   *it->second = expanded;
 }
 
+MessageId ChatSession::AppendNotice(UiNotice notice) {
+  if (!notices_.empty() && notices_.back().notice == notice) {
+    ++notices_.back().repeat;
+    ++content_generation_;
+    return notices_.back().id;
+  }
+  auto id = next_id_++;
+  notices_.push_back(NoticeEntry{.id = id, .notice = std::move(notice)});
+  ++plan_generation_;
+  ++content_generation_;
+  return id;
+}
+
 void ChatSession::ClearMessages() {
   messages_.clear();
   id_to_index_.clear();
@@ -212,6 +225,7 @@ void ChatSession::ClearMessages() {
   active_agent_count_ = 0;
   tool_expanded_.clear();
   sub_agent_tool_messages_.clear();
+  notices_.clear();
   ++plan_generation_;
   ++content_generation_;
 }
@@ -226,6 +240,10 @@ std::optional<size_t> ChatSession::FindMessageIndex(MessageId id) const {
 
 const std::vector<Message>& ChatSession::Messages() const {
   return messages_;
+}
+
+const std::vector<NoticeEntry>& ChatSession::Notices() const {
+  return notices_;
 }
 
 bool ChatSession::HasMessage(MessageId id) const {

@@ -13,6 +13,8 @@ struct UiNotice {
   UiSeverity severity = UiSeverity::Info;
   std::string title;
   std::string detail;
+
+  auto operator==(const UiNotice&) const -> bool = default;
 };
 
 struct StartupStatus {

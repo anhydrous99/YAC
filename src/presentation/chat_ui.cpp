@@ -20,9 +20,7 @@ using detail::ComposerInputWrapWidth;
 using detail::FormatPercent;
 using detail::FormatTokens;
 using detail::kComposerPrompt;
-using detail::NoticeText;
 using detail::PercentColor;
-using detail::SeverityColor;
 
 }  // namespace
 
@@ -378,8 +376,11 @@ void ChatUI::SetQueueDepth(int queue_depth) {
   overlay_state_.SetQueueDepth(queue_depth);
 }
 
-void ChatUI::SetTransientStatus(UiNotice notice) {
-  overlay_state_.SetTransientStatus(std::move(notice));
+MessageId ChatUI::AppendNotice(UiNotice notice) {
+  auto id = session_.AppendNotice(std::move(notice));
+  scroll_state_.OnMessagesChanged();
+  SyncMessageComponents();
+  return id;
 }
 
 void ChatUI::SetHelpText(std::string help_text) {
@@ -410,6 +411,10 @@ void ChatUI::ClearMessages() {
 
 const std::vector<Message>& ChatUI::GetMessages() const {
   return session_.Messages();
+}
+
+const std::vector<NoticeEntry>& ChatUI::GetNotices() const {
+  return session_.Notices();
 }
 
 bool ChatUI::HasMessage(MessageId id) const {

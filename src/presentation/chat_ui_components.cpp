@@ -344,6 +344,25 @@ ftxui::Component ChatUI::BuildUserMessageComponent(size_t message_index) {
   });
 }
 
+ftxui::Component ChatUI::BuildNoticeComponent(size_t notice_index) {
+  return ftxui::Renderer([this, notice_index] {
+    const auto& notices = session_.Notices();
+    if (notice_index >= notices.size()) {
+      return ftxui::text("");
+    }
+    const auto& entry = notices[notice_index];
+    auto line = NoticeLine(entry.notice);
+    if (entry.repeat <= 1) {
+      return line;
+    }
+    return ftxui::hbox({
+        line,
+        ftxui::text(" (\xc3\x97" + std::to_string(entry.repeat) + ")") |
+            ftxui::color(detail::SeverityColor(entry.notice.severity)),
+    });
+  });
+}
+
 ftxui::Component ChatUI::BuildAgentMessageComponent(size_t message_index) {
   ftxui::Components children;
   children.push_back(ftxui::Renderer([this, message_index] {
@@ -469,7 +488,8 @@ void ChatUI::SyncMessageComponents() {
     return;
   }
 
-  render_plan_ = BuildMessageRenderPlan(session_.Messages());
+  render_plan_ =
+      BuildMessageRenderPlan(session_.Messages(), session_.Notices());
   message_components_.clear();
   message_components_.reserve(render_plan_.size());
   for (const auto& item : render_plan_) {
@@ -481,6 +501,9 @@ void ChatUI::SyncMessageComponents() {
       case MessageRenderItem::Kind::Agent:
         message_components_.push_back(
             BuildAgentMessageComponent(item.message_index));
+        break;
+      case MessageRenderItem::Kind::Notice:
+        message_components_.push_back(BuildNoticeComponent(item.message_index));
         break;
     }
   }

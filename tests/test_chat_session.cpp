@@ -356,3 +356,62 @@ TEST_CASE("ChatSession AddToolCallSegment opens an Active agent when none") {
       .command = "ls", .output = "/", .exit_code = 0, .is_error = false});
   REQUIRE(session.HasActiveAgent());
 }
+
+TEST_CASE("ChatSession AppendNotice records notices and bumps generations") {
+  ChatSession session;
+  const auto plan_before = session.PlanGeneration();
+  const auto content_before = session.ContentGeneration();
+
+  const auto id = session.AppendNotice(
+      UiNotice{.severity = UiSeverity::Warning, .title = "boom"});
+
+  REQUIRE(session.Notices().size() == 1);
+  REQUIRE(session.Notices()[0].id == id);
+  REQUIRE(session.Notices()[0].notice.title == "boom");
+  REQUIRE(session.Notices()[0].repeat == 1);
+  REQUIRE(session.PlanGeneration() > plan_before);
+  REQUIRE(session.ContentGeneration() > content_before);
+}
+
+TEST_CASE(
+    "ChatSession AppendNotice collapses consecutive duplicates without "
+    "growing the plan") {
+  ChatSession session;
+  const auto first_id = session.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+  const auto plan_after_first = session.PlanGeneration();
+  const auto content_after_first = session.ContentGeneration();
+
+  const auto second_id = session.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+
+  REQUIRE(session.Notices().size() == 1);
+  REQUIRE(second_id == first_id);
+  REQUIRE(session.Notices()[0].repeat == 2);
+  REQUIRE(session.PlanGeneration() == plan_after_first);
+  REQUIRE(session.ContentGeneration() > content_after_first);
+}
+
+TEST_CASE("ChatSession AppendNotice appends a new entry when not duplicate") {
+  ChatSession session;
+  session.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+  session.AppendNotice(UiNotice{.severity = UiSeverity::Warning,
+                                .title = "Model discovery failed"});
+
+  REQUIRE(session.Notices().size() == 2);
+  REQUIRE(session.Notices()[0].notice.title == "Model switched");
+  REQUIRE(session.Notices()[1].notice.title == "Model discovery failed");
+}
+
+TEST_CASE("ChatSession ClearMessages clears notices alongside messages") {
+  ChatSession session;
+  session.AddMessage(Sender::User, "hi");
+  session.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "anything"});
+
+  session.ClearMessages();
+
+  REQUIRE(session.Messages().empty());
+  REQUIRE(session.Notices().empty());
+}

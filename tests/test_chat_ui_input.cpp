@@ -251,14 +251,40 @@ TEST_CASE("ChatUI renders startup status in empty transcript") {
 TEST_CASE("ChatUI renders queue depth") {
   ChatUI ui;
   ui.SetQueueDepth(2);
-  ui.SetTransientStatus(UiNotice{.severity = UiSeverity::Warning,
-                                 .title = "Model discovery failed",
-                                 .detail = "using configured model"});
   auto component = ui.Build();
 
   auto output = RenderComponent(component, 100, 30);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("queued 2"));
+}
+
+TEST_CASE("ChatUI renders inline notice in transcript") {
+  ChatUI ui;
+  ui.AddMessage(Sender::User, "hello");
+  ui.AppendNotice(UiNotice{.severity = UiSeverity::Warning,
+                           .title = "Model discovery failed",
+                           .detail = "using configured model"});
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component, 100, 30);
+
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Model discovery failed"));
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("using configured model"));
+}
+
+TEST_CASE("ChatUI collapses consecutive duplicate notices") {
+  ChatUI ui;
+  ui.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+  ui.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+  ui.AppendNotice(
+      UiNotice{.severity = UiSeverity::Info, .title = "Model switched"});
+
+  REQUIRE(ui.GetNotices().size() == 1);
+  REQUIRE(ui.GetNotices()[0].repeat == 3);
 }
 
 TEST_CASE("ChatUI schedules pending thinking animation ticks") {

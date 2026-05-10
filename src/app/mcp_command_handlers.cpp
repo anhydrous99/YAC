@@ -47,7 +47,7 @@ std::string FormatMcpServerList(
 
 void ShowMcpCommandError(presentation::ChatUI& chat_ui, std::string title,
                          const std::exception& error) {
-  chat_ui.SetTransientStatus(presentation::UiNotice{
+  chat_ui.AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Error,
       .title = std::move(title),
       .detail = error.what(),
@@ -69,7 +69,7 @@ void HandleMcpListCommand(
 }
 
 void ShowMcpAddUsage(presentation::ChatUI& chat_ui) {
-  chat_ui.SetTransientStatus(presentation::UiNotice{
+  chat_ui.AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info,
       .title = "Usage: /mcp add <id> <transport> ...",
       .detail = "transport: stdio (+ command) or http (+ url)",
@@ -94,7 +94,7 @@ void RegisterMcpSlashCommandHandlers(
     const auto [subcmd, rest] = ParseMcpSubcmd(args);
 
     if (subcmd.empty()) {
-      chat_ui.SetTransientStatus(presentation::UiNotice{
+      chat_ui.AppendNotice(presentation::UiNotice{
           .severity = presentation::UiSeverity::Info,
           .title = "Usage: /mcp <subcommand>",
           .detail = "add | list | auth | logout | debug | resources",
@@ -109,7 +109,7 @@ void RegisterMcpSlashCommandHandlers(
 
     if (subcmd == "logout") {
       if (rest.empty()) {
-        chat_ui.SetTransientStatus(presentation::UiNotice{
+        chat_ui.AppendNotice(presentation::UiNotice{
             .severity = presentation::UiSeverity::Warning,
             .title = "Usage: /mcp logout <server-id>",
         });
@@ -117,7 +117,7 @@ void RegisterMcpSlashCommandHandlers(
       }
       try {
         mcp_admin->Logout(rest);
-        chat_ui.SetTransientStatus(presentation::UiNotice{
+        chat_ui.AppendNotice(presentation::UiNotice{
             .severity = presentation::UiSeverity::Info,
             .title = "Logged out",
             .detail = rest,
@@ -130,7 +130,7 @@ void RegisterMcpSlashCommandHandlers(
 
     if (subcmd == "debug") {
       if (rest.empty()) {
-        chat_ui.SetTransientStatus(presentation::UiNotice{
+        chat_ui.AppendNotice(presentation::UiNotice{
             .severity = presentation::UiSeverity::Warning,
             .title = "Usage: /mcp debug <server-id>",
         });
@@ -151,13 +151,13 @@ void RegisterMcpSlashCommandHandlers(
 
     if (subcmd == "resources") {
       if (rest.empty()) {
-        chat_ui.SetTransientStatus(presentation::UiNotice{
+        chat_ui.AppendNotice(presentation::UiNotice{
             .severity = presentation::UiSeverity::Warning,
             .title = "Usage: /mcp resources <server-id>",
         });
         return;
       }
-      chat_ui.SetTransientStatus(presentation::UiNotice{
+      chat_ui.AppendNotice(presentation::UiNotice{
           .severity = presentation::UiSeverity::Info,
           .title = "MCP resources: " + rest,
           .detail = "Requires an active server connection.",
@@ -172,14 +172,14 @@ void RegisterMcpSlashCommandHandlers(
 
     if (subcmd == "auth") {
       if (rest.empty()) {
-        chat_ui.SetTransientStatus(presentation::UiNotice{
+        chat_ui.AppendNotice(presentation::UiNotice{
             .severity = presentation::UiSeverity::Warning,
             .title = "Usage: /mcp auth <server-id>",
         });
         return;
       }
       const ::yac::McpServerId server_id{rest};
-      chat_ui.SetTransientStatus(presentation::UiNotice{
+      chat_ui.AppendNotice(presentation::UiNotice{
           .severity = presentation::UiSeverity::Info,
           .title = "Starting MCP auth...",
           .detail = server_id.value,
@@ -194,7 +194,7 @@ void RegisterMcpSlashCommandHandlers(
                            &screen,  // NOLINT(bugprone-exception-escape)
                            server_id]() noexcept {
                 try {
-                  chat_ui.SetTransientStatus(presentation::UiNotice{
+                  chat_ui.AppendNotice(presentation::UiNotice{
                       .severity = presentation::UiSeverity::Info,
                       .title = "MCP auth complete",
                       .detail = server_id.value,
@@ -214,7 +214,7 @@ void RegisterMcpSlashCommandHandlers(
                            &screen,  // NOLINT(bugprone-exception-escape)
                            server_id, err]() mutable noexcept {
                 try {
-                  chat_ui.SetTransientStatus(presentation::UiNotice{
+                  chat_ui.AppendNotice(presentation::UiNotice{
                       .severity = presentation::UiSeverity::Error,
                       .title = "MCP auth failed: " + server_id.value,
                       .detail = err,
@@ -239,7 +239,7 @@ void RegisterMcpSlashCommandHandlers(
       return;
     }
 
-    chat_ui.SetTransientStatus(presentation::UiNotice{
+    chat_ui.AppendNotice(presentation::UiNotice{
         .severity = presentation::UiSeverity::Warning,
         .title = "Unknown /mcp subcommand: " + subcmd,
         .detail = "Available: add, list, auth, logout, debug, resources",

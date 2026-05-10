@@ -153,3 +153,75 @@ TEST_CASE("ChatEvent reports payload type for each event family") {
   REQUIRE(ChatEvent{SubAgentCompletedEvent{}}.Type() ==
           ChatEventType::SubAgentCompleted);
 }
+
+TEST_CASE("ChatEventBridge appends a notice on ModelChangedEvent") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(
+      ChatEvent{ModelChangedEvent{.provider_id = ::yac::ProviderId{"openai"},
+                                  .model = ::yac::ModelId{"gpt-4o-mini"}}});
+
+  REQUIRE(ui.GetNotices().size() == 1);
+  REQUIRE(ui.GetNotices()[0].notice.title == "Model switched");
+}
+
+TEST_CASE("ChatEventBridge appends a notice on ConversationCompactedEvent") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(ChatEvent{ConversationCompactedEvent{
+      .reason = CompactReason::Auto, .messages_removed = 3}});
+
+  REQUIRE(ui.GetNotices().size() == 1);
+  REQUIRE(ui.GetNotices()[0].notice.title.find(
+              "Auto-compacted near context limit") != std::string::npos);
+}
+
+TEST_CASE(
+    "ChatEventBridge does not append a notice when ErrorEvent has a "
+    "matching message") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(
+      ChatEvent{StartedEvent{.message_id = 50,
+                             .role = ChatRole::Assistant,
+                             .status = ChatMessageStatus::Active}});
+  bridge.HandleEvent(ChatEvent{ErrorEvent{.message_id = 50,
+                                          .role = ChatRole::Assistant,
+                                          .text = "provider failed",
+                                          .status = ChatMessageStatus::Error}});
+
+  REQUIRE(ui.GetNotices().empty());
+  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Error);
+}
+
+TEST_CASE("ChatEventBridge does not append a notice on CancelledEvent") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(
+      ChatEvent{StartedEvent{.message_id = 60,
+                             .role = ChatRole::Assistant,
+                             .status = ChatMessageStatus::Active}});
+  bridge.HandleEvent(ChatEvent{CancelledEvent{.message_id = 60}});
+
+  REQUIRE(ui.GetNotices().empty());
+  REQUIRE(ui.GetMessages()[0].status == MessageStatus::Cancelled);
+}
+
+TEST_CASE(
+    "ChatEventBridge does not append a notice on ConversationClearedEvent") {
+  ChatUI ui;
+  ChatEventBridge bridge(ui);
+
+  bridge.HandleEvent(
+      ChatEvent{StartedEvent{.message_id = 70,
+                             .role = ChatRole::Assistant,
+                             .status = ChatMessageStatus::Active}});
+  bridge.HandleEvent(ChatEvent{ConversationClearedEvent{}});
+
+  REQUIRE(ui.GetMessages().empty());
+  REQUIRE(ui.GetNotices().empty());
+}

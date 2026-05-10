@@ -43,7 +43,6 @@ class ChatUiOverlayState {
   void SetLastUsage(UsageStats usage);
   void SetContextWindowTokens(int tokens);
   void SetStartupStatus(StartupStatus status);
-  void SetTransientStatus(UiNotice notice);
   void SetQueueDepth(int queue_depth);
   void SetHelpText(std::string help_text);
   void ShowHelp();
@@ -60,7 +59,6 @@ class ChatUiOverlayState {
   [[nodiscard]] const std::optional<UsageStats>& LastUsage() const;
   [[nodiscard]] int ContextWindowTokens() const;
   [[nodiscard]] const StartupStatus& Startup() const;
-  [[nodiscard]] const std::optional<UiNotice>& TransientStatus() const;
   [[nodiscard]] int QueueDepth() const;
 
  private:
@@ -111,7 +109,6 @@ class ChatUiOverlayState {
   std::optional<UsageStats> last_usage_;
   int context_window_tokens_ = 0;
   StartupStatus startup_;
-  std::optional<UiNotice> transient_status_;
   int queue_depth_ = 0;
   std::string help_text_;
 };

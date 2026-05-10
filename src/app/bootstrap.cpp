@@ -120,12 +120,12 @@ void ReportThemeSaveResult(presentation::ChatUI& chat_ui,
         notice.detail += ": " + issues.front().detail;
       }
     }
-    chat_ui.SetTransientStatus(std::move(notice));
+    chat_ui.AppendNotice(std::move(notice));
     return;
   }
 
   if (HasEnvValue("YAC_THEME_NAME")) {
-    chat_ui.SetTransientStatus(
+    chat_ui.AppendNotice(
         {.severity = presentation::UiSeverity::Warning,
          .title = "Theme saved, env override active",
          .detail = "YAC_THEME_NAME is set, so restart will use that value "
@@ -133,7 +133,7 @@ void ReportThemeSaveResult(presentation::ChatUI& chat_ui,
     return;
   }
 
-  chat_ui.SetTransientStatus(
+  chat_ui.AppendNotice(
       {.severity = presentation::UiSeverity::Info,
        .title = "Theme saved",
        .detail = "Next launch will use '" + theme_name + "'."});
@@ -230,13 +230,13 @@ void ApplyModelDiscoveryResult(const ModelDiscoveryResult& result,
   chat_ui.SetCommands(std::move(cmds));
   chat_ui.SetModelCommands(BuildModelCommands(result.models));
   if (result.status == ModelDiscoveryStatus::Fallback) {
-    chat_ui.SetTransientStatus(
+    chat_ui.AppendNotice(
         presentation::UiNotice{.severity = presentation::UiSeverity::Warning,
                                .title = "Using fallback model list",
                                .detail = result.message});
   } else if (result.status == ModelDiscoveryStatus::Failed &&
              !result.message.empty()) {
-    chat_ui.SetTransientStatus(
+    chat_ui.AppendNotice(
         presentation::UiNotice{.severity = presentation::UiSeverity::Warning,
                                .title = "Model discovery failed",
                                .detail = result.message});
@@ -355,10 +355,9 @@ class ChatActionsImpl : public presentation::IChatActions {
         ReportThemeSaveResult(*chat_ui_, theme_name, settings_path, saved,
                               save_issues);
       } catch (const std::exception& error) {
-        chat_ui_->SetTransientStatus(
-            {.severity = presentation::UiSeverity::Warning,
-             .title = "Theme not saved",
-             .detail = error.what()});
+        chat_ui_->AppendNotice({.severity = presentation::UiSeverity::Warning,
+                                .title = "Theme not saved",
+                                .detail = error.what()});
       }
     }
     screen_.PostEvent(ftxui::Event::Custom);
@@ -399,7 +398,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
   slash_registry.SetHandler("help", [&chat_ui] { chat_ui.ShowHelp(); });
   slash_registry.SetHandler("compact", [&chat_service, &chat_ui] {
     if (chat_service.IsBusy()) {
-      chat_ui.SetTransientStatus(presentation::UiNotice{
+      chat_ui.AppendNotice(presentation::UiNotice{
           .severity = presentation::UiSeverity::Warning,
           .title = "Cannot compact while a response is active",
       });
@@ -438,7 +437,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
   slash_registry.SetArgumentsHandler(
       "task", [&chat_service, &chat_ui](std::string args) {
         if (args.empty()) {
-          chat_ui.SetTransientStatus(presentation::UiNotice{
+          chat_ui.AppendNotice(presentation::UiNotice{
               .severity = presentation::UiSeverity::Warning,
               .title = "Usage: /task <description>",
           });
@@ -446,7 +445,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
         }
         auto& manager = chat_service.GetSubAgentManager();
         if (manager.IsAtCapacity()) {
-          chat_ui.SetTransientStatus(presentation::UiNotice{
+          chat_ui.AppendNotice(presentation::UiNotice{
               .severity = presentation::UiSeverity::Warning,
               .title = "Max sub-agents reached",
               .detail = "Wait for existing sub-agents to complete.",

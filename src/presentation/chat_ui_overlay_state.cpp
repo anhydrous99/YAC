@@ -5,7 +5,6 @@
 #include "tool_call/renderer.hpp"
 #include "ui_spacing.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -217,10 +216,6 @@ void ChatUiOverlayState::SetStartupStatus(StartupStatus status) {
   startup_ = std::move(status);
 }
 
-void ChatUiOverlayState::SetTransientStatus(UiNotice notice) {
-  transient_status_ = std::move(notice);
-}
-
 void ChatUiOverlayState::SetQueueDepth(int queue_depth) {
   queue_depth_ = queue_depth;
 }
@@ -424,10 +419,6 @@ int ChatUiOverlayState::ContextWindowTokens() const {
 
 const StartupStatus& ChatUiOverlayState::Startup() const {
   return startup_;
-}
-
-const std::optional<UiNotice>& ChatUiOverlayState::TransientStatus() const {
-  return transient_status_;
 }
 
 int ChatUiOverlayState::QueueDepth() const {

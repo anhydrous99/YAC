@@ -87,7 +87,7 @@ class ChatUI : public ChatEventSink {
   void SetContextWindowTokens(int tokens) override;
   void SetStartupStatus(StartupStatus status);
   void SetQueueDepth(int queue_depth) override;
-  void SetTransientStatus(UiNotice notice) override;
+  MessageId AppendNotice(UiNotice notice) override;
   void SetHelpText(std::string help_text);
   void ShowHelp();
   void SetTyping(bool typing) override;
@@ -97,6 +97,7 @@ class ChatUI : public ChatEventSink {
   McpStatusSink& McpStatus() { return mcp_status_; }
 
   [[nodiscard]] const std::vector<Message>& GetMessages() const;
+  [[nodiscard]] const std::vector<NoticeEntry>& GetNotices() const;
   [[nodiscard]] bool HasMessage(MessageId id) const override;
   [[nodiscard]] bool HasToolSegment(MessageId tool_id) const override;
   [[nodiscard]] bool IsTyping() const;
@@ -115,6 +116,7 @@ class ChatUI : public ChatEventSink {
       size_t message_index);
   [[nodiscard]] ftxui::Component BuildAgentMessageComponent(
       size_t message_index);
+  [[nodiscard]] ftxui::Component BuildNoticeComponent(size_t notice_index);
   [[nodiscard]] ftxui::Component BuildToolContentComponent(MessageId tool_id);
   [[nodiscard]] ftxui::Component BuildToolCollapsible(MessageId tool_id);
   [[nodiscard]] ftxui::Component BuildSubAgentToolCollapsible(
