@@ -3,10 +3,12 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "presentation/file_mention_inliner.hpp"
 #include "provider/bedrock_aws_api_guard.hpp"
 #include "provider/bedrock_chat_provider.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
+#include "tool_call/workspace_filesystem.hpp"
 #include "util/log.hpp"
 
 #include <atomic>
@@ -91,7 +93,9 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
         event.payload);
   });
 
-  service.SubmitUserMessage(prompt);
+  tool_call::WorkspaceFilesystem workspace_fs(config.workspace_root);
+  auto inlined = presentation::InlineFileMentions(prompt, workspace_fs);
+  service.SubmitUserMessage(std::move(inlined.text));
 
   std::jthread cancel_timer;
   if (cancel_after_ms > 0) {

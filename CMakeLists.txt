@@ -239,6 +239,9 @@ add_library(yac_presentation STATIC
   src/presentation/markdown/renderer.cpp
   src/presentation/slash_command_menu.cpp
   src/presentation/slash_command_registry.cpp
+  src/presentation/file_mention_pattern.cpp
+  src/presentation/file_mention_inliner.cpp
+  src/presentation/file_mention_menu.cpp
   src/presentation/syntax/highlighter.cpp
   src/presentation/syntax/internal/lexer.cpp
   src/presentation/syntax/language_alias.cpp
@@ -330,6 +333,8 @@ add_library(yac_service STATIC
   src/tool_call/workspace_filesystem.cpp
   src/tool_call/gitignore_filter.cpp
   src/tool_call/glob_tool_executor.cpp
+  src/tool_call/file_index.cpp
+  src/tool_call/workspace_walker.cpp
   src/util/log.cpp
 )
 target_include_directories(yac_service PUBLIC src)

@@ -81,6 +81,8 @@ class ChatUI : public ChatEventSink {
   void SetModelCommands(std::vector<Command> commands);
   void SetThemeCommands(std::vector<Command> commands);
   void SetSlashCommands(SlashCommandRegistry registry);
+  void SetFileMentionProvider(
+      ChatUiInputController::FileMentionProvider provider);
   void SetProviderModel(::yac::ProviderId provider_id,
                         ::yac::ModelId model) override;
   void SetLastUsage(UsageStats usage) override;

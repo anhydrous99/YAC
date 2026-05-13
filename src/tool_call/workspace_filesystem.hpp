@@ -18,6 +18,13 @@ class WorkspaceFilesystem {
   [[nodiscard]] std::string DisplayPath(
       const std::filesystem::path& path) const;
   [[nodiscard]] static std::string ReadFile(const std::filesystem::path& path);
+  // Reads up to `max_bytes` bytes from the start of `path`. Same symlink
+  // refusal and kMaxFileBytes file-size cap as ReadFile, but never reads
+  // past `max_bytes` regardless of file size — use this when only a prefix
+  // is needed (e.g. for binary detection or capped attachments). Returns
+  // fewer than `max_bytes` if the file is shorter.
+  [[nodiscard]] static std::string ReadFilePrefix(
+      const std::filesystem::path& path, std::size_t max_bytes);
   static void WriteFile(const std::filesystem::path& path,
                         const std::string& content);
 

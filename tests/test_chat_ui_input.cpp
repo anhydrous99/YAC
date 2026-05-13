@@ -567,3 +567,114 @@ TEST_CASE("Component handles End key variants") {
   REQUIRE(component->OnEvent(MakeEndRxvt()));
   REQUIRE(component->OnEvent(MakeEndXtermAlt()));
 }
+
+namespace {
+
+yac::presentation::FileMentionResult StubMentionRows() {
+  return {.rows =
+              {
+                  {.relative_path = "src/foo.cpp", .size_bytes = 100},
+                  {.relative_path = "src/bar.cpp", .size_bytes = 200},
+              },
+          .is_indexing = false};
+}
+
+}  // namespace
+
+TEST_CASE("Typing @ opens the file mention menu") {
+  ChatUI ui;
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  TypeText(component, "@");
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/bar.cpp"));
+}
+
+TEST_CASE("File mention menu closes after Escape") {
+  ChatUI ui;
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  TypeText(component, "@");
+  REQUIRE(component->OnEvent(ftxui::Event::Escape));
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+}
+
+TEST_CASE("Pressing Return on the file mention menu inserts the path") {
+  ChatUI ui;
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  TypeText(component, "@");
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+}
+
+TEST_CASE("Mention menu navigates with arrow keys before selection") {
+  ChatUI ui;
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  TypeText(component, "@");
+  REQUIRE(component->OnEvent(ftxui::Event::ArrowDown));
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/bar.cpp"));
+}
+
+TEST_CASE("Mention menu does not open with no provider configured") {
+  ChatUI ui;
+  auto component = ui.Build();
+  TypeText(component, "@");
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output,
+               !Catch::Matchers::ContainsSubstring("No matching files"));
+}
+
+TEST_CASE("Mention menu dismisses when the @ is backspaced away") {
+  ChatUI ui;
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  TypeText(component, "@");
+  REQUIRE_THAT(RenderComponent(component, 100, 30),
+               Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+
+  REQUIRE(component->OnEvent(ftxui::Event::Backspace));
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("@src/bar.cpp"));
+}
+
+TEST_CASE("Mention menu Return takes priority over an active slash menu") {
+  ChatUI ui;
+  SlashCommandRegistry registry;
+  int dispatched = 0;
+  registry.Define("foo", "foo", "test command");
+  registry.SetHandler("foo", [&dispatched] { ++dispatched; });
+  ui.SetSlashCommands(std::move(registry));
+  ui.SetFileMentionProvider([](std::string_view) { return StubMentionRows(); });
+  auto component = ui.Build();
+
+  // Content is "/foo @": slash menu stays active because content starts
+  // with '/', and the at-menu opens because '@' follows whitespace.
+  TypeText(component, "/foo @");
+
+  REQUIRE(component->OnEvent(ftxui::Event::Return));
+
+  // The at-menu consumed Return and inserted the path; the slash command
+  // must not have been dispatched.
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
+  REQUIRE(dispatched == 0);
+}

@@ -74,7 +74,10 @@ ftxui::Component ChatUI::BuildInput() {
   return MakeSlashMenuInputWrapper(
       input,
       [this](const ftxui::Event& event) { return HandleInputEvent(event); },
-      [this] { input_controller_.UpdateSlashMenuState(); });
+      [this] {
+        input_controller_.UpdateSlashMenuState();
+        input_controller_.UpdateAtMenuState();
+      });
 }
 
 int ChatUI::CalculateInputHeight() const {

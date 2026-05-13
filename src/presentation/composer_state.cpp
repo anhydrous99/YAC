@@ -175,6 +175,9 @@ std::string ComposerState::Submit() {
   cursor_ = 0;
   slash_menu_active_ = false;
   slash_menu_selected_ = 0;
+  at_menu_active_ = false;
+  at_menu_selected_ = 0;
+  at_token_start_ = 0;
   return submitted;
 }
 
@@ -240,6 +243,97 @@ std::vector<int> ComposerState::FilteredSlashIndices(
     }
   }
   return indices;
+}
+
+bool ComposerState::IsAtMenuActive() const {
+  return at_menu_active_;
+}
+
+void ComposerState::ActivateAtMenu(size_t at_token_start) {
+  at_menu_active_ = true;
+  at_menu_selected_ = 0;
+  at_token_start_ = at_token_start;
+}
+
+void ComposerState::DismissAtMenu() {
+  at_menu_active_ = false;
+  at_menu_selected_ = 0;
+}
+
+int ComposerState::AtMenuSelectedIndex() const {
+  return at_menu_selected_;
+}
+
+void ComposerState::SetAtMenuSelectedIndex(int index) {
+  at_menu_selected_ = index;
+}
+
+size_t ComposerState::AtTokenStart() const {
+  return at_token_start_;
+}
+
+std::string ComposerState::AtMenuFilter() const {
+  if (!at_menu_active_) {
+    return {};
+  }
+  const size_t start = at_token_start_ + 1;
+  const size_t end =
+      std::min(static_cast<size_t>(std::max(0, cursor_)), content_.size());
+  if (start >= end) {
+    return {};
+  }
+  size_t i = start;
+  for (; i < end; ++i) {
+    const char c = content_[i];
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+      break;
+    }
+  }
+  return content_.substr(start, i - start);
+}
+
+void ComposerState::InsertMention(std::string_view relative_path) {
+  if (!at_menu_active_) {
+    return;
+  }
+  const size_t end =
+      std::min(static_cast<size_t>(std::max(0, cursor_)), content_.size());
+  const size_t start = std::min(at_token_start_, end);
+
+  std::string replacement;
+  replacement.reserve(1 + relative_path.size());
+  replacement.push_back('@');
+  replacement.append(relative_path);
+
+  content_.replace(start, end - start, replacement);
+  cursor_ = static_cast<int>(start + replacement.size());
+  at_menu_active_ = false;
+  at_menu_selected_ = 0;
+}
+
+std::optional<size_t> ComposerState::FindAtTokenAtCursor() const {
+  if (cursor_ <= 0 || content_.empty()) {
+    return std::nullopt;
+  }
+  const auto cursor = std::min(static_cast<size_t>(cursor_), content_.size());
+  for (size_t i = cursor; i > 0; --i) {
+    const char c = content_[i - 1];
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+      return std::nullopt;
+    }
+    if (c == '@') {
+      const size_t at_pos = i - 1;
+      if (at_pos == 0) {
+        return at_pos;
+      }
+      const char before = content_[at_pos - 1];
+      if (before == ' ' || before == '\t' || before == '\n' || before == '\r') {
+        return at_pos;
+      }
+      return std::nullopt;
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace yac::presentation

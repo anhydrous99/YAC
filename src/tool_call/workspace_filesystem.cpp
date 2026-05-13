@@ -116,6 +116,46 @@ std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
   return buffer.str();
 }
 
+std::string WorkspaceFilesystem::ReadFilePrefix(
+    const std::filesystem::path& path, std::size_t max_bytes) {
+  std::error_code ec;
+  const auto sym_status = std::filesystem::symlink_status(path, ec);
+  if (!ec && std::filesystem::is_symlink(sym_status)) {
+    throw std::runtime_error("Refusing to read through symlink: " +
+                             path.string());
+  }
+  if (!std::filesystem::exists(path, ec)) {
+    return {};
+  }
+  if (ec) {
+    throw std::runtime_error("Unable to stat file: " + path.string());
+  }
+  const auto size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    throw std::runtime_error("Unable to size file: " + path.string());
+  }
+  if (size > kMaxFileBytes) {
+    throw std::runtime_error("File exceeds " + std::to_string(kMaxFileBytes) +
+                             " byte read limit: " + path.string());
+  }
+  if (max_bytes == 0) {
+    return {};
+  }
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    throw std::runtime_error("Unable to open file for reading: " +
+                             path.string());
+  }
+  const auto to_read = std::min<std::size_t>(max_bytes, size);
+  std::string buffer;
+  buffer.resize(to_read);
+  if (to_read > 0) {
+    file.read(buffer.data(), static_cast<std::streamsize>(to_read));
+    buffer.resize(static_cast<std::size_t>(file.gcount()));
+  }
+  return buffer;
+}
+
 void WorkspaceFilesystem::WriteFile(const std::filesystem::path& path,
                                     const std::string& content) {
   if (content.size() > kMaxFileBytes) {

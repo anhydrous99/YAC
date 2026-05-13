@@ -205,7 +205,10 @@ ftxui::Component ChatUI::Build() {
     main_parts.push_back(ftxui::hbox(std::move(status_rail)) |
                          ftxui::bgcolor(colors.chrome.canvas_bg));
 
-    if (composer_.IsSlashMenuActive() && !slash_commands_.Commands().empty()) {
+    if (composer_.IsAtMenuActive()) {
+      main_parts.push_back(input_controller_.RenderAtMenu(term_width));
+    } else if (composer_.IsSlashMenuActive() &&
+               !slash_commands_.Commands().empty()) {
       main_parts.push_back(input_controller_.RenderSlashMenu(term_width));
     }
 
@@ -353,6 +356,11 @@ void ChatUI::SetThemeCommands(std::vector<Command> commands) {
 
 void ChatUI::SetSlashCommands(SlashCommandRegistry registry) {
   slash_commands_ = std::move(registry);
+}
+
+void ChatUI::SetFileMentionProvider(
+    ChatUiInputController::FileMentionProvider provider) {
+  input_controller_.SetFileMentionProvider(std::move(provider));
 }
 
 void ChatUI::SetProviderModel(::yac::ProviderId provider_id,

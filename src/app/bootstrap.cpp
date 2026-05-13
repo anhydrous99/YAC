@@ -15,6 +15,7 @@
 #include "mcp/mcp_manager.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/chat_ui_actions.hpp"
+#include "presentation/file_mention_inliner.hpp"
 #include "presentation/mcp/mcp_slash_commands.hpp"
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
@@ -24,6 +25,8 @@
 #include "provider/model_context_windows.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
+#include "tool_call/file_index.hpp"
+#include "tool_call/workspace_filesystem.hpp"
 #include "util/log.hpp"
 
 #include <cstdlib>
@@ -270,12 +273,33 @@ class ChatActionsImpl : public presentation::IChatActions {
         config_(config),
         terminal_bg_guard_(std::move(terminal_bg_guard)),
         screen_(screen),
-        mcp_admin_(std::move(mcp_admin)) {}
+        mcp_admin_(std::move(mcp_admin)),
+        workspace_fs_(config.workspace_root),
+        file_index_(workspace_fs_) {}
 
-  void SetChatUi(presentation::ChatUI& chat_ui) { chat_ui_ = &chat_ui; }
+  void SetChatUi(presentation::ChatUI& chat_ui) {
+    chat_ui_ = &chat_ui;
+    // Register the redraw hook *before* kicking off the warm so the very
+    // first rebuild posts a Custom event and the composer paints the rows
+    // as soon as they're available.
+    file_index_.SetOnRebuildComplete([this] {
+      screen_.Post([this] { screen_.PostEvent(ftxui::Event::Custom); });
+    });
+    file_index_.WarmAsync();
+    chat_ui.SetFileMentionProvider(
+        [this](std::string_view prefix) -> presentation::FileMentionResult {
+          const auto state = file_index_.GetState();
+          const bool indexing =
+              state == tool_call::FileIndex::State::Warming ||
+              state == tool_call::FileIndex::State::Cold;
+          return {.rows = file_index_.Query(prefix, /*limit=*/50),
+                  .is_indexing = indexing};
+        });
+  }
 
   void OnSend(const std::string& message) override {
-    chat_service_.SubmitUserMessage(message);
+    auto inlined = presentation::InlineFileMentions(message, workspace_fs_);
+    chat_service_.SubmitUserMessage(std::move(inlined.text));
   }
 
   void OnCommand(const std::string& command) override {
@@ -370,6 +394,8 @@ class ChatActionsImpl : public presentation::IChatActions {
   ftxui::App& screen_;
   std::shared_ptr<cli::McpAdminCommand> mcp_admin_;
   presentation::ChatUI* chat_ui_ = nullptr;
+  tool_call::WorkspaceFilesystem workspace_fs_;
+  tool_call::FileIndex file_index_;
 };
 
 void InstallChatUiCommandPalette(presentation::ChatUI& chat_ui,
