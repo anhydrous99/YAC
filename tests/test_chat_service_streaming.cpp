@@ -527,12 +527,17 @@ TEST_CASE("ChatService SetModel does not mutate active request snapshot") {
 
 TEST_CASE("ChatService cancellation requests provider stop token") {
   auto provider = std::make_shared<CancellableFakeProvider>();
-  auto service = MakeService(provider);
 
   std::vector<ChatEvent> events;
   std::mutex mtx;
   std::condition_variable cv;
   bool cancelled = false;
+
+  // service must be declared after the locals it captures by reference so its
+  // destructor (which joins the worker thread) runs before mtx/events are
+  // destroyed; otherwise the worker's FinishedEvent callback races the
+  // destruction of mtx and triggers EINVAL on macOS.
+  auto service = MakeService(provider);
 
   service.SetEventCallback([&](ChatEvent event) {
     std::scoped_lock lock(mtx);
