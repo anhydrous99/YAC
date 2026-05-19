@@ -260,9 +260,9 @@ TEST_CASE("FileIndex destructor cancels an in-flight warm") {
   TempWorkspace ws;
   // Populate enough files that the walk takes non-trivial time even with rg.
   for (int i = 0; i < 2000; ++i) {
-    ws.WriteFile("dir" + std::to_string(i / 100) + "/file" +
-                     std::to_string(i) + ".txt",
-                 "x");
+    ws.WriteFile(
+        "dir" + std::to_string(i / 100) + "/file" + std::to_string(i) + ".txt",
+        "x");
   }
   WorkspaceFilesystem fs(ws.Path());
 

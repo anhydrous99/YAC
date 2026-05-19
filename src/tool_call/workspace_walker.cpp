@@ -33,13 +33,12 @@ std::atomic<bool> g_rg_unavailable{false};
 std::atomic<bool> g_rg_disabled_for_testing{false};
 
 void SortRows(std::vector<FileMentionRow>& rows) {
-  std::ranges::sort(rows,
-                    [](const FileMentionRow& a, const FileMentionRow& b) {
-                      if (a.relative_path.size() != b.relative_path.size()) {
-                        return a.relative_path.size() < b.relative_path.size();
-                      }
-                      return a.relative_path < b.relative_path;
-                    });
+  std::ranges::sort(rows, [](const FileMentionRow& a, const FileMentionRow& b) {
+    if (a.relative_path.size() != b.relative_path.size()) {
+      return a.relative_path.size() < b.relative_path.size();
+    }
+    return a.relative_path < b.relative_path;
+  });
 }
 
 std::string NormalizeRelative(const std::filesystem::path& relative) {
@@ -99,8 +98,7 @@ WalkResult WalkWithStdFs(const std::filesystem::path& root,
 }
 
 WalkResult ParseRipgrepFiles(const std::filesystem::path& root,
-                             std::string_view payload,
-                             std::size_t max_entries,
+                             std::string_view payload, std::size_t max_entries,
                              bool subprocess_truncated) {
   WalkResult result;
   result.used_rg = true;
@@ -109,8 +107,8 @@ WalkResult ParseRipgrepFiles(const std::filesystem::path& root,
   std::size_t start = 0;
   while (start <= payload.size() && result.rows.size() < max_entries) {
     const auto end = payload.find('\0', start);
-    const auto len = end == std::string_view::npos ? payload.size() - start
-                                                   : end - start;
+    const auto len =
+        end == std::string_view::npos ? payload.size() - start : end - start;
     if (len > 0) {
       std::string rel(payload.substr(start, len));
       if (rel.starts_with("./")) {

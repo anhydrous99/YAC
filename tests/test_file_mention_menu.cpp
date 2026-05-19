@@ -37,9 +37,10 @@ TEST_CASE("RenderFileMentionMenu shows empty-state row for no matches") {
 }
 
 TEST_CASE("RenderFileMentionMenu shows indexing placeholder when warming") {
-  const auto output = RenderToString(
-      RenderFileMentionMenu({}, 0, 80, /*indexing=*/true));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Indexing workspace"));
+  const auto output =
+      RenderToString(RenderFileMentionMenu({}, 0, 80, /*indexing=*/true));
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Indexing workspace"));
   REQUIRE_THAT(output,
                !Catch::Matchers::ContainsSubstring("No matching files"));
 }

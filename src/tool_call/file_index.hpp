@@ -69,8 +69,8 @@ class FileIndex {
 
  private:
   void WorkerLoop(std::stop_token st);
-  [[nodiscard]] std::vector<FileMentionRow> QueryLocked(std::string_view prefix,
-                                                        std::size_t limit) const;
+  [[nodiscard]] std::vector<FileMentionRow> QueryLocked(
+      std::string_view prefix, std::size_t limit) const;
 
   const WorkspaceFilesystem* fs_;
 

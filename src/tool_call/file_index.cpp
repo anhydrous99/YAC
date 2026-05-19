@@ -57,8 +57,7 @@ int Score(std::string_view path_lower, std::string_view basename_lower,
 }  // namespace
 
 FileIndex::FileIndex(const WorkspaceFilesystem& fs)
-    : fs_(&fs),
-      worker_([this](std::stop_token st) { WorkerLoop(st); }) {}
+    : fs_(&fs), worker_([this](std::stop_token st) { WorkerLoop(st); }) {}
 
 FileIndex::~FileIndex() {
   worker_.request_stop();
@@ -118,18 +117,17 @@ std::vector<FileMentionRow> FileIndex::QueryLocked(std::string_view prefix,
     }
   }
 
-  std::ranges::sort(
-      candidates, [this](const Candidate& a, const Candidate& b) {
-        if (a.score != b.score) {
-          return a.score < b.score;
-        }
-        const auto& ap = rows_[a.row_index].relative_path;
-        const auto& bp = rows_[b.row_index].relative_path;
-        if (ap.size() != bp.size()) {
-          return ap.size() < bp.size();
-        }
-        return ap < bp;
-      });
+  std::ranges::sort(candidates, [this](const Candidate& a, const Candidate& b) {
+    if (a.score != b.score) {
+      return a.score < b.score;
+    }
+    const auto& ap = rows_[a.row_index].relative_path;
+    const auto& bp = rows_[b.row_index].relative_path;
+    if (ap.size() != bp.size()) {
+      return ap.size() < bp.size();
+    }
+    return ap < bp;
+  });
 
   std::vector<FileMentionRow> out;
   out.reserve(std::min(limit, candidates.size()));

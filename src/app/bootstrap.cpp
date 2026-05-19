@@ -289,9 +289,8 @@ class ChatActionsImpl : public presentation::IChatActions {
     chat_ui.SetFileMentionProvider(
         [this](std::string_view prefix) -> presentation::FileMentionResult {
           const auto state = file_index_.GetState();
-          const bool indexing =
-              state == tool_call::FileIndex::State::Warming ||
-              state == tool_call::FileIndex::State::Cold;
+          const bool indexing = state == tool_call::FileIndex::State::Warming ||
+                                state == tool_call::FileIndex::State::Cold;
           return {.rows = file_index_.Query(prefix, /*limit=*/50),
                   .is_indexing = indexing};
         });
