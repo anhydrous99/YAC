@@ -4,9 +4,10 @@
 #include "tool_call/subprocess_runner.hpp"
 #include "tool_call/tool_error_result.hpp"
 
-#include <algorithm>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace yac::tool_call {
@@ -21,6 +22,11 @@ struct GrepArgs {
   std::string include;
   bool case_sensitive = false;
   bool include_ignored = false;
+};
+
+struct ParsedGrepOutput {
+  std::vector<GrepMatch> matches;
+  int file_count = 0;
 };
 
 GrepArgs ParseGrepArgs(const chat::ToolCallRequest& request) {
@@ -41,77 +47,70 @@ ToolExecutionResult MakeErrorResult(const std::string& pattern,
       Json{{"pattern", pattern}, {"error", error_msg}, {"is_error", true}});
 }
 
-ToolExecutionResult BuildGrepResult(const std::string& pattern,
-                                    const std::string& output, bool truncated) {
-  std::vector<GrepMatch> matches;
+std::optional<GrepMatch> ParseGrepMatchLine(const std::string& line) {
+  if (line.empty()) {
+    return std::nullopt;
+  }
+  const auto parsed = Json::parse(line, nullptr, false);
+  if (parsed.is_discarded() || !parsed.contains("type") ||
+      parsed["type"] != "match") {
+    return std::nullopt;
+  }
+  const auto& data = parsed["data"];
+  if (!data.contains("path") || !data.contains("line_number") ||
+      !data.contains("lines")) {
+    return std::nullopt;
+  }
+
+  std::string content = data["lines"].value("text", std::string{});
+  if (!content.empty() && content.back() == '\n') {
+    content.pop_back();
+  }
+  return GrepMatch{.filepath = data["path"].value("text", std::string{}),
+                   .line = data["line_number"].get<int>(),
+                   .content = std::move(content)};
+}
+
+ParsedGrepOutput ParseGrepOutput(const std::string& output) {
+  ParsedGrepOutput parsed;
+  std::unordered_set<std::string> seen_files;
   std::istringstream stream(output);
   std::string line;
-  while (std::getline(stream, line) &&
-         matches.size() < static_cast<size_t>(kMaxMatches)) {
-    if (line.empty()) {
+  while (std::getline(stream, line)) {
+    auto match = ParseGrepMatchLine(line);
+    if (!match.has_value()) {
       continue;
     }
-    const auto parsed = Json::parse(line, nullptr, false);
-    if (parsed.is_discarded()) {
-      continue;
+    seen_files.insert(match->filepath);
+    if (parsed.matches.size() < static_cast<size_t>(kMaxMatches)) {
+      parsed.matches.push_back(std::move(*match));
     }
-    if (!parsed.contains("type") || parsed["type"] != "match") {
-      continue;
-    }
-    const auto& data = parsed["data"];
-    if (!data.contains("path") || !data.contains("line_number") ||
-        !data.contains("lines")) {
-      continue;
-    }
-    std::string filepath = data["path"].value("text", std::string{});
-    const int line_number = data["line_number"].get<int>();
-    std::string content = data["lines"].value("text", std::string{});
-    if (!content.empty() && content.back() == '\n') {
-      content.pop_back();
-    }
-    matches.push_back(GrepMatch{
-        .filepath = filepath, .line = line_number, .content = content});
   }
+  parsed.file_count = static_cast<int>(seen_files.size());
+  return parsed;
+}
 
-  const bool capped = matches.size() >= static_cast<size_t>(kMaxMatches);
+ToolExecutionResult BuildGrepResult(const std::string& pattern,
+                                    const std::string& output, bool truncated) {
+  auto parsed = ParseGrepOutput(output);
+  const bool capped = parsed.matches.size() >= static_cast<size_t>(kMaxMatches);
   const bool is_truncated = truncated || capped;
 
-  int file_count = 0;
-  {
-    std::istringstream fs(output);
-    std::string fl;
-    std::vector<std::string> seen_files;
-    while (std::getline(fs, fl)) {
-      if (fl.empty()) {
-        continue;
-      }
-      const auto p = Json::parse(fl, nullptr, false);
-      if (p.is_discarded() || !p.contains("type") || p["type"] != "match") {
-        continue;
-      }
-      std::string fp = p["data"]["path"].value("text", std::string{});
-      if (std::ranges::find(seen_files, fp) == seen_files.end()) {
-        seen_files.push_back(fp);
-        file_count++;
-      }
-    }
-  }
-
   Json matches_json = Json::array();
-  for (const auto& m : matches) {
+  for (const auto& m : parsed.matches) {
     matches_json.push_back(Json{
         {"filepath", m.filepath}, {"line", m.line}, {"content", m.content}});
   }
 
-  const int match_count = static_cast<int>(matches.size());
+  const int match_count = static_cast<int>(parsed.matches.size());
   auto block = GrepCall{.pattern = pattern,
                         .match_count = match_count,
-                        .matches = std::move(matches)};
+                        .matches = std::move(parsed.matches)};
   return ToolExecutionResult{.block = std::move(block),
                              .result_json = Json{
                                  {"pattern", pattern},
                                  {"match_count", match_count},
-                                 {"file_count", file_count},
+                                 {"file_count", parsed.file_count},
                                  {"matches", matches_json},
                                  {"truncated",
                                   is_truncated}}.dump()};

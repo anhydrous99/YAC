@@ -27,6 +27,19 @@ std::optional<std::string> GetEnv(const char* name) {
   return std::nullopt;
 }
 
+std::string LowerAscii(std::string value) {
+  std::ranges::transform(value, value.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  return value;
+}
+
+bool ParseEnvBool(const std::string& value) {
+  const std::string normalized = LowerAscii(value);
+  return !(normalized == "0" || normalized == "false" || normalized == "no" ||
+           normalized == "off");
+}
+
 double ParseTemperature(const std::string& value) {
   const double temp = std::stod(value);
   if (temp < kMinTemperature || temp > kMaxTemperature) {
@@ -173,12 +186,7 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     fields.lsp_clangd_args = true;
   }
   if (auto val = GetEnv("YAC_SYNC_TERMINAL_BACKGROUND")) {
-    std::string normalized = *val;
-    std::ranges::transform(normalized, normalized.begin(),
-                           [](unsigned char ch) { return std::tolower(ch); });
-    config.sync_terminal_background =
-        !(normalized == "0" || normalized == "false" || normalized == "no" ||
-          normalized == "off");
+    config.sync_terminal_background = ParseEnvBool(*val);
   }
   if (auto val = GetEnv("YAC_THEME_NAME")) {
     config.theme_name = std::move(*val);
@@ -189,12 +197,7 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     fields.theme_density = true;
   }
   if (auto val = GetEnv("YAC_COMPACT_AUTO_ENABLED")) {
-    std::string normalized = *val;
-    std::ranges::transform(normalized, normalized.begin(),
-                           [](unsigned char ch) { return std::tolower(ch); });
-    config.auto_compact_enabled =
-        !(normalized == "0" || normalized == "false" || normalized == "no" ||
-          normalized == "off");
+    config.auto_compact_enabled = ParseEnvBool(*val);
   }
   if (auto val = GetEnv("YAC_COMPACT_THRESHOLD")) {
     try {
@@ -310,11 +313,7 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
       server.url = std::move(*val);
     }
     if (auto val = GetEnv((server_prefix + "ENABLED").c_str())) {
-      std::string normalized = *val;
-      std::ranges::transform(normalized, normalized.begin(),
-                             [](unsigned char ch) { return std::tolower(ch); });
-      server.enabled = !(normalized == "0" || normalized == "false" ||
-                         normalized == "no" || normalized == "off");
+      server.enabled = ParseEnvBool(*val);
     }
     if (auto val = GetEnv((server_prefix + "API_KEY_ENV").c_str())) {
       if (server.auth.has_value()) {

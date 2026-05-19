@@ -15,6 +15,7 @@
 namespace yac::presentation {
 
 enum class SubPaletteKind { None, Model, Theme };
+enum class ToolApprovalDecision { Approve, Reject };
 
 struct UsageStats {
   int prompt_tokens = 0;
@@ -66,7 +67,7 @@ class ChatUiOverlayState {
   void HandleCommandSelection(int index);
   void HandleModelSelection(int index);
   void HandleThemeSelection(int index);
-  void DispatchToolApproval(bool approved);
+  void DispatchToolApproval(ToolApprovalDecision decision);
   void DispatchAskUserSubmit();
   void DispatchAskUserCancel();
 

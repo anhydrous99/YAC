@@ -380,13 +380,13 @@ bool ChatUiOverlayState::HandleGlobalEvent(const ftxui::Event& event) {
     if (event == ftxui::Event::Return ||
         event == ftxui::Event::Character('y') ||
         event == ftxui::Event::Character('Y')) {
-      DispatchToolApproval(true);
+      DispatchToolApproval(ToolApprovalDecision::Approve);
       return true;
     }
     if (event == ftxui::Event::Escape ||
         event == ftxui::Event::Character('n') ||
         event == ftxui::Event::Character('N')) {
-      DispatchToolApproval(false);
+      DispatchToolApproval(ToolApprovalDecision::Reject);
       return true;
     }
     return true;
@@ -482,11 +482,12 @@ void ChatUiOverlayState::HandleThemeSelection(int index) {
   SyncPaletteVisibility();
 }
 
-void ChatUiOverlayState::DispatchToolApproval(bool approved) {
+void ChatUiOverlayState::DispatchToolApproval(ToolApprovalDecision decision) {
   auto approval_id = std::move(tool_approval_dialog_.id);
   show_tool_approval_ = false;
   tool_approval_dialog_ = ToolApprovalDialog{};
   if (on_tool_approval_ && !approval_id.value.empty()) {
+    const bool approved = decision == ToolApprovalDecision::Approve;
     on_tool_approval_(approval_id, approved);
   }
 }

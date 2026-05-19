@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <stop_token>
 #include <string>
+#include <system_error>
+#include <utility>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -95,22 +97,50 @@ class OutsideWorkspaceRenameLspClient : public FakeLspClient {
   }
 };
 
-std::filesystem::path TempRoot(const std::string& name) {
-  auto path =
-      std::filesystem::temp_directory_path() / ("yac_tool_executor_" + name);
-  std::filesystem::remove_all(path);
-  std::filesystem::create_directories(path);
-  return path;
-}
+class TempRoot {
+ public:
+  explicit TempRoot(const std::string& name)
+      : path_(std::filesystem::temp_directory_path() /
+              ("yac_tool_executor_" + name)) {
+    std::filesystem::remove_all(path_);
+    std::filesystem::create_directories(path_);
+  }
 
-TodoState& SharedTodoState() {
-  static TodoState state;
-  return state;
-}
+  ~TempRoot() {
+    std::error_code ec;
+    std::filesystem::remove_all(path_, ec);
+  }
 
-ToolExecutor MakeExecutor(const std::filesystem::path& root) {
-  return ToolExecutor(root, std::make_shared<FakeLspClient>(),
-                      SharedTodoState());
+  TempRoot(const TempRoot&) = delete;
+  TempRoot& operator=(const TempRoot&) = delete;
+  TempRoot(TempRoot&&) = delete;
+  TempRoot& operator=(TempRoot&&) = delete;
+
+  [[nodiscard]] const std::filesystem::path& Path() const { return path_; }
+
+ private:
+  std::filesystem::path path_;
+};
+
+class TestToolExecutor {
+ public:
+  explicit TestToolExecutor(const std::filesystem::path& root,
+                            std::shared_ptr<ILspClient> lsp_client =
+                                std::make_shared<FakeLspClient>())
+      : executor_(root, std::move(lsp_client), todo_state_) {}
+
+  [[nodiscard]] ToolExecutionResult Execute(const PreparedToolCall& prepared,
+                                            std::stop_token stop_token) const {
+    return executor_.Execute(prepared, stop_token);
+  }
+
+ private:
+  TodoState todo_state_;
+  ToolExecutor executor_;
+};
+
+TestToolExecutor MakeExecutor(const TempRoot& root) {
+  return TestToolExecutor(root.Path());
 }
 
 std::string ReadFile(const std::filesystem::path& path) {
@@ -124,7 +154,7 @@ std::string ReadFile(const std::filesystem::path& path) {
 
 TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   auto root = TempRoot("unknown");
-  ToolExecutor executor = MakeExecutor(root);
+  auto executor = MakeExecutor(root);
   PreparedToolCall prepared{
       .request = {.id = "call_1", .name = "does_not_exist"},
       .preview = FileWriteCall{.filepath = "x.txt"}};
@@ -141,7 +171,6 @@ TEST_CASE("ToolExecutor dispatch registry unknown returns error") {
   REQUIRE(std::get<FileWriteCall>(result.block).is_error);
   REQUIRE(std::get<FileWriteCall>(result.block).error ==
           "Unknown tool: does_not_exist");
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor handler registry keys match tool definitions") {
@@ -165,7 +194,6 @@ TEST_CASE("ToolExecutor file_write requires approval") {
 
   REQUIRE(prepared.requires_approval);
   REQUIRE(prepared.approval_prompt == "Write src/new.cpp (2 lines).");
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor writes files inside the workspace") {
@@ -182,15 +210,14 @@ TEST_CASE("ToolExecutor writes files inside the workspace") {
 
   REQUIRE_FALSE(result.is_error);
   REQUIRE(std::holds_alternative<FileWriteCall>(result.block));
-  REQUIRE(ReadFile(root / "src/new.cpp") == "one\ntwo\n");
-  std::filesystem::remove_all(root);
+  REQUIRE(ReadFile(root.Path() / "src/new.cpp") == "one\ntwo\n");
 }
 
 TEST_CASE("ToolExecutor lists directory entries with metadata") {
   auto root = TempRoot("list");
-  std::filesystem::create_directories(root / "src");
+  std::filesystem::create_directories(root.Path() / "src");
   {
-    std::ofstream file(root / "src/main.cpp");
+    std::ofstream file(root.Path() / "src/main.cpp");
     file << "int main() {}\n";
   }
   auto executor = MakeExecutor(root);
@@ -206,7 +233,6 @@ TEST_CASE("ToolExecutor lists directory entries with metadata") {
   REQUIRE(call.entries.size() == 1);
   REQUIRE(call.entries[0].name == "main.cpp");
   REQUIRE(call.entries[0].type == DirectoryEntryType::File);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor rejects paths outside the workspace") {
@@ -220,13 +246,12 @@ TEST_CASE("ToolExecutor rejects paths outside the workspace") {
       executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE(result.is_error);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor applies LSP rename edits after approval") {
   auto root = TempRoot("rename");
   {
-    std::ofstream file(root / "rename.cpp");
+    std::ofstream file(root.Path() / "rename.cpp");
     file << "int old = 0;\nold++;\n";
   }
   auto executor = MakeExecutor(root);
@@ -241,8 +266,7 @@ TEST_CASE("ToolExecutor applies LSP rename edits after approval") {
   auto result = executor.Execute(prepared, std::stop_token{});
 
   REQUIRE_FALSE(result.is_error);
-  REQUIRE(ReadFile(root / "rename.cpp") == "int next = 0;\nnext++;\n");
-  std::filesystem::remove_all(root);
+  REQUIRE(ReadFile(root.Path() / "rename.cpp") == "int next = 0;\nnext++;\n");
 }
 
 TEST_CASE("ToolExecutor reports cancelled execution before running tool") {
@@ -260,17 +284,16 @@ TEST_CASE("ToolExecutor reports cancelled execution before running tool") {
   const auto& call = std::get<ListDirCall>(result.block);
   REQUIRE(call.is_error);
   REQUIRE(call.error == "Tool execution cancelled.");
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor preserves LSP rename errors from the client seam") {
   auto root = TempRoot("rename_error");
   {
-    std::ofstream file(root / "rename.cpp");
+    std::ofstream file(root.Path() / "rename.cpp");
     file << "int old = 0;\nold++;\n";
   }
-  ToolExecutor executor(root, std::make_shared<ErrorRenameLspClient>(),
-                        SharedTodoState());
+  TestToolExecutor executor(root.Path(),
+                            std::make_shared<ErrorRenameLspClient>());
   ToolCallRequest request{
       .id = "call_1",
       .name = "lsp_rename",
@@ -284,19 +307,17 @@ TEST_CASE("ToolExecutor preserves LSP rename errors from the client seam") {
   const auto& call = std::get<LspRenameCall>(result.block);
   REQUIRE(call.is_error);
   REQUIRE(call.error == "rename failed");
-  REQUIRE(ReadFile(root / "rename.cpp") == "int old = 0;\nold++;\n");
-  std::filesystem::remove_all(root);
+  REQUIRE(ReadFile(root.Path() / "rename.cpp") == "int old = 0;\nold++;\n");
 }
 
 TEST_CASE("ToolExecutor rejects LSP rename edits outside the workspace") {
   auto root = TempRoot("rename_outside");
   {
-    std::ofstream file(root / "rename.cpp");
+    std::ofstream file(root.Path() / "rename.cpp");
     file << "old\n";
   }
-  ToolExecutor executor(root,
-                        std::make_shared<OutsideWorkspaceRenameLspClient>(),
-                        SharedTodoState());
+  TestToolExecutor executor(
+      root.Path(), std::make_shared<OutsideWorkspaceRenameLspClient>());
   ToolCallRequest request{
       .id = "call_1",
       .name = "lsp_rename",
@@ -311,15 +332,14 @@ TEST_CASE("ToolExecutor rejects LSP rename edits outside the workspace") {
   REQUIRE(call.is_error);
   REQUIRE(call.error.find("Path is outside the workspace") !=
           std::string::npos);
-  REQUIRE(ReadFile(root / "rename.cpp") == "old\n");
-  std::filesystem::remove_all(root);
+  REQUIRE(ReadFile(root.Path() / "rename.cpp") == "old\n");
 }
 
 TEST_CASE("ToolExecutor reads files inside the workspace") {
   auto root = TempRoot("read");
-  std::filesystem::create_directories(root / "src");
+  std::filesystem::create_directories(root.Path() / "src");
   {
-    std::ofstream file(root / "src/hello.cpp");
+    std::ofstream file(root.Path() / "src/hello.cpp");
     file << "line one\nline two\nline three\n";
   }
   auto executor = MakeExecutor(root);
@@ -339,7 +359,6 @@ TEST_CASE("ToolExecutor reads files inside the workspace") {
   REQUIRE_FALSE(call.excerpt.empty());
   REQUIRE(result.result_json.find("line one\\nline two\\nline three\\n") !=
           std::string::npos);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor reports error for missing file") {
@@ -354,7 +373,6 @@ TEST_CASE("ToolExecutor reports error for missing file") {
       executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE(result.is_error);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("ToolExecutor rejects file_read paths outside the workspace") {
@@ -369,21 +387,20 @@ TEST_CASE("ToolExecutor rejects file_read paths outside the workspace") {
       executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE(result.is_error);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE("WorkspaceFilesystem::WriteFile rejects content over the size cap") {
   auto root = TempRoot("write_cap");
   std::string content(kMaxFileBytes + 1, 'x');
-  REQUIRE_THROWS_AS(WorkspaceFilesystem::WriteFile(root / "big.bin", content),
-                    std::runtime_error);
-  REQUIRE_FALSE(std::filesystem::exists(root / "big.bin"));
-  std::filesystem::remove_all(root);
+  REQUIRE_THROWS_AS(
+      WorkspaceFilesystem::WriteFile(root.Path() / "big.bin", content),
+      std::runtime_error);
+  REQUIRE_FALSE(std::filesystem::exists(root.Path() / "big.bin"));
 }
 
 TEST_CASE("WorkspaceFilesystem::ReadFile rejects files over the size cap") {
   auto root = TempRoot("read_cap");
-  const auto path = root / "big.bin";
+  const auto path = root.Path() / "big.bin";
   {
     std::ofstream(path, std::ios::binary).put('\0');
   }
@@ -391,13 +408,12 @@ TEST_CASE("WorkspaceFilesystem::ReadFile rejects files over the size cap") {
   std::filesystem::resize_file(path, kMaxFileBytes + 1, ec);
   REQUIRE_FALSE(ec);
   REQUIRE_THROWS_AS(WorkspaceFilesystem::ReadFile(path), std::runtime_error);
-  std::filesystem::remove_all(root);
 }
 
 TEST_CASE(
     "WorkspaceFilesystem::WriteFile surfaces an error on read-only parent") {
   auto root = TempRoot("write_readonly");
-  const auto target_dir = root / "locked";
+  const auto target_dir = root.Path() / "locked";
   std::filesystem::create_directories(target_dir);
   std::filesystem::permissions(
       target_dir,
@@ -413,6 +429,5 @@ TEST_CASE(
 
   std::filesystem::permissions(target_dir, std::filesystem::perms::owner_all,
                                std::filesystem::perm_options::replace);
-  std::filesystem::remove_all(root);
   REQUIRE(threw);
 }

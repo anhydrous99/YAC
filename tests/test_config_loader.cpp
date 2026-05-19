@@ -398,3 +398,31 @@ TEST_CASE("LoadConfig preserves env-precedence ordering") {
 
   REQUIRE(loaded.chat.config.model.value == "env-model");
 }
+
+TEST_CASE("env boolean overrides share false-value spellings") {
+  TempDir dir("yac_test_config_loader_env_bool_false");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai-compatible\"\n"
+            "model = \"gpt-4o-mini\"\n"
+            "[[mcp.servers]]\n"
+            "id = \"ctx7\"\n"
+            "transport = \"stdio\"\n"
+            "command = \"npx\"\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+  ScopedEnvVar sync_terminal_background("YAC_SYNC_TERMINAL_BACKGROUND", "off");
+  ScopedEnvVar compact_auto_enabled("YAC_COMPACT_AUTO_ENABLED", "NO");
+  ScopedEnvVar mcp_enabled("YAC_MCP_CTX7_ENABLED", "0");
+
+  auto result = LoadChatConfigResultFrom(settings_path,
+                                         /*create_if_missing=*/false);
+
+  REQUIRE(result.issues.empty());
+  REQUIRE_FALSE(result.config.sync_terminal_background);
+  REQUIRE_FALSE(result.config.auto_compact_enabled);
+  REQUIRE(result.config.mcp.servers.size() == 1);
+  REQUIRE_FALSE(result.config.mcp.servers[0].enabled);
+}

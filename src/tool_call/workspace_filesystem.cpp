@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -12,6 +13,39 @@ namespace yac::tool_call {
 namespace {
 
 constexpr size_t kMaxContentPreviewBytes = 4000;
+
+std::optional<size_t> ReadableFileSize(const std::filesystem::path& path) {
+  std::error_code ec;
+  const auto sym_status = std::filesystem::symlink_status(path, ec);
+  if (!ec && std::filesystem::is_symlink(sym_status)) {
+    throw std::runtime_error("Refusing to read through symlink: " +
+                             path.string());
+  }
+  if (!std::filesystem::exists(path, ec)) {
+    return std::nullopt;
+  }
+  if (ec) {
+    throw std::runtime_error("Unable to stat file: " + path.string());
+  }
+  const auto size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    throw std::runtime_error("Unable to size file: " + path.string());
+  }
+  if (size > kMaxFileBytes) {
+    throw std::runtime_error("File exceeds " + std::to_string(kMaxFileBytes) +
+                             " byte read limit: " + path.string());
+  }
+  return static_cast<size_t>(size);
+}
+
+std::ifstream OpenFileForRead(const std::filesystem::path& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    throw std::runtime_error("Unable to open file for reading: " +
+                             path.string());
+  }
+  return file;
+}
 
 }  // namespace
 
@@ -86,31 +120,10 @@ std::string WorkspaceFilesystem::DisplayPath(
 }
 
 std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
-  std::error_code ec;
-  const auto sym_status = std::filesystem::symlink_status(path, ec);
-  if (!ec && std::filesystem::is_symlink(sym_status)) {
-    throw std::runtime_error("Refusing to read through symlink: " +
-                             path.string());
-  }
-  if (!std::filesystem::exists(path, ec)) {
+  if (!ReadableFileSize(path).has_value()) {
     return {};
   }
-  if (ec) {
-    throw std::runtime_error("Unable to stat file: " + path.string());
-  }
-  const auto size = std::filesystem::file_size(path, ec);
-  if (ec) {
-    throw std::runtime_error("Unable to size file: " + path.string());
-  }
-  if (size > kMaxFileBytes) {
-    throw std::runtime_error("File exceeds " + std::to_string(kMaxFileBytes) +
-                             " byte read limit: " + path.string());
-  }
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    throw std::runtime_error("Unable to open file for reading: " +
-                             path.string());
-  }
+  auto file = OpenFileForRead(path);
   std::ostringstream buffer;
   buffer << file.rdbuf();
   return buffer.str();
@@ -118,35 +131,15 @@ std::string WorkspaceFilesystem::ReadFile(const std::filesystem::path& path) {
 
 std::string WorkspaceFilesystem::ReadFilePrefix(
     const std::filesystem::path& path, std::size_t max_bytes) {
-  std::error_code ec;
-  const auto sym_status = std::filesystem::symlink_status(path, ec);
-  if (!ec && std::filesystem::is_symlink(sym_status)) {
-    throw std::runtime_error("Refusing to read through symlink: " +
-                             path.string());
-  }
-  if (!std::filesystem::exists(path, ec)) {
+  const auto size = ReadableFileSize(path);
+  if (!size.has_value()) {
     return {};
-  }
-  if (ec) {
-    throw std::runtime_error("Unable to stat file: " + path.string());
-  }
-  const auto size = std::filesystem::file_size(path, ec);
-  if (ec) {
-    throw std::runtime_error("Unable to size file: " + path.string());
-  }
-  if (size > kMaxFileBytes) {
-    throw std::runtime_error("File exceeds " + std::to_string(kMaxFileBytes) +
-                             " byte read limit: " + path.string());
   }
   if (max_bytes == 0) {
     return {};
   }
-  std::ifstream file(path, std::ios::binary);
-  if (!file) {
-    throw std::runtime_error("Unable to open file for reading: " +
-                             path.string());
-  }
-  const auto to_read = std::min<std::size_t>(max_bytes, size);
+  auto file = OpenFileForRead(path);
+  const auto to_read = std::min(max_bytes, *size);
   std::string buffer;
   buffer.resize(to_read);
   if (to_read > 0) {
