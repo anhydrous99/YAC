@@ -19,10 +19,6 @@ namespace yac::chat {
 
 static_assert(sizeof(ModelInfo) > 0);
 
-inline constexpr int kDefaultToolRoundLimit = 64;
-inline constexpr int kMinToolRoundLimit = 1;
-inline constexpr int kMaxToolRoundLimit = 256;
-
 inline constexpr int kMinContextWindow = 1;
 inline constexpr int kMaxContextWindow = 10'000'000;
 
@@ -433,7 +429,6 @@ struct ChatConfig {
   std::string workspace_root;
   std::string lsp_clangd_command = "clangd";
   std::vector<std::string> lsp_clangd_args;
-  int max_tool_rounds = kDefaultToolRoundLimit;
   std::optional<std::string> system_prompt;
   AgentMode agent_mode{AgentMode::Build};
   bool sync_terminal_background = true;

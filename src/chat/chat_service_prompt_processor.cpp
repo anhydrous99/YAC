@@ -329,10 +329,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
                    .status = ChatMessageStatus::Active}});
 
   std::string visible_assistant_text;
-  bool model_wants_more_tools = false;
-  const int max_tool_rounds =
-      std::max(kMinToolRoundLimit, request_builder.Config().max_tool_rounds);
-  for (int round = 0; round < max_tool_rounds; ++round) {
+  while (true) {
     auto outcome = RunOneRound(*provider, request_builder, assistant_id,
                                generation, stop_token);
     visible_assistant_text += outcome.round_text;
@@ -345,7 +342,6 @@ void ChatServicePromptProcessor::ProcessPrompt(
       return;
     }
     if (outcome.stop == RoundOutcome::Stop::ModelDone) {
-      model_wants_more_tools = false;
       break;
     }
 
@@ -367,19 +363,10 @@ void ChatServicePromptProcessor::ProcessPrompt(
     }
     RunToolRound(outcome.requested_tools, outcome.streaming_card_ids,
                  generation, stop_token);
-    model_wants_more_tools = true;
-  }
-
-  if (model_wants_more_tools) {
-    emit_event_(ChatEvent{
-        ErrorEvent{.message_id = assistant_id,
-                   .role = ChatRole::Assistant,
-                   .text = "Tool round limit reached after " +
-                           std::to_string(max_tool_rounds) +
-                           (max_tool_rounds == 1 ? " round." : " rounds."),
-                   .status = ChatMessageStatus::Error}});
-    emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
-    return;
+    if (stop_token.stop_requested() || generation_value_() != generation) {
+      EmitCancellation(assistant_id);
+      return;
+    }
   }
 
   if (!visible_assistant_text.empty()) {

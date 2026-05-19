@@ -783,9 +783,6 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
 
   fields.temperature =
       ApplyTemperature(table["temperature"], config.temperature, issues);
-  fields.max_tool_rounds = ApplyIntegerField(
-      table["max_tool_rounds"], "max_tool_rounds", kMinToolRoundLimit,
-      kMaxToolRoundLimit, config.max_tool_rounds, issues);
 
   if (auto* system_prompt = table["system_prompt"].as_string()) {
     config.system_prompt = system_prompt->get();

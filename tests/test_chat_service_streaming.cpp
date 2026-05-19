@@ -70,13 +70,17 @@ std::shared_ptr<LambdaMockProvider> MakeToolRoundProvider() {
       });
 }
 
-std::shared_ptr<LambdaMockProvider> MakeInfiniteToolLoopProvider(
-    std::shared_ptr<std::atomic<int>> call_count) {
+std::shared_ptr<LambdaMockProvider> MakeManyToolRoundsProvider(
+    std::shared_ptr<std::atomic<int>> call_count, int tool_rounds) {
   return std::make_shared<LambdaMockProvider>(
-      "infinite-tools",
-      [call_count = std::move(call_count)](
+      "many-tools",
+      [call_count = std::move(call_count), tool_rounds](
           const ChatRequest&, ChatEventSink sink, std::stop_token) {
         const int call_index = call_count->fetch_add(1);
+        if (call_index >= tool_rounds) {
+          sink(ChatEvent{TextDeltaEvent{.text = "done"}});
+          return;
+        }
         sink(ChatEvent{ToolCallRequestedEvent{
             .tool_calls = {
                 ToolCallRequest{.id = "tool_" + std::to_string(call_index),
@@ -326,43 +330,32 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("ChatService caps tool rounds and emits a single limit error") {
-  auto root = std::filesystem::temp_directory_path() / "yac_tool_round_limit";
+TEST_CASE("ChatService continues tool rounds until the model stops") {
+  auto root = std::filesystem::temp_directory_path() / "yac_many_tool_rounds";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
 
+  constexpr int kToolRounds = 70;
   auto call_count = std::make_shared<std::atomic<int>>(0);
-  auto provider = MakeInfiniteToolLoopProvider(call_count);
+  auto provider = MakeManyToolRoundsProvider(call_count, kToolRounds);
   ChatConfig config;
-  config.provider_id = ::yac::ProviderId{"infinite-tools"};
+  config.provider_id = ::yac::ProviderId{"many-tools"};
   config.model = ::yac::ModelId{"fake-model"};
   config.workspace_root = root.string();
-  config.max_tool_rounds = 3;
   auto service = MakeService(provider, config);
 
   const auto events = CollectEvents(service, "go");
 
-  // When the model never stops requesting tools, the service should run
-  // exactly the configured number of completions + tool rounds, then surface
-  // a single "Tool round limit reached" error.
-  REQUIRE(call_count->load() == config.max_tool_rounds);
+  REQUIRE(call_count->load() == kToolRounds + 1);
 
   const auto tool_done_count =
       std::count_if(events.begin(), events.end(), [](const ChatEvent& e) {
         return e.Type() == ChatEventType::ToolCallDone;
       });
-  REQUIRE(tool_done_count == config.max_tool_rounds);
+  REQUIRE(tool_done_count == kToolRounds);
 
-  REQUIRE_FALSE(HasEvent(events, ChatEventType::AssistantMessageDone));
-
-  const auto error_it = std::ranges::find_if(events, [](const ChatEvent& e) {
-    return e.Type() == ChatEventType::Error;
-  });
-  REQUIRE(error_it != events.end());
-  const auto* err = error_it->As<ErrorEvent>();
-  REQUIRE(err != nullptr);
-  REQUIRE(err->text.find("Tool round limit reached") != std::string::npos);
-  REQUIRE(err->text.find("3 rounds") != std::string::npos);
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+  REQUIRE_FALSE(HasEvent(events, ChatEventType::Error));
 
   std::filesystem::remove_all(root);
 }

@@ -141,7 +141,6 @@ TEST_CASE("settings.example.toml parses cleanly via LoadSettingsFromToml") {
   REQUIRE(fields.base_url);
   REQUIRE(fields.api_key_env);
   REQUIRE(fields.temperature);
-  REQUIRE(fields.max_tool_rounds);
   REQUIRE(fields.lsp_clangd_command);
   REQUIRE(fields.lsp_clangd_args);
   REQUIRE(fields.theme_name);
@@ -150,7 +149,6 @@ TEST_CASE("settings.example.toml parses cleanly via LoadSettingsFromToml") {
   REQUIRE(config.base_url == "https://api.openai.com/v1/");
   REQUIRE(config.api_key_env == "OPENAI_API_KEY");
   REQUIRE(config.temperature == 0.7);
-  REQUIRE(config.max_tool_rounds == 32);
   REQUIRE(config.lsp_clangd_command == "clangd");
   REQUIRE(config.lsp_clangd_args.empty());
   REQUIRE(config.theme_name == "vivid");
@@ -183,7 +181,6 @@ TEST_CASE("settings.example.toml round-trips through copy-and-reparse") {
   REQUIRE(replayed.base_url == original.base_url);
   REQUIRE(replayed.api_key_env == original.api_key_env);
   REQUIRE(replayed.temperature == original.temperature);
-  REQUIRE(replayed.max_tool_rounds == original.max_tool_rounds);
   REQUIRE(replayed.lsp_clangd_command == original.lsp_clangd_command);
   REQUIRE(replayed.lsp_clangd_args == original.lsp_clangd_args);
   REQUIRE(replayed.theme_name == original.theme_name);
@@ -233,7 +230,6 @@ TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {
 
   constexpr const char* kSettings =
       "temperature = 1.2\n"
-      "max_tool_rounds = 48\n"
       "[provider]\n"
       "id = \"openai-compatible\"\n"
       "model = \"gpt-4o-mini\"\n"
@@ -256,8 +252,6 @@ TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {
       LoadPromptLibrary(split_prompts, /*seed_defaults=*/true);
 
   REQUIRE(aggregate.chat.config.temperature == split_chat.config.temperature);
-  REQUIRE(aggregate.chat.config.max_tool_rounds ==
-          split_chat.config.max_tool_rounds);
   REQUIRE(aggregate.chat.config.provider_id == split_chat.config.provider_id);
   REQUIRE(aggregate.chat.config.model == split_chat.config.model);
   REQUIRE(aggregate.chat.config.base_url == split_chat.config.base_url);
@@ -277,7 +271,6 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
 
   WriteFile(settings_path,
             "temperature = 0.3\n"
-            "max_tool_rounds = 12\n"
             "system_prompt = \"file-prompt\"\n"
             "workspace_root = \"/from-file\"\n"
             "[provider]\n"
@@ -298,7 +291,6 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
   ScopedEnvVar yac_api_key_env("YAC_API_KEY_ENV", "ENV_API_KEY");
   ScopedEnvVar env_api_key("ENV_API_KEY", "secret-from-env");
   ScopedEnvVar yac_temperature("YAC_TEMPERATURE", "1.4");
-  ScopedEnvVar yac_max_tool_rounds("YAC_MAX_TOOL_ROUNDS", "96");
   ScopedEnvVar yac_system_prompt("YAC_SYSTEM_PROMPT", "env-prompt");
   ScopedEnvVar yac_workspace_root("YAC_WORKSPACE_ROOT", "/from-env");
   ScopedEnvVar yac_lsp_command("YAC_LSP_CLANGD_COMMAND", "env-clangd");
@@ -315,7 +307,6 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
   REQUIRE(result.config.api_key_env == "ENV_API_KEY");
   REQUIRE(result.config.api_key == "secret-from-env");
   REQUIRE(result.config.temperature == 1.4);
-  REQUIRE(result.config.max_tool_rounds == 96);
   REQUIRE(result.config.system_prompt == std::string{"env-prompt"});
   REQUIRE(result.config.workspace_root == "/from-env");
   REQUIRE(result.config.lsp_clangd_command == "env-clangd");
@@ -332,7 +323,6 @@ TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
 
   WriteFile(settings_path,
             "temperature = 0.55\n"
-            "max_tool_rounds = 7\n"
             "[provider]\n"
             "id = \"openai-compatible\"\n"
             "model = \"toml-model\"\n");
@@ -341,7 +331,6 @@ TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
   ScopedUnsetEnvVar unset_model("YAC_MODEL");
   ScopedUnsetEnvVar unset_base_url("YAC_BASE_URL");
   ScopedUnsetEnvVar unset_temperature("YAC_TEMPERATURE");
-  ScopedUnsetEnvVar unset_tool_rounds("YAC_MAX_TOOL_ROUNDS");
   ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
 
   auto result = LoadChatConfigResultFrom(settings_path,
@@ -350,7 +339,6 @@ TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
   REQUIRE(result.config.provider_id.value == "openai-compatible");
   REQUIRE(result.config.model.value == "toml-model");
   REQUIRE(result.config.temperature == 0.55);
-  REQUIRE(result.config.max_tool_rounds == 7);
 }
 
 TEST_CASE("env-precedence: YAC_MCP_<ID>_* overrides per-server fields") {
