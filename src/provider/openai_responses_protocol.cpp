@@ -163,10 +163,10 @@ void FlushPendingToolCall(int index, StreamState& state) {
   const auto& call = it->second;
   if (!call.call_id.empty() && !call.name.empty()) {
     (*state.sink)(chat::ChatEvent{chat::ToolCallRequestedEvent{
-        .tool_calls = {chat::ToolCallRequest{.id = call.call_id,
-                                             .name = call.name,
-                                             .arguments_json =
-                                                 call.arguments_json}}}});
+        .tool_calls = {
+            chat::ToolCallRequest{.id = call.call_id,
+                                  .name = call.name,
+                                  .arguments_json = call.arguments_json}}}});
   }
   state.pending_tool_calls.erase(it);
 }
@@ -274,7 +274,9 @@ void ConsumeSseLine(std::string_view line, StreamState& state) {
 
 }  // namespace
 
-std::string ResponsesPath() { return "/backend-api/codex/responses"; }
+std::string ResponsesPath() {
+  return "/backend-api/codex/responses";
+}
 
 Json BuildResponsesPayload(const chat::ChatRequest& request,
                            const chat::ProviderConfig& config) {
@@ -288,19 +290,19 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
     }
 
     if (message.role == chat::ChatRole::User) {
-      input.push_back({{"role", "user"},
-                       {"content",
-                        Json::array({{{"type", "input_text"},
-                                      {"text", message.content}}})}});
+      input.push_back(
+          {{"role", "user"},
+           {"content", Json::array({{{"type", "input_text"},
+                                     {"text", message.content}}})}});
       continue;
     }
 
     if (message.role == chat::ChatRole::Assistant) {
       if (!message.content.empty()) {
-        input.push_back({{"role", "assistant"},
-                         {"content",
-                          Json::array({{{"type", "output_text"},
-                                        {"text", message.content}}})}});
+        input.push_back(
+            {{"role", "assistant"},
+             {"content", Json::array({{{"type", "output_text"},
+                                       {"text", message.content}}})}});
       }
       for (const auto& call : message.tool_calls) {
         input.push_back({{"type", "function_call"},
@@ -325,10 +327,11 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
   if (!request.tools.empty()) {
     Json tools = Json::array();
     for (const auto& tool : request.tools) {
-      tools.push_back({{"type", "function"},
-                       {"name", tool.name},
-                       {"description", tool.description},
-                       {"parameters", ParseSchema(tool.parameters_schema_json)}});
+      tools.push_back(
+          {{"type", "function"},
+           {"name", tool.name},
+           {"description", tool.description},
+           {"parameters", ParseSchema(tool.parameters_schema_json)}});
     }
     payload["tools"] = std::move(tools);
     payload["tool_choice"] = "auto";
@@ -392,9 +395,10 @@ void FlushPendingToolCalls(StreamState& state, ChatEventSink& sink) {
     if (call.call_id.empty() || call.name.empty()) {
       continue;
     }
-    calls.push_back(chat::ToolCallRequest{.id = call.call_id,
-                                          .name = call.name,
-                                          .arguments_json = call.arguments_json});
+    calls.push_back(
+        chat::ToolCallRequest{.id = call.call_id,
+                              .name = call.name,
+                              .arguments_json = call.arguments_json});
   }
   state.pending_tool_calls.clear();
   if (!calls.empty()) {

@@ -3,8 +3,8 @@
 #include "../src/mcp/token_store.hpp"
 
 #include <functional>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stop_token>
 #include <string>

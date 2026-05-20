@@ -6,9 +6,8 @@
 #include "mcp/oauth/pkce.hpp"
 
 #include <curl/curl.h>
-#include <nlohmann/json.hpp>
-
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -39,7 +38,8 @@ struct HttpResponse {
   return bytes;
 }
 
-[[nodiscard]] std::string JoinUrl(std::string_view base, std::string_view path) {
+[[nodiscard]] std::string JoinUrl(std::string_view base,
+                                  std::string_view path) {
   std::string joined(base);
   while (!joined.empty() && joined.back() == '/') {
     joined.pop_back();
@@ -145,7 +145,6 @@ struct HttpResponse {
 
 [[nodiscard]] std::optional<std::string> Base64UrlDecode(
     std::string_view input) {
-
   std::string decoded;
   decoded.reserve((input.size() * 3) / 4);
   int buffer = 0;
@@ -162,8 +161,7 @@ struct HttpResponse {
     bits += 6;
     while (bits >= 8) {
       bits -= 8;
-      decoded.push_back(
-          static_cast<char>((buffer >> bits) & 0xff));
+      decoded.push_back(static_cast<char>((buffer >> bits) & 0xff));
     }
   }
   return decoded;
@@ -246,7 +244,8 @@ struct HttpResponse {
       it != json.end() && it->is_string()) {
     response.refresh_token = it->get<std::string>();
   }
-  if (const auto it = json.find("id_token"); it != json.end() && it->is_string()) {
+  if (const auto it = json.find("id_token");
+      it != json.end() && it->is_string()) {
     response.id_token = it->get<std::string>();
   }
   if (const auto it = json.find("expires_in");
@@ -315,8 +314,7 @@ struct HttpResponse {
 
 }  // namespace
 
-OpenAiAuthFlow::OpenAiAuthFlow()
-    : OpenAiAuthFlow(Dependencies{}) {}
+OpenAiAuthFlow::OpenAiAuthFlow() : OpenAiAuthFlow(Dependencies{}) {}
 
 OpenAiAuthFlow::OpenAiAuthFlow(Dependencies dependencies)
     : dependencies_(std::move(dependencies)) {
@@ -327,7 +325,8 @@ OpenAiAuthFlow::OpenAiAuthFlow(Dependencies dependencies)
     dependencies_.clock = [] { return std::chrono::system_clock::now(); };
   }
   if (!dependencies_.code_verifier_generator) {
-    dependencies_.code_verifier_generator = yac::mcp::oauth::GenerateCodeVerifier;
+    dependencies_.code_verifier_generator =
+        yac::mcp::oauth::GenerateCodeVerifier;
   }
   if (!dependencies_.code_challenge_deriver) {
     dependencies_.code_challenge_deriver = yac::mcp::oauth::DeriveCodeChallenge;
@@ -383,7 +382,8 @@ OpenAiOAuthAuth OpenAiAuthFlow::RefreshIfNeeded(const OpenAiOAuthAuth& auth) {
   const auto stored = dependencies_.auth_store->Load();
   OpenAiOAuthAuth current = auth;
   if (stored.has_value()) {
-    if (const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth)) {
+    if (const auto* stored_oauth =
+            std::get_if<OpenAiOAuthAuth>(&stored->auth)) {
       current = *stored_oauth;
       if (!NeedsRefresh(current, dependencies_.clock())) {
         return current;
@@ -399,7 +399,8 @@ OpenAiOAuthAuth OpenAiAuthFlow::Refresh(const OpenAiOAuthAuth& auth) {
   const auto stored = dependencies_.auth_store->Load();
   OpenAiOAuthAuth current = auth;
   if (stored.has_value()) {
-    if (const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth)) {
+    if (const auto* stored_oauth =
+            std::get_if<OpenAiOAuthAuth>(&stored->auth)) {
       current = *stored_oauth;
     }
   }
@@ -413,9 +414,9 @@ OpenAiOAuthAuth OpenAiAuthFlow::RefreshLocked(const OpenAiOAuthAuth& auth) {
   return PersistTokenResponse(current, response);
 }
 
-std::string OpenAiAuthFlow::BuildAuthorizationUrl(std::string_view redirect_uri,
-                                                  std::string_view code_challenge,
-                                                  std::string_view state) const {
+std::string OpenAiAuthFlow::BuildAuthorizationUrl(
+    std::string_view redirect_uri, std::string_view code_challenge,
+    std::string_view state) const {
   const std::vector<std::pair<std::string, std::string>> query = {
       {"response_type", "code"},
       {"client_id", std::string(kClientId)},
@@ -434,7 +435,8 @@ std::string OpenAiAuthFlow::BuildAuthorizationUrl(std::string_view redirect_uri,
     if (index > 0) {
       url << '&';
     }
-    url << UrlEncode(query[index].first) << '=' << UrlEncode(query[index].second);
+    url << UrlEncode(query[index].first) << '='
+        << UrlEncode(query[index].second);
   }
   return url.str();
 }
@@ -449,30 +451,31 @@ void OpenAiAuthFlow::ValidateCallbackState(std::string_view callback_state,
 OpenAiAuthFlow::TokenResponse OpenAiAuthFlow::ExchangeAuthorizationCode(
     std::string_view code, std::string_view code_verifier,
     std::string_view redirect_uri) const {
-  const HttpResponse response = RequestTokens(
-      JoinUrl(dependencies_.issuer_url, kTokenPath),
-      {{"grant_type", "authorization_code"},
-       {"code", std::string(code)},
-       {"redirect_uri", std::string(redirect_uri)},
-       {"client_id", std::string(kClientId)},
-       {"code_verifier", std::string(code_verifier)}});
+  const HttpResponse response =
+      RequestTokens(JoinUrl(dependencies_.issuer_url, kTokenPath),
+                    {{"grant_type", "authorization_code"},
+                     {"code", std::string(code)},
+                     {"redirect_uri", std::string(redirect_uri)},
+                     {"client_id", std::string(kClientId)},
+                     {"code_verifier", std::string(code_verifier)}});
   return ParseTokenResponse(response.body, dependencies_.clock);
 }
 
 OpenAiAuthFlow::TokenResponse OpenAiAuthFlow::RefreshToken(
     std::string_view refresh_token) const {
-  const HttpResponse response = RequestTokens(
-      JoinUrl(dependencies_.issuer_url, kTokenPath),
-      {{"grant_type", "refresh_token"},
-       {"refresh_token", std::string(refresh_token)},
-       {"client_id", std::string(kClientId)}});
+  const HttpResponse response =
+      RequestTokens(JoinUrl(dependencies_.issuer_url, kTokenPath),
+                    {{"grant_type", "refresh_token"},
+                     {"refresh_token", std::string(refresh_token)},
+                     {"client_id", std::string(kClientId)}});
   return ParseTokenResponse(response.body, dependencies_.clock);
 }
 
 OpenAiOAuthAuth OpenAiAuthFlow::PersistTokenResponse(
     const OpenAiOAuthAuth& prior_auth, const TokenResponse& response) const {
   OpenAiOAuthAuth updated{
-      .refresh_token = response.refresh_token.value_or(prior_auth.refresh_token),
+      .refresh_token =
+          response.refresh_token.value_or(prior_auth.refresh_token),
       .access_token = response.access_token,
       .expires_at = response.expires_at,
       .account_id = ExtractAccountId(response.id_token, response.access_token),

@@ -2,11 +2,10 @@
 
 #include "provider/openai_responses_protocol.hpp"
 
-#include <curl/curl.h>
-#include <nlohmann/json.hpp>
-
 #include <cstdlib>
+#include <curl/curl.h>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -57,10 +56,10 @@ struct OAuthWriteState {
     return bytes;
   }
   const auto second_space = line.find(' ', first_space + 1);
-  const auto code_text = line.substr(
-      first_space + 1,
-      second_space == std::string_view::npos ? std::string_view::npos
-                                             : second_space - first_space - 1);
+  const auto code_text =
+      line.substr(first_space + 1, second_space == std::string_view::npos
+                                       ? std::string_view::npos
+                                       : second_space - first_space - 1);
   try {
     state->status_code = std::stol(std::string(code_text));
     state->saw_status_line = true;
@@ -136,9 +135,8 @@ struct OAuthWriteState {
                                          bool retry_exhausted) {
   std::ostringstream message;
   if (retry_exhausted) {
-    message
-        << "OpenAI OAuth request was unauthorized after refreshing once. "
-        << "Sign in again.";
+    message << "OpenAI OAuth request was unauthorized after refreshing once. "
+            << "Sign in again.";
   } else {
     message << "OpenAI OAuth request failed with HTTP " << status_code << ".";
   }
@@ -183,8 +181,8 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
   const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
 
-  auto payload = openai_responses_protocol::BuildResponsesPayload(request, config)
-                     .dump();
+  auto payload =
+      openai_responses_protocol::BuildResponsesPayload(request, config).dump();
   openai_responses_protocol::StreamState stream_state{.sink = &sink};
   HeaderState header_state;
   OAuthWriteState write_state{.header_state = &header_state,
@@ -200,8 +198,7 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
   const auto user_agent = std::string("User-Agent: yac/") + YAC_VERSION;
   headers = curl_slist_append(headers, user_agent.c_str());
   if (auth.account_id.has_value() && !auth.account_id->empty()) {
-    const auto account_header =
-        "ChatGPT-Account-Id: " + *auth.account_id;
+    const auto account_header = "ChatGPT-Account-Id: " + *auth.account_id;
     headers = curl_slist_append(headers, account_header.c_str());
   }
   const auto cleanup_headers = [](curl_slist* list) {
@@ -240,8 +237,8 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
   }
 
   if (!write_state.pending_before_status.empty()) {
-    openai_responses_protocol::ConsumeSseChunk(write_state.pending_before_status,
-                                               stream_state);
+    openai_responses_protocol::ConsumeSseChunk(
+        write_state.pending_before_status, stream_state);
   }
   openai_responses_protocol::FlushPendingToolCalls(stream_state, sink);
   if (stream_state.pending_usage.has_value()) {
@@ -367,10 +364,9 @@ void OpenAiChatProvider::CompleteWithOAuth(const chat::ChatRequest& request,
       current_auth = auth_flow_->Refresh(current_auth);
       continue;
     }
-    throw std::runtime_error(BuildHttpError(result.status_code,
-                                            result.error_body,
-                                            result.status_code == 401 &&
-                                                retried_after_401));
+    throw std::runtime_error(
+        BuildHttpError(result.status_code, result.error_body,
+                       result.status_code == 401 && retried_after_401));
   }
 }
 

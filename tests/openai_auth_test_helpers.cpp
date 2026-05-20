@@ -6,10 +6,10 @@
 #include <netinet/in.h>
 #include <stdexcept>
 #include <string_view>
-#include <utility>
-#include <thread>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
+#include <utility>
 
 namespace yac::tests::openai_auth {
 
@@ -127,7 +127,8 @@ TestHttpServer::TestHttpServer(Handler handler)
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = 0;
-  if (bind(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+  if (bind(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&addr),
+           sizeof(addr)) != 0) {
     close(impl_->listen_fd_);
     throw std::runtime_error("bind failed");
   }
@@ -137,15 +138,15 @@ TestHttpServer::TestHttpServer(Handler handler)
   }
 
   socklen_t len = sizeof(addr);
-  if (getsockname(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+  if (getsockname(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&addr),
+                  &len) != 0) {
     close(impl_->listen_fd_);
     throw std::runtime_error("getsockname failed");
   }
   impl_->port_ = ntohs(addr.sin_port);
 
-  impl_->worker_ = std::jthread([this](std::stop_token stop_token) {
-    Run(stop_token);
-  });
+  impl_->worker_ =
+      std::jthread([this](std::stop_token stop_token) { Run(stop_token); });
 }
 
 TestHttpServer::~TestHttpServer() {
@@ -193,8 +194,8 @@ HttpRequest TestHttpServer::ReadRequest(int client_fd) {
   while (line_start < head.size()) {
     line_end = head.find("\r\n", line_start);
     const std::string line = head.substr(
-        line_start,
-        line_end == std::string::npos ? std::string::npos : line_end - line_start);
+        line_start, line_end == std::string::npos ? std::string::npos
+                                                  : line_end - line_start);
     const std::size_t colon_pos = line.find(':');
     if (colon_pos != std::string::npos) {
       request.headers.emplace(line.substr(0, colon_pos),
@@ -223,7 +224,8 @@ HttpRequest TestHttpServer::ReadRequest(int client_fd) {
   return request;
 }
 
-void TestHttpServer::WriteResponse(int client_fd, const HttpResponse& response) {
+void TestHttpServer::WriteResponse(int client_fd,
+                                   const HttpResponse& response) {
   std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " " +
                      ReasonPhrase(response.status) + "\r\n";
   for (const auto& [key, value] : response.headers) {
@@ -249,7 +251,8 @@ void TestHttpServer::Run(std::stop_token stop_token) {
     sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
     const int client_fd =
-        accept(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+        accept(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&client_addr),
+               &client_len);
     if (client_fd < 0) {
       if (impl_->stop_.load() || stop_token.stop_requested()) {
         return;

@@ -70,10 +70,9 @@ void OpenAiKeychainAuthBackend::Set(std::string_view auth_json) {
   }
 
   keychain::Error error;
-  keychain::setPassword(std::string(kKeychainServiceId),
-                        std::string(kKeychainEntryId),
-                        std::string(kKeychainEntryId), std::string(auth_json),
-                        error);
+  keychain::setPassword(
+      std::string(kKeychainServiceId), std::string(kKeychainEntryId),
+      std::string(kKeychainEntryId), std::string(auth_json), error);
   if (error) {
     throw OpenAiAuthKeychainUnavailableError(
         "OpenAiKeychainAuthBackend::Set: keychain error: " + error.message);
@@ -92,8 +91,7 @@ void OpenAiKeychainAuthBackend::Erase() {
                            std::string(kKeychainEntryId), error);
   if (error && error.type != keychain::ErrorType::NotFound) {
     throw OpenAiAuthKeychainUnavailableError(
-        "OpenAiKeychainAuthBackend::Erase: keychain error: " +
-        error.message);
+        "OpenAiKeychainAuthBackend::Erase: keychain error: " + error.message);
   }
 }
 
@@ -115,9 +113,8 @@ void OpenAiFileAuthBackend::EnsureParentDir() const {
   std::error_code ec;
   std::filesystem::create_directories(parent, ec);
   if (ec) {
-    throw std::runtime_error(
-        "OpenAiFileAuthBackend: cannot create directory " + parent.string() +
-        ": " + ec.message());
+    throw std::runtime_error("OpenAiFileAuthBackend: cannot create directory " +
+                             parent.string() + ": " + ec.message());
   }
 
 #ifndef _WIN32
@@ -125,8 +122,8 @@ void OpenAiFileAuthBackend::EnsureParentDir() const {
                                std::filesystem::perm_options::replace, ec);
   if (ec) {
     throw std::runtime_error(
-        "OpenAiFileAuthBackend: cannot set permissions on " +
-        parent.string() + ": " + ec.message());
+        "OpenAiFileAuthBackend: cannot set permissions on " + parent.string() +
+        ": " + ec.message());
   }
 #endif
 }
@@ -176,8 +173,7 @@ void OpenAiFileAuthBackend::Set(std::string_view auth_json) {
                         S_IRUSR | S_IWUSR);
   if (fd < 0) {
     throw std::runtime_error("OpenAiFileAuthBackend: cannot open tmp file " +
-                             tmp_path.string() + ": " +
-                             std::strerror(errno));
+                             tmp_path.string() + ": " + std::strerror(errno));
   }
 
   if (::fchmod(fd, S_IRUSR | S_IWUSR) != 0) {
@@ -212,15 +208,14 @@ void OpenAiFileAuthBackend::Set(std::string_view auth_json) {
 
   if (::close(fd) != 0) {
     throw std::runtime_error("OpenAiFileAuthBackend: close failed on " +
-                             tmp_path.string() + ": " +
-                             std::strerror(errno));
+                             tmp_path.string() + ": " + std::strerror(errno));
   }
 #else
   {
     std::ofstream out(tmp_path, std::ios::trunc);
     if (!out) {
-      throw std::runtime_error(
-          "OpenAiFileAuthBackend: cannot open tmp file " + tmp_path.string());
+      throw std::runtime_error("OpenAiFileAuthBackend: cannot open tmp file " +
+                               tmp_path.string());
     }
     out << auth_json;
     out.close();
@@ -252,10 +247,9 @@ OpenAiAuthStore::OpenAiAuthStore(Dependencies dependencies)
     : dependencies_(std::move(dependencies)) {}
 
 OpenAiAuthStore::Dependencies OpenAiAuthStore::BuildDefaultDependencies() {
-  return Dependencies{.keychain_backend =
-                          std::make_shared<OpenAiKeychainAuthBackend>(),
-                      .file_backend =
-                          std::make_shared<OpenAiFileAuthBackend>()};
+  return Dependencies{
+      .keychain_backend = std::make_shared<OpenAiKeychainAuthBackend>(),
+      .file_backend = std::make_shared<OpenAiFileAuthBackend>()};
 }
 
 std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {

@@ -1,12 +1,11 @@
 #pragma once
 
 #include <chrono>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
-
-#include <nlohmann/json.hpp>
 
 namespace yac::provider {
 
@@ -39,14 +38,12 @@ struct StoredOpenAiAuth {
 [[nodiscard]] OpenAiAuth ParseOpenAiAuth(std::string_view json_text);
 
 [[nodiscard]] bool IsOpenAiOAuthExpired(
-    const OpenAiOAuthAuth& auth,
-    std::chrono::system_clock::time_point now =
-        std::chrono::system_clock::now());
+    const OpenAiOAuthAuth& auth, std::chrono::system_clock::time_point now =
+                                     std::chrono::system_clock::now());
 
 [[nodiscard]] bool HasUsableOpenAiOAuthAccessToken(
-    const OpenAiOAuthAuth& auth,
-    std::chrono::system_clock::time_point now =
-        std::chrono::system_clock::now());
+    const OpenAiOAuthAuth& auth, std::chrono::system_clock::time_point now =
+                                     std::chrono::system_clock::now());
 
 [[nodiscard]] std::string_view OpenAiAuthTypeLabel(const OpenAiAuth& auth);
 [[nodiscard]] std::string_view OpenAiAuthStorageSourceLabel(

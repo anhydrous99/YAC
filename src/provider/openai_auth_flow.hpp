@@ -60,7 +60,8 @@ class OpenAiAuthFlow {
   [[nodiscard]] TokenResponse ExchangeAuthorizationCode(
       std::string_view code, std::string_view code_verifier,
       std::string_view redirect_uri) const;
-  [[nodiscard]] TokenResponse RefreshToken(std::string_view refresh_token) const;
+  [[nodiscard]] TokenResponse RefreshToken(
+      std::string_view refresh_token) const;
   [[nodiscard]] OpenAiOAuthAuth PersistTokenResponse(
       const OpenAiOAuthAuth& prior_auth, const TokenResponse& response) const;
   [[nodiscard]] OpenAiOAuthAuth RefreshLocked(const OpenAiOAuthAuth& auth);
