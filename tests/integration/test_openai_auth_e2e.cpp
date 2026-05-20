@@ -209,9 +209,8 @@ ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
   if (!stdin_content.empty()) {
     std::size_t written = 0;
     while (written < stdin_content.size()) {
-      const ssize_t count =
-          ::write(in_pipe[1], stdin_content.data() + written,
-                  stdin_content.size() - written);
+      const ssize_t count = ::write(in_pipe[1], stdin_content.data() + written,
+                                    stdin_content.size() - written);
       if (count <= 0) {
         break;
       }
@@ -282,11 +281,11 @@ yac::provider::OpenAiChatProvider MakeProvider(
   config.base_url = base_url;
   config.api_key_env = "OPENAI_API_KEY";
   return yac::provider::OpenAiChatProvider(
-      config, yac::provider::OpenAiChatProvider::Dependencies{
-                  .auth_flow = flow,
-                  .oauth_base_url = oauth_base_url.empty() ? base_url
-                                                           : oauth_base_url,
-              });
+      config,
+      yac::provider::OpenAiChatProvider::Dependencies{
+          .auth_flow = flow,
+          .oauth_base_url = oauth_base_url.empty() ? base_url : oauth_base_url,
+      });
 }
 
 yac::chat::ChatRequest MakeStreamingRequest() {
@@ -312,8 +311,7 @@ std::vector<yac::chat::ChatEvent> RunStream(
 HttpResponse ApiStream(std::string_view text) {
   return HttpResponse{
       .headers = {{"Content-Type", "text/event-stream"}},
-      .body = std::string(
-                  R"(data: {"choices":[{"delta":{"content":")") +
+      .body = std::string(R"(data: {"choices":[{"delta":{"content":")") +
               std::string(text) +
               R"("}}]}
 data: {"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
@@ -371,7 +369,8 @@ TEST_CASE("cli_api_key_status_logout_use_temp_home_and_redact_output",
   const auto status_result =
       RunYacCli(temp_dir.Path(), {"auth", "openai", "status"});
   REQUIRE(status_result.exit_code == 0);
-  CHECK_THAT(status_result.output, ContainsSubstring("configured provider: openai"));
+  CHECK_THAT(status_result.output,
+             ContainsSubstring("configured provider: openai"));
   CHECK_THAT(status_result.output, ContainsSubstring("stored credential: api"));
   CHECK_THAT(status_result.output,
              ContainsSubstring("effective auth: api (stored)"));
@@ -400,9 +399,9 @@ TEST_CASE("stored_api_key_runtime_hits_mock_openai_endpoint",
   const auto store = MakeStoreForHome(temp_dir.Path());
   static_cast<void>(store->Save(
       yac::provider::OpenAiApiKeyAuth{.key = std::string(kStoredApiKey)}));
-  const auto flow = MakeFlow("http://127.0.0.1:1", store,
-                             std::chrono::system_clock::time_point{
-                                 std::chrono::seconds{1000}});
+  const auto flow = MakeFlow(
+      "http://127.0.0.1:1", store,
+      std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
 
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/chat/completions");
@@ -435,17 +434,16 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
           std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
       .account_id = std::string("acct-e2e"),
   }));
-  const auto flow = MakeFlow("http://127.0.0.1:1", store,
-                             std::chrono::system_clock::time_point{
-                                 std::chrono::seconds{1000}});
+  const auto flow = MakeFlow(
+      "http://127.0.0.1:1", store,
+      std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
 
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request.headers.at("Authorization") ==
             "Bearer " + std::string(kStoredAccessToken));
     REQUIRE(request.headers.at("originator") == "yac");
-    REQUIRE_THAT(request.headers.at("User-Agent"),
-                 ContainsSubstring("yac/"));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("yac/"));
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-e2e");
     return OAuthStream("oauth-ok");
   });
@@ -481,8 +479,7 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
                                             std::size_t request_index) {
     if (request.path == "/oauth/token") {
       REQUIRE(request_index == 0);
-      REQUIRE_THAT(request.body,
-                   ContainsSubstring("grant_type=refresh_token"));
+      REQUIRE_THAT(request.body, ContainsSubstring("grant_type=refresh_token"));
       REQUIRE_THAT(request.body,
                    ContainsSubstring("refresh_token=" +
                                      std::string(kStoredRefreshToken)));
@@ -502,9 +499,9 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
     return OAuthStream("refresh-ok");
   });
 
-  const auto flow = MakeFlow(server.Url(""), store,
-                             std::chrono::system_clock::time_point{
-                                 std::chrono::seconds{1000}});
+  const auto flow = MakeFlow(
+      server.Url(""), store,
+      std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
   auto provider = MakeProvider("http://127.0.0.1:1", flow, server.Url(""));
   const auto events = RunStream(provider);
 

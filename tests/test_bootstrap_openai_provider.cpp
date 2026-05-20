@@ -17,7 +17,9 @@ TEST_CASE("MakeLanguageModelProvider returns OpenAI provider for openai") {
   REQUIRE(provider->Id() == "openai");
 }
 
-TEST_CASE("MakeLanguageModelProvider returns OpenAI-compatible provider for generic ids") {
+TEST_CASE(
+    "MakeLanguageModelProvider returns OpenAI-compatible provider for generic "
+    "ids") {
   yac::chat::ProviderConfig config;
   config.id = ::yac::ProviderId{"custom-provider"};
 

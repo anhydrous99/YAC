@@ -1,5 +1,5 @@
-#include "util/log.hpp"
 #include "provider/openai_auth.hpp"
+#include "util/log.hpp"
 
 #include <iostream>
 #include <memory>
@@ -124,9 +124,10 @@ TEST_CASE("Redact masks provider auth JSON secret fields", "[log]") {
           R"({"access_token":"***REDACTED***"})");
   REQUIRE(yac::log::Redact(R"({"refresh_token":"refresh-secret"})") ==
           R"({"refresh_token":"***REDACTED***"})");
-  REQUIRE(yac::log::Redact(
-              R"({"type":"oauth","access_token":"access-secret","refresh_token":"refresh-secret"})") ==
-          R"({"type":"oauth","access_token":"***REDACTED***","refresh_token":"***REDACTED***"})");
+  REQUIRE(
+      yac::log::Redact(
+          R"({"type":"oauth","access_token":"access-secret","refresh_token":"refresh-secret"})") ==
+      R"({"type":"oauth","access_token":"***REDACTED***","refresh_token":"***REDACTED***"})");
   REQUIRE(yac::log::Redact(R"({"api_key":"sk-test-fake"})") ==
           R"({"api_key":"***REDACTED***"})");
   REQUIRE(yac::log::Redact(R"({"key":"sk-test-fake"})") ==

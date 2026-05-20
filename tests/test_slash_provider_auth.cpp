@@ -1,5 +1,4 @@
 #include "app/provider_auth_command_handlers.hpp"
-
 #include "cli/provider_auth_command.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/slash_command_registry.hpp"
@@ -18,8 +17,8 @@
 #include <utility>
 
 #include <catch2/catch_test_macros.hpp>
-#include <ftxui/component/component.hpp>
 #include <ftxui/component/app.hpp>
+#include <ftxui/component/component.hpp>
 #include <ftxui/component/loop.hpp>
 #include <ftxui/dom/elements.hpp>
 
@@ -131,8 +130,8 @@ TEST_CASE("provider auth slash status matches CLI summary labels",
   static_cast<void>(store->Save(yac::provider::OpenAiOAuthAuth{
       .refresh_token = "refresh-secret",
       .access_token = "access-secret",
-      .expires_at = std::chrono::system_clock::time_point{
-          std::chrono::seconds{4102444800}},
+      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{
+          4102444800}},
       .account_id = std::string("acct-safe"),
   }));
 
@@ -240,10 +239,12 @@ TEST_CASE("provider auth slash login dispatch is non-blocking",
   yac::cli::ProviderAuthCommand::Options opts;
   opts.settings_path = settings_path;
   opts.auth_store = store;
-  opts.login_fn = [entered, release](
-                      const yac::provider::OpenAiAuthorizationObserver& observer)
+  opts.login_fn =
+      [entered,
+       release](const yac::provider::OpenAiAuthorizationObserver& observer)
       -> yac::provider::OpenAiOAuthAuth {
-    observer(yac::provider::OpenAiAuthorizationNotice{.browser_launched = true});
+    observer(
+        yac::provider::OpenAiAuthorizationNotice{.browser_launched = true});
     entered->store(true);
     while (!release->load()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -279,14 +280,16 @@ TEST_CASE("provider auth slash login dispatch is non-blocking",
   REQUIRE(entered->load());
 
   release->store(true);
-  for (int attempt = 0; attempt < 100 && !store->Load().has_value(); ++attempt) {
+  for (int attempt = 0; attempt < 100 && !store->Load().has_value();
+       ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   REQUIRE(store->Load().has_value());
 }
 
-TEST_CASE("provider auth slash shows browser fallback URL before oauth completion",
-          "[slash_provider_auth]") {
+TEST_CASE(
+    "provider auth slash shows browser fallback URL before oauth completion",
+    "[slash_provider_auth]") {
   TempDir tmp("yac_test_slash_provider_auth_login_fallback");
   const auto settings_path = tmp.Path() / "settings.toml";
   WriteFile(settings_path,
@@ -300,11 +303,12 @@ TEST_CASE("provider auth slash shows browser fallback URL before oauth completio
   yac::cli::ProviderAuthCommand::Options opts;
   opts.settings_path = settings_path;
   opts.auth_store = store;
-  opts.login_fn = [release](
-                     const yac::provider::OpenAiAuthorizationObserver& observer)
+  opts.login_fn =
+      [release](const yac::provider::OpenAiAuthorizationObserver& observer)
       -> yac::provider::OpenAiOAuthAuth {
     observer(yac::provider::OpenAiAuthorizationNotice{
-        .authorization_url = "https://auth.openai.com/oauth/authorize?state=manual",
+        .authorization_url =
+            "https://auth.openai.com/oauth/authorize?state=manual",
         .redirect_uri = "http://127.0.0.1:1455/auth/callback",
         .browser_launched = false,
     });
@@ -336,10 +340,10 @@ TEST_CASE("provider auth slash shows browser fallback URL before oauth completio
     loop.RunOnce();
     if (chat_ui.GetNotices().size() >= 2) {
       const auto& fallback = chat_ui.GetNotices()[1].notice;
-      saw_fallback = fallback.title ==
-                         "browser launch failed; open this URL manually" &&
-                     fallback.detail ==
-                         "https://auth.openai.com/oauth/authorize?state=manual";
+      saw_fallback =
+          fallback.title == "browser launch failed; open this URL manually" &&
+          fallback.detail ==
+              "https://auth.openai.com/oauth/authorize?state=manual";
     }
     if (!saw_fallback) {
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -350,7 +354,8 @@ TEST_CASE("provider auth slash shows browser fallback URL before oauth completio
   REQUIRE_FALSE(store->Load().has_value());
 
   release->store(true);
-  for (int attempt = 0; attempt < 200 && !store->Load().has_value(); ++attempt) {
+  for (int attempt = 0; attempt < 200 && !store->Load().has_value();
+       ++attempt) {
     loop.RunOnce();
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
