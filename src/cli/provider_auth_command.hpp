@@ -67,8 +67,7 @@ class ProviderAuthCommand {
   [[nodiscard]] ConfigSecrets LoadConfigSecrets() const;
   [[nodiscard]] static ProviderAuthStatusSummary BuildStatusSummary(
       std::optional<provider::StoredOpenAiAuth> stored_auth,
-      const ConfigSecrets& config_secrets,
-      bool after_logout);
+      const ConfigSecrets& config_secrets, bool after_logout);
 
   Options opts_;
   std::shared_ptr<provider::OpenAiAuthStore> auth_store_;

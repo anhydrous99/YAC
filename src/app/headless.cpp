@@ -1,6 +1,6 @@
 #include "app/headless.hpp"
-#include "app/provider_factory.hpp"
 
+#include "app/provider_factory.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
@@ -63,7 +63,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
             yac::log::Error("headless", "{}", e.text);
             exit_code = 1;
           } else if constexpr (std::is_same_v<
-                                    T, chat::ToolApprovalRequestedEvent>) {
+                                   T, chat::ToolApprovalRequestedEvent>) {
             if (auto_approve) {
               service.ResolveToolApproval(e.approval_id, true);
             } else {

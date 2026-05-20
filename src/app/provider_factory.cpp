@@ -28,12 +28,12 @@ std::shared_ptr<provider::LanguageModelProvider> MakeLanguageModelProvider(
     const chat::ProviderConfig& config) {
   if (config.id.value == "bedrock") {
     provider::EnsureAwsApiGuardInstalled();
-    return std::make_shared<provider::BedrockChatProvider>(ToProviderConfig(
-        config));
+    return std::make_shared<provider::BedrockChatProvider>(
+        ToProviderConfig(config));
   }
   if (config.id.value == "openai") {
-    return std::make_shared<provider::OpenAiChatProvider>(ToProviderConfig(
-        config));
+    return std::make_shared<provider::OpenAiChatProvider>(
+        ToProviderConfig(config));
   }
   return std::make_shared<provider::OpenAiCompatibleChatProvider>(
       ToProviderConfig(config));

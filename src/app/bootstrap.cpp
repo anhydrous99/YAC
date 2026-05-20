@@ -2,10 +2,10 @@
 
 #include "app/chat_event_bridge.hpp"
 #include "app/mcp_command_handlers.hpp"
-#include "app/provider_auth_command_handlers.hpp"
-#include "app/provider_factory.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
+#include "app/provider_auth_command_handlers.hpp"
+#include "app/provider_factory.hpp"
 #include "app/streaming_coalescer.hpp"
 #include "chat/chat_service.hpp"
 #include "chat/config_loader.hpp"
@@ -475,8 +475,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 
   RegisterMcpSlashCommandHandlers(slash_registry, chat_ui, screen,
                                   std::move(mcp_admin));
-  RegisterProviderAuthSlashCommandHandlers(
-      slash_registry, chat_ui, screen, std::move(provider_auth_command));
+  RegisterProviderAuthSlashCommandHandlers(slash_registry, chat_ui, screen,
+                                           std::move(provider_auth_command));
 
   return slash_registry;
 }
