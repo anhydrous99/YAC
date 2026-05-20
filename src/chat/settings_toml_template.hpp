@@ -11,22 +11,51 @@ inline constexpr std::string_view kDefaultSettingsToml = R"(# YAC configuration.
 # anything set here at startup, which is convenient for CI and per-shell
 # experiments.
 #
-# Secrets: prefer exporting your API key in your shell (OPENAI_API_KEY,
-# ZAI_API_KEY) instead of placing it in [provider].api_key below. The env-var
-# path is the default and keeps your key out of a plaintext file in $HOME.
+# Secrets: prefer OPENAI_API_KEY, ZAI_API_KEY, or stored OpenAI auth over
+# placing a key in [provider].api_key below. For OpenAI, precedence is:
+# env API key > stored OpenAI auth > inline settings API key.
+# Store an OpenAI API key without shell history exposure:
+#   printf 'sk-...' | yac auth openai set-api-key --stdin
 
 temperature = 0.7
 # system_prompt = "You are a helpful assistant."
 # workspace_root = "/path/to/workspace"   # defaults to the launch directory
 
 [provider]
-id          = "openai-compatible"         # "openai-compatible" or "zai"
+id          = "openai-compatible"         # "openai-compatible", "openai", or "zai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"            # env var that holds the key
-# api_key   = ""                          # optional; prefer the env var
+# api_key   = ""                          # optional; lowest priority for openai
 
-# Z.ai preset example — uncomment to switch providers.
+# OpenAI provider auth is opt-in: set provider.id = "openai" to use stored
+# OpenAI auth or browser OAuth. With the default openai-compatible provider,
+# OPENAI_API_KEY is used as a normal OpenAI-compatible API key.
+#
+# OpenAI auth options when provider.id = "openai":
+# - Use OPENAI_API_KEY for the highest-priority API-key path.
+# - Run `yac auth openai login` for browser OAuth.
+# - Run `yac auth openai status` to see the effective source.
+# - Run `yac auth openai logout` to clear stored OpenAI auth.
+# Stored OpenAI auth is keychain-first, with file fallback at
+# ~/.yac/provider/auth/openai.json.
+# Unsupported for OpenAI auth: device-code, headless, and non-browser OAuth flows.
+
+# OpenAI provider opt-in example.
+# [provider]
+# id          = "openai"
+# model       = "gpt-4o-mini"
+# base_url    = "https://api.openai.com/v1/"
+# api_key_env = "OPENAI_API_KEY"
+
+# Generic OpenAI-compatible endpoint example for other providers.
+# [provider]
+# id          = "openai-compatible"
+# model       = "gpt-4o-mini"
+# base_url    = "https://api.openai.com/v1/"
+# api_key_env = "OPENAI_API_KEY"
+
+# Z.ai preset example: uncomment to switch providers.
 # Leaving model/base_url/api_key_env unset applies the built-in zai defaults
 # (glm-5.1, https://api.z.ai/api/coding/paas/v4, ZAI_API_KEY).
 # [provider]

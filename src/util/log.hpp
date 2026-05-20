@@ -34,8 +34,9 @@ void SetSink(std::shared_ptr<Sink> sink);
 std::shared_ptr<Sink> GetSink();
 
 // Mask sensitive substrings (api_key=..., Bearer <token>, code=<oauth-code>,
-// token=...) by replacing the value with ***REDACTED*** while keeping the key
-// visible. Plain text without any sensitive markers is returned unchanged.
+// token=..., provider-auth JSON fields) by replacing the value with
+// ***REDACTED*** while keeping the key visible. Plain text without any
+// sensitive markers is returned unchanged.
 std::string Redact(std::string_view input);
 
 // Describe the currently in-flight exception. Intended to be called from

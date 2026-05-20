@@ -83,6 +83,13 @@ yac_add_test(yac_test_chat_event_bridge_mcp test_chat_event_bridge_mcp.cpp)
 yac_add_test(yac_test_model_discovery  test_model_discovery.cpp)
 yac_add_test(yac_test_openai_compatible_chat_provider test_openai_compatible_chat_provider.cpp)
 yac_add_test(yac_test_openai_compatible_chat_protocol test_openai_compatible_chat_protocol.cpp)
+yac_add_test(yac_test_openai_auth_store test_openai_auth_store.cpp)
+yac_add_test(yac_test_openai_auth_command test_openai_auth_command.cpp)
+yac_add_test(yac_test_openai_responses_protocol test_openai_responses_protocol.cpp)
+yac_add_test(yac_test_openai_auth_guardrails test_openai_auth_guardrails.cpp)
+target_compile_definitions(yac_test_openai_auth_guardrails PRIVATE
+  YAC_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+)
 yac_add_aws_test(yac_test_bedrock_chat_protocol test_bedrock_chat_protocol.cpp)
 yac_add_aws_test(yac_test_bedrock_tool_translator test_bedrock_tool_translator.cpp)
 yac_add_test(yac_test_model_context_windows test_model_context_windows.cpp)
@@ -94,9 +101,11 @@ yac_add_test(yac_test_slash_command_task    test_slash_command_task.cpp)
 yac_add_test(yac_test_prompt_slash_commands test_prompt_slash_commands.cpp)
 yac_add_test(yac_test_slash_command_menu test_slash_command_menu.cpp)
 yac_add_test(yac_test_slash_mcp test_slash_mcp.cpp)
+yac_add_test(yac_test_slash_provider_auth test_slash_provider_auth.cpp)
 yac_add_test(yac_test_settings_toml    test_settings_toml.cpp)
 yac_add_test(yac_test_config_paths     test_config_paths.cpp)
 yac_add_test(yac_test_chat_config_bedrock test_chat_config_bedrock.cpp)
+yac_add_test(yac_test_chat_config_openai test_chat_config_openai.cpp)
 yac_add_test(yac_test_prompt_library   test_prompt_library.cpp)
 yac_add_test(yac_test_config_loader    test_config_loader.cpp)
 target_compile_definitions(yac_test_config_loader PRIVATE
@@ -127,6 +136,7 @@ yac_add_test(yac_test_log             test_log.cpp)
 yac_add_test(yac_test_workspace_filesystem test_workspace_filesystem.cpp)
 yac_add_test(yac_test_todo_state      test_todo_state.cpp)
 yac_add_test(yac_test_headless        test_headless.cpp)
+yac_add_test(yac_test_bootstrap_openai_provider test_bootstrap_openai_provider.cpp)
 yac_add_test(yac_test_headless_cancel test_headless_cancel.cpp)
 yac_add_test(yac_test_glob_matcher    test_glob_matcher.cpp)
 yac_add_test(yac_test_gitignore_filter test_gitignore_filter.cpp)
@@ -174,10 +184,83 @@ yac_add_test(yac_test_mcp_bearer_auth   test_mcp_bearer_auth.cpp)
 yac_add_test(yac_test_mcp_oauth_pkce    test_mcp_oauth_pkce.cpp)
 yac_add_test(yac_test_mcp_oauth_flow    test_mcp_oauth_flow.cpp)
 yac_add_test(yac_test_mcp_loopback_callback test_mcp_loopback_callback.cpp)
+add_executable(yac_test_openai_auth_test_helpers
+  test_openai_auth_test_helpers.cpp
+  openai_auth_test_helpers.cpp
+)
+target_include_directories(yac_test_openai_auth_test_helpers PRIVATE
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_openai_auth_test_helpers PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_openai_auth_test_helpers
+  TEST_PREFIX "yac_test_openai_auth_test_helpers::"
+)
+add_executable(yac_test_openai_auth_flow
+  test_openai_auth_flow.cpp
+  openai_auth_test_helpers.cpp
+)
+target_include_directories(yac_test_openai_auth_flow PRIVATE
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_openai_auth_flow PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_openai_auth_flow
+  TEST_PREFIX "yac_test_openai_auth_flow::"
+)
+add_executable(yac_test_openai_chat_provider_auth
+  test_openai_chat_provider_auth.cpp
+  openai_auth_test_helpers.cpp
+)
+target_include_directories(yac_test_openai_chat_provider_auth PRIVATE
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_openai_chat_provider_auth PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  Catch2::Catch2WithMain
+)
+catch_discover_tests(yac_test_openai_chat_provider_auth
+  TEST_PREFIX "yac_test_openai_chat_provider_auth::"
+)
+add_executable(yac_test_openai_auth_e2e
+  integration/test_openai_auth_e2e.cpp
+  openai_auth_test_helpers.cpp
+)
+target_include_directories(yac_test_openai_auth_e2e PRIVATE
+  ${CMAKE_SOURCE_DIR}/src
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(yac_test_openai_auth_e2e PRIVATE
+  yac_app
+  yac_presentation
+  yac_service
+  openai_cpp
+  Catch2::Catch2WithMain
+)
+target_compile_definitions(yac_test_openai_auth_e2e PRIVATE
+  YAC_BINARY_PATH="$<TARGET_FILE:yac>"
+)
+catch_discover_tests(yac_test_openai_auth_e2e
+  TEST_PREFIX "yac_test_openai_auth_e2e::"
+)
 yac_add_test(yac_test_mcp_oauth_discovery test_mcp_oauth_discovery.cpp)
 yac_add_test(yac_test_mcp_status_panel test_mcp_status_panel.cpp)
 yac_add_test(yac_test_mcp_resources_slash test_mcp_resources_slash.cpp)
 yac_add_test(yac_test_mcp_admin test_mcp_admin.cpp)
+yac_add_test(yac_test_yac_auth_cli test_yac_auth_cli.cpp)
 yac_add_test(yac_test_yac_mcp_cli test_yac_mcp_cli.cpp)
 target_include_directories(yac_test_mcp_resources_slash PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}

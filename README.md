@@ -20,15 +20,15 @@ The SVG previews show the current chat surface and command palette.
 | `yac_app` | Bridges chat service events into `ChatUI` updates |
 | `yac_service` | Queues prompts, tracks history, and streams provider responses |
 | `yac_presentation` | FTXUI components, Markdown rendering, theming, and tool cards |
-| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with `openai-compatible` and `zai` presets |
+| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with `openai`, `openai-compatible`, and `zai` presets |
 | Config | `~/.yac/settings.toml`, with `YAC_*` environment variable overrides |
 
 ## Highlights
 
 - Streaming assistant responses with status updates, cancellation, and prompt
   queue handling
-- OpenAI-compatible provider configuration for model, base URL, API key
-  variable, temperature, and system prompt
+- OpenAI provider setup through `OPENAI_API_KEY`, stored provider auth, or
+  browser OAuth, plus OpenAI-compatible configuration for custom endpoints
 - Z.ai Coding API preset with startup model discovery and command-palette model
   switching
 - First-run setup status for provider/model, workspace, API key, and clangd
@@ -140,8 +140,19 @@ command named from the file stem, such as `~/.yac/prompts/review.toml` becoming
 `/review`. Built-in slash commands keep priority if a prompt file name
 collides.
 
-API keys are resolved from `provider.api_key` when set; otherwise YAC reads the
-environment variable named by `provider.api_key_env`.
+For the built-in `openai` provider, auth precedence is `env API key > stored
+OpenAI auth > inline settings API key`. The env API key is read from
+`provider.api_key_env`, normally `OPENAI_API_KEY`. Stored OpenAI auth can be an
+API key saved by the CLI or a browser OAuth login. Inline `provider.api_key` is
+kept for compatibility, but prefer the env var or stored auth so secrets don't
+sit in plaintext TOML.
+
+Don't paste API keys into the TUI. Use `OPENAI_API_KEY` or store one safely from
+stdin:
+
+```bash
+printf 'sk-...' | yac auth openai set-api-key --stdin
+```
 
 Example `~/.yac/settings.toml`:
 
@@ -150,7 +161,7 @@ temperature = 0.7
 # system_prompt = "You are a helpful assistant."
 
 [provider]
-id          = "openai-compatible"
+id          = "openai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"
@@ -162,11 +173,11 @@ args    = []
 
 | Setting | Env override | Default | Purpose |
 | --- | --- | --- | --- |
-| `provider.id` | `YAC_PROVIDER` | `openai-compatible` | Provider ID registered by the app |
+| `provider.id` | `YAC_PROVIDER` | `openai-compatible` | Provider ID registered by the app; use `openai` for OpenAI API keys or browser OAuth |
 | `provider.model` | `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
 | `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
 | `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
-| `provider.api_key` | — | unset | Optional inline key; prefer the configured env var |
+| `provider.api_key` | unset | unset | Optional inline key; lowest priority for `openai`; prefer the configured env var or stored auth |
 | `temperature` | `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
 | `system_prompt` | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
 | `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
@@ -176,9 +187,33 @@ args    = []
 | `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
 | `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
 | `compact.auto_enabled` | `YAC_COMPACT_AUTO_ENABLED` | `true` | Auto-compact history before each new user prompt when usage crosses `compact.threshold` |
-| `compact.threshold` | `YAC_COMPACT_THRESHOLD` | `0.8` | Fraction of context window (0.05–1.0) at which auto-compact fires |
+| `compact.threshold` | `YAC_COMPACT_THRESHOLD` | `0.8` | Fraction of context window (0.05-1.0) at which auto-compact fires |
 | `compact.keep_last` | `YAC_COMPACT_KEEP_LAST` | `20` | Most-recent non-system messages preserved through compaction |
 | `compact.mode` | `YAC_COMPACT_MODE` | `"summarize"` | `"summarize"` (LLM-summarized) or `"truncate"` (drop and insert a synthetic note) |
+
+Set `[provider].id = "openai"` (or `YAC_PROVIDER=openai`) to use the built-in
+OpenAI preset. When only `id` is set, the preset fills in `gpt-4o-mini`,
+`https://api.openai.com/v1/`, and `OPENAI_API_KEY`. API-key mode uses the
+normal OpenAI-compatible chat completions endpoint. Browser OAuth mode uses the
+ChatGPT/Codex Responses endpoint and is managed by stored provider auth.
+
+OpenAI auth commands:
+
+```bash
+yac auth openai login
+printf 'sk-...' | yac auth openai set-api-key --stdin
+yac auth openai status
+yac auth openai logout
+```
+
+`yac auth openai login` opens the browser OAuth flow. `status` shows the
+configured provider, whether stored auth exists, and the effective auth source
+without printing secrets. `logout` clears stored OpenAI auth. Provider auth is
+stored keychain-first, with file fallback at `~/.yac/provider/auth/openai.json`.
+See [docs/openai-auth.md](docs/openai-auth.md) for precedence, storage, and
+troubleshooting.
+
+Unsupported for OpenAI auth: device-code, headless, and non-browser OAuth flows.
 
 Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
 preset. When only `id` is set, the preset fills in `glm-5.1`,
@@ -192,20 +227,21 @@ Credentials come from the AWS SDK's default chain (env vars, `~/.aws/credentials
 
 | Setting | Env override | Default | Purpose |
 | --- | --- | --- | --- |
-| `provider.id` | `YAC_PROVIDER` | — | Set to `"bedrock"` |
+| `provider.id` | `YAC_PROVIDER` | unset | Set to `"bedrock"` |
 | `provider.model` | `YAC_MODEL` | `anthropic.claude-3-5-haiku-20241022-v1:0` | Bedrock model ID |
 | `provider.options.region` | `YAC_BEDROCK_REGION`, `AWS_REGION` | `us-east-1` | AWS region |
 | `provider.options.max_tokens` | `YAC_BEDROCK_MAX_TOKENS` | `4096` | Max output tokens |
-| `provider.options.profile` | `YAC_BEDROCK_PROFILE` | — | AWS profile name |
-| `provider.options.endpoint_override` | `YAC_BEDROCK_ENDPOINT_OVERRIDE` | — | VPC endpoint URL |
+| `provider.options.profile` | `YAC_BEDROCK_PROFILE` | unset | AWS profile name |
+| `provider.options.endpoint_override` | `YAC_BEDROCK_ENDPOINT_OVERRIDE` | unset | VPC endpoint URL |
 
 Known-good model IDs: `anthropic.claude-3-5-sonnet-20241022-v2:0`, `anthropic.claude-3-5-haiku-20241022-v1:0`, `amazon.nova-pro-v1:0`, `amazon.nova-lite-v1:0`, `amazon.nova-micro-v1:0`, `meta.llama3-1-70b-instruct-v1:0`, `mistral.mistral-large-2407-v1:0`.
 Inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) are supported.
 Out of scope: prompt caching, Guardrails, Knowledge Bases, document/image content.
 
-API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell over
-placing `api_key` in the TOML file. Plaintext secrets in `$HOME` are harder to
-rotate safely and don't travel well across shells or CI.
+API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell, or
+using `yac auth openai set-api-key --stdin` for OpenAI, over placing `api_key`
+in the TOML file. Plaintext secrets in `$HOME` are harder to rotate safely and
+don't travel well across shells or CI.
 
 Example `~/.yac/prompts/review.toml`:
 
@@ -321,7 +357,7 @@ cmake --build build --target format-check
 
 ## Project Map
 
-- `src/main.cpp` is a thin handoff to app bootstrap; it loads config, registers the OpenAI-compatible provider, and wires minimal startup hooks, delegating full startup orchestration to the app bootstrap component
+- `src/main.cpp` is a thin handoff to app bootstrap; it loads config, registers the provider, and wires minimal startup hooks, delegating full startup orchestration to the app bootstrap component
 - `src/app/chat_event_bridge.*` translates service events into presentation
   updates
 - `src/chat/` contains chat config loading (`~/.yac/settings.toml` + env var

@@ -1,4 +1,5 @@
 #include "util/log.hpp"
+#include "provider/openai_auth.hpp"
 
 #include <iostream>
 #include <memory>
@@ -105,11 +106,67 @@ TEST_CASE("SetSink redirects output to the supplied sink", "[log]") {
 
 TEST_CASE("Redact masks api_key=, Bearer, code=, and token= values", "[log]") {
   REQUIRE(yac::log::Redact("api_key=secret") == "api_key=***REDACTED***");
+  REQUIRE(yac::log::Redact("Authorization: Bearer sk-abc123") ==
+          "Authorization: Bearer ***REDACTED***");
   REQUIRE(yac::log::Redact("Bearer sk-abc123") == "Bearer ***REDACTED***");
   REQUIRE(yac::log::Redact("https://x/?code=oauth-abc&state=ok") ==
           "https://x/?code=***REDACTED***&state=ok");
   REQUIRE(yac::log::Redact("token=hunter2&user=me") ==
           "token=***REDACTED***&user=me");
+}
+
+TEST_CASE("Redact masks provider auth JSON secret fields", "[log]") {
+  REQUIRE(yac::log::Redact(R"({"access":"access-secret"})") ==
+          R"({"access":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(R"({"refresh":"refresh-secret"})") ==
+          R"({"refresh":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(R"({"access_token":"access-secret"})") ==
+          R"({"access_token":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(R"({"refresh_token":"refresh-secret"})") ==
+          R"({"refresh_token":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(
+              R"({"type":"oauth","access_token":"access-secret","refresh_token":"refresh-secret"})") ==
+          R"({"type":"oauth","access_token":"***REDACTED***","refresh_token":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(R"({"api_key":"sk-test-fake"})") ==
+          R"({"api_key":"***REDACTED***"})");
+  REQUIRE(yac::log::Redact(R"({"key":"sk-test-fake"})") ==
+          R"({"key":"***REDACTED***"})");
+}
+
+TEST_CASE("Redact masks unquoted provider auth JSON secret values", "[log]") {
+  REQUIRE(yac::log::Redact(R"({"access":access-secret})") ==
+          R"({"access":***REDACTED***})");
+  REQUIRE(yac::log::Redact(R"({"refresh":refresh-secret})") ==
+          R"({"refresh":***REDACTED***})");
+  REQUIRE(yac::log::Redact(R"({"access_token":access-secret})") ==
+          R"({"access_token":***REDACTED***})");
+  REQUIRE(yac::log::Redact(R"({"refresh_token":refresh-secret,"ok":true})") ==
+          R"({"refresh_token":***REDACTED***,"ok":true})");
+}
+
+TEST_CASE("Log redacts serialized OpenAI auth blobs before the sink sees them",
+          "[log]") {
+  SinkResetGuard guard;
+  auto sink = std::make_shared<CapturingSink>();
+  yac::log::SetSink(sink);
+
+  const yac::provider::OpenAiAuth auth = yac::provider::OpenAiOAuthAuth{
+      .refresh_token = "refresh-secret",
+      .access_token = "access-secret",
+  };
+
+  yac::log::Error("auth", "{}", yac::provider::SerializeOpenAiAuth(auth));
+
+  const auto records = sink->Records();
+  REQUIRE(records.size() == 1);
+  REQUIRE(records[0].level == yac::log::Level::Error);
+  REQUIRE(records[0].module == "auth");
+  REQUIRE(records[0].message.find("\"access\":\"***REDACTED***\"") !=
+          std::string::npos);
+  REQUIRE(records[0].message.find("\"refresh\":\"***REDACTED***\"") !=
+          std::string::npos);
+  REQUIRE(records[0].message.find("access-secret") == std::string::npos);
+  REQUIRE(records[0].message.find("refresh-secret") == std::string::npos);
 }
 
 TEST_CASE("Redact preserves surrounding URL structure", "[log]") {
@@ -125,6 +182,8 @@ TEST_CASE("Redact does not mask non-secrets", "[log]") {
   REQUIRE(yac::log::Redact("hello world") == "hello world");
   REQUIRE(yac::log::Redact("the user submitted code review") ==
           "the user submitted code review");
+  REQUIRE(yac::log::Redact("access granted") == "access granted");
+  REQUIRE(yac::log::Redact("refresh the page") == "refresh the page");
   REQUIRE(yac::log::Redact("tokenize this string") == "tokenize this string");
   REQUIRE(yac::log::Redact("") == "");
 }

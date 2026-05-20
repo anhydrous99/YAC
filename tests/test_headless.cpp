@@ -1,5 +1,4 @@
 #include "chat/chat_service.hpp"
-#include "chat/config.hpp"
 #include "chat/types.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
@@ -30,12 +29,13 @@ HeadlessResult RunWithProvider(std::shared_ptr<LanguageModelProvider> provider,
   ChatConfig config;
   config.provider_id = ::yac::ProviderId{"fake"};
   config.model = ::yac::ModelId{"fake-model"};
-  ChatService service(std::move(registry), config);
 
   HeadlessResult result;
   std::mutex done_mutex;
   std::condition_variable done_cv;
   bool done = false;
+
+  ChatService service(std::move(registry), config);
 
   service.SetEventCallback([&](ChatEvent event) {
     std::visit(
@@ -50,16 +50,10 @@ HeadlessResult RunWithProvider(std::shared_ptr<LanguageModelProvider> provider,
           } else if constexpr (std::is_same_v<T, ErrorEvent>) {
             result.error_output = e.text;
             result.exit_code = 1;
-            std::unique_lock<std::mutex> lock(done_mutex);
-            done = true;
-            done_cv.notify_one();
           } else if constexpr (std::is_same_v<T, ToolApprovalRequestedEvent>) {
             service.ResolveToolApproval(e.approval_id, auto_approve);
             if (!auto_approve) {
               result.exit_code = 1;
-              std::unique_lock<std::mutex> lock(done_mutex);
-              done = true;
-              done_cv.notify_one();
             }
           }
         },

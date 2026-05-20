@@ -266,6 +266,7 @@ add_library(yac_presentation STATIC
   src/presentation/mcp/mcp_status_panel.cpp
   src/presentation/mcp/mcp_resources_command.cpp
   src/presentation/mcp/mcp_slash_commands.cpp
+  src/presentation/provider_auth_slash_commands.cpp
 )
 target_include_directories(yac_presentation PUBLIC src)
 target_link_libraries(yac_presentation PUBLIC yac_core_types ftxui::screen ftxui::dom ftxui::component)
@@ -292,8 +293,13 @@ add_library(yac_service STATIC
   src/provider/bedrock_aws_api_guard.cpp
   src/provider/bedrock_chat_provider.cpp
   src/provider/bedrock_chat_protocol.cpp
+  src/provider/openai_auth.cpp
+  src/provider/openai_auth_flow.cpp
+  src/provider/openai_auth_store.cpp
+  src/provider/openai_chat_provider.cpp
   src/provider/openai_compatible_chat_provider.cpp
   src/provider/openai_compatible_chat_protocol.cpp
+  src/provider/openai_responses_protocol.cpp
   src/provider/zai_context_windows.cpp
   src/provider/provider_registry.cpp
   src/tool_call/bash_tool_executor.cpp
@@ -326,6 +332,8 @@ add_library(yac_service STATIC
   src/mcp/mcp_manager.cpp
   src/cli/mcp_admin_command.cpp
   src/cli/mcp_cli_dispatch.cpp
+  src/cli/provider_auth_command.cpp
+  src/cli/provider_auth_cli_dispatch.cpp
   src/tool_call/sub_agent_tool_executor.cpp
   src/tool_call/subprocess_runner.cpp
   src/tool_call/todo_state.cpp
@@ -338,6 +346,7 @@ add_library(yac_service STATIC
   src/util/log.cpp
 )
 target_include_directories(yac_service PUBLIC src)
+target_compile_definitions(yac_service PUBLIC YAC_VERSION="${PROJECT_VERSION}")
 target_link_libraries(yac_service
   PUBLIC yac_core_types openai_cpp CURL::libcurl OpenSSL::Crypto
   PRIVATE tomlplusplus::tomlplusplus yac_keychain ${AWSSDK_LINK_LIBRARIES})
@@ -350,7 +359,9 @@ add_library(yac_app STATIC
   src/app/headless.cpp
   src/app/mcp_command_handlers.cpp
   src/app/model_discovery.cpp
+  src/app/provider_factory.cpp
   src/app/prompt_slash_commands.cpp
+  src/app/provider_auth_command_handlers.cpp
   src/app/streaming_coalescer.cpp
 )
 target_include_directories(yac_app PUBLIC src)

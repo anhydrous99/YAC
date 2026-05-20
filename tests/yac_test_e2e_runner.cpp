@@ -1,7 +1,6 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "chat/types.hpp"
-#include "core_types/mcp_manager_interface.hpp"
 #include "mcp/mcp_manager.hpp"
 #include "mock_response_provider.hpp"
 #include "provider/provider_registry.hpp"
@@ -131,13 +130,13 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    yac::chat::ChatService service(std::move(registry), config,
-                                   std::move(mcp_manager));
-
     std::atomic<int> exit_code{0};
     std::mutex done_mutex;
     std::condition_variable done_cv;
     bool done = false;
+
+    yac::chat::ChatService service(std::move(registry), config,
+                                   std::move(mcp_manager));
 
     service.SetEventCallback([&](yac::chat::ChatEvent event) {
       std::visit(
@@ -153,9 +152,6 @@ int main(int argc, char* argv[]) {
             } else if constexpr (std::is_same_v<T, yac::chat::ErrorEvent>) {
               std::cerr << "Error: " << e.text << '\n';
               exit_code = 1;
-              std::unique_lock<std::mutex> lock(done_mutex);
-              done = true;
-              done_cv.notify_one();
             } else if constexpr (std::is_same_v<
                                      T,
                                      yac::chat::ToolApprovalRequestedEvent>) {

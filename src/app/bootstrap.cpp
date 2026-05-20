@@ -2,16 +2,18 @@
 
 #include "app/chat_event_bridge.hpp"
 #include "app/mcp_command_handlers.hpp"
+#include "app/provider_auth_command_handlers.hpp"
+#include "app/provider_factory.hpp"
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
 #include "app/streaming_coalescer.hpp"
 #include "chat/chat_service.hpp"
-#include "chat/config.hpp"
 #include "chat/config_loader.hpp"
 #include "chat/config_paths.hpp"
 #include "chat/prompt_library.hpp"
 #include "chat/settings_toml.hpp"
 #include "cli/mcp_admin_command.hpp"
+#include "cli/provider_auth_command.hpp"
 #include "mcp/mcp_manager.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/chat_ui_actions.hpp"
@@ -20,10 +22,7 @@
 #include "presentation/slash_command_registry.hpp"
 #include "presentation/theme.hpp"
 #include "presentation/util/terminal.hpp"
-#include "provider/bedrock_aws_api_guard.hpp"
-#include "provider/bedrock_chat_provider.hpp"
 #include "provider/model_context_windows.hpp"
-#include "provider/openai_compatible_chat_provider.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/file_index.hpp"
 #include "tool_call/workspace_filesystem.hpp"
@@ -44,20 +43,6 @@
 
 namespace yac::app {
 namespace {
-
-std::shared_ptr<provider::OpenAiCompatibleChatProvider> BuildProvider(
-    const chat::ChatConfig& config) {
-  return std::make_shared<provider::OpenAiCompatibleChatProvider>(
-      chat::ProviderConfig{
-          .id = config.provider_id,
-          .model = config.model,
-          .api_key = config.api_key,
-          .api_key_env = config.api_key_env,
-          .base_url = config.base_url,
-          .options = config.options,
-          .context_window = config.context_window,
-      });
-}
 
 presentation::UiSeverity SeverityFor(chat::ConfigIssueSeverity severity) {
   switch (severity) {
@@ -307,7 +292,7 @@ class ChatActionsImpl : public presentation::IChatActions {
     } else if (command == "cancel_response") {
       chat_service_.CancelActiveResponse();
     } else if (command == "help") {
-      if (chat_ui_) {
+      if (chat_ui_ != nullptr) {
         chat_ui_->ShowHelp();
       }
     } else if (command.starts_with(presentation::kSwitchModelPrefix)) {
@@ -316,11 +301,11 @@ class ChatActionsImpl : public presentation::IChatActions {
     } else if (command.starts_with(presentation::kSwitchThemePrefix)) {
       ApplyThemeCommand(command);
     } else if (command == "mcp_list") {
-      if (chat_ui_) {
+      if (chat_ui_ != nullptr) {
         HandleMcpListCommand(*chat_ui_, mcp_admin_);
       }
     } else if (command == "mcp_add") {
-      if (chat_ui_) {
+      if (chat_ui_ != nullptr) {
         ShowMcpAddUsage(*chat_ui_);
       }
     }
@@ -369,7 +354,7 @@ class ChatActionsImpl : public presentation::IChatActions {
         }
       }
     }
-    if (chat_ui_) {
+    if (chat_ui_ != nullptr) {
       try {
         const auto settings_path = chat::GetSettingsPath();
         std::vector<chat::ConfigIssue> save_issues;
@@ -412,7 +397,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
     presentation::ChatUI& chat_ui,
     const std::vector<chat::PromptDefinition>& prompts,
     std::vector<chat::ConfigIssue>& startup_issues, ftxui::App& screen,
-    std::shared_ptr<cli::McpAdminCommand> mcp_admin) {
+    std::shared_ptr<cli::McpAdminCommand> mcp_admin,
+    std::shared_ptr<cli::ProviderAuthCommand> provider_auth_command) {
   presentation::SlashCommandRegistry slash_registry;
   presentation::RegisterBuiltinSlashCommands(slash_registry);
   slash_registry.SetHandler("quit", std::move(exit_loop));
@@ -489,6 +475,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 
   RegisterMcpSlashCommandHandlers(slash_registry, chat_ui, screen,
                                   std::move(mcp_admin));
+  RegisterProviderAuthSlashCommandHandlers(
+      slash_registry, chat_ui, screen, std::move(provider_auth_command));
 
   return slash_registry;
 }
@@ -502,22 +490,16 @@ int RunApp() {
   auto& prompt_result = loaded.prompt_library;
   auto startup_issues = prompt_result.issues;
 
-  std::shared_ptr<provider::LanguageModelProvider> provider;
-  if (config.provider_id.value == "bedrock") {
-    provider::EnsureAwsApiGuardInstalled();
-    provider =
-        std::make_shared<provider::BedrockChatProvider>(chat::ProviderConfig{
-            .id = config.provider_id,
-            .model = config.model,
-            .api_key = config.api_key,
-            .api_key_env = config.api_key_env,
-            .base_url = config.base_url,
-            .options = config.options,
-            .context_window = config.context_window,
-        });
-  } else {
-    provider = BuildProvider(config);
-  }
+  auto provider = MakeLanguageModelProvider(chat::ProviderConfig{
+      .id = config.provider_id,
+      .model = config.model,
+      .api_key = config.api_key,
+      .api_key_env = config.api_key_env,
+      .base_url = config.base_url,
+      .system_prompt = config.system_prompt,
+      .options = config.options,
+      .context_window = config.context_window,
+  });
 
   {
     auto theme = presentation::theme::GetTheme(config.theme_name);
@@ -545,6 +527,7 @@ int RunApp() {
   }
 
   auto mcp_admin = std::make_shared<cli::McpAdminCommand>();
+  auto provider_auth_command = std::make_shared<cli::ProviderAuthCommand>();
 
   auto mcp_mgr_event_sink =
       std::make_shared<std::function<void(chat::ChatEvent)>>();
@@ -587,7 +570,7 @@ int RunApp() {
 
   chat_ui.SetSlashCommands(BuildSlashCommandRegistry(
       screen.ExitLoopClosure(), chat_service, chat_ui, prompt_result.prompts,
-      startup_issues, screen, mcp_admin));
+      startup_issues, screen, mcp_admin, provider_auth_command));
 
   auto startup_status = BuildStartupStatus(config_result, startup_issues);
   chat_ui.SetStartupStatus(startup_status);

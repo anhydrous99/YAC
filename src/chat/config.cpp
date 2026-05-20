@@ -80,6 +80,10 @@ struct ProviderPreset {
 
 const std::unordered_map<std::string, ProviderPreset>& ProviderPresets() {
   static const std::unordered_map<std::string, ProviderPreset> presets = {
+      {"openai",
+       {.model = "gpt-4o-mini",
+        .base_url = "https://api.openai.com/v1/",
+        .api_key_env = "OPENAI_API_KEY"}},
       {"zai",
        {.model = "glm-5.1",
         .base_url = "https://api.z.ai/api/coding/paas/v4",

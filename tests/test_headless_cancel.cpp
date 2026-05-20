@@ -1,5 +1,4 @@
 #include "chat/chat_service.hpp"
-#include "chat/config.hpp"
 #include "chat/types.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
@@ -12,7 +11,6 @@
 #include <string>
 #include <thread>
 #include <utility>
-#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -51,12 +49,13 @@ CancelTestResult RunWithCancelTimer(int cancel_after_ms) {
   ChatConfig config;
   config.provider_id = ::yac::ProviderId{"fake"};
   config.model = ::yac::ModelId{"fake-model"};
-  ChatService service(std::move(registry), config);
 
   CancelTestResult result;
   std::mutex done_mutex;
   std::condition_variable done_cv;
   bool done = false;
+
+  ChatService service(std::move(registry), config);
 
   auto start = std::chrono::steady_clock::now();
 
@@ -72,9 +71,6 @@ CancelTestResult RunWithCancelTimer(int cancel_after_ms) {
             done_cv.notify_one();
           } else if constexpr (std::is_same_v<T, ErrorEvent>) {
             result.was_cancelled = true;
-            std::unique_lock<std::mutex> lock(done_mutex);
-            done = true;
-            done_cv.notify_one();
           }
         },
         event.payload);

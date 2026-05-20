@@ -69,12 +69,9 @@ std::shared_ptr<Sink> GetSink() {
 }
 
 std::string Redact(std::string_view input) {
-  // Patterns target the four shapes that leak secrets in YAC's logs:
-  // OpenAI-style "api_key=..." query strings, "Bearer <jwt>" auth headers,
-  // OAuth "code=<authcode>" callback URLs, and generic "token=..." form
-  // parameters. The character class stops at terminators that bound the
-  // value in URLs (whitespace, `&`, `,`, `;`, `"`) so following structure
-  // is preserved.
+  // Patterns target the shapes that leak secrets in YAC's logs: URL/form
+  // parameters, auth headers, and provider-auth JSON snippets. The URL
+  // character class stops at terminators so following structure is preserved.
   static const std::regex api_key_regex(R"(api_key=[^\s&,;"]+)",
                                         std::regex::ECMAScript);
   static const std::regex bearer_regex(R"(Bearer[ \t]+[^\s,"]+)",
@@ -83,6 +80,12 @@ std::string Redact(std::string_view input) {
                                      std::regex::ECMAScript);
   static const std::regex token_regex(R"(token=[^\s&,;"]+)",
                                       std::regex::ECMAScript);
+  static const std::regex json_secret_string_regex(
+      R"re(("(access|refresh|access_token|refresh_token|id_token|api_key|key)"[ \t]*:[ \t]*")[^"]*("))re",
+      std::regex::ECMAScript);
+  static const std::regex json_secret_value_regex(
+      R"re(("(access|refresh|access_token|refresh_token|id_token|api_key|key)"[ \t]*:[ \t]*)([^",\s}\]][^,\s}\]]*))re",
+      std::regex::ECMAScript);
 
   const std::string redacted(kRedactedPlaceholder);
   std::string text(input);
@@ -90,6 +93,9 @@ std::string Redact(std::string_view input) {
   text = std::regex_replace(text, bearer_regex, "Bearer " + redacted);
   text = std::regex_replace(text, code_regex, "code=" + redacted);
   text = std::regex_replace(text, token_regex, "token=" + redacted);
+  text = std::regex_replace(text, json_secret_string_regex,
+                            "$1" + redacted + "$3");
+  text = std::regex_replace(text, json_secret_value_regex, "$1" + redacted);
   return text;
 }
 
@@ -110,7 +116,7 @@ namespace detail {
 
 void Log(Level level, std::string_view module, std::string message) {
   if (auto sink = GetSink()) {
-    sink->Write(level, module, message);
+    sink->Write(level, module, Redact(message));
   }
 }
 

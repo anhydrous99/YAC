@@ -1,6 +1,7 @@
 #include "app/bootstrap.hpp"
 #include "app/headless.hpp"
 #include "cli/mcp_cli_dispatch.hpp"
+#include "cli/provider_auth_cli_dispatch.hpp"
 #include "util/log.hpp"
 
 #include <iostream>
@@ -11,6 +12,9 @@ int main(int argc, char* argv[]) {
   try {
     if (argc >= 2 && std::string_view(argv[1]) == "mcp") {
       return yac::cli::RunMcpCli(argc - 2, argv + 2);
+    }
+    if (argc >= 2 && std::string_view(argv[1]) == "auth") {
+      return yac::cli::RunProviderAuthCli(argc - 2, argv + 2);
     }
     if (argc >= 3 && std::string_view(argv[1]) == "run") {
       std::string prompt;
