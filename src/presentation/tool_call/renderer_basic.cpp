@@ -1,5 +1,3 @@
-#include "../syntax/highlighter.hpp"
-#include "../syntax/language_alias.hpp"
 #include "../ui_spacing.hpp"
 #include "../util/count_summary.hpp"
 #include "../util/string_util.hpp"
@@ -25,6 +23,43 @@ std::string DirectoryEntryTypeLabel(tool_data::DirectoryEntryType type) {
       return "other";
   }
   return "other";
+}
+
+std::string FileReadTarget(const tool_data::FileReadCall& call) {
+  return call.filepath.empty() ? "file" : call.filepath;
+}
+
+std::string FileReadStatementText(const tool_data::FileReadCall& call,
+                                  ::yac::chat::ChatMessageStatus status) {
+  const auto target = FileReadTarget(call);
+  switch (status) {
+    case ::yac::chat::ChatMessageStatus::Queued:
+    case ::yac::chat::ChatMessageStatus::Active:
+      return "Reading " + target;
+    case ::yac::chat::ChatMessageStatus::Cancelled:
+      return "Read cancelled: " + target;
+    case ::yac::chat::ChatMessageStatus::Error:
+      return "Could not read " + target;
+    case ::yac::chat::ChatMessageStatus::Complete:
+      return "Read " + target + " (" +
+             util::CountSummary(call.lines_loaded, "line", "lines") + ")";
+  }
+  return "Read " + target;
+}
+
+ftxui::Color FileReadStatementColor(::yac::chat::ChatMessageStatus status,
+                                    const theme::Theme& theme) {
+  switch (status) {
+    case ::yac::chat::ChatMessageStatus::Error:
+      return theme.tool.edit_remove;
+    case ::yac::chat::ChatMessageStatus::Cancelled:
+      return theme.semantic.text_weak;
+    case ::yac::chat::ChatMessageStatus::Queued:
+    case ::yac::chat::ChatMessageStatus::Active:
+    case ::yac::chat::ChatMessageStatus::Complete:
+      return theme.semantic.text_muted;
+  }
+  return theme.semantic.text_muted;
 }
 
 }  // namespace
@@ -94,29 +129,20 @@ ftxui::Element ToolCallRenderer::RenderFileEdit(
 
 ftxui::Element ToolCallRenderer::RenderFileRead(
     const tool_data::FileReadCall& call, const RenderContext& context) {
-  const auto& theme = context.Colors();
-  ftxui::Elements content;
-  content.push_back(ftxui::text(call.filepath) |
-                    ftxui::color(theme.semantic.text_strong));
-  content.push_back(
-      RenderWrappedLine(util::CountSummary(call.lines_loaded, "line", "lines"),
-                        theme.semantic.text_muted));
-  if (!call.excerpt.empty()) {
-    auto language = syntax::LanguageForExtension(call.filepath);
-    if (!language.empty()) {
-      auto highlighted = syntax::SyntaxHighlighter::HighlightLines(
-          call.excerpt, language, context);
-      for (auto& line : highlighted) {
-        content.push_back(std::move(line));
-      }
-    } else {
-      content.push_back(
-          RenderWrappedLine(call.excerpt, theme.semantic.text_body));
-    }
-  }
+  return RenderFileReadStatement(call, ::yac::chat::ChatMessageStatus::Complete,
+                                 context);
+}
 
-  return RenderContainer("◆", "read", theme.tool.read_accent,
-                         std::move(content), theme);
+ftxui::Element ToolCallRenderer::RenderFileReadStatement(
+    const tool_data::FileReadCall& call, ::yac::chat::ChatMessageStatus status,
+    const RenderContext& context) {
+  const auto& theme = context.Colors();
+  const auto text_color = FileReadStatementColor(status, theme);
+  return ftxui::hbox({
+      ftxui::text("◆ ") | ftxui::color(theme.tool.read_accent),
+      ftxui::paragraph(FileReadStatementText(call, status)) |
+          ftxui::color(text_color) | ftxui::flex,
+  });
 }
 
 ftxui::Element ToolCallRenderer::RenderFileWrite(

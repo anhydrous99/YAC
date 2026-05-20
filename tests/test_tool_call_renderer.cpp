@@ -118,27 +118,45 @@ TEST_CASE("ToolCallRenderer renders file edit errors") {
 }
 
 TEST_CASE("ToolCallRenderer renders file read details") {
-  FileReadCall call{.filepath = "README.md",
-                    .lines_loaded = 12,
-                    .excerpt = "Yet Another Chat"};
+  FileReadCall call{.filepath = "README.md", .lines_loaded = 12};
 
   auto output = RenderToString(call, 80, 8);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("◆"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("read"));
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Read README.md (12 lines)"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("README.md"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("12 lines"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Yet Another Chat"));
 }
 
 TEST_CASE("ToolCallRenderer renders minimal file read at narrow width") {
-  FileReadCall call{.filepath = "notes.txt", .lines_loaded = 0, .excerpt = ""};
+  FileReadCall call{.filepath = "notes.txt", .lines_loaded = 0};
 
   auto output = RenderToString(call, 40, 8);
 
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("read"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Read"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("notes.txt"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("0 lines"));
+}
+
+TEST_CASE("ToolCallRenderer renders file read statement statuses") {
+  FileReadCall call{.filepath = "README.md", .lines_loaded = 1};
+
+  auto render_status = [&](yac::chat::ChatMessageStatus status) {
+    auto elem = ToolCallRenderer::RenderFileReadStatement(
+        call, status, yac::presentation::RenderContext{});
+    REQUIRE(elem != nullptr);
+    ftxui::Screen screen(80, 4);
+    ftxui::Render(screen, elem);
+    return StripAnsi(screen.ToString());
+  };
+
+  REQUIRE_THAT(render_status(yac::chat::ChatMessageStatus::Active),
+               Catch::Matchers::ContainsSubstring("Reading README.md"));
+  REQUIRE_THAT(render_status(yac::chat::ChatMessageStatus::Error),
+               Catch::Matchers::ContainsSubstring("Could not read README.md"));
+  REQUIRE_THAT(render_status(yac::chat::ChatMessageStatus::Cancelled),
+               Catch::Matchers::ContainsSubstring("Read cancelled: README.md"));
 }
 
 TEST_CASE("ToolCallRenderer renders file write details") {
@@ -373,8 +391,7 @@ TEST_CASE(
         .command = "echo", .output = "", .exit_code = 0, .is_error = false});
   }
   for (int i = 0; i < 4; ++i) {
-    blocks.emplace_back(
-        FileReadCall{.filepath = "a.txt", .lines_loaded = 1, .excerpt = ""});
+    blocks.emplace_back(FileReadCall{.filepath = "a.txt", .lines_loaded = 1});
   }
   for (int i = 0; i < 3; ++i) {
     blocks.emplace_back(FileEditCall{.filepath = "a.txt", .diff = {}});
@@ -422,8 +439,7 @@ TEST_CASE(
   std::vector<ToolCallBlock> blocks;
   blocks.emplace_back(BashCall{
       .command = "c", .output = "", .exit_code = 0, .is_error = false});
-  blocks.emplace_back(
-      FileReadCall{.filepath = "r", .lines_loaded = 1, .excerpt = ""});
+  blocks.emplace_back(FileReadCall{.filepath = "r", .lines_loaded = 1});
   blocks.emplace_back(FileEditCall{.filepath = "e", .diff = {}});
   blocks.emplace_back(FileWriteCall{.filepath = "w"});
   blocks.emplace_back(
@@ -449,10 +465,8 @@ TEST_CASE("ToolCallRenderer handles all tool call variants without crashing") {
           .command = "pwd", .output = "", .exit_code = 0, .is_error = false},
       80, 8);
   RenderAndCheck(FileEditCall{.filepath = "file.txt", .diff = {}}, 80, 8);
-  RenderAndCheck(
-      FileReadCall{
-          .filepath = "file.txt", .lines_loaded = 1, .excerpt = "line"},
-      80, 8);
+  RenderAndCheck(FileReadCall{.filepath = "file.txt", .lines_loaded = 1}, 80,
+                 8);
   RenderAndCheck(
       FileWriteCall{
           .filepath = "file.txt", .content_preview = "line", .lines_added = 1},

@@ -24,11 +24,9 @@ TEST_CASE("Tool call structs preserve field values") {
   REQUIRE(edit.diff[0].type == DiffLine::Add);
   REQUIRE(edit.diff[0].content == "+line");
 
-  FileReadCall read{
-      .filepath = "/tmp/file.txt", .lines_loaded = 12, .excerpt = "excerpt"};
+  FileReadCall read{.filepath = "/tmp/file.txt", .lines_loaded = 12};
   REQUIRE(read.filepath == "/tmp/file.txt");
   REQUIRE(read.lines_loaded == 12);
-  REQUIRE(read.excerpt == "excerpt");
 
   FileWriteCall write{.filepath = "/tmp/file.txt",
                       .content_preview = "new text",
@@ -122,8 +120,7 @@ TEST_CASE("ToolCallBlock stores all tool call variants") {
       FileEditCall{.filepath = "file", .diff = {{DiffLine::Remove, "-old"}}};
   REQUIRE(std::holds_alternative<FileEditCall>(block));
 
-  block =
-      FileReadCall{.filepath = "file", .lines_loaded = 3, .excerpt = "text"};
+  block = FileReadCall{.filepath = "file", .lines_loaded = 3};
   REQUIRE(std::holds_alternative<FileReadCall>(block));
 
   block = FileWriteCall{

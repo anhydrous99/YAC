@@ -102,7 +102,6 @@ struct FileEditCall {
 struct FileReadCall {
   std::string filepath;
   int lines_loaded{};
-  std::string excerpt;
 };
 
 struct FileWriteCall {

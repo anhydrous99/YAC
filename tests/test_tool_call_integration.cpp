@@ -115,6 +115,21 @@ TEST_CASE("ChatUI SetToolExpanded collapsed hides tool content") {
                !Catch::Matchers::ContainsSubstring("working tree clean"));
 }
 
+TEST_CASE("ChatUI renders file reads as non-expandable statements") {
+  ChatUI ui;
+  auto tool_id = ui.AddToolCallMessage(
+      FileReadCall{.filepath = "README.md", .lines_loaded = 12});
+  ui.SetToolExpanded(tool_id, true);
+
+  auto component = ui.Build();
+  auto output = RenderComponent(component);
+
+  REQUIRE_THAT(output,
+               Catch::Matchers::ContainsSubstring("Read README.md (12 lines)"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("\xe2\x96\xb6"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("\xe2\x96\xbc"));
+}
+
 TEST_CASE("AddToolCallMessage increases tool block count") {
   ChatUI ui;
   ui.AddToolCallMessage(BashCall{.command = "pwd",

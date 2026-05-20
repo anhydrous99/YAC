@@ -28,9 +28,8 @@ TEST_CASE(
           .tool_call_id = yac::ToolCallId{"approval-1"},
           .tool_name = "file_read",
           .approval_id = yac::ApprovalId{"request-1"},
-          .tool_call = FileReadCall{.filepath = "README.md",
-                                    .lines_loaded = 12,
-                                    .excerpt = "intro"}}},
+          .tool_call =
+              FileReadCall{.filepath = "README.md", .lines_loaded = 12}}},
       completed_tool_count);
 
   REQUIRE(adapted.has_value());
@@ -82,14 +81,13 @@ TEST_CASE(
   SECTION("tool completed") {
     auto adapted = AdaptSubAgentPromptEvent(
         context,
-        ChatEvent{
-            ToolCallDoneEvent{.message_id = 12,
-                              .tool_call_id = yac::ToolCallId{"call-12"},
-                              .tool_name = "file_read",
-                              .tool_call = FileReadCall{.filepath = "README.md",
-                                                        .lines_loaded = 20,
-                                                        .excerpt = "docs"},
-                              .status = ChatMessageStatus::Complete}},
+        ChatEvent{ToolCallDoneEvent{
+            .message_id = 12,
+            .tool_call_id = yac::ToolCallId{"call-12"},
+            .tool_name = "file_read",
+            .tool_call =
+                FileReadCall{.filepath = "README.md", .lines_loaded = 20},
+            .status = ChatMessageStatus::Complete}},
         completed_tool_count);
 
     REQUIRE(adapted.has_value());

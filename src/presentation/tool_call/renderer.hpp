@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../render_context.hpp"
+#include "core_types/chat_ids.hpp"
 #include "core_types/tool_call_types.hpp"
 
 #include <string>
@@ -20,6 +21,9 @@ class ToolCallRenderer {
       const tool_data::ToolCallBlock& block);
   [[nodiscard]] static ftxui::Element Render(
       const tool_data::ToolCallBlock& block, const RenderContext& context);
+  [[nodiscard]] static ftxui::Element RenderFileReadStatement(
+      const tool_data::FileReadCall& call,
+      ::yac::chat::ChatMessageStatus status, const RenderContext& context);
   [[nodiscard]] static std::string BuildSummary(
       const tool_data::ToolCallBlock& block);
   [[nodiscard]] static std::string BuildLabel(

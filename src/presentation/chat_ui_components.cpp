@@ -31,6 +31,10 @@ using detail::MakeSlashMenuInputWrapper;
 using detail::NoticeLine;
 using detail::RenderWrappedComposerInput;
 
+bool IsFileReadToolBlock(const ::yac::tool_call::ToolCallBlock& block) {
+  return std::holds_alternative<::yac::tool_call::FileReadCall>(block);
+}
+
 }  // namespace
 
 void ChatUI::SubmitMessage() {
@@ -259,6 +263,30 @@ ftxui::Component ChatUI::BuildSubAgentToolCollapsible(MessageId parent_id,
                      std::move(summary_provider), std::move(peek));
 }
 
+ftxui::Component ChatUI::BuildSubAgentToolComponent(MessageId parent_id,
+                                                    size_t child_index) {
+  const auto* child = session_.SubAgentToolCall(parent_id, child_index);
+  if (child == nullptr || !IsFileReadToolBlock(child->block)) {
+    return BuildSubAgentToolCollapsible(parent_id, child_index);
+  }
+
+  return ftxui::Renderer([this, parent_id, child_index] {
+    const auto* current = session_.SubAgentToolCall(parent_id, child_index);
+    if (current == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    const auto* read =
+        std::get_if<::yac::tool_call::FileReadCall>(&current->block);
+    if (read == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    return tool_call::ToolCallRenderer::RenderFileReadStatement(
+        *read, current->status,
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
+}
+
 ftxui::Component ChatUI::BuildToolContentComponent(MessageId tool_id) {
   const auto* segment = session_.FindToolSegment(tool_id);
   if (segment == nullptr) {
@@ -303,11 +331,34 @@ ftxui::Component ChatUI::BuildToolContentComponent(MessageId tool_id) {
     }));
     for (size_t child_index = 0; child_index < child_tools.size();
          ++child_index) {
-      rows.push_back(BuildSubAgentToolCollapsible(parent_id, child_index));
+      rows.push_back(BuildSubAgentToolComponent(parent_id, child_index));
     }
   }
 
   return ftxui::Container::Vertical(std::move(rows));
+}
+
+ftxui::Component ChatUI::BuildToolComponent(MessageId tool_id) {
+  const auto* segment = session_.FindToolSegment(tool_id);
+  if (segment == nullptr || !IsFileReadToolBlock(segment->block)) {
+    return BuildToolCollapsible(tool_id);
+  }
+
+  return ftxui::Renderer([this, tool_id] {
+    const auto* current = session_.FindToolSegment(tool_id);
+    if (current == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    const auto* read =
+        std::get_if<::yac::tool_call::FileReadCall>(&current->block);
+    if (read == nullptr) {
+      return ftxui::text("Tool call unavailable");
+    }
+    return tool_call::ToolCallRenderer::RenderFileReadStatement(
+        *read, current->status,
+        RenderContext{.terminal_width = last_terminal_width_,
+                      .thinking_frame = thinking_animation_.Frame()});
+  });
 }
 
 ftxui::Component ChatUI::BuildToolCollapsible(MessageId tool_id) {
@@ -410,7 +461,7 @@ ftxui::Component ChatUI::BuildAgentMessageComponent(size_t message_index) {
                               .thinking_frame = thinking_animation_.Frame()});
           }));
     } else if (const auto* tool_seg = std::get_if<ToolSegment>(&segment)) {
-      children.push_back(BuildToolCollapsible(tool_seg->id));
+      children.push_back(BuildToolComponent(tool_seg->id));
     }
   }
 

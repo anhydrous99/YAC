@@ -37,8 +37,7 @@ ToolExecutionResult ExecuteFileReadTool(
   const auto lines_loaded = CountLines(content);
 
   auto block = FileReadCall{.filepath = workspace_filesystem.DisplayPath(path),
-                            .lines_loaded = lines_loaded,
-                            .excerpt = PreviewText(content)};
+                            .lines_loaded = lines_loaded};
   Json result{{"filepath", block.filepath},
               {"lines_loaded", lines_loaded},
               {"content", content}};

@@ -119,8 +119,11 @@ class ChatUI : public ChatEventSink {
   [[nodiscard]] ftxui::Component BuildAgentMessageComponent(
       size_t message_index);
   [[nodiscard]] ftxui::Component BuildNoticeComponent(size_t notice_index);
+  [[nodiscard]] ftxui::Component BuildToolComponent(MessageId tool_id);
   [[nodiscard]] ftxui::Component BuildToolContentComponent(MessageId tool_id);
   [[nodiscard]] ftxui::Component BuildToolCollapsible(MessageId tool_id);
+  [[nodiscard]] ftxui::Component BuildSubAgentToolComponent(MessageId parent_id,
+                                                            size_t child_index);
   [[nodiscard]] ftxui::Component BuildSubAgentToolCollapsible(
       MessageId parent_id, size_t child_index);
   [[nodiscard]] ftxui::Element BuildToolPeek(

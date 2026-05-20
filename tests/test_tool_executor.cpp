@@ -356,7 +356,6 @@ TEST_CASE("ToolExecutor reads files inside the workspace") {
   const auto& call = std::get<FileReadCall>(result.block);
   REQUIRE(call.filepath == "src/hello.cpp");
   REQUIRE(call.lines_loaded == 3);
-  REQUIRE_FALSE(call.excerpt.empty());
   REQUIRE(result.result_json.find("line one\\nline two\\nline three\\n") !=
           std::string::npos);
 }
