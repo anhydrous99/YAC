@@ -140,8 +140,8 @@ TEST_CASE("oauth_serialization_round_trip", "[openai_auth_store]") {
 TEST_CASE("missing_and_invalid_json_are_rejected", "[openai_auth_store]") {
   REQUIRE_THROWS(ParseOpenAiAuth("{"));
   REQUIRE_THROWS(ParseOpenAiAuth(R"({"type":"api"})"));
-  REQUIRE_THROWS(ParseOpenAiAuth(
-      R"({"type":"oauth","refresh":"rt","access":123})"));
+  REQUIRE_THROWS(
+      ParseOpenAiAuth(R"({"type":"oauth","refresh":"rt","access":123})"));
   REQUIRE_THROWS(ParseOpenAiAuth(
       R"({"type":"oauth","refresh":"rt","access":"at","expires":"soon"})"));
 }
@@ -149,16 +149,16 @@ TEST_CASE("missing_and_invalid_json_are_rejected", "[openai_auth_store]") {
 TEST_CASE("expiry_helpers", "[openai_auth_store]") {
   const auto now =
       std::chrono::system_clock::time_point{std::chrono::seconds{200}};
-  const OpenAiOAuthAuth valid{.refresh_token = "rt-test",
-                              .access_token = "at-test",
-                              .expires_at =
-                                  std::chrono::system_clock::time_point{
-                                      std::chrono::seconds{300}}};
-  const OpenAiOAuthAuth expired{.refresh_token = "rt-test",
-                                .access_token = "at-test",
-                                .expires_at =
-                                    std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{100}}};
+  const OpenAiOAuthAuth valid{
+      .refresh_token = "rt-test",
+      .access_token = "at-test",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{300}}};
+  const OpenAiOAuthAuth expired{
+      .refresh_token = "rt-test",
+      .access_token = "at-test",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{100}}};
 
   REQUIRE_FALSE(IsOpenAiOAuthExpired(valid, now));
   REQUIRE(HasUsableOpenAiOAuthAccessToken(valid, now));
@@ -168,21 +168,17 @@ TEST_CASE("expiry_helpers", "[openai_auth_store]") {
 
 TEST_CASE("redacted_display_hides_secrets", "[openai_auth_store]") {
   const OpenAiAuth api_auth = OpenAiApiKeyAuth{.key = "sk-test-secret-value"};
-  const OpenAiAuth oauth_auth = OpenAiOAuthAuth{.refresh_token =
-                                                    "rt-test-secret-value",
-                                                .access_token =
-                                                    "at-test-secret-value"};
+  const OpenAiAuth oauth_auth =
+      OpenAiOAuthAuth{.refresh_token = "rt-test-secret-value",
+                      .access_token = "at-test-secret-value"};
 
   const std::string api_description = DescribeOpenAiAuth(api_auth);
   const std::string oauth_description = DescribeOpenAiAuth(oauth_auth);
 
-  REQUIRE(RedactOpenAiSecret("sk-test-secret-value") !=
-          "sk-test-secret-value");
+  REQUIRE(RedactOpenAiSecret("sk-test-secret-value") != "sk-test-secret-value");
   REQUIRE(api_description.find("sk-test-secret-value") == std::string::npos);
-  REQUIRE(oauth_description.find("rt-test-secret-value") ==
-          std::string::npos);
-  REQUIRE(oauth_description.find("at-test-secret-value") ==
-          std::string::npos);
+  REQUIRE(oauth_description.find("rt-test-secret-value") == std::string::npos);
+  REQUIRE(oauth_description.find("at-test-secret-value") == std::string::npos);
 }
 
 TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
@@ -217,7 +213,7 @@ TEST_CASE("file_backend_writes_mode_0600_and_rejects_broad_perms",
   backend.Set(SerializeOpenAiAuth(auth));
 
 #ifndef _WIN32
-  struct ::stat st {};
+  struct ::stat st{};
   REQUIRE(::stat(auth_path.c_str(), &st) == 0);
   REQUIRE((st.st_mode & 0777) == 0600);
 

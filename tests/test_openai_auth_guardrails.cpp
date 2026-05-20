@@ -41,7 +41,8 @@ bool HasAnyUnsupportedMarker(std::string_view line) {
 
 bool IsDocumentationPath(std::string_view path) {
   return path == "README.md" || path == "settings.example.toml" ||
-         path == "src/chat/settings_toml_template.hpp" || path.starts_with("docs/");
+         path == "src/chat/settings_toml_template.hpp" ||
+         path.starts_with("docs/");
 }
 
 bool IsGuardrailTest(std::string_view path) {
@@ -100,7 +101,8 @@ std::vector<Match> ScanForTokens(
       continue;
     }
     for (const auto& entry : std::filesystem::recursive_directory_iterator(
-             absolute_root, std::filesystem::directory_options::skip_permission_denied)) {
+             absolute_root,
+             std::filesystem::directory_options::skip_permission_denied)) {
       if (!entry.is_regular_file()) {
         continue;
       }

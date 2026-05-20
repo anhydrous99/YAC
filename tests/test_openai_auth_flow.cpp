@@ -1,8 +1,6 @@
-#include "provider/openai_auth_flow.hpp"
-
-#include "openai_auth_test_helpers.hpp"
-
 #include "mcp/oauth/pkce.hpp"
+#include "openai_auth_test_helpers.hpp"
+#include "provider/openai_auth_flow.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -101,7 +99,9 @@ class ThrowingKeychainBackend : public IOpenAiAuthBackend {
   dependencies.issuer_url = std::move(issuer_url);
   dependencies.auth_store = std::move(store);
   dependencies.browser_launcher = std::move(browser_launcher);
-  dependencies.code_verifier_generator = [] { return std::string("verifier-123"); };
+  dependencies.code_verifier_generator = [] {
+    return std::string("verifier-123");
+  };
   dependencies.code_challenge_deriver = [](std::string_view verifier) {
     return yac::mcp::oauth::DeriveCodeChallenge(verifier);
   };
@@ -131,9 +131,10 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
   });
   FakeBrowserLauncher launcher;
   const auto file_backend = MakeFileBackend();
-  OpenAiAuthFlow flow(MakeDependencies(
-      server.Url(""), MakeStore(file_backend),
-      [&launcher](std::string_view url) { return launcher.LaunchBrowser(url); }));
+  OpenAiAuthFlow flow(MakeDependencies(server.Url(""), MakeStore(file_backend),
+                                       [&launcher](std::string_view url) {
+                                         return launcher.LaunchBrowser(url);
+                                       }));
 
   auto worker = std::async(std::launch::async, [&] {
     return flow.RunBrowserAuthorization(
@@ -155,30 +156,30 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
 
   REQUIRE(notice.has_value());
   REQUIRE(notice->browser_launched);
-  REQUIRE(launcher.Urls() == std::vector<std::string>{notice->authorization_url});
+  REQUIRE(launcher.Urls() ==
+          std::vector<std::string>{notice->authorization_url});
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("response_type=code"));
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("client_id=app_EMoamEEZ73f0CkXaXp7hrann"));
-  REQUIRE_THAT(notice->authorization_url,
-               ContainsSubstring("scope=openid%20profile%20email%20offline_access"));
+  REQUIRE_THAT(
+      notice->authorization_url,
+      ContainsSubstring("scope=openid%20profile%20email%20offline_access"));
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("code_challenge_method=S256"));
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("id_token_add_organizations=true"));
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("codex_cli_simplified_flow=true"));
-  REQUIRE_THAT(notice->authorization_url,
-               ContainsSubstring("originator=yac"));
-  REQUIRE_THAT(notice->authorization_url,
-               ContainsSubstring("redirect_uri="));
+  REQUIRE_THAT(notice->authorization_url, ContainsSubstring("originator=yac"));
+  REQUIRE_THAT(notice->authorization_url, ContainsSubstring("redirect_uri="));
 
   CURL* curl = curl_easy_init();
   REQUIRE(curl != nullptr);
   const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
-  const std::string callback_url = notice->redirect_uri +
-                                   "?code=code-123&state=state-123";
+  const std::string callback_url =
+      notice->redirect_uri + "?code=code-123&state=state-123";
   curl_easy_setopt(curl, CURLOPT_URL, callback_url.c_str());
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
   REQUIRE(curl_easy_perform(curl) == CURLE_OK);
@@ -186,8 +187,8 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
   const OpenAiOAuthAuth auth = worker.get();
   REQUIRE(auth.refresh_token == "refresh-1");
   REQUIRE(auth.account_id == std::optional<std::string>{"acct-from-id"});
-  REQUIRE(auth.expires_at == std::chrono::system_clock::time_point{
-                                 std::chrono::seconds{4600}});
+  REQUIRE(auth.expires_at ==
+          std::chrono::system_clock::time_point{std::chrono::seconds{4600}});
 
   const auto requests = server.Requests();
   REQUIRE(requests.size() == 1);
@@ -199,8 +200,7 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
                ContainsSubstring("code_verifier=verifier-123"));
   REQUIRE_THAT(requests[0].body,
                ContainsSubstring("client_id=app_EMoamEEZ73f0CkXaXp7hrann"));
-  REQUIRE_THAT(requests[0].body,
-               ContainsSubstring("redirect_uri="));
+  REQUIRE_THAT(requests[0].body, ContainsSubstring("redirect_uri="));
 
   const auto stored = flow.LoadStoredAuth();
   REQUIRE(stored.has_value());
@@ -217,16 +217,16 @@ TEST_CASE("browser_launch_failure_still_reports_url_and_completes",
   TestHttpServer server([](const HttpRequest&, std::size_t) {
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body = R"({"access_token":"access-1","refresh_token":"refresh-2","expires_in":1200})",
+        .body =
+            R"({"access_token":"access-1","refresh_token":"refresh-2","expires_in":1200})",
     };
   });
   const auto file_backend = MakeFileBackend();
-  OpenAiAuthFlow flow(MakeDependencies(
-      server.Url(""), MakeStore(file_backend),
-      [](std::string_view url) {
-        (void)url;
-        return false;
-      }));
+  OpenAiAuthFlow flow(MakeDependencies(server.Url(""), MakeStore(file_backend),
+                                       [](std::string_view url) {
+                                         (void)url;
+                                         return false;
+                                       }));
 
   auto worker = std::async(std::launch::async, [&] {
     return flow.RunBrowserAuthorization(
@@ -248,15 +248,14 @@ TEST_CASE("browser_launch_failure_still_reports_url_and_completes",
 
   REQUIRE(notice.has_value());
   REQUIRE_FALSE(notice->browser_launched);
-  REQUIRE_THAT(notice->authorization_url,
-               ContainsSubstring("originator=yac"));
+  REQUIRE_THAT(notice->authorization_url, ContainsSubstring("originator=yac"));
 
   CURL* curl = curl_easy_init();
   REQUIRE(curl != nullptr);
   const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
-  const std::string callback_url = notice->redirect_uri +
-                                   "?code=code-manual&state=state-123";
+  const std::string callback_url =
+      notice->redirect_uri + "?code=code-manual&state=state-123";
   curl_easy_setopt(curl, CURLOPT_URL, callback_url.c_str());
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
   REQUIRE(curl_easy_perform(curl) == CURLE_OK);
@@ -271,16 +270,16 @@ TEST_CASE("state_mismatch_is_rejected", "[openai_auth_flow]") {
   TestHttpServer server([](const HttpRequest&, std::size_t) {
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body = R"({"access_token":"access-1","refresh_token":"refresh-2","expires_in":1200})",
+        .body =
+            R"({"access_token":"access-1","refresh_token":"refresh-2","expires_in":1200})",
     };
   });
   const auto file_backend = MakeFileBackend();
-  OpenAiAuthFlow flow(MakeDependencies(
-      server.Url(""), MakeStore(file_backend),
-      [](std::string_view url) {
-        (void)url;
-        return true;
-      }));
+  OpenAiAuthFlow flow(MakeDependencies(server.Url(""), MakeStore(file_backend),
+                                       [](std::string_view url) {
+                                         (void)url;
+                                         return true;
+                                       }));
 
   auto worker = std::async(std::launch::async, [&] {
     return flow.RunBrowserAuthorization(
@@ -306,8 +305,8 @@ TEST_CASE("state_mismatch_is_rejected", "[openai_auth_flow]") {
   REQUIRE(curl != nullptr);
   const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
   std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
-  const std::string callback_url = notice->redirect_uri +
-                                   "?code=code-bad&state=wrong-state";
+  const std::string callback_url =
+      notice->redirect_uri + "?code=code-bad&state=wrong-state";
   curl_easy_setopt(curl, CURLOPT_URL, callback_url.c_str());
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
   REQUIRE(curl_easy_perform(curl) == CURLE_OK);
@@ -315,7 +314,8 @@ TEST_CASE("state_mismatch_is_rejected", "[openai_auth_flow]") {
   REQUIRE_THROWS_WITH(worker.get(), ContainsSubstring("state mismatch"));
 }
 
-TEST_CASE("refresh_uses_skew_rotates_token_and_persists", "[openai_auth_flow]") {
+TEST_CASE("refresh_uses_skew_rotates_token_and_persists",
+          "[openai_auth_flow]") {
   std::vector<std::chrono::system_clock::time_point> times = {
       std::chrono::system_clock::time_point{std::chrono::seconds{1885}},
       std::chrono::system_clock::time_point{std::chrono::seconds{1885}},
@@ -325,10 +325,11 @@ TEST_CASE("refresh_uses_skew_rotates_token_and_persists", "[openai_auth_flow]") 
   TestHttpServer server([](const HttpRequest&, std::size_t) {
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body = std::string(R"({"access_token":")") +
-                MakeUnsignedJwtLikeToken(
-                    R"({"https://api.openai.com/auth.chatgpt_account_id":"acct-refreshed"})") +
-                R"(","refresh_token":"refresh-rotated","expires_in":600})",
+        .body =
+            std::string(R"({"access_token":")") +
+            MakeUnsignedJwtLikeToken(
+                R"({"https://api.openai.com/auth.chatgpt_account_id":"acct-refreshed"})") +
+            R"(","refresh_token":"refresh-rotated","expires_in":600})",
     };
   });
   const auto file_backend = MakeFileBackend();
@@ -336,7 +337,8 @@ TEST_CASE("refresh_uses_skew_rotates_token_and_persists", "[openai_auth_flow]") 
   const OpenAiOAuthAuth initial{
       .refresh_token = "refresh-old",
       .access_token = "access-old",
-      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
       .account_id = "acct-old",
   };
   (void)store->Save(initial);
@@ -369,7 +371,8 @@ TEST_CASE("missing_access_token_triggers_refresh", "[openai_auth_flow]") {
   TestHttpServer server([](const HttpRequest&, std::size_t) {
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body = R"({"access_token":"access-recovered","refresh_token":"refresh-recovered","expires_in":600})",
+        .body =
+            R"({"access_token":"access-recovered","refresh_token":"refresh-recovered","expires_in":600})",
     };
   });
   const auto file_backend = MakeFileBackend();
@@ -377,7 +380,8 @@ TEST_CASE("missing_access_token_triggers_refresh", "[openai_auth_flow]") {
   const OpenAiOAuthAuth initial{
       .refresh_token = "refresh-old",
       .access_token = "",
-      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{5000}},
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{5000}},
   };
   (void)store->Save(initial);
 
@@ -394,9 +398,11 @@ TEST_CASE("missing_access_token_triggers_refresh", "[openai_auth_flow]") {
 
 TEST_CASE("refresh_revocation_error_is_actionable", "[openai_auth_flow]") {
   TestHttpServer server([](const HttpRequest&, std::size_t) {
-    return HttpResponse{.status = 400,
-                        .headers = {{"Content-Type", "application/json"}},
-                        .body = R"({"error":"invalid_grant","error_description":"refresh token revoked"})"};
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            R"({"error":"invalid_grant","error_description":"refresh token revoked"})"};
   });
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
@@ -409,7 +415,8 @@ TEST_CASE("refresh_revocation_error_is_actionable", "[openai_auth_flow]") {
   const OpenAiOAuthAuth auth{
       .refresh_token = "refresh-old",
       .access_token = "access-old",
-      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
   };
 
   REQUIRE_THROWS_WITH(flow.RefreshIfNeeded(auth),
@@ -425,7 +432,8 @@ TEST_CASE("concurrent_refresh_is_serialized", "[openai_auth_flow]") {
     std::this_thread::sleep_for(100ms);
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body = R"({"access_token":"access-shared","refresh_token":"refresh-shared","expires_in":600})",
+        .body =
+            R"({"access_token":"access-shared","refresh_token":"refresh-shared","expires_in":600})",
     };
   });
   const auto file_backend = MakeFileBackend();
@@ -433,7 +441,8 @@ TEST_CASE("concurrent_refresh_is_serialized", "[openai_auth_flow]") {
   const OpenAiOAuthAuth initial{
       .refresh_token = "refresh-old",
       .access_token = "access-old",
-      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
   };
   (void)store->Save(initial);
 

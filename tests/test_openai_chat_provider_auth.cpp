@@ -1,6 +1,5 @@
-#include "provider/openai_chat_provider.hpp"
-
 #include "openai_auth_test_helpers.hpp"
+#include "provider/openai_chat_provider.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -125,12 +124,12 @@ class ScopedEnvVar {
   config.base_url = base_url;
   config.api_key_env = "OPENAI_API_KEY";
   return OpenAiChatProvider(
-      config, OpenAiChatProvider::Dependencies{
-                  .auth_flow = std::make_shared<OpenAiAuthFlow>(
-                      MakeFlowDependencies(base_url, store)),
-                  .oauth_base_url = oauth_base_url.empty() ? base_url
-                                                           : oauth_base_url,
-              });
+      config,
+      OpenAiChatProvider::Dependencies{
+          .auth_flow = std::make_shared<OpenAiAuthFlow>(
+              MakeFlowDependencies(base_url, store)),
+          .oauth_base_url = oauth_base_url.empty() ? base_url : oauth_base_url,
+      });
 }
 
 [[nodiscard]] chat::ChatRequest MakeStreamingRequest() {
@@ -143,9 +142,9 @@ class ScopedEnvVar {
 }
 
 [[nodiscard]] HttpResponse ModelsResponse() {
-  return HttpResponse{.headers = {{"Content-Type", "application/json"}},
-                      .body =
-                          R"JSON({"data":[{"id":"gpt-4o-mini","object":"model"}]})JSON"};
+  return HttpResponse{
+      .headers = {{"Content-Type", "application/json"}},
+      .body = R"JSON({"data":[{"id":"gpt-4o-mini","object":"model"}]})JSON"};
 }
 
 [[nodiscard]] HttpResponse ResponsesStream(std::string_view text = "hello") {
@@ -160,26 +159,28 @@ data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output
   };
 }
 
-[[nodiscard]] std::vector<chat::ChatEvent> RunStream(OpenAiChatProvider& provider) {
+[[nodiscard]] std::vector<chat::ChatEvent> RunStream(
+    OpenAiChatProvider& provider) {
   std::vector<chat::ChatEvent> events;
-  provider.CompleteStream(MakeStreamingRequest(),
-                          [&events](chat::ChatEvent event) {
-                            events.push_back(std::move(event));
-                          },
-                          {});
+  provider.CompleteStream(
+      MakeStreamingRequest(),
+      [&events](chat::ChatEvent event) { events.push_back(std::move(event)); },
+      {});
   return events;
 }
 
 }  // namespace
 
-TEST_CASE("env_api_key_wins_over_stored_openai_auth", "[openai_chat_provider_auth]") {
+TEST_CASE("env_api_key_wins_over_stored_openai_auth",
+          "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-stored",
-                                    .access_token = "access-stored",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{2000}},
-                                    .account_id = "acct-stored"});
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-stored"});
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/models");
     REQUIRE(request.headers.at("Authorization") == "Bearer env-key");
@@ -193,16 +194,21 @@ TEST_CASE("env_api_key_wins_over_stored_openai_auth", "[openai_chat_provider_aut
   REQUIRE(server.Requests().size() == 1);
 }
 
-TEST_CASE("stored_api_key_is_used_for_openai_runtime", "[openai_chat_provider_auth]") {
+TEST_CASE("stored_api_key_is_used_for_openai_runtime",
+          "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
   (void)store->Save(OpenAiApiKeyAuth{.key = "stored-api-key"});
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/chat/completions");
     REQUIRE(request.headers.at("Authorization") == "Bearer stored-api-key");
-    return HttpResponse{.headers = {{"Content-Type", "text/event-stream"}},
-                        .body = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n"
-                                "data: {\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n"};
+    return HttpResponse{
+        .headers = {{"Content-Type", "text/event-stream"}},
+        .body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n"
+            "data: "
+            "{\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_"
+            "tokens\":2}}\n"};
   });
 
   auto provider = MakeProvider(server.Url(""), store);
@@ -215,11 +221,12 @@ TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
           "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-stored",
-                                    .access_token = "access-stored",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{2000}},
-                                    .account_id = "acct-123"});
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-123"});
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request.headers.at("Authorization") == "Bearer access-stored");
@@ -268,38 +275,44 @@ TEST_CASE("oauth_list_models_returns_static_allowlist",
           "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-stored",
-                                    .access_token = "access-stored",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{2000}}});
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}}});
 
-  auto provider = MakeProvider("http://127.0.0.1:1", store, "http://127.0.0.1:1");
+  auto provider =
+      MakeProvider("http://127.0.0.1:1", store, "http://127.0.0.1:1");
   const auto models = provider.ListModels(500ms);
   REQUIRE(models.size() == 6);
   REQUIRE(models[0].id == "gpt-5.5");
   REQUIRE(models[5].id == "gpt-5.4-mini");
 }
 
-TEST_CASE("expired_oauth_refreshes_before_request", "[openai_chat_provider_auth]") {
+TEST_CASE("expired_oauth_refreshes_before_request",
+          "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-old",
-                                    .access_token = "access-old",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{1110}},
-                                    .account_id = "acct-old"});
-  TestHttpServer server([](const HttpRequest& request, std::size_t request_index) {
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1110}},
+      .account_id = "acct-old"});
+  TestHttpServer server([](const HttpRequest& request,
+                           std::size_t request_index) {
     if (request.path == "/oauth/token") {
       REQUIRE(request_index == 0);
       REQUIRE_THAT(request.body, ContainsSubstring("grant_type=refresh_token"));
-      return HttpResponse{.headers = {{"Content-Type", "application/json"}},
-                          .body = std::string(R"({"access_token":")") +
-                                  MakeAccountIdJwtLikeToken("acct-new") +
-                                  R"(","refresh_token":"refresh-new","expires_in":600})"};
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body = std::string(R"({"access_token":")") +
+                  MakeAccountIdJwtLikeToken("acct-new") +
+                  R"(","refresh_token":"refresh-new","expires_in":600})"};
     }
     REQUIRE(request.path == "/backend-api/codex/responses");
-    REQUIRE(request.headers.at("Authorization") == "Bearer " +
-            MakeAccountIdJwtLikeToken("acct-new"));
+    REQUIRE(request.headers.at("Authorization") ==
+            "Bearer " + MakeAccountIdJwtLikeToken("acct-new"));
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-new");
     return ResponsesStream("refreshed");
   });
@@ -310,26 +323,32 @@ TEST_CASE("expired_oauth_refreshes_before_request", "[openai_chat_provider_auth]
   REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "refreshed");
 }
 
-TEST_CASE("oauth_401_refreshes_once_and_retries_once", "[openai_chat_provider_auth]") {
+TEST_CASE("oauth_401_refreshes_once_and_retries_once",
+          "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-old",
-                                    .access_token = "access-old",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{2000}},
-                                    .account_id = "acct-old"});
-  TestHttpServer server([](const HttpRequest& request, std::size_t request_index) {
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-old"});
+  TestHttpServer server([](const HttpRequest& request,
+                           std::size_t request_index) {
     if (request.path == "/backend-api/codex/responses" && request_index == 0) {
       REQUIRE(request.headers.at("Authorization") == "Bearer access-old");
-      return HttpResponse{.status = 401,
-                          .headers = {{"Content-Type", "application/json"}},
-                          .body = R"({"error":{"message":"expired access token"}})"};
+      return HttpResponse{
+          .status = 401,
+          .headers = {{"Content-Type", "application/json"}},
+          .body = R"({"error":{"message":"expired access token"}})"};
     }
     if (request.path == "/oauth/token") {
       REQUIRE(request_index == 1);
       REQUIRE_THAT(request.body, ContainsSubstring("grant_type=refresh_token"));
-      return HttpResponse{.headers = {{"Content-Type", "application/json"}},
-                          .body = R"({"access_token":"access-new","refresh_token":"refresh-new","expires_in":600})"};
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"access_token":"access-new","refresh_token":"refresh-new","expires_in":600})"};
     }
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request_index == 2);
@@ -347,24 +366,26 @@ TEST_CASE("revoked_refresh_token_emits_actionable_error",
           "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
   const auto store = MakeStore(file_backend);
-  (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-old",
-                                    .access_token = "access-old",
-                                    .expires_at = std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{1001}}});
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1001}}});
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/oauth/token");
-    return HttpResponse{.status = 400,
-                        .headers = {{"Content-Type", "application/json"}},
-                        .body = R"({"error":"invalid_grant","error_description":"refresh token revoked"})"};
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            R"({"error":"invalid_grant","error_description":"refresh token revoked"})"};
   });
 
   auto provider = MakeProvider(server.Url(""), store, server.Url(""));
   std::vector<chat::ChatEvent> events;
-  provider.CompleteStream(MakeStreamingRequest(),
-                          [&events](chat::ChatEvent event) {
-                            events.push_back(std::move(event));
-                          },
-                          {});
+  provider.CompleteStream(
+      MakeStreamingRequest(),
+      [&events](chat::ChatEvent event) { events.push_back(std::move(event)); },
+      {});
 
   REQUIRE(events.size() == 1);
   REQUIRE(events[0].Type() == chat::ChatEventType::Error);

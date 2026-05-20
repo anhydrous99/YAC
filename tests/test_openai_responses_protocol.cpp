@@ -1,8 +1,8 @@
 #include "provider/openai_responses_protocol.hpp"
 
-#include <catch2/catch_approx.hpp>
 #include <vector>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
@@ -17,19 +17,20 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
       ChatMessage{.role = ChatRole::User, .content = "hello"},
       ChatMessage{.role = ChatRole::Assistant,
                   .content = "I will call a tool",
-                  .tool_calls = {ToolCallRequest{.id = "call-1",
-                                                 .name = "file_read",
-                                                 .arguments_json =
-                                                     R"({"path":"README.md"})"}}},
+                  .tool_calls = {ToolCallRequest{
+                      .id = "call-1",
+                      .name = "file_read",
+                      .arguments_json = R"({"path":"README.md"})"}}},
       ChatMessage{.role = ChatRole::Tool,
                   .content = R"({"contents":"ok"})",
                   .tool_call_id = ::yac::ToolCallId{"call-1"},
                   .tool_name = "file_read"},
   };
-  request.tools = {ToolDefinition{.name = "file_read",
-                                  .description = "Read a file",
-                                  .parameters_schema_json =
-                                      R"({"type":"object","properties":{"path":{"type":"string"}}})"}};
+  request.tools = {ToolDefinition{
+      .name = "file_read",
+      .description = "Read a file",
+      .parameters_schema_json =
+          R"({"type":"object","properties":{"path":{"type":"string"}}})"}};
 
   ProviderConfig config;
   const auto payload =
@@ -43,8 +44,7 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
   REQUIRE(payload["temperature"].get<double>() == Catch::Approx(0.2));
   REQUIRE(payload["input"].size() == 5);
   REQUIRE(payload["input"][0]["role"].get<std::string>() == "system");
-  REQUIRE(payload["input"][0]["content"].get<std::string>() ==
-          "system prompt");
+  REQUIRE(payload["input"][0]["content"].get<std::string>() == "system prompt");
   REQUIRE(payload["input"][1]["role"].get<std::string>() == "user");
   REQUIRE(payload["input"][1]["content"][0]["type"].get<std::string>() ==
           "input_text");
@@ -55,8 +55,7 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
           "output_text");
   REQUIRE(payload["input"][2]["content"][0]["text"].get<std::string>() ==
           "I will call a tool");
-  REQUIRE(payload["input"][3]["type"].get<std::string>() ==
-          "function_call");
+  REQUIRE(payload["input"][3]["type"].get<std::string>() == "function_call");
   REQUIRE(payload["input"][3]["call_id"].get<std::string>() == "call-1");
   REQUIRE(payload["input"][3]["name"].get<std::string>() == "file_read");
   REQUIRE(payload["input"][3]["arguments"].get<std::string>() ==
@@ -77,9 +76,8 @@ TEST_CASE(
     "BuildResponsesPayload tolerates invalid tool schema like chat protocol") {
   ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
-  request.tools = {ToolDefinition{.name = "bad",
-                                  .description = "broken",
-                                  .parameters_schema_json = "{"}};
+  request.tools = {ToolDefinition{
+      .name = "bad", .description = "broken", .parameters_schema_json = "{"}};
 
   ProviderConfig config;
   const auto payload =
@@ -105,8 +103,7 @@ TEST_CASE("ParseUsageJson returns nullopt for absent or malformed usage") {
   REQUIRE_FALSE(openai_responses_protocol::ParseUsageJson("{"));
 }
 
-TEST_CASE(
-    "ParseStreamData handles text deltas, failure, and malformed JSON") {
+TEST_CASE("ParseStreamData handles text deltas, failure, and malformed JSON") {
   const auto delta = openai_responses_protocol::ParseStreamData(
       R"JSON({"type":"response.output_text.delta","delta":"hello"})JSON");
   REQUIRE(delta.Type() == ChatEventType::TextDelta);
@@ -176,10 +173,8 @@ TEST_CASE(
           R"({"pattern":"hello"})");
   REQUIRE(events[3].Type() == ChatEventType::ToolCallRequested);
   REQUIRE(events[3].Get<ToolCallRequestedEvent>().tool_calls.size() == 1);
-  REQUIRE(events[3].Get<ToolCallRequestedEvent>().tool_calls[0].id ==
-          "call-1");
-  REQUIRE(events[3].Get<ToolCallRequestedEvent>().tool_calls[0].name ==
-          "grep");
+  REQUIRE(events[3].Get<ToolCallRequestedEvent>().tool_calls[0].id == "call-1");
+  REQUIRE(events[3].Get<ToolCallRequestedEvent>().tool_calls[0].name == "grep");
   REQUIRE(
       events[3].Get<ToolCallRequestedEvent>().tool_calls[0].arguments_json ==
       R"({"pattern":"hello"})");
@@ -278,8 +273,7 @@ TEST_CASE("FlushPendingToolCalls backstops completed streams without done") {
   REQUIRE(events[1].Type() == ChatEventType::ToolCallRequested);
   REQUIRE(events[1].Get<ToolCallRequestedEvent>().tool_calls[0].id ==
           "call-backstop");
-  REQUIRE(events[1].Get<ToolCallRequestedEvent>().tool_calls[0].name ==
-          "glob");
+  REQUIRE(events[1].Get<ToolCallRequestedEvent>().tool_calls[0].name == "glob");
   REQUIRE(
       events[1].Get<ToolCallRequestedEvent>().tool_calls[0].arguments_json ==
       R"({"pattern":"*.cpp"})");

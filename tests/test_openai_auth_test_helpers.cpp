@@ -1,13 +1,12 @@
 #include "openai_auth_test_helpers.hpp"
 
+#include <arpa/inet.h>
 #include <array>
+#include <netinet/in.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -64,7 +63,8 @@ TEST_CASE("http_server_captures_requests") {
     REQUIRE(index == 0);
     REQUIRE(request.method == "POST");
     REQUIRE(request.path == "/token");
-    REQUIRE_THAT(request.body, ContainsSubstring("grant_type=authorization_code"));
+    REQUIRE_THAT(request.body,
+                 ContainsSubstring("grant_type=authorization_code"));
     return HttpResponse{.status = 200,
                         .headers = {{"Content-Type", "text/plain"}},
                         .body = "ok"};
@@ -74,9 +74,11 @@ TEST_CASE("http_server_captures_requests") {
   const std::string request =
       "POST /token HTTP/1.1\r\n"
       "Host: 127.0.0.1\r\n"
-      "Content-Length: " + std::to_string(body.size()) + "\r\n"
+      "Content-Length: " +
+      std::to_string(body.size()) +
       "\r\n"
-      + body;
+      "\r\n" +
+      body;
 
   const auto url = server.Url("/token");
   REQUIRE_THAT(url, ContainsSubstring("http://127.0.0.1:"));
@@ -93,7 +95,8 @@ TEST_CASE("http_server_captures_requests") {
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = htons(port);
-  REQUIRE(connect(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0);
+  REQUIRE(connect(sock, reinterpret_cast<const sockaddr*>(&addr),
+                  sizeof(addr)) == 0);
   REQUIRE(send(sock, request.data(), request.size(), 0) ==
           static_cast<ssize_t>(request.size()));
 
@@ -125,8 +128,10 @@ TEST_CASE("fake_token_stores_round_trip") {
   keychain_store.Set("server-a", R"({"access_token":"a"})");
   file_store.Set("server-b", R"({"access_token":"b"})");
 
-  REQUIRE(keychain_store.Get("server-a") == std::optional<std::string>{R"({"access_token":"a"})"});
-  REQUIRE(file_store.Get("server-b") == std::optional<std::string>{R"({"access_token":"b"})"});
+  REQUIRE(keychain_store.Get("server-a") ==
+          std::optional<std::string>{R"({"access_token":"a"})"});
+  REQUIRE(file_store.Get("server-b") ==
+          std::optional<std::string>{R"({"access_token":"b"})"});
 
   keychain_store.Erase("server-a");
   file_store.Erase("server-b");
@@ -151,7 +156,8 @@ TEST_CASE("jwt_helpers_include_chatgpt_account_id") {
       R"({"chatgpt_account_id":"acct_456","organizations":[{"id":"org_1"}]})");
   const auto custom_first_dot = custom.find('.');
   const auto custom_second_dot = custom.find('.', custom_first_dot + 1);
-  REQUIRE(DecodeBase64Url(custom.substr(custom_first_dot + 1,
-                                        custom_second_dot - custom_first_dot - 1))
-          == R"({"chatgpt_account_id":"acct_456","organizations":[{"id":"org_1"}]})");
+  REQUIRE(
+      DecodeBase64Url(custom.substr(
+          custom_first_dot + 1, custom_second_dot - custom_first_dot - 1)) ==
+      R"({"chatgpt_account_id":"acct_456","organizations":[{"id":"org_1"}]})");
 }
