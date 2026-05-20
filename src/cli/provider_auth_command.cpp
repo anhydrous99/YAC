@@ -12,9 +12,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <utility>
-
 #include <toml++/toml.hpp>
+#include <utility>
 
 namespace yac::cli {
 
@@ -59,8 +58,7 @@ std::optional<std::string> ReadInlineApiKey(
   return std::nullopt;
 }
 
-std::string OauthExpiryValue(
-    std::chrono::system_clock::time_point expires_at) {
+std::string OauthExpiryValue(std::chrono::system_clock::time_point expires_at) {
   return std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
                             expires_at.time_since_epoch())
                             .count());
@@ -75,7 +73,8 @@ std::string StoredCredentialLabel(const provider::OpenAiAuth& auth) {
 
 ProviderAuthCommand::ProviderAuthCommand() : ProviderAuthCommand(Options{}) {}
 
-ProviderAuthCommand::ProviderAuthCommand(Options opts) : opts_(std::move(opts)) {
+ProviderAuthCommand::ProviderAuthCommand(Options opts)
+    : opts_(std::move(opts)) {
   auth_store_ = opts_.auth_store != nullptr
                     ? opts_.auth_store
                     : std::make_shared<provider::OpenAiAuthStore>();
@@ -91,9 +90,10 @@ ProviderAuthCommand::ProviderAuthCommand(Options opts) : opts_(std::move(opts)) 
   if (!opts_.login_fn) {
     auto flow = std::make_shared<provider::OpenAiAuthFlow>(
         provider::OpenAiAuthFlow::Dependencies{.auth_store = auth_store_});
-    opts_.login_fn = [flow](const provider::OpenAiAuthorizationObserver& observer) {
-      return flow->RunBrowserAuthorization(observer);
-    };
+    opts_.login_fn =
+        [flow](const provider::OpenAiAuthorizationObserver& observer) {
+          return flow->RunBrowserAuthorization(observer);
+        };
   }
 }
 
@@ -116,7 +116,8 @@ OpenAiLoginResult ProviderAuthCommand::LoginOpenAi(
   return result;
 }
 
-provider::OpenAiAuthStorageSource ProviderAuthCommand::SetOpenAiApiKeyFromStdin() {
+provider::OpenAiAuthStorageSource
+ProviderAuthCommand::SetOpenAiApiKeyFromStdin() {
   std::istream& input = opts_.in != nullptr ? *opts_.in : std::cin;
   std::string api_key;
   if (!std::getline(input, api_key)) {
@@ -125,7 +126,8 @@ provider::OpenAiAuthStorageSource ProviderAuthCommand::SetOpenAiApiKeyFromStdin(
   if (api_key.empty()) {
     throw std::runtime_error("API key must not be empty");
   }
-  return auth_store_->Save(provider::OpenAiApiKeyAuth{.key = std::move(api_key)});
+  return auth_store_->Save(
+      provider::OpenAiApiKeyAuth{.key = std::move(api_key)});
 }
 
 ProviderAuthStatusSummary ProviderAuthCommand::GetOpenAiStatus() const {
@@ -148,7 +150,8 @@ std::filesystem::path ProviderAuthCommand::ResolveSettingsPath() const {
   return chat::GetSettingsPath();
 }
 
-ProviderAuthCommand::ConfigSecrets ProviderAuthCommand::LoadConfigSecrets() const {
+ProviderAuthCommand::ConfigSecrets ProviderAuthCommand::LoadConfigSecrets()
+    const {
   const std::filesystem::path settings_path = ResolveSettingsPath();
   ConfigSecrets result;
   result.config_result = opts_.load_config(settings_path);
@@ -162,11 +165,15 @@ ProviderAuthStatusSummary ProviderAuthCommand::BuildStatusSummary(
     std::optional<provider::StoredOpenAiAuth> stored_auth,
     const ConfigSecrets& config_secrets, bool after_logout) {
   ProviderAuthStatusSummary summary;
-  summary.configured_provider = config_secrets.config_result.config.provider_id.value;
+  summary.configured_provider =
+      config_secrets.config_result.config.provider_id.value;
+  const bool is_openai_provider = summary.configured_provider == "openai";
+  const bool uses_api_key_provider = summary.configured_provider != "bedrock";
 
   if (stored_auth.has_value()) {
     summary.stored_credential = StoredCredentialLabel(stored_auth->auth);
-    if (const auto* oauth = std::get_if<provider::OpenAiOAuthAuth>(&stored_auth->auth)) {
+    if (const auto* oauth =
+            std::get_if<provider::OpenAiOAuthAuth>(&stored_auth->auth)) {
       if (oauth->expires_at.has_value()) {
         summary.oauth_expiry = OauthExpiryValue(*oauth->expires_at);
       }
@@ -176,37 +183,57 @@ ProviderAuthStatusSummary ProviderAuthCommand::BuildStatusSummary(
     }
   }
 
-  if (config_secrets.env_api_key.has_value()) {
+  if (is_openai_provider && config_secrets.env_api_key.has_value()) {
     summary.effective_auth =
         "api (env " + config_secrets.config_result.config.api_key_env + ")";
     if (stored_auth.has_value()) {
-      summary.warnings.emplace_back("stored credential is shadowed by " +
-                                    config_secrets.config_result.config.api_key_env);
+      summary.warnings.emplace_back(
+          "stored credential is shadowed by " +
+          config_secrets.config_result.config.api_key_env);
     }
-  } else if (stored_auth.has_value()) {
-    summary.effective_auth = std::holds_alternative<provider::OpenAiApiKeyAuth>(
-                                 stored_auth->auth)
-                                 ? "api (stored)"
-                                 : "oauth (stored)";
+  } else if (is_openai_provider && stored_auth.has_value()) {
+    summary.effective_auth =
+        std::holds_alternative<provider::OpenAiApiKeyAuth>(stored_auth->auth)
+            ? "api (stored)"
+            : "oauth (stored)";
     if (config_secrets.inline_api_key.has_value()) {
       summary.warnings.emplace_back(
           "provider.api_key is shadowed by stored credential");
     }
-  } else if (config_secrets.inline_api_key.has_value()) {
+  } else if (uses_api_key_provider &&
+             config_secrets.inline_api_key.has_value()) {
     summary.effective_auth = "api (config)";
+  } else if (uses_api_key_provider && config_secrets.env_api_key.has_value()) {
+    summary.effective_auth =
+        "api (env " + config_secrets.config_result.config.api_key_env + ")";
   }
 
   if (after_logout) {
     summary.stored_credential.reset();
     summary.oauth_expiry.reset();
     summary.account_id.reset();
-    if (config_secrets.env_api_key.has_value()) {
-      summary.warnings.emplace_back(
-          config_secrets.config_result.config.api_key_env +
-          " remains effective after logout");
-    } else if (config_secrets.inline_api_key.has_value()) {
-      summary.warnings.emplace_back(
-          "provider.api_key remains effective after logout");
+    std::optional<std::string> remaining_auth_warning;
+    if (is_openai_provider) {
+      if (config_secrets.env_api_key.has_value()) {
+        remaining_auth_warning =
+            config_secrets.config_result.config.api_key_env +
+            " remains effective after logout";
+      } else if (config_secrets.inline_api_key.has_value()) {
+        remaining_auth_warning =
+            "provider.api_key remains effective after logout";
+      }
+    } else if (uses_api_key_provider) {
+      if (config_secrets.inline_api_key.has_value()) {
+        remaining_auth_warning =
+            "provider.api_key remains effective after logout";
+      } else if (config_secrets.env_api_key.has_value()) {
+        remaining_auth_warning =
+            config_secrets.config_result.config.api_key_env +
+            " remains effective after logout";
+      }
+    }
+    if (remaining_auth_warning.has_value()) {
+      summary.warnings.emplace_back(std::move(*remaining_auth_warning));
     }
   }
 

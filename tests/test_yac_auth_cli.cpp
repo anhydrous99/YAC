@@ -1,5 +1,4 @@
 #include "cli/provider_auth_cli_dispatch.hpp"
-
 #include "provider/openai_auth_store.hpp"
 
 #include <atomic>
@@ -208,9 +207,8 @@ TEST_CASE("auth cli rejects unknown provider", "[yac_auth_cli]") {
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 1);
   REQUIRE(err.str().find("unknown provider") != std::string::npos);
@@ -226,9 +224,8 @@ TEST_CASE("auth cli rejects unknown subcommand", "[yac_auth_cli]") {
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 1);
   REQUIRE(err.str().find("unknown subcommand") != std::string::npos);
@@ -255,9 +252,8 @@ TEST_CASE("auth cli set-api-key stores stdin secret without echoing",
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 0);
   REQUIRE(err.str().empty());
@@ -265,10 +261,12 @@ TEST_CASE("auth cli set-api-key stores stdin secret without echoing",
   REQUIRE(out.str().find("sk-test") == std::string::npos);
   const auto stored = store->Load();
   REQUIRE(stored.has_value());
-  REQUIRE(std::holds_alternative<yac::provider::OpenAiApiKeyAuth>(stored->auth));
+  REQUIRE(
+      std::holds_alternative<yac::provider::OpenAiApiKeyAuth>(stored->auth));
 }
 
-TEST_CASE("auth cli status redacts stored oauth secrets", "[yac_auth_cli]") {
+TEST_CASE("auth cli status shows stored oauth inactive for compatible provider",
+          "[yac_auth_cli]") {
   TempDir tmp("yac_test_auth_cli_status");
   const auto settings_path = tmp.Path() / "settings.toml";
   WriteFile(settings_path,
@@ -281,8 +279,8 @@ TEST_CASE("auth cli status redacts stored oauth secrets", "[yac_auth_cli]") {
   static_cast<void>(store->Save(yac::provider::OpenAiOAuthAuth{
       .refresh_token = "refresh-secret",
       .access_token = "access-secret",
-      .expires_at = std::chrono::system_clock::time_point{
-          std::chrono::seconds{4102444800}},
+      .expires_at = std::chrono::system_clock::time_point{std::chrono::seconds{
+          4102444800}},
       .account_id = std::string("acct-safe"),
   }));
   std::ostringstream out;
@@ -296,15 +294,15 @@ TEST_CASE("auth cli status redacts stored oauth secrets", "[yac_auth_cli]") {
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 0);
   REQUIRE(err.str().empty());
   REQUIRE(out.str().find("configured provider:") != std::string::npos);
   REQUIRE(out.str().find("stored credential: oauth") != std::string::npos);
-  REQUIRE(out.str().find("effective auth: oauth (stored)") != std::string::npos);
+  REQUIRE(out.str().find("effective auth: oauth (stored)") ==
+          std::string::npos);
   REQUIRE(out.str().find("oauth expiry: 4102444800") != std::string::npos);
   REQUIRE(out.str().find("account id: acct-safe") != std::string::npos);
   REQUIRE(out.str().find("access-secret") == std::string::npos);
@@ -318,7 +316,8 @@ TEST_CASE("auth cli logout clears stored openai auth", "[yac_auth_cli]") {
 
   const auto backend = std::make_shared<MemoryAuthBackend>();
   const auto store = MakeStore(backend);
-  static_cast<void>(store->Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-test"}));
+  static_cast<void>(
+      store->Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-test"}));
   std::ostringstream out;
   std::ostringstream err;
   std::vector<std::string> args = {"openai", "logout"};
@@ -330,9 +329,8 @@ TEST_CASE("auth cli logout clears stored openai auth", "[yac_auth_cli]") {
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 0);
   REQUIRE(out.str().find("Logged out: openai") != std::string::npos);
@@ -357,11 +355,12 @@ TEST_CASE("auth cli prints browser fallback URL before oauth completion",
   yac::cli::ProviderAuthCliOptions opts;
   opts.command_options.settings_path = settings_path;
   opts.command_options.auth_store = store;
-  opts.command_options.login_fn = [release](
-                                     const yac::provider::OpenAiAuthorizationObserver& observer)
+  opts.command_options.login_fn =
+      [release](const yac::provider::OpenAiAuthorizationObserver& observer)
       -> yac::provider::OpenAiOAuthAuth {
     observer(yac::provider::OpenAiAuthorizationNotice{
-        .authorization_url = "https://auth.openai.com/oauth/authorize?state=manual",
+        .authorization_url =
+            "https://auth.openai.com/oauth/authorize?state=manual",
         .redirect_uri = "http://127.0.0.1:1455/auth/callback",
         .browser_launched = false,
     });
@@ -377,12 +376,13 @@ TEST_CASE("auth cli prints browser fallback URL before oauth completion",
   opts.err = &err;
 
   auto worker = std::async(std::launch::async, [&] {
-    return yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                        std::move(opts));
+    return yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                        argv.data(), std::move(opts));
   });
 
   REQUIRE(out_buf.WaitForSubstring(
-      "warning: browser launch failed; open this URL manually: https://auth.openai.com/oauth/authorize?state=manual",
+      "warning: browser launch failed; open this URL manually: "
+      "https://auth.openai.com/oauth/authorize?state=manual",
       std::chrono::milliseconds(500)));
   REQUIRE(worker.wait_for(std::chrono::milliseconds(0)) ==
           std::future_status::timeout);
@@ -406,7 +406,8 @@ TEST_CASE("auth cli logout warns when env auth remains effective",
 
   const auto backend = std::make_shared<MemoryAuthBackend>();
   const auto store = MakeStore(backend);
-  static_cast<void>(store->Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-test"}));
+  static_cast<void>(
+      store->Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-test"}));
   ScopedEnvVar env("OPENAI_API_KEY", "env-secret");
   std::ostringstream out;
   std::ostringstream err;
@@ -419,12 +420,12 @@ TEST_CASE("auth cli logout warns when env auth remains effective",
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 0);
-  REQUIRE(out.str().find("warning: OPENAI_API_KEY remains effective after logout") !=
+  REQUIRE(out.str().find(
+              "warning: OPENAI_API_KEY remains effective after logout") !=
           std::string::npos);
   REQUIRE(out.str().find("env-secret") == std::string::npos);
 }
@@ -442,7 +443,8 @@ TEST_CASE("auth cli rejects openai --no-browser login flag", "[yac_auth_cli]") {
 
   yac::cli::ProviderAuthCliOptions opts;
   opts.command_options.settings_path = settings_path;
-  opts.command_options.auth_store = MakeStore(std::make_shared<MemoryAuthBackend>());
+  opts.command_options.auth_store =
+      MakeStore(std::make_shared<MemoryAuthBackend>());
   opts.command_options.login_fn =
       [&login_called](const yac::provider::OpenAiAuthorizationObserver&) {
         login_called = true;
@@ -451,9 +453,8 @@ TEST_CASE("auth cli rejects openai --no-browser login flag", "[yac_auth_cli]") {
   opts.out = &out;
   opts.err = &err;
 
-  const int rc =
-      yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()), argv.data(),
-                                   std::move(opts));
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
 
   REQUIRE(rc == 1);
   REQUIRE(err.str().find("unknown flag: --no-browser") != std::string::npos);
