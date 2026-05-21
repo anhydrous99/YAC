@@ -40,5 +40,6 @@ def yac_cc_test(name, copts = [], linkopts = [], **kwargs):
         name = name,
         copts = YAC_COPTS + copts,
         linkopts = YAC_LINKOPTS + linkopts,
+        linkstatic = True,
         **kwargs
     )
