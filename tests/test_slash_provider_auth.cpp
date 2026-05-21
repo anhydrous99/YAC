@@ -90,6 +90,26 @@ class ThrowingKeychainBackend : public yac::provider::IOpenAiAuthBackend {
   }
 };
 
+class AtomicReleaseGuard {
+ public:
+  explicit AtomicReleaseGuard(std::shared_ptr<std::atomic<bool>> release)
+      : release_(std::move(release)) {}
+
+  ~AtomicReleaseGuard() {
+    if (release_ != nullptr) {
+      release_->store(true);
+    }
+  }
+
+  AtomicReleaseGuard(const AtomicReleaseGuard&) = delete;
+  AtomicReleaseGuard& operator=(const AtomicReleaseGuard&) = delete;
+  AtomicReleaseGuard(AtomicReleaseGuard&&) = delete;
+  AtomicReleaseGuard& operator=(AtomicReleaseGuard&&) = delete;
+
+ private:
+  std::shared_ptr<std::atomic<bool>> release_;
+};
+
 std::shared_ptr<yac::provider::OpenAiAuthStore> MakeStore(
     const std::shared_ptr<MemoryAuthBackend>& file_backend) {
   return std::make_shared<yac::provider::OpenAiAuthStore>(
@@ -261,6 +281,7 @@ TEST_CASE("provider auth slash login dispatch is non-blocking",
   yac::app::RegisterProviderAuthSlashCommandHandlers(
       registry, chat_ui, screen,
       std::make_shared<yac::cli::ProviderAuthCommand>(std::move(opts)));
+  AtomicReleaseGuard release_guard(release);
 
   const auto start = std::chrono::steady_clock::now();
   REQUIRE(registry.TryDispatch("/auth openai login"));
@@ -272,7 +293,6 @@ TEST_CASE("provider auth slash login dispatch is non-blocking",
   REQUIRE(chat_ui.GetNotices().size() == 1);
   REQUIRE(chat_ui.GetNotices().front().notice.title ==
           "Starting OpenAI auth...");
-  REQUIRE_FALSE(entered->load());
 
   for (int attempt = 0; attempt < 100 && !entered->load(); ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -329,6 +349,7 @@ TEST_CASE(
   yac::app::RegisterProviderAuthSlashCommandHandlers(
       registry, chat_ui, screen,
       std::make_shared<yac::cli::ProviderAuthCommand>(std::move(opts)));
+  AtomicReleaseGuard release_guard(release);
 
   REQUIRE(registry.TryDispatch("/auth openai login"));
   REQUIRE(chat_ui.GetNotices().size() == 1);

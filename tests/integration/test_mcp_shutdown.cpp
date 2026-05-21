@@ -7,6 +7,7 @@
 #include <iterator>
 #include <set>
 #include <string>
+#include <string_view>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -50,7 +51,8 @@ std::string ReadFile(const std::filesystem::path& p) {
   return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
 }
 
-std::string LoadFixture(const std::string& fixture_path) {
+std::string LoadFixture(const std::string& fixture_path,
+                        std::string_view shutdown_token) {
   std::ifstream f(fixture_path);
   REQUIRE(f.is_open());
   std::string content{std::istreambuf_iterator<char>(f),
@@ -61,6 +63,16 @@ std::string LoadFixture(const std::string& fixture_path) {
   while ((pos = content.find(placeholder, pos)) != std::string::npos) {
     content.replace(pos, placeholder.size(), binary);
     pos += binary.size();
+  }
+
+  const std::string args = "args      = [\"--advertise-tools=2\"]";
+  const std::string tagged_args =
+      "args      = [\"--advertise-tools=2\", \"--shutdown-token=" +
+      std::string(shutdown_token) + "\"]";
+  pos = 0;
+  while ((pos = content.find(args, pos)) != std::string::npos) {
+    content.replace(pos, args.size(), tagged_args);
+    pos += tagged_args.size();
   }
   return content;
 }
@@ -121,10 +133,12 @@ int RunE2eRunner(const std::filesystem::path& home_dir,
   return -1;
 }
 
-std::set<pid_t> GetFakeMcpServerPids() {
+std::set<pid_t> GetFakeMcpServerPids(std::string_view shutdown_token) {
   std::set<pid_t> pids;
+  const std::string command = "pgrep -f '[f]ake_mcp_server.*--shutdown-token=" +
+                              std::string(shutdown_token) + "' 2>/dev/null";
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg)
-  FILE* pipe = ::popen("pgrep -x fake_mcp_server 2>/dev/null", "r");
+  FILE* pipe = ::popen(command.c_str(), "r");
   if (pipe == nullptr) {
     return pids;
   }
@@ -146,11 +160,13 @@ bool FileContains(const std::filesystem::path& p, const std::string& needle) {
 
 TEST_CASE("graceful") {
   TempDir tmp;
-  WriteSettings(tmp.path, LoadFixture(TWO_STDIO_SERVERS_FIXTURE));
+  const std::string shutdown_token = tmp.path.filename().string();
+  WriteSettings(tmp.path,
+                LoadFixture(TWO_STDIO_SERVERS_FIXTURE, shutdown_token));
 
   const std::string request_log = (tmp.path / "requests.jsonl").string();
 
-  const auto before_pids = GetFakeMcpServerPids();
+  CHECK(GetFakeMcpServerPids(shutdown_token).empty());
 
   const int exit_code =
       RunE2eRunner(tmp.path, "hello", SHUTDOWN_SCRIPT_PATH, request_log);
@@ -163,15 +179,7 @@ TEST_CASE("graceful") {
   const auto deadline = std::chrono::steady_clock::now() + 5s;
   bool no_stragglers = false;
   while (std::chrono::steady_clock::now() < deadline) {
-    const auto after_pids = GetFakeMcpServerPids();
-    bool found_new = false;
-    for (const auto& p : after_pids) {
-      if (!before_pids.contains(p)) {
-        found_new = true;
-        break;
-      }
-    }
-    if (!found_new) {
+    if (GetFakeMcpServerPids(shutdown_token).empty()) {
       no_stragglers = true;
       break;
     }
