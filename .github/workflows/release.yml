@@ -26,33 +26,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
-          submodules: recursive
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ripgrep
+          sudo apt-get install -y ripgrep
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
-        run: brew install ninja ripgrep
-
-      # https://github.com/lukka/run-vcpkg#readme
-      - name: Setup vcpkg (binary caching via GHA cache)
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
-          vcpkgJsonGlob: 'vcpkg.json'
-
-      - name: Configure
-        run: cmake --preset release
+        run: brew install ripgrep
 
       - name: Build
-        run: cmake --build build-release
+        run: bazel build --config=release //src:yac
 
       - name: Test
-        run: ctest --test-dir build-release --output-on-failure
+        run: bazel test --config=release //tests:all_tests
 
       - name: Package
         id: package
@@ -68,7 +64,7 @@ jobs:
           package_root="dist/${package_name}"
 
           mkdir -p "${package_root}"
-          cp build-release/yac "${package_root}/yac"
+          cp bazel-bin/src/yac "${package_root}/yac"
           chmod 755 "${package_root}/yac"
           cp README.md settings.example.toml "${package_root}/"
 

@@ -1,0 +1,29 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "keychain",
+    srcs = select({
+        "@platforms//os:macos": ["src/keychain_mac.cpp"],
+        "@platforms//os:linux": ["@yac//third_party:keychain_linux_shim.cpp"],
+        "//conditions:default": [],
+    }),
+    hdrs = ["include/keychain/keychain.h"],
+    defines = select({
+        "@platforms//os:macos": ["KEYCHAIN_MACOS=1"],
+        "@platforms//os:linux": ["KEYCHAIN_LINUX=1"],
+        "//conditions:default": [],
+    }),
+    includes = [
+        "include",
+        "include/keychain",
+    ],
+    linkopts = select({
+        "@platforms//os:macos": [
+            "-framework CoreFoundation",
+            "-framework Security",
+        ],
+        "//conditions:default": [],
+    }),
+)

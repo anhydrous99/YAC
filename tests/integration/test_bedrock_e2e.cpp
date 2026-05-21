@@ -9,11 +9,9 @@
 using namespace yac::chat;
 using namespace yac::provider;
 
-// BEDROCK_SCRIPTS_DIR is a compile-time path injected via CMake
-// target_compile_definitions — required, not present at runtime.
+// BEDROCK_SCRIPTS_DIR is a compile-time path injected by the build system.
 #ifndef BEDROCK_SCRIPTS_DIR
-#error \
-    "BEDROCK_SCRIPTS_DIR must be defined via CMake target_compile_definitions"
+#error "BEDROCK_SCRIPTS_DIR must be defined by the build system"
 #endif
 
 namespace {

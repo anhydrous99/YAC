@@ -1,0 +1,18 @@
+alias(
+    name = "yac",
+    actual = "//src:yac",
+    visibility = ["//visibility:public"],
+)
+
+exports_files([
+    ".clang-format",
+    ".clang-tidy",
+    "README.md",
+    "settings.example.toml",
+])
+
+filegroup(
+    name = "guardrail_docs",
+    srcs = glob(["docs/**"]),
+    visibility = ["//visibility:public"],
+)

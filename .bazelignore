@@ -1,0 +1,5 @@
+build
+build-release
+external/vcpkg
+.omo
+.sisyphus

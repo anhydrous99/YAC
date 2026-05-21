@@ -11,7 +11,7 @@ using yac::tool_call::WorkspaceFilesystem;
 
 namespace {
 
-// Each test case gets a unique temp dir so parallel ctest runs do not
+// Each test case gets a unique temp dir so parallel test runs do not
 // clobber each other. Cleaned up on destruction.
 class TempWorkspace {
  public:

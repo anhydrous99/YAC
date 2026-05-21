@@ -39,14 +39,25 @@ bool HasAnyUnsupportedMarker(std::string_view line) {
          Contains(line, "exclude") || Contains(line, "MUST NOT");
 }
 
+bool IsPathOrSuffix(std::string_view path, std::string_view suffix) {
+  if (path == suffix) {
+    return true;
+  }
+  if (path.size() <= suffix.size() || !path.ends_with(suffix)) {
+    return false;
+  }
+  return path[path.size() - suffix.size() - 1] == '/';
+}
+
 bool IsDocumentationPath(std::string_view path) {
-  return path == "README.md" || path == "settings.example.toml" ||
-         path == "src/chat/settings_toml_template.hpp" ||
-         path.starts_with("docs/");
+  return IsPathOrSuffix(path, "README.md") ||
+         IsPathOrSuffix(path, "settings.example.toml") ||
+         IsPathOrSuffix(path, "src/chat/settings_toml_template.hpp") ||
+         path.starts_with("docs/") || Contains(path, "/docs/");
 }
 
 bool IsGuardrailTest(std::string_view path) {
-  return path == "tests/test_openai_auth_guardrails.cpp";
+  return IsPathOrSuffix(path, "tests/test_openai_auth_guardrails.cpp");
 }
 
 bool IsAllowedForbiddenTokenMatch(const Match& match) {
@@ -86,6 +97,9 @@ std::vector<Match> ScanForTokens(
     if (std::filesystem::is_regular_file(absolute_root)) {
       const auto relative = std::filesystem::relative(absolute_root, root);
       const std::string text = ReadFile(absolute_root);
+      if (Contains(text, std::string_view{"\0", 1})) {
+        continue;
+      }
       std::istringstream lines(text);
       std::string line;
       int line_number = 0;
@@ -108,6 +122,9 @@ std::vector<Match> ScanForTokens(
       }
       const auto relative = std::filesystem::relative(entry.path(), root);
       const std::string text = ReadFile(entry.path());
+      if (Contains(text, std::string_view{"\0", 1})) {
+        continue;
+      }
       std::istringstream lines(text);
       std::string line;
       int line_number = 0;

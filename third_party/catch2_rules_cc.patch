@@ -1,0 +1,19 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 88c6db4..708bd67 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -1,4 +1,5 @@
+ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
++load("@rules_cc//cc:defs.bzl", "cc_library")
+ 
+ expand_template(
+     name = "catch_user_config",
+diff --git a/MODULE.bazel b/MODULE.bazel
+index 2389de0..c052960 100644
+--- a/MODULE.bazel
++++ b/MODULE.bazel
+@@ -5,3 +5,4 @@ module(
+ )
+ 
+ bazel_dep(name = "bazel_skylib", version = "1.5.0")
++bazel_dep(name = "rules_cc", version = "0.2.17")

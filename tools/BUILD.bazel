@@ -1,0 +1,37 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+package(default_visibility = ["//visibility:public"])
+
+sh_binary(
+    name = "format",
+    srcs = ["format.sh"],
+)
+
+sh_test(
+    name = "format_check",
+    srcs = ["format.sh"],
+    args = ["--check"],
+    data = [
+        "//:.clang-format",
+        "//src:all_source_files",
+        "//tests:all_test_source_files",
+    ],
+)
+
+sh_binary(
+    name = "refresh_compile_commands",
+    srcs = ["refresh_compile_commands.sh"],
+    data = ["refresh_compile_commands.py"],
+)
+
+sh_binary(
+    name = "lint",
+    srcs = ["lint.sh"],
+    data = ["refresh_compile_commands.py"],
+)
+
+sh_binary(
+    name = "coverage",
+    srcs = ["coverage.sh"],
+)

@@ -1,0 +1,445 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:yac_cc.bzl", "yac_cc_binary")
+load(":yac_test_macros.bzl", "yac_aws_test", "yac_test", "yac_test_suite")
+
+package(default_visibility = ["//visibility:public"])
+
+OPENAI_CPP_DEPS = [
+    "@openai_cpp//:openai_cpp",
+]
+
+BORINGSSL_DEPS = [
+    "@boringssl//:crypto",
+]
+
+filegroup(
+    name = "all_test_source_files",
+    srcs = glob([
+        "**/*.cpp",
+        "**/*.hpp",
+    ]),
+)
+
+filegroup(
+    name = "all_test_headers",
+    srcs = glob(["**/*.hpp"]),
+)
+
+ROOT_SCAN_DATA = [
+    ":all_test_source_files",
+    "//:README.md",
+    "//:guardrail_docs",
+    "//:settings.example.toml",
+    "//src:all_source_files",
+]
+
+yac_test("yac_test_message", ["test_message.cpp"])
+yac_test("yac_test_string_util", ["test_string_util.cpp"])
+yac_test("yac_test_typed_ids", ["test_typed_ids.cpp"])
+yac_test("yac_test_count_summary", ["test_count_summary.cpp"])
+yac_test("yac_test_mcp_json_helpers", ["test_mcp_json_helpers.cpp"])
+yac_test("yac_test_tool_call_types", ["test_tool_call_types.cpp"])
+yac_test("yac_test_tool_executor", ["test_tool_executor.cpp"])
+yac_test("yac_test_chat_session", ["test_chat_session.cpp"])
+yac_test("yac_test_composer_state", ["test_composer_state.cpp"])
+yac_test("yac_test_parser_block", ["test_parser_block.cpp"])
+yac_test("yac_test_parser_inline", ["test_parser_inline.cpp"])
+yac_test("yac_test_parser_table", ["test_parser_table.cpp"])
+yac_test("yac_test_highlighter", ["test_highlighter.cpp"])
+yac_test("yac_test_highlighter_multiline", ["test_highlighter_multiline.cpp"])
+yac_test("yac_test_highlighter_diff", ["test_highlighter_diff.cpp"])
+yac_test("yac_test_renderer", ["test_renderer.cpp"])
+yac_test("yac_test_tool_call_renderer", ["test_tool_call_renderer.cpp"])
+yac_test("yac_test_renderer_mcp", ["test_renderer_mcp.cpp"])
+yac_test("yac_test_approval_mcp", ["test_approval_mcp.cpp"])
+yac_test("yac_test_sub_agent_renderer", ["test_sub_agent_renderer.cpp"])
+yac_test("yac_test_chat_ui_input", ["test_chat_ui_input.cpp"])
+yac_test("yac_test_chat_ui_palette", ["test_chat_ui_palette.cpp"])
+yac_test("yac_test_chat_ui_approval", ["test_chat_ui_approval.cpp"])
+yac_test("yac_test_chat_ui_render_plan", ["test_chat_ui_render_plan.cpp"])
+yac_test("yac_test_chat_ui_dialog", ["test_chat_ui_dialog.cpp"])
+yac_test("yac_test_chat_types_mcp", ["test_chat_types_mcp.cpp"])
+yac_test("yac_test_collapsible", ["test_collapsible.cpp"])
+yac_test("yac_test_command_palette", ["test_command_palette.cpp"])
+yac_test("yac_test_dialog", ["test_dialog.cpp"])
+yac_test("yac_test_theme_tool_colors", ["test_theme_tool_colors.cpp"])
+yac_test("yac_test_theme", ["test_theme.cpp"])
+yac_test("yac_test_theme_registry", ["test_theme_registry.cpp"])
+yac_test("yac_test_message_renderer", ["test_message_renderer.cpp"])
+yac_test("yac_test_tool_call_integration", ["test_tool_call_integration.cpp"])
+yac_test("yac_test_time_util", ["test_time_util.cpp"])
+yac_test("yac_test_scroll_math", ["test_scroll_math.cpp"])
+yac_test("yac_test_chat_service_streaming", ["test_chat_service_streaming.cpp"])
+yac_test("yac_test_chat_service_history", ["test_chat_service_history.cpp"])
+yac_test("yac_test_chat_service_approval", ["test_chat_service_approval.cpp"])
+yac_test(
+    "yac_test_chat_service_subagent",
+    ["test_chat_service_subagent.cpp"],
+    args = ["--allow-running-no-tests"],
+)
+yac_test("yac_test_agents_md_loading", ["test_agents_md_loading.cpp"])
+yac_test("yac_test_chat_event_bridge", ["test_chat_event_bridge.cpp"])
+yac_test("yac_test_chat_event_bridge_mcp", ["test_chat_event_bridge_mcp.cpp"])
+yac_test("yac_test_model_discovery", ["test_model_discovery.cpp"])
+yac_test("yac_test_openai_compatible_chat_provider", ["test_openai_compatible_chat_provider.cpp"])
+yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
+yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
+yac_test("yac_test_openai_auth_command", ["test_openai_auth_command.cpp"])
+yac_test("yac_test_openai_responses_protocol", ["test_openai_responses_protocol.cpp"])
+yac_test(
+    "yac_test_openai_auth_guardrails",
+    ["test_openai_auth_guardrails.cpp"],
+    data = ROOT_SCAN_DATA,
+    defines = ["YAC_PROJECT_ROOT=\\\".\\\""],
+)
+yac_aws_test("yac_test_bedrock_chat_protocol", ["test_bedrock_chat_protocol.cpp"])
+yac_aws_test("yac_test_bedrock_tool_translator", ["test_bedrock_tool_translator.cpp"])
+yac_test("yac_test_model_context_windows", ["test_model_context_windows.cpp"])
+yac_test("yac_test_provider_context_window", ["test_provider_context_window.cpp"])
+yac_test("yac_test_provider_registry", ["test_provider_registry.cpp"])
+yac_test("yac_test_auto_compact", ["test_auto_compact.cpp"])
+yac_test("yac_test_slash_command_registry", ["test_slash_command_registry.cpp"])
+yac_test("yac_test_slash_command_task", ["test_slash_command_task.cpp"])
+yac_test("yac_test_prompt_slash_commands", ["test_prompt_slash_commands.cpp"])
+yac_test("yac_test_slash_command_menu", ["test_slash_command_menu.cpp"])
+yac_test("yac_test_slash_mcp", ["test_slash_mcp.cpp"])
+yac_test("yac_test_slash_provider_auth", ["test_slash_provider_auth.cpp"])
+yac_test("yac_test_settings_toml", ["test_settings_toml.cpp"])
+yac_test("yac_test_config_paths", ["test_config_paths.cpp"])
+yac_test("yac_test_chat_config_bedrock", ["test_chat_config_bedrock.cpp"])
+yac_test("yac_test_chat_config_openai", ["test_chat_config_openai.cpp"])
+yac_test("yac_test_prompt_library", ["test_prompt_library.cpp"])
+yac_test(
+    "yac_test_config_loader",
+    ["test_config_loader.cpp"],
+    data = ["//:settings.example.toml"],
+    defines = ["SETTINGS_EXAMPLE_TOML_PATH=\\\"$(rootpath //:settings.example.toml)\\\""],
+)
+yac_test("yac_test_ask_user", ["test_ask_user.cpp"])
+yac_test("yac_test_sub_agent_manager", ["test_sub_agent_manager.cpp"])
+yac_aws_test("yac_test_bedrock_history_coalescing", ["test_bedrock_history_coalescing.cpp"])
+yac_test("yac_test_sub_agent_mcp", ["test_sub_agent_mcp.cpp"])
+yac_test("yac_test_sub_agent_event_adapter", ["test_sub_agent_event_adapter.cpp"])
+yac_test("yac_test_sub_agent_events", ["test_sub_agent_events.cpp"])
+yac_test("yac_test_sub_agent_executor", ["test_sub_agent_executor.cpp"])
+yac_test("yac_test_tool_call_descriptor", ["test_tool_call_descriptor.cpp"])
+yac_test("yac_test_tool_call_argument_parser", ["test_tool_call_argument_parser.cpp"])
+yac_test("yac_test_agent_mode", ["test_agent_mode.cpp"])
+yac_test("yac_test_compact_history", ["test_compact_history.cpp"])
+yac_test("yac_test_bash_tool_executor", ["test_bash_tool_executor.cpp"])
+yac_test("yac_test_edit_tool_executor", ["test_edit_tool_executor.cpp"])
+yac_test("yac_test_edit_replacers", ["test_edit_replacers.cpp"])
+yac_test("yac_test_executor_catalog", ["test_executor_catalog.cpp"])
+yac_test("yac_test_lsp_client", ["test_lsp_client.cpp"])
+yac_test("yac_test_json_rpc_stdio_base", ["test_json_rpc_stdio_base.cpp"])
+yac_test("yac_test_log", ["test_log.cpp"])
+yac_test("yac_test_workspace_filesystem", ["test_workspace_filesystem.cpp"])
+yac_test("yac_test_todo_state", ["test_todo_state.cpp"])
+yac_test("yac_test_headless", ["test_headless.cpp"])
+yac_test("yac_test_bootstrap_openai_provider", ["test_bootstrap_openai_provider.cpp"])
+yac_test("yac_test_headless_cancel", ["test_headless_cancel.cpp"])
+yac_test("yac_test_glob_matcher", ["test_glob_matcher.cpp"])
+yac_test("yac_test_gitignore_filter", ["test_gitignore_filter.cpp"])
+yac_test("yac_test_glob_tool_executor", ["test_glob_tool_executor.cpp"])
+yac_test("yac_test_file_index", ["test_file_index.cpp"])
+yac_test("yac_test_workspace_walker", ["test_workspace_walker.cpp"])
+yac_test("yac_test_file_mention_inliner", ["test_file_mention_inliner.cpp"])
+yac_test("yac_test_file_mention_menu", ["test_file_mention_menu.cpp"])
+yac_test("yac_test_grep_tool_executor", ["test_grep_tool_executor.cpp"])
+yac_test("yac_test_subprocess_runner", ["test_subprocess_runner.cpp"])
+yac_test("yac_test_mcp_protocol_constants", ["test_mcp_protocol_constants.cpp"])
+yac_test("yac_test_mcp_tool_naming", ["test_mcp_tool_naming.cpp"])
+yac_test("yac_test_mcp_tool_name_invariant", ["test_mcp_tool_name_invariant.cpp"])
+yac_aws_test("yac_test_bedrock_mcp_interop", ["test_bedrock_mcp_interop.cpp"])
+yac_test("yac_test_mcp_secret_redaction", ["test_mcp_secret_redaction.cpp"])
+yac_test("yac_test_mcp_debug_log", ["test_mcp_debug_log.cpp"])
+yac_test("yac_test_mcp_file_token_store", ["test_mcp_file_token_store.cpp"])
+yac_test("yac_test_core_types_mcp_manager", ["test_core_types_mcp_manager.cpp"])
+yac_test("yac_test_chat_service_mcp", ["test_chat_service_mcp.cpp"])
+yac_test(
+    "yac_test_chat_service_prompt_processor_mcp",
+    ["test_chat_service_prompt_processor_mcp.cpp"],
+)
+yac_test("yac_test_tool_validation_error", ["test_tool_validation_error.cpp"])
+yac_test("yac_test_prepare_validation", ["test_prepare_validation.cpp"])
+yac_test("yac_test_bootstrap_mcp", ["test_bootstrap_mcp.cpp"])
+yac_test("yac_test_mcp_keychain_token_store", ["test_mcp_keychain_token_store.cpp"])
+yac_test("yac_test_mcp_server_config", ["test_mcp_server_config.cpp"])
+yac_test("yac_test_mcp_env_override", ["test_mcp_env_override.cpp"])
+yac_test("yac_test_mcp_protocol_messages", ["test_mcp_protocol_messages.cpp"])
+yac_test("yac_test_mcp_sse_parser", ["test_mcp_sse_parser.cpp"])
+yac_test("yac_test_mcp_streamable_http", ["test_mcp_streamable_http.cpp"])
+yac_test("yac_test_mcp_bearer_auth", ["test_mcp_bearer_auth.cpp"])
+yac_test("yac_test_mcp_oauth_pkce", ["test_mcp_oauth_pkce.cpp"])
+yac_test("yac_test_mcp_oauth_flow", ["test_mcp_oauth_flow.cpp"])
+yac_test("yac_test_mcp_loopback_callback", ["test_mcp_loopback_callback.cpp"])
+yac_test("yac_test_mcp_oauth_discovery", ["test_mcp_oauth_discovery.cpp"])
+yac_test("yac_test_mcp_status_panel", ["test_mcp_status_panel.cpp"])
+yac_test("yac_test_mcp_resources_slash", ["test_mcp_resources_slash.cpp"])
+yac_test("yac_test_mcp_admin", ["test_mcp_admin.cpp"])
+yac_test("yac_test_yac_auth_cli", ["test_yac_auth_cli.cpp"])
+yac_test("yac_test_yac_mcp_cli", ["test_yac_mcp_cli.cpp"])
+
+yac_test(
+    "yac_test_openai_auth_test_helpers",
+    [
+        "test_openai_auth_test_helpers.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_openai_auth_flow",
+    [
+        "test_openai_auth_flow.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_openai_chat_provider_auth",
+    [
+        "test_openai_chat_provider_auth.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+)
+
+yac_cc_binary(
+    name = "echo_jsonrpc_server",
+    srcs = ["echo_jsonrpc_server.cpp"],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_stdio_transport",
+    ["test_mcp_stdio_transport.cpp"],
+    data = [":echo_jsonrpc_server"],
+    defines = ["ECHO_JSONRPC_SERVER_PATH=\\\"$(rootpath :echo_jsonrpc_server)\\\""],
+)
+
+yac_cc_binary(
+    name = "fake_mcp_server",
+    srcs = ["fake_mcp_server.cpp"],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_fake_mcp_server_smoke",
+    ["test_fake_mcp_server_smoke.cpp"],
+    data = [":fake_mcp_server"],
+    defines = ["FAKE_MCP_SERVER_PATH=\\\"$(rootpath :fake_mcp_server)\\\""],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_manager",
+    [
+        "mock_mcp_transport.cpp",
+        "test_mcp_manager.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_mcp_cancellation",
+    [
+        "mock_mcp_transport.cpp",
+        "test_mcp_cancellation.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_mcp_server_session",
+    [
+        "mock_mcp_transport.cpp",
+        "test_mcp_server_session.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_mcp_transport_mock",
+    [
+        "mock_mcp_transport.cpp",
+        "test_mcp_transport_mock.cpp",
+    ],
+)
+
+yac_test(
+    "yac_test_keychain_smoke",
+    ["test_keychain_smoke.cpp"],
+    deps = ["@keychain//:keychain"],
+)
+
+yac_cc_binary(
+    name = "mock_oauth_server",
+    srcs = ["mock_oauth_server.cpp"],
+    deps = BORINGSSL_DEPS,
+)
+
+yac_test(
+    "yac_test_mock_oauth_server_smoke",
+    ["test_mock_oauth_server_smoke.cpp"],
+    data = [":mock_oauth_server"],
+    defines = ["MOCK_OAUTH_SERVER_PATH=\\\"$(rootpath :mock_oauth_server)\\\""],
+    tags = ["exclusive"],
+)
+
+yac_cc_binary(
+    name = "yac_test_e2e_runner",
+    srcs = [
+        "mock_response_provider.cpp",
+        "yac_test_e2e_runner.cpp",
+        ":all_test_headers",
+    ],
+    includes = ["."],
+    deps = [
+        "//src:app",
+        "//src:presentation",
+        "//src:service",
+    ] + OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_openai_auth_e2e",
+    [
+        "integration/test_openai_auth_e2e.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+    data = ["//src:yac"],
+    defines = ["YAC_BINARY_PATH=\\\"$(rootpath //src:yac)\\\""],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_oauth_e2e",
+    ["integration/test_mcp_oauth_e2e.cpp"],
+    data = [
+        ":mock_oauth_server",
+        ":yac_test_e2e_runner",
+        "//src:yac",
+        "fixtures/mock_oauth.toml",
+        "integration/scripts/oauth_e2e.jsonl",
+    ],
+    defines = [
+        "MOCK_OAUTH_SERVER_PATH=\\\"$(rootpath :mock_oauth_server)\\\"",
+        "YAC_BINARY_PATH=\\\"$(rootpath //src:yac)\\\"",
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "MOCK_OAUTH_FIXTURE=\\\"$(rootpath fixtures/mock_oauth.toml)\\\"",
+        "OAUTH_E2E_SCRIPT_PATH=\\\"$(rootpath integration/scripts/oauth_e2e.jsonl)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_cold_start_integration",
+    ["integration/test_mcp_cold_start.cpp"],
+    data = [
+        ":fake_mcp_server",
+        ":yac_test_e2e_runner",
+        "fixtures/one_stdio_server.toml",
+        "fixtures/two_stdio_servers.toml",
+        "integration/scripts/cold_start.jsonl",
+    ],
+    defines = [
+        "FAKE_MCP_SERVER_PATH=\\\"$(rootpath :fake_mcp_server)\\\"",
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "COLD_START_SCRIPT_PATH=\\\"$(rootpath integration/scripts/cold_start.jsonl)\\\"",
+        "TWO_STDIO_SERVERS_FIXTURE=\\\"$(rootpath fixtures/two_stdio_servers.toml)\\\"",
+        "ONE_STDIO_SERVER_FIXTURE=\\\"$(rootpath fixtures/one_stdio_server.toml)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_warm_cancel_integration",
+    ["integration/test_mcp_warm_cancel.cpp"],
+    data = [
+        ":fake_mcp_server",
+        ":yac_test_e2e_runner",
+        "fixtures/slow_server.toml",
+        "integration/scripts/warm_cancel.jsonl",
+    ],
+    defines = [
+        "FAKE_MCP_SERVER_PATH=\\\"$(rootpath :fake_mcp_server)\\\"",
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "WARM_CANCEL_SCRIPT_PATH=\\\"$(rootpath integration/scripts/warm_cancel.jsonl)\\\"",
+        "SLOW_SERVER_FIXTURE=\\\"$(rootpath fixtures/slow_server.toml)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_shutdown_integration",
+    ["integration/test_mcp_shutdown.cpp"],
+    data = [
+        ":fake_mcp_server",
+        ":yac_test_e2e_runner",
+        "fixtures/two_stdio_servers.toml",
+        "integration/scripts/shutdown.jsonl",
+    ],
+    defines = [
+        "FAKE_MCP_SERVER_PATH=\\\"$(rootpath :fake_mcp_server)\\\"",
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "SHUTDOWN_SCRIPT_PATH=\\\"$(rootpath integration/scripts/shutdown.jsonl)\\\"",
+        "TWO_STDIO_SERVERS_FIXTURE=\\\"$(rootpath fixtures/two_stdio_servers.toml)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mcp_crash_integration",
+    ["integration/test_mcp_crash.cpp"],
+    data = [
+        ":fake_mcp_server",
+        ":yac_test_e2e_runner",
+        "fixtures/crashing_server.toml",
+        "integration/scripts/crash.jsonl",
+    ],
+    defines = [
+        "FAKE_MCP_SERVER_PATH=\\\"$(rootpath :fake_mcp_server)\\\"",
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "CRASH_SCRIPT_PATH=\\\"$(rootpath integration/scripts/crash.jsonl)\\\"",
+        "CRASHING_SERVER_FIXTURE=\\\"$(rootpath fixtures/crashing_server.toml)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mock_response_provider",
+    [
+        "mock_response_provider.cpp",
+        "test_mock_response_provider.cpp",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_mock_bedrock_provider",
+    [
+        "mock_bedrock_provider.cpp",
+        "test_mock_bedrock_provider.cpp",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_bedrock_e2e",
+    [
+        "integration/test_bedrock_e2e.cpp",
+        "mock_bedrock_provider.cpp",
+    ],
+    data = glob(["integration/scripts/bedrock/*.jsonl"]),
+    defines = ["BEDROCK_SCRIPTS_DIR=\\\"tests/integration/scripts/bedrock\\\""],
+    deps = OPENAI_CPP_DEPS,
+)
+
+sh_test(
+    name = "compile_fail_typed_ids",
+    srcs = ["compile_failure/compile_fail_typed_ids.sh"],
+    args = ["$(rootpath compile_failure/cross_type_assignment_fails.cpp)"],
+    data = ["compile_failure/cross_type_assignment_fails.cpp"],
+)
+
+yac_test_suite(
+    name = "all_tests",
+    extra_tests = [":compile_fail_typed_ids"],
+)

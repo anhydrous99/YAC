@@ -1,0 +1,17 @@
+common --enable_bzlmod
+
+build --announce_rc
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+build --color=yes
+build --show_timestamps
+build --test_output=errors
+
+build:release -c opt
+build:coverage --collect_code_coverage
+build:coverage --combined_report=lcov
+build:coverage --instrumentation_filter=//src[/:]
+test:coverage --test_output=errors
+
+test --test_output=errors
+test --test_env=PATH

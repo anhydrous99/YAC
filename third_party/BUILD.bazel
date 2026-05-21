@@ -1,0 +1,8 @@
+exports_files([
+    "aws_sdk_bedrock.BUILD.bazel",
+    "catch2_rules_cc.patch",
+    "keychain.BUILD.bazel",
+    "keychain_linux_shim.cpp",
+    "openai_cpp.BUILD.bazel",
+    "tomlplusplus_visibility.patch",
+])

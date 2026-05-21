@@ -110,7 +110,7 @@ TEST_CASE("ShouldSkip returns false for unmatched paths regardless of filter") {
 
   REQUIRE_FALSE(filter.ShouldSkip("src/main.cpp"));
   REQUIRE_FALSE(filter.ShouldSkip("include/foo.hpp"));
-  REQUIRE_FALSE(filter.ShouldSkip("CMakeLists.txt"));
+  REQUIRE_FALSE(filter.ShouldSkip("BUILD.bazel"));
   REQUIRE_FALSE(filter.ShouldSkip("README.md"));
 }
 

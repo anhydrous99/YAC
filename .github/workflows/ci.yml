@@ -14,57 +14,40 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
         with:
-          submodules: recursive
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ripgrep wget gnupg lsb-release software-properties-common
-          # YAC pins clang tooling to version 21; install via apt.llvm.org
-          # because Ubuntu's default repos lag behind.
+          sudo apt-get install -y ripgrep wget gnupg lsb-release software-properties-common
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
           sudo add-apt-repository -y "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
           sudo apt-get update
-          sudo apt-get install -y clang-format-21 clang-tidy-21
-
-      - name: Verify vcpkg baseline
-        run: scripts/verify-vcpkg-baseline.sh
-
-      # https://github.com/lukka/run-vcpkg#readme
-      - name: Setup vcpkg (binary caching via GHA cache)
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
-          vcpkgJsonGlob: 'vcpkg.json'
-
-      - name: Configure
-        run: cmake --preset debug
+          sudo apt-get install -y clang-format-21 clang-tidy-21 clang-tools-21
 
       - name: Build
-        run: cmake --build build
+        run: bazel build //src:yac
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Lint
-        run: cmake --build build --target lint
+        run: bazel test //tests:all_tests
 
       - name: Format check
-        run: cmake --build build --target format-check
+        run: bazel test //tools:format_check
+
+      - name: Lint
+        run: bazel run //tools:lint
 
   coverage:
     name: PR coverage (gated)
-    # Only PRs trigger this; pushes to main never run coverage.
     if: github.event_name == 'pull_request'
-    # Wait for the regular Linux job to pass before asking for review —
-    # avoids burning a reviewer's time when the build is already broken.
     needs: linux
     runs-on: ubuntu-latest
-    # Requires a one-time setup in repo Settings > Environments:
-    # create an environment named "coverage-approval" with required reviewers.
-    # The job sits in "Waiting" state until a reviewer approves it via the
-    # GitHub UI, then runs.
     environment: coverage-approval
     permissions:
       contents: read
@@ -72,49 +55,27 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
-      - name: Install build + coverage dependencies
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
+
+      - name: Install coverage dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build ripgrep wget gnupg lsb-release software-properties-common
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc > /dev/null
-          sudo add-apt-repository -y "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
-          sudo apt-get update
-          sudo apt-get install -y clang-21 llvm-21
-
-      # https://github.com/lukka/run-vcpkg#readme
-      - name: Setup vcpkg (binary caching via GHA cache)
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
-          vcpkgJsonGlob: 'vcpkg.json'
-
-      - name: Configure (coverage)
-        env:
-          CC: clang-21
-          CXX: clang++-21
-        run: cmake --preset debug -DYAC_ENABLE_COVERAGE=ON
-
-      - name: Build
-        run: cmake --build build
+          sudo apt-get install -y ripgrep lcov
 
       - name: Run coverage
-        run: cmake --build build --target coverage
-
-      - name: Upload HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-html
-          path: build/coverage_html
-          if-no-files-found: error
+        run: bazel run //tools:coverage
 
       - name: Upload lcov report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
-          path: build/coverage.lcov
+          path: bazel-out/_coverage/_coverage_report.dat
           if-no-files-found: error
 
   macos:
@@ -124,41 +85,30 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@0.19.0
         with:
-          submodules: recursive
+          bazelisk-cache: true
+          repository-cache: true
+          disk-cache: true
 
       - name: Install build dependencies
-        run: brew install ninja ripgrep
-
-      - name: Install LLVM (macOS)
         run: |
-          brew install llvm
+          brew install llvm ripgrep
           echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
           ln -sf /opt/homebrew/opt/llvm/bin/clang-format /opt/homebrew/opt/llvm/bin/clang-format-21
           ln -sf /opt/homebrew/opt/llvm/bin/clang-tidy /opt/homebrew/opt/llvm/bin/clang-tidy-21
           ln -sf /opt/homebrew/opt/llvm/bin/run-clang-tidy /opt/homebrew/opt/llvm/bin/run-clang-tidy-21 || true
 
-      - name: Verify vcpkg baseline
-        run: scripts/verify-vcpkg-baseline.sh
-
-      # https://github.com/lukka/run-vcpkg#readme
-      - name: Setup vcpkg (binary caching via GHA cache)
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
-          vcpkgJsonGlob: 'vcpkg.json'
-
-      - name: Configure
-        run: cmake --preset debug
-
       - name: Build
-        run: cmake --build build
+        run: bazel build //src:yac
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Lint
-        run: cmake --build build --target lint
+        run: bazel test //tests:all_tests
 
       - name: Format check
-        run: cmake --build build --target format-check
+        run: bazel test //tools:format_check
+
+      - name: Lint
+        run: bazel run //tools:lint

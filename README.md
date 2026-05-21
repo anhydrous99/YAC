@@ -60,7 +60,7 @@ Install system dependencies before building.
 ### Linux (Ubuntu/Debian)
 
 ```bash
-sudo apt-get install -y ninja-build ripgrep
+sudo apt-get install -y ripgrep
 ```
 
 For contributors (lint + format-check): install clang-format-21 / clang-tidy-21 from [apt.llvm.org](https://apt.llvm.org/).
@@ -68,7 +68,7 @@ For contributors (lint + format-check): install clang-format-21 / clang-tidy-21 
 ### macOS (Homebrew)
 
 ```bash
-brew install ninja ripgrep
+brew install bazelisk ripgrep
 ```
 
 For contributors: `brew install llvm` provides `clang-format` / `clang-tidy` at `/opt/homebrew/opt/llvm/bin/`. Prepend to PATH:
@@ -79,47 +79,30 @@ export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 
 ### Prerequisites
 
-After installing system dependencies, initialize submodules and vcpkg:
+Bazelisk is recommended so the `.bazelversion` pin is honored automatically.
+GitHub Actions runners already include Bazelisk; locally, `bazel` from Homebrew
+or Bazelisk both work as long as they resolve to the pinned version.
 
-```bash
-git submodule update --init --recursive
-./external/vcpkg/bootstrap-vcpkg.sh  # one-time, ~30s
-```
-
-CMake >= 3.21 is required (`cmake --version` to check).
+No git submodules or vcpkg bootstrap step is required.
 
 ## Quick Start
-
-### Configure
-
-YAC uses the bundled vcpkg toolchain for `aws-sdk-cpp`. Requires CMake ≥ 3.21
-and git submodules.
-
-```bash
-git submodule update --init --recursive
-./external/vcpkg/bootstrap-vcpkg.sh  # one-time, ~30s
-cmake --preset debug
-```
-
-The first configure will download and build aws-sdk-cpp (~15 min on a
-cold cache). Subsequent configures are <30 seconds because vcpkg caches
-installed packages under `external/vcpkg/`.
-
-For a release build, use `cmake --preset release` instead.
 
 ### Build
 
 ```bash
-cmake --build build
+bazel build //src:yac
 ```
 
-For the release preset use `cmake --build build-release` instead.
+For an optimized release binary, use `bazel build --config=release //src:yac`.
+The first build downloads pinned Bazel module dependencies and compiles the AWS
+Bedrock SDK overlay; subsequent builds reuse Bazel's repository and action
+caches.
 
 ### Run
 
 ```bash
 export OPENAI_API_KEY=sk-...
-./build/yac
+bazel run //src:yac
 ```
 
 If the API key is missing, the app still starts and shows the setup warning in
@@ -331,30 +314,26 @@ underscore). The assistant picks them up automatically once the server starts.
 
 ## Tests
 
-List discovered tests first:
-
-```bash
-ctest --test-dir build -N
-```
-
 Run the full suite:
 
 ```bash
-ctest --test-dir build --output-on-failure
+bazel test //tests:all_tests
 ```
 
-Run one test by name:
+Run one test target:
 
 ```bash
-ctest --test-dir build -R "^ATX heading level 1$" --output-on-failure
+bazel test //tests:yac_test_renderer
 ```
 
 ## Quality Tools
 
 ```bash
-cmake --build build --target format
-cmake --build build --target lint
-cmake --build build --target format-check
+bazel run //tools:format
+bazel test //tools:format_check
+bazel run //tools:refresh_compile_commands
+bazel run //tools:lint
+bazel run //tools:coverage
 ```
 
 ## Project Map
@@ -427,18 +406,14 @@ flowchart TD
 ## Notes
 
 - The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
-- `aws-sdk-cpp` is sourced via the bundled vcpkg toolchain (`external/vcpkg`);
-  the remaining dependencies are fetched by CMake with `FetchContent`.
-- The build requires CMake ≥ 3.21 (configure presets v3) and Ninja.
+- Dependencies are resolved by Bazel/Bzlmod. `FTXUI`, `openai-cpp`,
+  `tomlplusplus`, `Catch2`, `keychain`, `curl`, `BoringSSL`, and the AWS
+  Bedrock SDK overlay are pinned in `MODULE.bazel` and `third_party/`.
 - `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
 - `Catch2` is pinned to `v3.5.2`.
 - `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
-- libcurl is required for the OpenAI-compatible streaming provider; vcpkg
-  bundles its own libcurl, so no system libcurl install is required.
-- `build/compile_commands.json` is generated during configure and is used by
-  `.clangd`.
-- The `format` and `lint` targets rely on CMake source globbing, so reconfigure
-  after adding or renaming source files.
+- `compile_commands.json` is generated with `bazel run //tools:refresh_compile_commands`
+  and is used by `.clangd`.
 
 ## License
 

@@ -64,7 +64,7 @@ TEST_CASE("ToolCallRenderer renders bash command details") {
 
 TEST_CASE(
     "ToolCallRenderer renders bash command responsively and handles errors") {
-  BashCall call{.command = "cmake --build build",
+  BashCall call{.command = "bazel build //src:yac",
                 .output = "build failed",
                 .exit_code = 2,
                 .is_error = true};
@@ -72,7 +72,7 @@ TEST_CASE(
   auto output = RenderToString(call, 40, 10);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("bash"));
-  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("cmake"));
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("bazel"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Exit code: 2"));
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("build failed"));
 }
