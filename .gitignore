@@ -7,9 +7,11 @@ compile_commands.json
 .idea/
 .env
 .planning/
+.worktrees/
 CLAUDE.md
 AGENTS.md
 .claude/
 .DS_Store
 bazel-*
 external/vcpkg/
+.omo/
