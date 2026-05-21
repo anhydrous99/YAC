@@ -1,6 +1,7 @@
 #include "mcp/keychain_token_store.hpp"
 
 #include <cctype>
+#include <cstdlib>
 #include <keychain/keychain.h>
 #include <optional>
 #include <string>
@@ -31,6 +32,10 @@ std::string SanitizeServerId(std::string_view server_id) {
 
 bool KeychainTokenStore::IsKeychainAvailable() {
   static const bool available = []() -> bool {
+    if (std::getenv("YAC_KEYCHAIN_DISABLED") != nullptr) {
+      return false;
+    }
+
     const std::string pkg(kKeychainServiceId);
     const std::string svc("__probe__");
     const std::string usr("__probe__");

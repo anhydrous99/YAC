@@ -106,6 +106,8 @@ jobs:
 
       - name: Test
         run: bazel test //tests:all_tests
+        env:
+          YAC_KEYCHAIN_DISABLED: "1"
 
       - name: Format check
         run: bazel test //tools:format_check
