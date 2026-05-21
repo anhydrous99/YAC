@@ -3,11 +3,14 @@
 #include "chat/config_paths.hpp"
 
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <keychain/keychain.h>
+#include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -20,6 +23,43 @@ namespace {
 
 constexpr std::string_view kKeychainServiceId = "yac-provider-openai";
 constexpr std::string_view kKeychainEntryId = "openai";
+constexpr char kAuthStoreEnv[] = "YAC_OPENAI_AUTH_STORE";
+
+[[nodiscard]] bool UseFileOnlyAuthStore() {
+  const char* value = std::getenv(kAuthStoreEnv);
+  if (value == nullptr) {
+    return false;
+  }
+
+  const std::string_view storage(value);
+  return storage == "file" || storage == "file-only";
+}
+
+class DisabledOpenAiKeychainAuthBackend final : public IOpenAiAuthBackend {
+ public:
+  [[nodiscard]] std::optional<std::string> Get() const override {
+    throw OpenAiAuthKeychainUnavailableError(
+        "OpenAI auth keychain disabled by YAC_OPENAI_AUTH_STORE");
+  }
+
+  void Set(std::string_view auth_json) override {
+    (void)auth_json;
+    throw OpenAiAuthKeychainUnavailableError(
+        "OpenAI auth keychain disabled by YAC_OPENAI_AUTH_STORE");
+  }
+
+  void Erase() override {
+    throw OpenAiAuthKeychainUnavailableError(
+        "OpenAI auth keychain disabled by YAC_OPENAI_AUTH_STORE");
+  }
+};
+
+[[nodiscard]] std::shared_ptr<IOpenAiAuthBackend> MakeDefaultKeychainBackend() {
+  if (UseFileOnlyAuthStore()) {
+    return std::make_shared<DisabledOpenAiKeychainAuthBackend>();
+  }
+  return std::make_shared<OpenAiKeychainAuthBackend>();
+}
 
 }  // namespace
 
@@ -248,7 +288,7 @@ OpenAiAuthStore::OpenAiAuthStore(Dependencies dependencies)
 
 OpenAiAuthStore::Dependencies OpenAiAuthStore::BuildDefaultDependencies() {
   return Dependencies{
-      .keychain_backend = std::make_shared<OpenAiKeychainAuthBackend>(),
+      .keychain_backend = MakeDefaultKeychainBackend(),
       .file_backend = std::make_shared<OpenAiFileAuthBackend>()};
 }
 

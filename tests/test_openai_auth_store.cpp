@@ -2,6 +2,7 @@
 #include "provider/openai_auth_store.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -56,6 +57,33 @@ class TempDir {
 
  private:
   std::filesystem::path path_;
+};
+
+class ScopedEnvVar {
+ public:
+  ScopedEnvVar(std::string name, std::string value) : name_(std::move(name)) {
+    if (const char* current = std::getenv(name_.c_str())) {
+      previous_ = std::string(current);
+    }
+    setenv(name_.c_str(), value.c_str(), 1);
+  }
+
+  ~ScopedEnvVar() {
+    if (previous_.has_value()) {
+      setenv(name_.c_str(), previous_->c_str(), 1);
+    } else {
+      unsetenv(name_.c_str());
+    }
+  }
+
+  ScopedEnvVar(const ScopedEnvVar&) = delete;
+  ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
+  ScopedEnvVar(ScopedEnvVar&&) = delete;
+  ScopedEnvVar& operator=(ScopedEnvVar&&) = delete;
+
+ private:
+  std::string name_;
+  std::optional<std::string> previous_;
 };
 
 class MemoryAuthBackend : public IOpenAiAuthBackend {
@@ -201,6 +229,23 @@ TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
   const auto* api_key = std::get_if<OpenAiApiKeyAuth>(&loaded->auth);
   REQUIRE(api_key != nullptr);
   REQUIRE(api_key->key == "sk-test-fallback");
+}
+
+TEST_CASE("file_env_skips_keychain_backend", "[openai_auth_store]") {
+  TempDir temp_dir;
+  ScopedEnvVar home("HOME", temp_dir.Path().string());
+  ScopedEnvVar auth_store("YAC_OPENAI_AUTH_STORE", "file");
+  OpenAiAuthStore store;
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-file-only"};
+
+  const auto saved_source = store.Save(auth);
+  const auto loaded = store.Load();
+
+  REQUIRE(saved_source == OpenAiAuthStorageSource::File);
+  REQUIRE(loaded.has_value());
+  REQUIRE(loaded->source == OpenAiAuthStorageSource::File);
+  REQUIRE(std::filesystem::exists(temp_dir.Path() / ".yac" / "provider" /
+                                  "auth" / "openai.json"));
 }
 
 TEST_CASE("file_backend_writes_mode_0600_and_rejects_broad_perms",

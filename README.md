@@ -210,6 +210,8 @@ yac auth openai logout
 configured provider, whether stored auth exists, and the effective auth source
 without printing secrets. `logout` clears stored OpenAI auth. Provider auth is
 stored keychain-first, with file fallback at `~/.yac/provider/auth/openai.json`.
+Set `YAC_OPENAI_AUTH_STORE=file` in headless/CI environments that should skip
+OS keychain probing and use the auth file directly.
 See [docs/openai-auth.md](docs/openai-auth.md) for precedence, storage, and
 troubleshooting.
 

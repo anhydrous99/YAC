@@ -4,6 +4,7 @@
 #include "provider/openai_chat_provider.hpp"
 
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -24,6 +25,7 @@
 
 #ifndef _WIN32
 #include <csignal>
+#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -42,6 +44,8 @@ constexpr std::string_view kStoredApiKey = "sk-test-e2e-api-key";
 constexpr std::string_view kStoredRefreshToken = "refresh-test-e2e";
 constexpr std::string_view kStoredAccessToken = "access-test-e2e";
 constexpr std::string_view kRefreshedRefreshToken = "refresh-rotated-e2e";
+constexpr auto kCliTimeout = 30s;
+constexpr auto kCliPollInterval = 20ms;
 
 class TempDir {
  public:
@@ -155,6 +159,37 @@ struct ChildProcessResult {
   std::string output;
 };
 
+void SetNonBlocking(int fd) {
+  const int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0) {
+    throw std::runtime_error("fcntl(F_GETFL) failed");
+  }
+  if (::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    throw std::runtime_error("fcntl(F_SETFL) failed");
+  }
+}
+
+void DrainAvailableOutput(int fd, std::string& output) {
+  std::array<char, 4096> buffer{};
+  for (;;) {
+    const ssize_t count = ::read(fd, buffer.data(), buffer.size());
+    if (count > 0) {
+      output.append(buffer.data(), static_cast<std::size_t>(count));
+      continue;
+    }
+    if (count == 0) {
+      return;
+    }
+    if (errno == EINTR) {
+      continue;
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return;
+    }
+    throw std::runtime_error("read failed");
+  }
+}
+
 ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
                              const std::vector<std::string>& args,
                              std::string_view stdin_content = {}) {
@@ -187,6 +222,7 @@ ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
     ::unsetenv("YAC_PROVIDER");
     ::unsetenv("YAC_BASE_URL");
     ::unsetenv("YAC_API_KEY_ENV");
+    ::setenv("YAC_OPENAI_AUTH_STORE", "file", 1);
     ::unsetenv("DBUS_SESSION_BUS_ADDRESS");
 
     std::vector<std::string> argv_storage;
@@ -219,32 +255,33 @@ ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
   }
   ::close(in_pipe[1]);
 
+  SetNonBlocking(out_pipe[0]);
   std::string output;
-  std::array<char, 4096> buffer{};
-  for (;;) {
-    const ssize_t count = ::read(out_pipe[0], buffer.data(), buffer.size());
-    if (count <= 0) {
-      break;
-    }
-    output.append(buffer.data(), static_cast<std::size_t>(count));
-  }
-  ::close(out_pipe[0]);
-
-  const auto deadline = std::chrono::steady_clock::now() + 30s;
+  const auto deadline = std::chrono::steady_clock::now() + kCliTimeout;
   int status = 0;
   while (std::chrono::steady_clock::now() < deadline) {
+    DrainAvailableOutput(out_pipe[0], output);
     const pid_t result = ::waitpid(pid, &status, WNOHANG);
     if (result == pid) {
+      DrainAvailableOutput(out_pipe[0], output);
+      ::close(out_pipe[0]);
       if (WIFEXITED(status) != 0) {
         return {.exit_code = WEXITSTATUS(status), .output = std::move(output)};
       }
       return {.exit_code = -1, .output = std::move(output)};
     }
-    std::this_thread::sleep_for(20ms);
+    if (result < 0 && errno != EINTR) {
+      ::close(out_pipe[0]);
+      throw std::runtime_error("waitpid failed");
+    }
+    std::this_thread::sleep_for(kCliPollInterval);
   }
 
   ::kill(pid, SIGKILL);
   ::waitpid(pid, &status, 0);
+  DrainAvailableOutput(out_pipe[0], output);
+  ::close(out_pipe[0]);
+  output += "\nError: yac CLI timed out after 30 seconds\n";
   return {.exit_code = -1, .output = std::move(output)};
 }
 

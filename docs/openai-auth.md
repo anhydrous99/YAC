@@ -54,6 +54,8 @@ printf 'sk-...' | yac auth openai set-api-key --stdin
 OpenAI provider auth is stored by provider auth storage. YAC tries the OS
 keychain first. If the keychain isn't available, it falls back to
 `~/.yac/provider/auth/openai.json` with owner-only permissions.
+Set `YAC_OPENAI_AUTH_STORE=file` when running in headless or CI environments
+where probing the OS keychain can block or prompt.
 
 Stored auth may contain either an API-key credential or an OAuth credential.
 `yac auth openai logout` removes the stored credential, but it can't remove an
