@@ -108,6 +108,7 @@ yac_cc_library(
         "chat/config_paths.cpp",
         "chat/prompt_library.cpp",
         "chat/settings_toml.cpp",
+        "chat/settings_registry.cpp",
         "chat/sub_agent_event_adapter.cpp",
         "chat/agent_mode.cpp",
         "chat/chat_service_mcp.cpp",
