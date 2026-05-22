@@ -1,7 +1,9 @@
 #include "openai_auth_test_helpers.hpp"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <array>
+#include <chrono>
 #include <netinet/in.h>
 #include <optional>
 #include <stdexcept>
@@ -9,6 +11,7 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -54,6 +57,17 @@ namespace {
     }
   }
   return output;
+}
+
+[[nodiscard]] std::string DecodeJwtPayload(std::string_view token) {
+  const auto first_dot = token.find('.');
+  const auto second_dot = token.find('.', first_dot + 1);
+
+  REQUIRE(first_dot != std::string::npos);
+  REQUIRE(second_dot != std::string::npos);
+
+  return DecodeBase64Url(
+      token.substr(first_dot + 1, second_dot - first_dot - 1));
 }
 
 }  // namespace
@@ -142,22 +156,75 @@ TEST_CASE("fake_token_stores_round_trip") {
 
 TEST_CASE("jwt_helpers_include_chatgpt_account_id") {
   const std::string token = MakeAccountIdJwtLikeToken("acct_123");
-  const auto first_dot = token.find('.');
-  const auto second_dot = token.find('.', first_dot + 1);
-
-  REQUIRE(first_dot != std::string::npos);
-  REQUIRE(second_dot != std::string::npos);
-
-  const std::string payload =
-      DecodeBase64Url(token.substr(first_dot + 1, second_dot - first_dot - 1));
+  const std::string payload = DecodeJwtPayload(token);
   REQUIRE(payload == R"({"chatgpt_account_id":"acct_123"})");
 
   const std::string custom = MakeUnsignedJwtLikeToken(
       R"({"chatgpt_account_id":"acct_456","organizations":[{"id":"org_1"}]})");
-  const auto custom_first_dot = custom.find('.');
-  const auto custom_second_dot = custom.find('.', custom_first_dot + 1);
   REQUIRE(
-      DecodeBase64Url(custom.substr(
-          custom_first_dot + 1, custom_second_dot - custom_first_dot - 1)) ==
+      DecodeJwtPayload(custom) ==
       R"({"chatgpt_account_id":"acct_456","organizations":[{"id":"org_1"}]})");
+}
+
+TEST_CASE("jwt_helpers_cover_opencode_claim_variants") {
+  REQUIRE(
+      DecodeJwtPayload(MakeNestedAccountIdJwtLikeToken("acct-nested")) ==
+      R"({"https://api.openai.com/auth":{"chatgpt_account_id":"acct-nested"}})");
+  REQUIRE(DecodeJwtPayload(MakeAccountIdJwtLikeToken("acct-top-level")) ==
+          R"({"chatgpt_account_id":"acct-top-level"})");
+  REQUIRE(
+      DecodeJwtPayload(MakeFlattenedAccountIdJwtLikeToken("acct-legacy")) ==
+      R"({"https://api.openai.com/auth.chatgpt_account_id":"acct-legacy"})");
+  REQUIRE(
+      DecodeJwtPayload(MakeOrganizationFallbackJwtLikeToken("org-fallback")) ==
+      R"({"organizations":[{"id":"org-fallback"}]})");
+}
+
+TEST_CASE("model_id_helpers_cover_static_dynamic_and_rejected_vectors") {
+  const auto static_models = StaticAcceptedModelIds();
+  REQUIRE(std::find(static_models.begin(), static_models.end(), "gpt-5.4") !=
+          static_models.end());
+
+  const auto vectors = DynamicModelIdTestVectors();
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-5.5" && item.accepted;
+          }) != vectors.end());
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-5.41" && item.accepted;
+          }) != vectors.end());
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-6.0" && item.accepted;
+          }) != vectors.end());
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-5.4-preview" && !item.accepted;
+          }) != vectors.end());
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-5.40" && !item.accepted;
+          }) != vectors.end());
+  REQUIRE(std::find_if(vectors.begin(), vectors.end(), [](const auto& item) {
+            return item.id == "gpt-5.10" && !item.accepted;
+          }) != vectors.end());
+}
+
+TEST_CASE("request_header_helpers_assert_expected_headers") {
+  HttpRequest request{.headers = {{"Authorization", "Bearer token"},
+                                  {"ChatGPT-Account-Id", "acct-123"},
+                                  {"session_id", DeterministicSessionId()}}};
+
+  REQUIRE_NOTHROW(AssertHeaderEquals(request, "Authorization", "Bearer token"));
+  REQUIRE_NOTHROW(
+      AssertHeaderEquals(request, "ChatGPT-Account-Id", "acct-123"));
+  REQUIRE_NOTHROW(
+      AssertHeaderEquals(request, "session_id", DeterministicSessionId()));
+  REQUIRE_NOTHROW(AssertHeaderAbsent(request, "OpenAI-Beta"));
+  REQUIRE_THROWS_AS(AssertHeaderEquals(request, "Authorization", "Bearer bad"),
+                    std::runtime_error);
+  REQUIRE_THROWS_AS(AssertHeaderAbsent(request, "Authorization"),
+                    std::runtime_error);
+}
+
+TEST_CASE("deterministic_session_and_clock_helpers_are_stable") {
+  REQUIRE(DeterministicSessionId() == "00000000-0000-4000-8000-000000000001");
+  REQUIRE(DeterministicTestNow().time_since_epoch() ==
+          std::chrono::seconds{1'800'000'000});
 }

@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <netinet/in.h>
 #include <stdexcept>
 #include <string_view>
@@ -323,6 +324,81 @@ std::string MakeAccountIdJwtLikeToken(std::string_view account_id) {
                               EscapeJsonString(account_id) +
                               std::string(kSuffix);
   return MakeUnsignedJwtLikeToken(payload);
+}
+
+std::string MakeNestedAccountIdJwtLikeToken(std::string_view account_id) {
+  constexpr std::string_view kPrefix =
+      R"({"https://api.openai.com/auth":{"chatgpt_account_id":")";
+  constexpr std::string_view kSuffix = R"("}})";
+  const std::string payload = std::string(kPrefix) +
+                              EscapeJsonString(account_id) +
+                              std::string(kSuffix);
+  return MakeUnsignedJwtLikeToken(payload);
+}
+
+std::string MakeFlattenedAccountIdJwtLikeToken(std::string_view account_id) {
+  constexpr std::string_view kPrefix =
+      R"({"https://api.openai.com/auth.chatgpt_account_id":")";
+  constexpr std::string_view kSuffix = R"("})";
+  const std::string payload = std::string(kPrefix) +
+                              EscapeJsonString(account_id) +
+                              std::string(kSuffix);
+  return MakeUnsignedJwtLikeToken(payload);
+}
+
+std::string MakeOrganizationFallbackJwtLikeToken(
+    std::string_view organization_id) {
+  constexpr std::string_view kPrefix = R"({"organizations":[{"id":")";
+  constexpr std::string_view kSuffix = R"("}]})";
+  const std::string payload = std::string(kPrefix) +
+                              EscapeJsonString(organization_id) +
+                              std::string(kSuffix);
+  return MakeUnsignedJwtLikeToken(payload);
+}
+
+std::vector<std::string> StaticAcceptedModelIds() {
+  return {"gpt-5.5", "gpt-5.2",     "gpt-5.3-codex", "gpt-5.3-codex-spark",
+          "gpt-5.4", "gpt-5.4-mini"};
+}
+
+std::vector<ModelIdTestVector> DynamicModelIdTestVectors() {
+  return {{.id = "gpt-5.5", .accepted = true},
+          {.id = "gpt-5.41", .accepted = true},
+          {.id = "gpt-6.0", .accepted = true},
+          {.id = "gpt-5.4-preview", .accepted = false},
+          {.id = "gpt-5.40", .accepted = false},
+          {.id = "gpt-5.10", .accepted = false},
+          {.id = "gpt-5", .accepted = false},
+          {.id = "gpt-five.five", .accepted = false}};
+}
+
+std::string DeterministicSessionId() {
+  return "00000000-0000-4000-8000-000000000001";
+}
+
+std::chrono::system_clock::time_point DeterministicTestNow() {
+  return std::chrono::system_clock::time_point{
+      std::chrono::seconds{1'800'000'000}};
+}
+
+void AssertHeaderEquals(const HttpRequest& request, std::string_view name,
+                        std::string_view expected_value) {
+  const auto it = request.headers.find(std::string(name));
+  if (it == request.headers.end()) {
+    throw std::runtime_error("missing expected request header: " +
+                             std::string(name));
+  }
+  if (it->second != expected_value) {
+    throw std::runtime_error("unexpected request header value for: " +
+                             std::string(name));
+  }
+}
+
+void AssertHeaderAbsent(const HttpRequest& request, std::string_view name) {
+  if (request.headers.contains(std::string(name))) {
+    throw std::runtime_error("unexpected request header present: " +
+                             std::string(name));
+  }
 }
 
 }  // namespace yac::tests::openai_auth

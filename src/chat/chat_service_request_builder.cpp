@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace yac::chat::internal {
@@ -46,8 +47,46 @@ inline constexpr size_t kMaxAgentsMdSize = 8192;
   return {};
 }
 
-std::vector<ChatMessage> WithSystemPrompt(std::vector<ChatMessage> messages,
-                                          const ChatConfig& config) {
+std::string PlanModeReminder(const std::string& active_plan_path) {
+  return "<system-reminder>\n"
+         "You are in Plan mode. The active plan file is `" +
+         active_plan_path +
+         "`.\n"
+         "Work through the plan-file workflow: investigate the request, read "
+         "and search the workspace, delegate research when useful, ask "
+         "clarifying questions if the plan is blocked, and write or update the "
+         "active plan file with the proposed implementation plan.\n"
+         "Plan mode is read-only for source code and shell execution. You may "
+         "only create or edit the active `.opencode/plans/*.md` plan file; do "
+         "not modify other files until the plan is approved.\n"
+         "When the plan is ready for approval, call `plan_exit` with the final "
+         "plan.\n"
+         "</system-reminder>";
+}
+
+std::string BuildSwitchReminder(const std::string& active_plan_path) {
+  return "<system-reminder>\n"
+         "The user approved the plan and switched from Plan mode to Build "
+         "mode. The approved plan file is `" +
+         active_plan_path +
+         "`.\n"
+         "Use that plan as the implementation guide, continue in Build mode, "
+         "and make the requested code changes now.\n"
+         "</system-reminder>";
+}
+
+void AppendSyntheticReminder(std::string& final_prompt, std::string reminder) {
+  if (reminder.empty()) {
+    return;
+  }
+  if (!final_prompt.empty()) {
+    final_prompt += "\n\n";
+  }
+  final_prompt += std::move(reminder);
+}
+
+std::string ComposeSystemPrompt(const ChatConfig& config,
+                                bool include_build_switch_reminder) {
   const auto workspace_prompt = LoadWorkspacePrompt(config);
   std::string final_prompt = workspace_prompt;
   if (config.system_prompt.has_value()) {
@@ -57,6 +96,20 @@ std::vector<ChatMessage> WithSystemPrompt(std::vector<ChatMessage> messages,
     final_prompt += *config.system_prompt;
   }
 
+  if (config.agent_mode == AgentMode::Plan && config.active_plan_path) {
+    AppendSyntheticReminder(final_prompt,
+                            PlanModeReminder(*config.active_plan_path));
+  } else if (config.agent_mode == AgentMode::Build &&
+             include_build_switch_reminder && config.build_switch_plan_path) {
+    AppendSyntheticReminder(
+        final_prompt, BuildSwitchReminder(*config.build_switch_plan_path));
+  }
+
+  return final_prompt;
+}
+
+std::vector<ChatMessage> WithSystemPrompt(std::vector<ChatMessage> messages,
+                                          std::string final_prompt) {
   if (!final_prompt.empty()) {
     messages.insert(messages.begin(),
                     ChatMessage{.role = ChatRole::System,
@@ -78,10 +131,23 @@ const ChatConfig& ChatServiceRequestBuilder::Config() const {
 ChatRequest ChatServiceRequestBuilder::BuildRequest(
     const std::vector<ChatMessage>& history,
     const std::vector<ToolDefinition>& tools) const {
+  const bool include_build_switch_reminder =
+      config_.build_switch_plan_path.has_value() &&
+      !build_switch_reminder_used_;
+  auto system_prompt =
+      ComposeSystemPrompt(config_, include_build_switch_reminder);
+  if (include_build_switch_reminder) {
+    build_switch_reminder_used_ = true;
+  }
+
   ChatRequest request;
   request.provider_id = config_.provider_id;
   request.model = config_.model;
-  request.messages = WithSystemPrompt(history, config_);
+  request.session_id = config_.chat_session_id;
+  if (config_.provider_id.value == "openai" && !system_prompt.empty()) {
+    request.responses_instructions = system_prompt;
+  }
+  request.messages = WithSystemPrompt(history, std::move(system_prompt));
   request.tools = tools;
   request.temperature = config_.temperature;
   request.stream = true;

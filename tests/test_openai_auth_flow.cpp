@@ -2,15 +2,20 @@
 #include "openai_auth_test_helpers.hpp"
 #include "provider/openai_auth_flow.hpp"
 
+#include <arpa/inet.h>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <curl/curl.h>
 #include <future>
 #include <memory>
 #include <mutex>
+#include <netinet/in.h>
 #include <optional>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -27,8 +32,12 @@ using yac::tests::openai_auth::FakeBrowserLauncher;
 using yac::tests::openai_auth::HttpRequest;
 using yac::tests::openai_auth::HttpResponse;
 using yac::tests::openai_auth::MakeAccountIdJwtLikeToken;
+using yac::tests::openai_auth::MakeFlattenedAccountIdJwtLikeToken;
 using yac::tests::openai_auth::MakeUnsignedJwtLikeToken;
 using yac::tests::openai_auth::TestHttpServer;
+
+constexpr std::string_view kFixedBrowserRedirectUri =
+    "http://localhost:1455/auth/callback";
 
 class MemoryAuthBackend : public IOpenAiAuthBackend {
  public:
@@ -112,7 +121,123 @@ class ThrowingKeychainBackend : public IOpenAiAuthBackend {
   return dependencies;
 }
 
+[[nodiscard]] std::string UrlDecode(std::string_view value) {
+  CURL* curl = curl_easy_init();
+  REQUIRE(curl != nullptr);
+  const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
+  std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
+
+  int output_length = 0;
+  char* decoded = curl_easy_unescape(
+      curl, value.data(), static_cast<int>(value.size()), &output_length);
+  REQUIRE(decoded != nullptr);
+  const auto cleanup_decoded = [](char* data) { curl_free(data); };
+  std::unique_ptr<char, decltype(cleanup_decoded)> decoded_handle(
+      decoded, cleanup_decoded);
+  return std::string(decoded, static_cast<std::size_t>(output_length));
+}
+
+[[nodiscard]] std::optional<std::string> DecodedQueryParam(
+    std::string_view url, std::string_view key) {
+  const std::size_t query_start = url.find('?');
+  if (query_start == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::size_t pos = query_start + 1;
+  while (pos <= url.size()) {
+    const std::size_t amp = url.find('&', pos);
+    const std::string_view segment =
+        url.substr(pos, amp == std::string_view::npos ? std::string_view::npos
+                                                      : amp - pos);
+    const std::size_t equals = segment.find('=');
+    if (equals != std::string_view::npos && segment.substr(0, equals) == key) {
+      return UrlDecode(segment.substr(equals + 1));
+    }
+    if (amp == std::string_view::npos) {
+      break;
+    }
+    pos = amp + 1;
+  }
+  return std::nullopt;
+}
+
+class Port1455Blocker {
+ public:
+  Port1455Blocker() : fd_(socket(AF_INET, SOCK_STREAM, 0)) {
+    REQUIRE(fd_ >= 0);
+    int enable = 1;
+    REQUIRE(setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &enable,
+                       sizeof(enable)) == 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(1455);
+    REQUIRE(bind(fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+    REQUIRE(listen(fd_, 1) == 0);
+  }
+
+  ~Port1455Blocker() {
+    if (fd_ >= 0) {
+      close(fd_);
+    }
+  }
+
+ private:
+  int fd_ = -1;
+};
+
 }  // namespace
+
+TEST_CASE("account_id_extraction_matches_opencode_claim_precedence",
+          "[openai_auth_flow]") {
+  struct Case {
+    std::string payload;
+    std::string expected_account_id;
+  };
+  const std::array<Case, 4> cases = {
+      Case{
+          .payload =
+              R"({"chatgpt_account_id":"acct-top","https://api.openai.com/auth":{"chatgpt_account_id":"acct-nested"},"https://api.openai.com/auth.chatgpt_account_id":"acct-legacy","organizations":[{"id":"org-fallback"}]})",
+          .expected_account_id = "acct-top"},
+      Case{
+          .payload =
+              R"({"https://api.openai.com/auth":{"chatgpt_account_id":"acct-nested"},"https://api.openai.com/auth.chatgpt_account_id":"acct-legacy","organizations":[{"id":"org-fallback"}]})",
+          .expected_account_id = "acct-nested"},
+      Case{
+          .payload =
+              R"({"https://api.openai.com/auth.chatgpt_account_id":"acct-legacy","organizations":[{"id":"org-fallback"}]})",
+          .expected_account_id = "acct-legacy"},
+      Case{.payload = R"({"organizations":[{"id":"org-fallback"}]})",
+           .expected_account_id = "org-fallback"},
+  };
+
+  for (const auto& item : cases) {
+    TestHttpServer server([&item](const HttpRequest&, std::size_t) {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body = std::string(R"({"access_token":")") +
+                  MakeUnsignedJwtLikeToken(item.payload) +
+                  R"(","refresh_token":"refresh-new","expires_in":600})",
+      };
+    });
+    auto dependencies =
+        MakeDependencies(server.Url(""), MakeStore(MakeFileBackend()));
+    dependencies.clock = [] {
+      return std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
+    };
+    OpenAiAuthFlow flow(std::move(dependencies));
+    const OpenAiOAuthAuth auth{
+        .refresh_token = "refresh-old",
+        .access_token = "access-old",
+        .expires_at =
+            std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
+    };
+
+    const OpenAiOAuthAuth refreshed = flow.RefreshIfNeeded(auth);
+    REQUIRE(refreshed.account_id ==
+            std::optional<std::string>{item.expected_account_id});
+  }
+}
 
 TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
           "[openai_auth_flow]") {
@@ -171,8 +296,18 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
                ContainsSubstring("id_token_add_organizations=true"));
   REQUIRE_THAT(notice->authorization_url,
                ContainsSubstring("codex_cli_simplified_flow=true"));
-  REQUIRE_THAT(notice->authorization_url, ContainsSubstring("originator=yac"));
+  REQUIRE_THAT(notice->authorization_url,
+               ContainsSubstring("originator=opencode"));
   REQUIRE_THAT(notice->authorization_url, ContainsSubstring("redirect_uri="));
+  REQUIRE(notice->redirect_uri == kFixedBrowserRedirectUri);
+  REQUIRE(DecodedQueryParam(notice->authorization_url, "redirect_uri") ==
+          std::optional<std::string>{std::string(kFixedBrowserRedirectUri)});
+  REQUIRE(DecodedQueryParam(notice->authorization_url, "originator") ==
+          std::optional<std::string>{"opencode"});
+  REQUIRE(DecodedQueryParam(notice->authorization_url, "client_id") ==
+          std::optional<std::string>{"app_EMoamEEZ73f0CkXaXp7hrann"});
+  REQUIRE(DecodedQueryParam(notice->authorization_url, "response_type") ==
+          std::optional<std::string>{"code"});
 
   CURL* curl = curl_easy_init();
   REQUIRE(curl != nullptr);
@@ -200,7 +335,10 @@ TEST_CASE("browser_flow_builds_pkce_url_and_persists_tokens",
                ContainsSubstring("code_verifier=verifier-123"));
   REQUIRE_THAT(requests[0].body,
                ContainsSubstring("client_id=app_EMoamEEZ73f0CkXaXp7hrann"));
-  REQUIRE_THAT(requests[0].body, ContainsSubstring("redirect_uri="));
+  REQUIRE_THAT(
+      requests[0].body,
+      ContainsSubstring("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2F"
+                        "callback"));
 
   const auto stored = flow.LoadStoredAuth();
   REQUIRE(stored.has_value());
@@ -248,7 +386,9 @@ TEST_CASE("browser_launch_failure_still_reports_url_and_completes",
 
   REQUIRE(notice.has_value());
   REQUIRE_FALSE(notice->browser_launched);
-  REQUIRE_THAT(notice->authorization_url, ContainsSubstring("originator=yac"));
+  REQUIRE(notice->redirect_uri == kFixedBrowserRedirectUri);
+  REQUIRE_THAT(notice->authorization_url,
+               ContainsSubstring("originator=opencode"));
 
   CURL* curl = curl_easy_init();
   REQUIRE(curl != nullptr);
@@ -314,6 +454,219 @@ TEST_CASE("state_mismatch_is_rejected", "[openai_auth_flow]") {
   REQUIRE_THROWS_WITH(worker.get(), ContainsSubstring("state mismatch"));
 }
 
+TEST_CASE("browser_flow_fails_fast_when_fixed_callback_port_is_unavailable",
+          "[openai_auth_flow]") {
+  Port1455Blocker blocker;
+  std::atomic<bool> browser_called{false};
+  TestHttpServer server([](const HttpRequest&, std::size_t) {
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body = R"({"access_token":"access-1"})",
+    };
+  });
+  const auto file_backend = MakeFileBackend();
+  OpenAiAuthFlow flow(MakeDependencies(server.Url(""), MakeStore(file_backend),
+                                       [&browser_called](std::string_view url) {
+                                         (void)url;
+                                         browser_called = true;
+                                         return true;
+                                       }));
+
+  const auto start = std::chrono::steady_clock::now();
+  REQUIRE_THROWS_WITH(
+      flow.RunBrowserAuthorization(),
+      ContainsSubstring("OpenAI OAuth callback port 1455 is unavailable; free "
+                        "the port and retry"));
+  REQUIRE(std::chrono::steady_clock::now() - start < 500ms);
+  REQUIRE_FALSE(browser_called);
+  REQUIRE(server.Requests().empty());
+}
+
+TEST_CASE("device_flow_starts_polls_exchanges_and_persists_tokens",
+          "[openai_auth_flow]") {
+  std::vector<std::chrono::milliseconds> sleeps;
+  TestHttpServer server([](const HttpRequest& request, std::size_t index) {
+    if (request.path == "/api/accounts/deviceauth/usercode") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"device_auth_id":"device-123","user_code":"ABCD-EFGH","interval":2})",
+      };
+    }
+    if (request.path == "/api/accounts/deviceauth/token" && index == 1) {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body = R"({"status":"pending","interval":1})",
+      };
+    }
+    if (request.path == "/api/accounts/deviceauth/token") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"authorization_code":"auth-code-secret","code_verifier":"verifier-secret"})",
+      };
+    }
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body = std::string(R"({"access_token":")") +
+                MakeAccountIdJwtLikeToken("acct-device") +
+                R"(","refresh_token":"refresh-device","expires_in":3600})",
+    };
+  });
+  const auto file_backend = MakeFileBackend();
+  auto dependencies = MakeDependencies(server.Url(""), MakeStore(file_backend));
+  dependencies.sleep_for = [&sleeps](std::chrono::milliseconds duration,
+                                     std::stop_token stop_token) {
+    REQUIRE_FALSE(stop_token.stop_requested());
+    sleeps.push_back(duration);
+    return true;
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+  std::optional<OpenAiDeviceAuthorizationNotice> notice;
+
+  const OpenAiOAuthAuth auth = flow.RunDeviceAuthorization(
+      [&notice](const OpenAiDeviceAuthorizationNotice& current) {
+        notice = current;
+      });
+
+  REQUIRE(notice.has_value());
+  REQUIRE(notice->verification_url == "https://auth.openai.com/codex/device");
+  REQUIRE(notice->user_code == "ABCD-EFGH");
+  REQUIRE(sleeps == std::vector<std::chrono::milliseconds>{5000ms, 4000ms});
+  REQUIRE(auth.refresh_token == "refresh-device");
+  REQUIRE(auth.account_id == std::optional<std::string>{"acct-device"});
+
+  const auto requests = server.Requests();
+  REQUIRE(requests.size() == 4);
+  REQUIRE(requests[0].method == "POST");
+  REQUIRE(requests[0].path == "/api/accounts/deviceauth/usercode");
+  REQUIRE(requests[0].headers.at("User-Agent") == "opencode/0.1.0");
+  REQUIRE(requests[0].body ==
+          R"({"client_id":"app_EMoamEEZ73f0CkXaXp7hrann"})");
+  REQUIRE(requests[1].path == "/api/accounts/deviceauth/token");
+  REQUIRE_THAT(requests[1].body, ContainsSubstring("device-123"));
+  REQUIRE_THAT(requests[1].body, ContainsSubstring("ABCD-EFGH"));
+  REQUIRE(requests[3].path == "/oauth/token");
+  REQUIRE_THAT(requests[3].body,
+               ContainsSubstring("grant_type=authorization_code"));
+  REQUIRE_THAT(requests[3].body, ContainsSubstring("code=auth-code-secret"));
+  REQUIRE_THAT(requests[3].body,
+               ContainsSubstring("code_verifier=verifier-secret"));
+  REQUIRE_THAT(requests[3].body,
+               ContainsSubstring("redirect_uri=https%3A%2F%2Fauth.openai.com%2F"
+                                 "deviceauth%2Fcallback"));
+
+  const auto stored = flow.LoadStoredAuth();
+  REQUIRE(stored.has_value());
+  const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth);
+  REQUIRE(stored_oauth != nullptr);
+  REQUIRE(stored_oauth->refresh_token == "refresh-device");
+}
+
+TEST_CASE("device_flow_denial_and_failed_states_are_actionable",
+          "[openai_auth_flow]") {
+  for (const auto* status : {"denied", "failed"}) {
+    TestHttpServer server([status](const HttpRequest& request, std::size_t) {
+      if (request.path == "/api/accounts/deviceauth/usercode") {
+        return HttpResponse{
+            .headers = {{"Content-Type", "application/json"}},
+            .body =
+                R"({"device_auth_id":"device-123","user_code":"ABCD-EFGH","interval":0})",
+        };
+      }
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body = std::string(R"({"status":")") + status + R"("})"};
+    });
+    auto dependencies =
+        MakeDependencies(server.Url(""), MakeStore(MakeFileBackend()));
+    dependencies.sleep_for = [](std::chrono::milliseconds, std::stop_token) {
+      return true;
+    };
+    OpenAiAuthFlow flow(std::move(dependencies));
+
+    try {
+      static_cast<void>(flow.RunDeviceAuthorization());
+      FAIL("device auth should fail");
+    } catch (const std::exception& error) {
+      const std::string message = error.what();
+      REQUIRE(message.find("OpenAI device auth") != std::string::npos);
+      REQUIRE(message.find("yac auth openai login --device") !=
+              std::string::npos);
+      REQUIRE(message.find("auth-code") == std::string::npos);
+      REQUIRE(message.find("verifier") == std::string::npos);
+    }
+  }
+}
+
+TEST_CASE("device_flow_stop_token_stops_polling", "[openai_auth_flow]") {
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    if (request.path == "/api/accounts/deviceauth/usercode") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"device_auth_id":"device-123","user_code":"ABCD-EFGH","interval":1})",
+      };
+    }
+    return HttpResponse{.headers = {{"Content-Type", "application/json"}},
+                        .body = R"({"status":"pending"})"};
+  });
+  auto dependencies =
+      MakeDependencies(server.Url(""), MakeStore(MakeFileBackend()));
+  dependencies.sleep_for = [](std::chrono::milliseconds, std::stop_token) {
+    return false;
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+
+  REQUIRE_THROWS_WITH(flow.RunDeviceAuthorization(),
+                      ContainsSubstring("stopped before approval"));
+  REQUIRE(server.Requests().size() == 1);
+}
+
+TEST_CASE("device_flow_token_errors_do_not_leak_auth_code_or_verifier",
+          "[openai_auth_flow]") {
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    if (request.path == "/api/accounts/deviceauth/usercode") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"device_auth_id":"device-123","user_code":"ABCD-EFGH","interval":0})",
+      };
+    }
+    if (request.path == "/api/accounts/deviceauth/token") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"authorization_code":"auth-code-secret","code_verifier":"verifier-secret"})",
+      };
+    }
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            R"({"error":"invalid_grant","error_description":"auth-code-secret verifier-secret access-token-secret"})",
+    };
+  });
+  auto dependencies =
+      MakeDependencies(server.Url(""), MakeStore(MakeFileBackend()));
+  dependencies.sleep_for = [](std::chrono::milliseconds, std::stop_token) {
+    return true;
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+
+  try {
+    static_cast<void>(flow.RunDeviceAuthorization());
+    FAIL("device auth should fail");
+  } catch (const std::exception& error) {
+    const std::string message = error.what();
+    REQUIRE(message.find("OpenAI OAuth token request failed") !=
+            std::string::npos);
+    REQUIRE(message.find("auth-code-secret") == std::string::npos);
+    REQUIRE(message.find("verifier-secret") == std::string::npos);
+    REQUIRE(message.find("access-token-secret") == std::string::npos);
+  }
+}
+
 TEST_CASE("refresh_uses_skew_rotates_token_and_persists",
           "[openai_auth_flow]") {
   std::vector<std::chrono::system_clock::time_point> times = {
@@ -325,11 +678,9 @@ TEST_CASE("refresh_uses_skew_rotates_token_and_persists",
   TestHttpServer server([](const HttpRequest&, std::size_t) {
     return HttpResponse{
         .headers = {{"Content-Type", "application/json"}},
-        .body =
-            std::string(R"({"access_token":")") +
-            MakeUnsignedJwtLikeToken(
-                R"({"https://api.openai.com/auth.chatgpt_account_id":"acct-refreshed"})") +
-            R"(","refresh_token":"refresh-rotated","expires_in":600})",
+        .body = std::string(R"({"access_token":")") +
+                MakeFlattenedAccountIdJwtLikeToken("acct-refreshed") +
+                R"(","refresh_token":"refresh-rotated","expires_in":600})",
     };
   });
   const auto file_backend = MakeFileBackend();

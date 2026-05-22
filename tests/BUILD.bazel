@@ -81,7 +81,13 @@ yac_test("yac_test_agents_md_loading", ["test_agents_md_loading.cpp"])
 yac_test("yac_test_chat_event_bridge", ["test_chat_event_bridge.cpp"])
 yac_test("yac_test_chat_event_bridge_mcp", ["test_chat_event_bridge_mcp.cpp"])
 yac_test("yac_test_model_discovery", ["test_model_discovery.cpp"])
-yac_test("yac_test_openai_compatible_chat_provider", ["test_openai_compatible_chat_provider.cpp"])
+yac_test(
+    "yac_test_openai_compatible_chat_provider",
+    [
+        "test_openai_compatible_chat_provider.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+)
 yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
 yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
 yac_test("yac_test_openai_auth_command", ["test_openai_auth_command.cpp"])

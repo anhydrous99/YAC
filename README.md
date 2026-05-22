@@ -27,8 +27,9 @@ The SVG previews show the current chat surface and command palette.
 
 - Streaming assistant responses with status updates, cancellation, and prompt
   queue handling
-- OpenAI provider setup through `OPENAI_API_KEY`, stored provider auth, or
-  browser OAuth, plus OpenAI-compatible configuration for custom endpoints
+- OpenAI provider setup through `OPENAI_API_KEY`, stored provider auth,
+  browser OAuth, or device OAuth, plus OpenAI-compatible configuration for
+  custom endpoints
 - Z.ai Coding API preset with startup model discovery and command-palette model
   switching
 - First-run setup status for provider/model, workspace, API key, and clangd
@@ -184,28 +185,31 @@ OpenAI preset. When only `id` is set, the preset fills in `gpt-4o-mini`,
 `https://api.openai.com/v1/`, and `OPENAI_API_KEY`; explicit `provider.model`,
 `provider.base_url`, or `provider.api_key_env` values keep winning over those
 preset defaults. API-key mode uses the normal OpenAI-compatible chat completions
-endpoint. Browser OAuth mode uses the ChatGPT/Codex Responses endpoint and is
-managed by stored provider auth.
+endpoint. Browser and device OAuth use the ChatGPT/Codex Responses endpoint and
+are managed by stored provider auth.
 
 OpenAI auth commands:
 
 ```bash
 yac auth openai login
+yac auth openai login --device
 printf 'sk-...' | yac auth openai set-api-key --stdin
 yac auth openai status
 yac auth openai logout
 ```
 
-`yac auth openai login` opens the browser OAuth flow. `status` shows the
-configured provider, whether stored auth exists, and the effective auth source
-without printing secrets. `logout` clears stored OpenAI auth. Provider auth is
-stored keychain-first, with file fallback at `~/.yac/provider/auth/openai.json`.
-Set `YAC_OPENAI_AUTH_STORE=file` in headless/CI environments that should skip
-OS keychain probing and use the auth file directly.
-See [docs/openai-auth.md](docs/openai-auth.md) for precedence, storage, and
+`yac auth openai login` opens browser OAuth with the fixed callback
+`http://localhost:1455/auth/callback`. If that port is busy, free it and retry,
+or use `yac auth openai login --device` from a headless shell. The device flow
+prints `https://auth.openai.com/codex/device` and a user code without printing
+tokens or authorization codes. `status` shows the configured provider, whether
+stored auth exists, and the effective auth source without printing secrets.
+`logout` clears stored OpenAI auth. Provider auth is stored keychain-first, with
+file fallback at `~/.yac/provider/auth/openai.json`. Set
+`YAC_OPENAI_AUTH_STORE=file` in headless/CI environments that should skip OS
+keychain probing and use the auth file directly. See
+[docs/openai-auth.md](docs/openai-auth.md) for precedence, storage, and
 troubleshooting.
-
-Unsupported for OpenAI auth: device-code, headless, and non-browser OAuth flows.
 
 Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
 preset. When only `id` is set, the preset fills in `glm-5.1`,
@@ -284,6 +288,19 @@ The command palette filters by case-insensitive substring matching across both
 name and description. It includes `New Chat`, `Clear Messages`,
 `Cancel Response`, and `Help`; `Switch Model` appears when model discovery has
 at least one model.
+
+### Plan Mode
+
+Press `Shift+Tab` in the TUI to switch between Plan and Build. Headless runs can
+start in Plan with `yac run --plan "prompt"`. The first Plan request creates an
+active plan file under `.opencode/plans/*.md`; Plan-mode file writes and edits
+are limited to that file while normal source changes wait for Build.
+
+When the plan is ready, the assistant calls `plan_exit` with the final plan. YAC
+asks for approval, writes the approved plan to the active `.opencode/plans/*.md`
+file, switches to Build on approval, and sends one Build-mode reminder that
+points back to the approved plan. Rejecting the approval leaves the chat in
+Plan.
 
 ## MCP Integration
 

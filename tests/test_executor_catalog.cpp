@@ -3,8 +3,10 @@
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/tool_validation_error.hpp"
 
+#include <algorithm>
 #include <string>
 #include <unordered_set>
+#include <variant>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -149,6 +151,15 @@ TEST_CASE("PrepareToolCall: approval flags match expected values") {
         PrepareToolCall(MakeRequest("todo_write", R"({"todos":[]})"));
     CHECK(prepared.requires_approval == false);
   }
+
+  SECTION("plan_exit requires approval") {
+    auto prepared =
+        PrepareToolCall(MakeRequest("plan_exit", R"({"plan":"# Final plan"})"));
+    CHECK(prepared.requires_approval == true);
+    CHECK(prepared.approval_prompt == "Approve plan and switch to Build mode?");
+    REQUIRE(
+        std::holds_alternative<yac::tool_call::PlanExitCall>(prepared.preview));
+  }
 }
 
 TEST_CASE("PrepareToolCall: unknown tool name throws ToolValidationError") {
@@ -179,4 +190,19 @@ TEST_CASE("PrepareToolCall: missing required args throw ToolValidationError") {
             "lsp_rename", R"({"file_path":"x.cpp","line":1,"character":0})")),
         ToolValidationError);
   }
+}
+
+TEST_CASE(
+    "ToolDefinitions: plan_exit schema has exactly required plan string") {
+  const auto defs = ToolDefinitions();
+  const auto it = std::ranges::find_if(
+      defs, [](const auto& def) { return def.name == "plan_exit"; });
+  REQUIRE(it != defs.end());
+
+  const auto schema = Json::parse(it->parameters_schema_json);
+  REQUIRE(schema["required"].size() == 1);
+  REQUIRE(schema["required"][0] == "plan");
+  REQUIRE(schema["properties"].size() == 1);
+  REQUIRE(schema["properties"].contains("plan"));
+  REQUIRE(schema["properties"]["plan"]["type"] == "string");
 }

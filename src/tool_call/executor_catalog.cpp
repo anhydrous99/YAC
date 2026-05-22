@@ -139,6 +139,16 @@ PreparedToolCall PrepareTodoWriteTool(const chat::ToolCallRequest& request,
                           .requires_approval = false};
 }
 
+PreparedToolCall PreparePlanExitTool(const chat::ToolCallRequest& request,
+                                     const Json& args) {
+  const auto plan = RequireString(args, "plan");
+  return PreparedToolCall{
+      .request = request,
+      .preview = PlanExitCall{.plan = plan},
+      .requires_approval = true,
+      .approval_prompt = "Approve plan and switch to Build mode?"};
+}
+
 PreparedToolCall PrepareAskUserTool(const chat::ToolCallRequest& request,
                                     const Json& args) {
   const auto question = RequireString(args, "question");
@@ -289,6 +299,13 @@ ToolExecutionResult ExecuteBashDispatch(const PreparedToolCall& prepared,
                          ctx.stop);
 }
 
+ToolExecutionResult ExecutePlanExitDispatch(const PreparedToolCall& prepared,
+                                            const ExecutionContext& ctx) {
+  (void)ctx;
+  return ErrorResult(prepared.preview,
+                     "plan_exit requires an active ChatService Plan session.");
+}
+
 ToolExecutionResult ExecuteAskUserDispatch(const PreparedToolCall& prepared,
                                            const ExecutionContext& ctx) {
   const auto* call_ptr = std::get_if<AskUserCall>(&prepared.preview);
@@ -357,6 +374,8 @@ const HandlerRegistry kToolHandlers = {
      {.prepare = &PrepareTodoWriteTool, .execute = &ExecuteTodoWriteDispatch}},
     {kAskUserToolName,
      {.prepare = &PrepareAskUserTool, .execute = &ExecuteAskUserDispatch}},
+    {kPlanExitToolName,
+     {.prepare = &PreparePlanExitTool, .execute = &ExecutePlanExitDispatch}},
     {kBashToolName,
      {.prepare = &PrepareBashTool, .execute = &ExecuteBashDispatch}},
     {kFileEditToolName,
@@ -425,6 +444,11 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
        .description = "Ask the user a question and wait for their response.",
        .parameters_schema_json =
            R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
+      {.name = std::string(kPlanExitToolName),
+       .description = "Request approval for the final Plan-mode plan and "
+                      "switch to Build mode.",
+       .parameters_schema_json =
+           R"({"type":"object","additionalProperties":false,"properties":{"plan":{"type":"string","description":"Final plan in markdown."}},"required":["plan"]})"},
       {.name = std::string(kBashToolName),
        .description =
            "Execute a shell command in the workspace directory. stdout and "

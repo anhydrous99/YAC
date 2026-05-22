@@ -20,9 +20,14 @@ using Catch::Matchers::ContainsSubstring;
 namespace yac::provider::test {
 namespace {
 
+using yac::tests::openai_auth::AssertHeaderAbsent;
+using yac::tests::openai_auth::AssertHeaderEquals;
+using yac::tests::openai_auth::DeterministicSessionId;
+using yac::tests::openai_auth::DynamicModelIdTestVectors;
 using yac::tests::openai_auth::HttpRequest;
 using yac::tests::openai_auth::HttpResponse;
 using yac::tests::openai_auth::MakeAccountIdJwtLikeToken;
+using yac::tests::openai_auth::StaticAcceptedModelIds;
 using yac::tests::openai_auth::TestHttpServer;
 
 class MemoryAuthBackend : public IOpenAiAuthBackend {
@@ -135,6 +140,7 @@ class ScopedEnvVar {
 [[nodiscard]] chat::ChatRequest MakeStreamingRequest() {
   chat::ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
+  request.session_id = DeterministicSessionId();
   request.stream = true;
   request.messages = {
       chat::ChatMessage{.role = chat::ChatRole::User, .content = "hello"}};
@@ -202,6 +208,8 @@ TEST_CASE("stored_api_key_is_used_for_openai_runtime",
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/chat/completions");
     REQUIRE(request.headers.at("Authorization") == "Bearer stored-api-key");
+    REQUIRE_NOTHROW(AssertHeaderAbsent(request, "originator"));
+    REQUIRE_NOTHROW(AssertHeaderAbsent(request, "session_id"));
     return HttpResponse{
         .headers = {{"Content-Type", "text/event-stream"}},
         .body =
@@ -229,10 +237,16 @@ TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
       .account_id = "acct-123"});
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
     REQUIRE(request.path == "/backend-api/codex/responses");
-    REQUIRE(request.headers.at("Authorization") == "Bearer access-stored");
-    REQUIRE(request.headers.at("originator") == "yac");
-    REQUIRE(request.headers.at("User-Agent") == "yac/0.1.0");
-    REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-123");
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "Authorization", "Bearer access-stored"));
+    REQUIRE_NOTHROW(AssertHeaderEquals(request, "originator", "opencode"));
+    REQUIRE_THAT(request.headers.at("User-Agent"),
+                 ContainsSubstring("opencode/0.1.0 ("));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "session_id", DeterministicSessionId()));
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "ChatGPT-Account-Id", "acct-123"));
     return ResponsesStream();
   });
 
@@ -284,9 +298,24 @@ TEST_CASE("oauth_list_models_returns_static_allowlist",
   auto provider =
       MakeProvider("http://127.0.0.1:1", store, "http://127.0.0.1:1");
   const auto models = provider.ListModels(500ms);
-  REQUIRE(models.size() == 6);
-  REQUIRE(models[0].id == "gpt-5.5");
-  REQUIRE(models[5].id == "gpt-5.4-mini");
+  const auto expected_models = StaticAcceptedModelIds();
+  REQUIRE(models.size() == expected_models.size());
+  for (std::size_t index = 0; index < expected_models.size(); ++index) {
+    REQUIRE(models[index].id == expected_models[index]);
+    REQUIRE(OpenAiChatProvider::IsOAuthModelAllowed(expected_models[index]));
+  }
+}
+
+TEST_CASE("oauth_model_filter_matches_opencode_dynamic_versions",
+          "[openai_chat_provider_auth]") {
+  for (const auto& item : DynamicModelIdTestVectors()) {
+    REQUIRE(OpenAiChatProvider::IsOAuthModelAllowed(item.id) == item.accepted);
+  }
+  REQUIRE_FALSE(OpenAiChatProvider::IsOAuthModelAllowed("gpt-5.4-preview"));
+  REQUIRE_FALSE(OpenAiChatProvider::IsOAuthModelAllowed("gpt-5.40-preview"));
+  REQUIRE_FALSE(OpenAiChatProvider::IsOAuthModelAllowed("gpt-5.10-preview"));
+  REQUIRE_FALSE(OpenAiChatProvider::IsOAuthModelAllowed("gpt-"));
+  REQUIRE_FALSE(OpenAiChatProvider::IsOAuthModelAllowed("gpt-5.a"));
 }
 
 TEST_CASE("expired_oauth_refreshes_before_request",
@@ -337,6 +366,8 @@ TEST_CASE("oauth_401_refreshes_once_and_retries_once",
                            std::size_t request_index) {
     if (request.path == "/backend-api/codex/responses" && request_index == 0) {
       REQUIRE(request.headers.at("Authorization") == "Bearer access-old");
+      REQUIRE(request.headers.at("originator") == "opencode");
+      REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
       return HttpResponse{
           .status = 401,
           .headers = {{"Content-Type", "application/json"}},
@@ -353,6 +384,9 @@ TEST_CASE("oauth_401_refreshes_once_and_retries_once",
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request_index == 2);
     REQUIRE(request.headers.at("Authorization") == "Bearer access-new");
+    REQUIRE(request.headers.at("originator") == "opencode");
+    REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
+    REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-old");
     return ResponsesStream("retry-ok");
   });
 

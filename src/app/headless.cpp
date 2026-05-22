@@ -23,9 +23,13 @@
 namespace yac::app {
 
 int RunHeadless(const std::string& prompt, bool auto_approve,
-                int cancel_after_ms) {
+                int cancel_after_ms, bool plan_mode) {
   auto config_result = chat::LoadChatConfigResult();
-  const auto& config = config_result.config;
+  auto config = config_result.config;
+  if (plan_mode) {
+    config.agent_mode = chat::AgentMode::Plan;
+    config.has_entered_plan_mode = true;
+  }
 
   auto provider = MakeLanguageModelProvider(chat::ProviderConfig{
       .id = config.provider_id,

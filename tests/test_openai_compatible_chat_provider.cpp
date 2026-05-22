@@ -1,9 +1,14 @@
+#include "openai_auth_test_helpers.hpp"
 #include "provider/openai_compatible_chat_provider.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
 using namespace yac::provider;
+using yac::tests::openai_auth::AssertHeaderAbsent;
+using yac::tests::openai_auth::HttpRequest;
+using yac::tests::openai_auth::HttpResponse;
+using yac::tests::openai_auth::TestHttpServer;
 
 TEST_CASE("OpenAiCompatibleChatProvider maps neutral roles") {
   REQUIRE(OpenAiCompatibleChatProvider::RoleToOpenAi(ChatRole::System) ==
@@ -91,4 +96,38 @@ TEST_CASE(
   const auto models = OpenAiCompatibleChatProvider::ParseModelsData("{");
 
   REQUIRE(models.empty());
+}
+
+TEST_CASE("OpenAiCompatibleChatProvider omits Codex OAuth affinity headers") {
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    REQUIRE(request.path == "/chat/completions");
+    REQUIRE(request.headers.at("Authorization") == "Bearer test-key");
+    REQUIRE_NOTHROW(AssertHeaderAbsent(request, "originator"));
+    REQUIRE_NOTHROW(AssertHeaderAbsent(request, "session_id"));
+    REQUIRE_NOTHROW(AssertHeaderAbsent(request, "ChatGPT-Account-Id"));
+    return HttpResponse{
+        .headers = {{"Content-Type", "text/event-stream"}},
+        .body = "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n"};
+  });
+
+  ProviderConfig config;
+  config.id = ::yac::ProviderId{"openai-compatible"};
+  config.base_url = server.Url("");
+  config.api_key = "test-key";
+  config.api_key_env = "UNSET_OPENAI_COMPATIBLE_TEST_KEY";
+  OpenAiCompatibleChatProvider provider(config);
+
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-4.1"};
+  request.session_id = "00000000-0000-4000-8000-000000000001";
+  request.messages = {ChatMessage{.role = ChatRole::User, .content = "hello"}};
+
+  std::vector<ChatEvent> events;
+  provider.CompleteStream(
+      request,
+      [&events](ChatEvent event) { events.push_back(std::move(event)); }, {});
+
+  REQUIRE(server.Requests().size() == 1);
+  REQUIRE_FALSE(events.empty());
+  REQUIRE(events[0].Type() == ChatEventType::TextDelta);
 }

@@ -2,14 +2,25 @@
 
 #include "mcp/json_helpers.hpp"
 #include "mcp/oauth/browser_launcher.hpp"
-#include "mcp/oauth/loopback_callback.hpp"
 #include "mcp/oauth/pkce.hpp"
 
+#include <algorithm>
+#include <arpa/inet.h>
+#include <array>
+#include <cerrno>
+#include <cstring>
 #include <curl/curl.h>
 #include <memory>
+#include <netinet/in.h>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <string>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -20,14 +31,229 @@ using Json = nlohmann::json;
 
 constexpr std::string_view kAuthorizePath = "/oauth/authorize";
 constexpr std::string_view kTokenPath = "/oauth/token";
+constexpr std::string_view kDeviceStartPath =
+    "/api/accounts/deviceauth/usercode";
+constexpr std::string_view kDeviceTokenPath = "/api/accounts/deviceauth/token";
 constexpr std::string_view kClientId = "app_EMoamEEZ73f0CkXaXp7hrann";
 constexpr std::string_view kScope = "openid profile email offline_access";
-constexpr std::string_view kOriginator = "yac";
+constexpr std::string_view kOriginator = "opencode";
+constexpr std::string_view kBrowserRedirectUri =
+    "http://localhost:1455/auth/callback";
+constexpr std::string_view kDeviceRedirectUri =
+    "https://auth.openai.com/deviceauth/callback";
+constexpr std::string_view kDeviceVerificationUrl =
+    "https://auth.openai.com/codex/device";
+constexpr unsigned short kBrowserCallbackPort = 1455;
+constexpr std::string_view kCallbackPortUnavailablePrefix =
+    "OpenAI OAuth callback port 1455 is unavailable; free the port and retry "
+    "or run yac auth openai login --device";
 constexpr auto kRefreshSkew = std::chrono::seconds(120);
+constexpr auto kDevicePollSafetyMargin = std::chrono::milliseconds(3000);
+
+#ifndef YAC_VERSION
+#define YAC_VERSION "dev"
+#endif
 
 struct HttpResponse {
   long status_code = 0;
   std::string body;
+};
+
+struct DeviceStartResponse {
+  std::string device_auth_id;
+  std::string user_code;
+  std::chrono::milliseconds interval{0};
+};
+
+struct DevicePollResponse {
+  std::optional<std::string> authorization_code;
+  std::optional<std::string> code_verifier;
+  std::optional<std::string> status;
+  std::optional<std::chrono::milliseconds> interval;
+};
+
+[[nodiscard]] std::string BuildHttpResponse(int status, std::string_view reason,
+                                            std::string_view body) {
+  return std::string("HTTP/1.1 ") + std::to_string(status) + " " +
+         std::string(reason) +
+         "\r\nContent-Type: text/html; charset=utf-8\r\n"
+         "Connection: close\r\nContent-Length: " +
+         std::to_string(body.size()) + "\r\n\r\n" + std::string(body);
+}
+
+[[nodiscard]] std::optional<std::string> ParseQueryParam(std::string_view query,
+                                                         std::string_view key) {
+  std::size_t pos = 0;
+  while (pos <= query.size()) {
+    const std::size_t amp = query.find('&', pos);
+    const std::string_view segment =
+        query.substr(pos, amp == std::string_view::npos ? std::string_view::npos
+                                                        : amp - pos);
+    if (segment.size() > key.size() && segment.starts_with(key) &&
+        segment[key.size()] == '=') {
+      return std::string(segment.substr(key.size() + 1));
+    }
+    if (amp == std::string_view::npos) {
+      break;
+    }
+    pos = amp + 1;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::pair<std::string, std::string>>
+ParseCallbackPath(std::string_view path) {
+  const std::size_t q = path.find('?');
+  if (q == std::string_view::npos) {
+    return std::nullopt;
+  }
+  if (path.substr(0, q) != "/auth/callback") {
+    return std::nullopt;
+  }
+  const std::string_view query = path.substr(q + 1);
+  auto code = ParseQueryParam(query, "code");
+  auto state = ParseQueryParam(query, "state");
+  if (!code.has_value() || !state.has_value()) {
+    return std::nullopt;
+  }
+  return std::make_pair(std::move(*code), std::move(*state));
+}
+
+[[nodiscard]] std::string ParseRequestPath(std::string_view request) {
+  const std::size_t line_end = request.find("\r\n");
+  const std::string_view first_line = request.substr(
+      0, line_end == std::string_view::npos ? request.size() : line_end);
+  const std::size_t sp1 = first_line.find(' ');
+  if (sp1 == std::string_view::npos) {
+    return {};
+  }
+  const std::size_t sp2 = first_line.find(' ', sp1 + 1);
+  if (sp2 == std::string_view::npos) {
+    return std::string(first_line.substr(sp1 + 1));
+  }
+  return std::string(first_line.substr(sp1 + 1, sp2 - sp1 - 1));
+}
+
+class OpenAiFixedLoopbackCallbackServer {
+ public:
+  OpenAiFixedLoopbackCallbackServer()
+      : listen_fd_(socket(AF_INET, SOCK_STREAM, 0)) {
+    if (listen_fd_ < 0) {
+      throw std::runtime_error(std::string(kCallbackPortUnavailablePrefix) +
+                               ": socket() failed");
+    }
+
+    int enable = 1;
+    if (setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &enable,
+                   sizeof(enable)) != 0) {
+      Close();
+      throw std::runtime_error(std::string(kCallbackPortUnavailablePrefix) +
+                               ": setsockopt() failed");
+    }
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(kBrowserCallbackPort);
+
+    if (bind(listen_fd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) !=
+        0) {
+      const std::string reason = std::strerror(errno);
+      Close();
+      throw std::runtime_error(std::string(kCallbackPortUnavailablePrefix) +
+                               ": " + reason);
+    }
+    if (listen(listen_fd_, 1) != 0) {
+      const std::string reason = std::strerror(errno);
+      Close();
+      throw std::runtime_error(std::string(kCallbackPortUnavailablePrefix) +
+                               ": " + reason);
+    }
+  }
+
+  ~OpenAiFixedLoopbackCallbackServer() { Close(); }
+
+  OpenAiFixedLoopbackCallbackServer(const OpenAiFixedLoopbackCallbackServer&) =
+      delete;
+  OpenAiFixedLoopbackCallbackServer& operator=(
+      const OpenAiFixedLoopbackCallbackServer&) = delete;
+  OpenAiFixedLoopbackCallbackServer(OpenAiFixedLoopbackCallbackServer&&) =
+      delete;
+  OpenAiFixedLoopbackCallbackServer& operator=(
+      OpenAiFixedLoopbackCallbackServer&&) = delete;
+
+  [[nodiscard]] std::string RedirectUri() const {
+    return std::string(kBrowserRedirectUri);
+  }
+
+  [[nodiscard]] std::optional<std::pair<std::string, std::string>>
+  RunUntilCallback(std::stop_token stop_token) {
+    while (!stop_token.stop_requested()) {
+      if (listen_fd_ < 0) {
+        return std::nullopt;
+      }
+
+      fd_set read_fds;
+      FD_ZERO(&read_fds);
+      FD_SET(listen_fd_, &read_fds);
+
+      timeval timeout{};
+      timeout.tv_sec = 0;
+      timeout.tv_usec = 100000;
+
+      const int ready =
+          select(listen_fd_ + 1, &read_fds, nullptr, nullptr, &timeout);
+      if (ready < 0) {
+        return std::nullopt;
+      }
+      if (ready == 0) {
+        continue;
+      }
+
+      sockaddr_in client_addr{};
+      socklen_t client_len = sizeof(client_addr);
+      const int client_fd = accept(
+          listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+      if (client_fd < 0) {
+        return std::nullopt;
+      }
+
+      std::string buffer;
+      std::array<char, 4096> chunk{};
+      while (buffer.find("\r\n\r\n") == std::string::npos) {
+        const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
+        if (bytes <= 0) {
+          break;
+        }
+        buffer.append(chunk.data(), static_cast<std::size_t>(bytes));
+      }
+
+      auto result = ParseCallbackPath(ParseRequestPath(buffer));
+      const std::string response =
+          result.has_value()
+              ? BuildHttpResponse(200, "OK",
+                                  "<html><body><h1>Authorization "
+                                  "successful</h1><p>You may close "
+                                  "this tab.</p></body></html>")
+              : BuildHttpResponse(400, "Bad Request", "Invalid callback.\r\n");
+      send(client_fd, response.data(), response.size(), 0);
+      close(client_fd);
+
+      Close();
+      return result;
+    }
+    return std::nullopt;
+  }
+
+ private:
+  void Close() {
+    if (listen_fd_ >= 0) {
+      close(listen_fd_);
+      listen_fd_ = -1;
+    }
+  }
+
+  int listen_fd_ = -1;
 };
 
 [[nodiscard]] std::size_t WriteCallback(char* ptr, std::size_t size,
@@ -80,6 +306,15 @@ struct HttpResponse {
   return stream.str();
 }
 
+[[nodiscard]] std::string BuildJsonBody(
+    const std::vector<std::pair<std::string, std::string>>& fields) {
+  Json json = Json::object();
+  for (const auto& [key, value] : fields) {
+    json[key] = value;
+  }
+  return json.dump();
+}
+
 [[nodiscard]] HttpResponse PostForm(
     std::string_view url,
     const std::vector<std::pair<std::string, std::string>>& form_fields) {
@@ -97,6 +332,52 @@ struct HttpResponse {
   headers = curl_slist_append(
       headers, "Content-Type: application/x-www-form-urlencoded");
   headers = curl_slist_append(headers, "Accept: application/json");
+  const auto cleanup_headers = [](curl_slist* list) {
+    curl_slist_free_all(list);
+  };
+  std::unique_ptr<curl_slist, decltype(cleanup_headers)> header_handle(
+      headers, cleanup_headers);
+
+  const std::string url_string(url);
+  curl_easy_setopt(curl, CURLOPT_URL, url_string.c_str());
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, payload.size());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 30000L);
+
+  const CURLcode result = curl_easy_perform(curl);
+  if (result != CURLE_OK) {
+    throw std::runtime_error(curl_easy_strerror(result));
+  }
+
+  HttpResponse response;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
+  response.body = std::move(response_body);
+  return response;
+}
+
+[[nodiscard]] HttpResponse PostJson(
+    std::string_view url,
+    const std::vector<std::pair<std::string, std::string>>& fields) {
+  CURL* curl = curl_easy_init();
+  if (curl == nullptr) {
+    throw std::runtime_error("curl_easy_init failed");
+  }
+  const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
+  std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
+
+  const std::string payload = BuildJsonBody(fields);
+  std::string response_body;
+
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(headers, "Accept: application/json");
+  const std::string user_agent =
+      std::string("User-Agent: opencode/") + YAC_VERSION;
+  headers = curl_slist_append(headers, user_agent.c_str());
   const auto cleanup_headers = [](curl_slist* list) {
     curl_slist_free_all(list);
   };
@@ -195,6 +476,13 @@ struct HttpResponse {
       it != payload.end() && it->is_string()) {
     return it->get<std::string>();
   }
+  if (const auto claims = payload.find("https://api.openai.com/auth");
+      claims != payload.end() && claims->is_object()) {
+    if (const auto account_id = claims->find("chatgpt_account_id");
+        account_id != claims->end() && account_id->is_string()) {
+      return account_id->get<std::string>();
+    }
+  }
   if (const auto it =
           payload.find("https://api.openai.com/auth.chatgpt_account_id");
       it != payload.end() && it->is_string()) {
@@ -257,14 +545,14 @@ struct HttpResponse {
 
 [[nodiscard]] std::string BuildTokenErrorMessage(long status_code,
                                                  std::string_view body,
-                                                 bool is_refresh) {
+                                                 bool include_description) {
   try {
     const Json json =
         ::yac::mcp::ParseJsonOrThrow(body, "OpenAI OAuth error response");
     const std::string error = json.value("error", std::string());
     const std::string description =
         json.value("error_description", std::string());
-    if (is_refresh && error == "invalid_grant") {
+    if (include_description && error == "invalid_grant") {
       std::string message =
           "OpenAI refresh token was rejected or revoked. Sign in again.";
       if (!description.empty()) {
@@ -277,7 +565,7 @@ struct HttpResponse {
       if (!error.empty()) {
         message += " (" + error + ")";
       }
-      if (!description.empty()) {
+      if (include_description && !description.empty()) {
         message += ": " + description;
       }
       return message;
@@ -289,14 +577,102 @@ struct HttpResponse {
          std::to_string(status_code);
 }
 
+[[nodiscard]] std::string BuildDeviceErrorMessage(long status_code,
+                                                  std::string_view body,
+                                                  std::string_view context) {
+  try {
+    const Json json =
+        ::yac::mcp::ParseJsonOrThrow(body, "OpenAI device auth error response");
+    const std::string error = json.value("error", std::string());
+    if (!error.empty()) {
+      return "OpenAI device auth " + std::string(context) + " failed (" +
+             error + ")";
+    }
+  } catch (const std::exception& error) {
+    (void)error;
+  }
+  return "OpenAI device auth " + std::string(context) +
+         " endpoint returned HTTP " + std::to_string(status_code);
+}
+
 [[nodiscard]] HttpResponse RequestTokens(
     std::string_view token_url,
     const std::vector<std::pair<std::string, std::string>>& fields) {
   const HttpResponse response = PostForm(token_url, fields);
   if (response.status_code >= 400) {
+    const bool is_refresh = fields.front().second == "refresh_token";
+    throw std::runtime_error(BuildTokenErrorMessage(response.status_code,
+                                                    response.body, is_refresh));
+  }
+  return response;
+}
+
+[[nodiscard]] HttpResponse RequestDeviceJson(
+    std::string_view url,
+    const std::vector<std::pair<std::string, std::string>>& fields,
+    std::string_view context) {
+  const HttpResponse response = PostJson(url, fields);
+  if (response.status_code >= 400) {
     throw std::runtime_error(
-        BuildTokenErrorMessage(response.status_code, response.body,
-                               fields.front().second == "refresh_token"));
+        BuildDeviceErrorMessage(response.status_code, response.body, context));
+  }
+  return response;
+}
+
+[[nodiscard]] std::chrono::milliseconds ParseInterval(const Json& json,
+                                                      std::string_view key) {
+  if (const auto it = json.find(std::string(key)); it != json.end()) {
+    if (it->is_number_integer()) {
+      return std::chrono::seconds(it->get<int>());
+    }
+    if (it->is_number_float()) {
+      return std::chrono::milliseconds(
+          static_cast<int>(it->get<double>() * 1000.0));
+    }
+  }
+  return std::chrono::milliseconds(0);
+}
+
+[[nodiscard]] DeviceStartResponse ParseDeviceStartResponse(
+    std::string_view body) {
+  const Json json =
+      ::yac::mcp::ParseJsonOrThrow(body, "OpenAI device auth start response");
+  if (!json.contains("device_auth_id") ||
+      !json.at("device_auth_id").is_string()) {
+    throw std::runtime_error(
+        "OpenAI device auth start response missing device_auth_id");
+  }
+  if (!json.contains("user_code") || !json.at("user_code").is_string()) {
+    throw std::runtime_error(
+        "OpenAI device auth start response missing user_code");
+  }
+  return DeviceStartResponse{
+      .device_auth_id = json.at("device_auth_id").get<std::string>(),
+      .user_code = json.at("user_code").get<std::string>(),
+      .interval = ParseInterval(json, "interval"),
+  };
+}
+
+[[nodiscard]] DevicePollResponse ParseDevicePollResponse(
+    std::string_view body) {
+  const Json json =
+      ::yac::mcp::ParseJsonOrThrow(body, "OpenAI device auth poll response");
+  DevicePollResponse response;
+  if (const auto it = json.find("authorization_code");
+      it != json.end() && it->is_string()) {
+    response.authorization_code = it->get<std::string>();
+  }
+  if (const auto it = json.find("code_verifier");
+      it != json.end() && it->is_string()) {
+    response.code_verifier = it->get<std::string>();
+  }
+  if (const auto it = json.find("status");
+      it != json.end() && it->is_string()) {
+    response.status = it->get<std::string>();
+  }
+  const auto interval = ParseInterval(json, "interval");
+  if (interval.count() > 0) {
+    response.interval = interval;
   }
   return response;
 }
@@ -334,6 +710,20 @@ OpenAiAuthFlow::OpenAiAuthFlow(Dependencies dependencies)
   if (!dependencies_.state_generator) {
     dependencies_.state_generator = yac::mcp::oauth::GenerateCodeVerifier;
   }
+  if (!dependencies_.sleep_for) {
+    dependencies_.sleep_for = [](std::chrono::milliseconds duration,
+                                 std::stop_token stop_token) {
+      const auto deadline = std::chrono::steady_clock::now() + duration;
+      while (!stop_token.stop_requested() &&
+             std::chrono::steady_clock::now() < deadline) {
+        const auto remaining = deadline - std::chrono::steady_clock::now();
+        std::this_thread::sleep_for(std::min<std::chrono::milliseconds>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(remaining),
+            std::chrono::milliseconds(100)));
+      }
+      return !stop_token.stop_requested();
+    };
+  }
   if (!dependencies_.auth_store) {
     dependencies_.auth_store = std::make_shared<OpenAiAuthStore>();
   }
@@ -345,7 +735,7 @@ std::optional<StoredOpenAiAuth> OpenAiAuthFlow::LoadStoredAuth() const {
 
 OpenAiOAuthAuth OpenAiAuthFlow::RunBrowserAuthorization(
     const OpenAiAuthorizationObserver& observer, std::stop_token stop_token) {
-  yac::mcp::oauth::LoopbackCallbackServer server;
+  OpenAiFixedLoopbackCallbackServer server;
   const std::string redirect_uri = server.RedirectUri();
   const std::string code_verifier = dependencies_.code_verifier_generator();
   const std::string code_challenge =
@@ -370,6 +760,64 @@ OpenAiOAuthAuth OpenAiAuthFlow::RunBrowserAuthorization(
   const TokenResponse response =
       ExchangeAuthorizationCode(callback->first, code_verifier, redirect_uri);
   return PersistTokenResponse(OpenAiOAuthAuth{}, response);
+}
+
+OpenAiOAuthAuth OpenAiAuthFlow::RunDeviceAuthorization(
+    const OpenAiDeviceAuthorizationObserver& observer,
+    std::stop_token stop_token) {
+  const HttpResponse start_http =
+      RequestDeviceJson(JoinUrl(dependencies_.issuer_url, kDeviceStartPath),
+                        {{"client_id", std::string(kClientId)}}, "start");
+  const DeviceStartResponse start = ParseDeviceStartResponse(start_http.body);
+
+  if (observer) {
+    observer(OpenAiDeviceAuthorizationNotice{
+        .verification_url = std::string(kDeviceVerificationUrl),
+        .user_code = start.user_code,
+    });
+  }
+
+  std::chrono::milliseconds interval = start.interval;
+  while (!stop_token.stop_requested()) {
+    if (!dependencies_.sleep_for(interval + kDevicePollSafetyMargin,
+                                 stop_token)) {
+      break;
+    }
+    const HttpResponse poll_http =
+        RequestDeviceJson(JoinUrl(dependencies_.issuer_url, kDeviceTokenPath),
+                          {{"device_auth_id", start.device_auth_id},
+                           {"user_code", start.user_code}},
+                          "poll");
+    const DevicePollResponse poll = ParseDevicePollResponse(poll_http.body);
+    if (poll.interval.has_value()) {
+      interval = *poll.interval;
+    }
+    if (poll.authorization_code.has_value() && poll.code_verifier.has_value()) {
+      const TokenResponse response = ExchangeAuthorizationCode(
+          *poll.authorization_code, *poll.code_verifier, kDeviceRedirectUri);
+      return PersistTokenResponse(OpenAiOAuthAuth{}, response);
+    }
+    if (poll.status == "denied" || poll.status == "declined" ||
+        poll.status == "rejected") {
+      throw std::runtime_error(
+          "OpenAI device auth was denied. Run yac auth openai login --device "
+          "again to retry.");
+    }
+    if (poll.status == "failed") {
+      throw std::runtime_error(
+          "OpenAI device auth failed. Run yac auth openai login --device "
+          "again to retry.");
+    }
+    if (poll.status == "expired" || poll.status == "timeout") {
+      throw std::runtime_error(
+          "OpenAI device auth expired before approval. Run yac auth openai "
+          "login --device again to retry.");
+    }
+  }
+
+  throw std::runtime_error(
+      "OpenAI device auth stopped before approval. Run yac auth openai "
+      "login --device again to retry.");
 }
 
 OpenAiOAuthAuth OpenAiAuthFlow::RefreshIfNeeded(const OpenAiOAuthAuth& auth) {

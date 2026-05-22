@@ -37,6 +37,10 @@ class ChatServicePromptProcessor {
   // Both default to no-ops, so existing callers are unaffected.
   using OnUsageReportedFn = std::function<void(const TokenUsage&)>;
   using LastUsageFn = std::function<std::optional<TokenUsage>()>;
+  using OnBuildSwitchReminderUsedFn = std::function<void(std::string)>;
+  using OnPlanExitApprovedFn =
+      std::function<::yac::tool_call::ToolExecutionResult(
+          const ::yac::tool_call::PreparedToolCall&)>;
 
   ChatServicePromptProcessor(
       provider::ProviderRegistry& registry,
@@ -50,7 +54,9 @@ class ChatServicePromptProcessor {
       ModeExcludedToolsFn mode_excluded_tools = {},
       PrepareBuiltInToolCallFn prepare_built_in_tool_call = {},
       ExecuteBuiltInToolCallFn execute_built_in_tool_call = {},
-      OnUsageReportedFn on_usage_reported = {}, LastUsageFn last_usage = {});
+      OnUsageReportedFn on_usage_reported = {}, LastUsageFn last_usage = {},
+      OnBuildSwitchReminderUsedFn on_build_switch_reminder_used = {},
+      OnPlanExitApprovedFn on_plan_exit_approved = {});
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
@@ -153,6 +159,8 @@ class ChatServicePromptProcessor {
   ExecuteBuiltInToolCallFn execute_built_in_tool_call_;
   OnUsageReportedFn on_usage_reported_;
   LastUsageFn last_usage_;
+  OnBuildSwitchReminderUsedFn on_build_switch_reminder_used_;
+  OnPlanExitApprovedFn on_plan_exit_approved_;
 };
 
 }  // namespace yac::chat::internal

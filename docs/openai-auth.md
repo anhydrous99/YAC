@@ -2,7 +2,7 @@
 
 YAC has a dedicated `openai` provider id for OpenAI. It supports the existing
 API-key path and stored OpenAI auth. Stored auth can be either an API key saved
-by YAC or a browser OAuth login.
+by YAC, a browser OAuth login, or a device OAuth login.
 
 Use `openai-compatible` when you want to point YAC at another service that
 speaks the OpenAI chat completions API. That generic provider still uses
@@ -22,8 +22,8 @@ api_key_env = "OPENAI_API_KEY"
 When only `id = "openai"` is set, YAC fills in those defaults. Explicit
 `provider.model`, `provider.base_url`, and `provider.api_key_env` TOML values are
 not overwritten by the preset, and `YAC_*` env overrides still win over TOML.
-API-key mode uses OpenAI-compatible chat completions. Browser OAuth mode uses the
-ChatGPT/Codex Responses endpoint at
+API-key mode uses OpenAI-compatible chat completions. Browser and device OAuth
+use the ChatGPT/Codex Responses endpoint at
 `https://chatgpt.com/backend-api/codex/responses`.
 Set `YAC_API_KEY_ENV` if you need `provider.api_key_env` to name a different
 secret env var.
@@ -37,16 +37,23 @@ stored login wins over `[provider].api_key` in `~/.yac/settings.toml`. Keep
 
 ```bash
 yac auth openai login
+yac auth openai login --device
 printf 'sk-...' | yac auth openai set-api-key --stdin
 yac auth openai status
 yac auth openai logout
 ```
 
-`yac auth openai login` starts the browser OAuth flow. `set-api-key --stdin`
-reads one line from stdin and stores it without asking you to type the secret in
-the TUI. `status` prints the configured provider, stored credential type, and
-effective auth source without showing secrets. `logout` clears stored OpenAI
-auth.
+`yac auth openai login` starts browser OAuth with the fixed callback
+`http://localhost:1455/auth/callback`. `yac auth openai login --device` starts
+the OpenAI device flow for headless shells: it prints
+`https://auth.openai.com/codex/device` and a user code, then waits until OpenAI
+approves or rejects the login. `set-api-key --stdin` reads one line from stdin
+and stores it without asking you to type the secret in the TUI. `status` prints
+the configured provider, stored credential type, and effective auth source
+without showing secrets. `logout` clears stored OpenAI auth.
+
+The device command prints only the verification URL and user code. It does not
+print access tokens, refresh tokens, authorization codes, or PKCE verifiers.
 
 Inside the TUI, `/auth openai login`, `/auth openai status`, and
 `/auth openai logout` call the same OpenAI auth logic. Don't paste API keys into
@@ -55,6 +62,28 @@ the TUI. Use `OPENAI_API_KEY` or run:
 ```bash
 printf 'sk-...' | yac auth openai set-api-key --stdin
 ```
+
+
+## Plan Mode Notes
+
+OpenAI OAuth changes are limited to YAC's Codex-facing protocol behavior. Plan
+mode follows the same observable workflow used for OpenCode-style planning
+without making YAC a full OpenCode clone.
+
+In the TUI, press `Shift+Tab` to move between Plan and Build. In headless mode,
+start planning with:
+
+```bash
+yac run --plan "prompt"
+```
+
+The first Plan request creates the active markdown plan under
+`.opencode/plans/*.md`. Plan-mode writes and edits are limited to that active
+plan file; source changes are reserved for Build. When the plan is ready, the
+assistant calls `plan_exit` with the final plan. Approving that request writes
+the active plan file, switches to Build, and sends one Build-mode reminder that
+references the approved `.opencode/plans/*.md` path. Rejecting the request keeps
+the chat in Plan.
 
 ## Storage
 
@@ -102,7 +131,13 @@ yac auth openai login
 browser.
 
 **Fix:** Copy the printed authorization URL into a browser on the same machine,
-finish the login, and let the browser return to the local callback URL.
+finish the login, and let the browser return to
+`http://localhost:1455/auth/callback`. If port 1455 is unavailable or you are on
+a headless host, run:
+
+```bash
+yac auth openai login --device
+```
 
 ### Safe API-Key Entry Through Stdin
 
@@ -118,8 +153,13 @@ printf 'sk-...' | yac auth openai set-api-key --stdin
 Avoid adding a leading space or extra lines. YAC stores the key through provider
 auth storage and `yac auth openai status` reports only the credential type.
 
-## Unsupported OpenAI Auth Flows
+### Device Login Denied Or Expired
 
-OpenAI device-code, headless, and non-browser OAuth are unsupported and out of
-scope. Use browser OAuth with `yac auth openai login`, an env API key, or the
-stdin API-key command.
+**Symptom:** `yac auth openai login --device` prints a URL and code, then exits
+with a denied, failed, expired, or stopped message.
+
+**Cause:** The code was rejected, expired before approval, or the process was
+stopped while waiting.
+
+**Fix:** Run `yac auth openai login --device` again and approve the newest code
+at `https://auth.openai.com/codex/device`.

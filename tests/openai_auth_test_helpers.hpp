@@ -2,6 +2,7 @@
 
 #include "../src/mcp/token_store.hpp"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -28,6 +29,11 @@ struct HttpResponse {
   std::string body;
 };
 
+struct ModelIdTestVector {
+  std::string id;
+  bool accepted = false;
+};
+
 class TestHttpServer {
  public:
   using Handler = std::function<HttpResponse(const HttpRequest&, std::size_t)>;
@@ -48,7 +54,7 @@ class TestHttpServer {
   static void WriteResponse(int client_fd, const HttpResponse& response);
   void Run(std::stop_token stop_token);
 
-  struct Impl;
+  class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
@@ -85,5 +91,27 @@ class FakeFileTokenStore : public FakeTokenStore {};
 
 [[nodiscard]] std::string MakeAccountIdJwtLikeToken(
     std::string_view account_id);
+
+[[nodiscard]] std::string MakeNestedAccountIdJwtLikeToken(
+    std::string_view account_id);
+
+[[nodiscard]] std::string MakeFlattenedAccountIdJwtLikeToken(
+    std::string_view account_id);
+
+[[nodiscard]] std::string MakeOrganizationFallbackJwtLikeToken(
+    std::string_view organization_id);
+
+[[nodiscard]] std::vector<std::string> StaticAcceptedModelIds();
+
+[[nodiscard]] std::vector<ModelIdTestVector> DynamicModelIdTestVectors();
+
+[[nodiscard]] std::string DeterministicSessionId();
+
+[[nodiscard]] std::chrono::system_clock::time_point DeterministicTestNow();
+
+void AssertHeaderEquals(const HttpRequest& request, std::string_view name,
+                        std::string_view expected_value);
+
+void AssertHeaderAbsent(const HttpRequest& request, std::string_view name);
 
 }  // namespace yac::tests::openai_auth

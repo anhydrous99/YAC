@@ -14,7 +14,8 @@ constexpr std::string_view kUsage =
     "  openai\n"
     "\n"
     "OpenAI subcommands:\n"
-    "  login                 Browser OAuth (no --no-browser support)\n"
+    "  login                 Browser OAuth using localhost:1455 callback\n"
+    "  login --device        Device OAuth for headless shells\n"
     "  set-api-key --stdin   Read one API key line from stdin and store it\n"
     "  status                Show secret-safe auth status\n"
     "  logout                Clear stored OpenAI auth\n"
@@ -49,7 +50,8 @@ int DoOpenAi(int argc, char** argv, ProviderAuthCommand& cmd, std::ostream& out,
 
   const std::string_view subcmd(argv[0]);
   if (subcmd == "login") {
-    if (argc > 1) {
+    const bool device = argc == 2 && std::string_view(argv[1]) == "--device";
+    if (argc > 1 && !device) {
       const std::string_view arg(argv[1]);
       if (!arg.empty() && arg.front() == '-') {
         err << "Error: unknown flag: " << arg << "\n";
@@ -59,6 +61,23 @@ int DoOpenAi(int argc, char** argv, ProviderAuthCommand& cmd, std::ostream& out,
       return 1;
     }
     try {
+      if (device) {
+        bool printed_device_notice = false;
+        const OpenAiLoginResult result = cmd.LoginOpenAiDevice(
+            [&out, &printed_device_notice](
+                const provider::OpenAiDeviceAuthorizationNotice& notice) {
+              out << "Open this URL: " << notice.verification_url << "\n"
+                  << "Enter code: " << notice.user_code << "\n";
+              printed_device_notice = true;
+            });
+        if (!printed_device_notice && result.verification_url.has_value() &&
+            result.user_code.has_value()) {
+          out << "Open this URL: " << *result.verification_url << "\n"
+              << "Enter code: " << *result.user_code << "\n";
+        }
+        out << "Authenticated successfully.\n";
+        return 0;
+      }
       bool printed_fallback_url = false;
       const OpenAiLoginResult result = cmd.LoginOpenAi(
           [&out, &printed_fallback_url](

@@ -395,6 +395,93 @@ TEST_CASE("auth cli prints browser fallback URL before oauth completion",
   REQUIRE(output.find("Authenticated successfully.") != std::string::npos);
 }
 
+TEST_CASE("auth cli device login prints URL and code without secrets",
+          "[yac_auth_cli]") {
+  TempDir tmp("yac_test_auth_cli_device_login");
+  const auto settings_path = tmp.Path() / "settings.toml";
+  WriteFile(settings_path, "[provider]\nid = \"openai\"\n");
+
+  const auto backend = std::make_shared<MemoryAuthBackend>();
+  const auto store = MakeStore(backend);
+  std::ostringstream out;
+  std::ostringstream err;
+  std::vector<std::string> args = {"openai", "login", "--device"};
+  auto argv = Argv(args);
+
+  yac::cli::ProviderAuthCliOptions opts;
+  opts.command_options.settings_path = settings_path;
+  opts.command_options.auth_store = store;
+  opts.command_options.device_login_fn =
+      [](const yac::provider::OpenAiDeviceAuthorizationObserver& observer) {
+        observer(yac::provider::OpenAiDeviceAuthorizationNotice{
+            .verification_url = "https://auth.openai.com/codex/device",
+            .user_code = "ABCD-EFGH",
+        });
+        return yac::provider::OpenAiOAuthAuth{
+            .refresh_token = "refresh-secret",
+            .access_token = "access-secret.jwt.payload",
+        };
+      };
+  opts.out = &out;
+  opts.err = &err;
+
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
+
+  REQUIRE(rc == 0);
+  REQUIRE(err.str().empty());
+  REQUIRE(
+      out.str().find("Open this URL: https://auth.openai.com/codex/device") !=
+      std::string::npos);
+  REQUIRE(out.str().find("Enter code: ABCD-EFGH") != std::string::npos);
+  REQUIRE(out.str().find("Authenticated successfully.") != std::string::npos);
+  REQUIRE(out.str().find("refresh-secret") == std::string::npos);
+  REQUIRE(out.str().find("access-secret") == std::string::npos);
+}
+
+TEST_CASE("auth cli device login failure redacts secret values",
+          "[yac_auth_cli]") {
+  TempDir tmp("yac_test_auth_cli_device_login_failure");
+  const auto settings_path = tmp.Path() / "settings.toml";
+  WriteFile(settings_path, "[provider]\nid = \"openai\"\n");
+
+  std::ostringstream out;
+  std::ostringstream err;
+  std::vector<std::string> args = {"openai", "login", "--device"};
+  auto argv = Argv(args);
+
+  yac::cli::ProviderAuthCliOptions opts;
+  opts.command_options.settings_path = settings_path;
+  opts.command_options.auth_store =
+      MakeStore(std::make_shared<MemoryAuthBackend>());
+  opts.command_options.device_login_fn =
+      [](const yac::provider::OpenAiDeviceAuthorizationObserver& observer)
+      -> yac::provider::OpenAiOAuthAuth {
+    observer(yac::provider::OpenAiDeviceAuthorizationNotice{
+        .verification_url = "https://auth.openai.com/codex/device",
+        .user_code = "ABCD-EFGH",
+    });
+    throw std::runtime_error(
+        "OpenAI device auth failed. Run yac auth openai login --device again");
+  };
+  opts.out = &out;
+  opts.err = &err;
+
+  const int rc = yac::cli::RunProviderAuthCli(static_cast<int>(argv.size()),
+                                              argv.data(), std::move(opts));
+
+  REQUIRE(rc == 2);
+  REQUIRE(out.str().find("https://auth.openai.com/codex/device") !=
+          std::string::npos);
+  REQUIRE(out.str().find("ABCD-EFGH") != std::string::npos);
+  REQUIRE(err.str().find("yac auth openai login --device") !=
+          std::string::npos);
+  REQUIRE(err.str().find("access-token-secret") == std::string::npos);
+  REQUIRE(err.str().find("refresh-token-secret") == std::string::npos);
+  REQUIRE(err.str().find("auth-code-secret") == std::string::npos);
+  REQUIRE(err.str().find("verifier-secret") == std::string::npos);
+}
+
 TEST_CASE("auth cli logout warns when env auth remains effective",
           "[yac_auth_cli]") {
   TempDir tmp("yac_test_auth_cli_logout_warn");
@@ -459,4 +546,22 @@ TEST_CASE("auth cli rejects openai --no-browser login flag", "[yac_auth_cli]") {
   REQUIRE(rc == 1);
   REQUIRE(err.str().find("unknown flag: --no-browser") != std::string::npos);
   REQUIRE_FALSE(login_called);
+}
+
+TEST_CASE("auth cli usage displays device login flag", "[yac_auth_cli]") {
+  std::ostringstream out;
+  std::ostringstream err;
+
+  yac::cli::ProviderAuthCliOptions opts;
+  opts.out = &out;
+  opts.err = &err;
+
+  const int rc = yac::cli::RunProviderAuthCli(0, nullptr, std::move(opts));
+
+  REQUIRE(rc == 0);
+  REQUIRE(out.str().find("login --device") != std::string::npos);
+  REQUIRE(out.str().find("Device OAuth for headless shells") !=
+          std::string::npos);
+  REQUIRE(out.str().find("Unsupported for OpenAI auth") == std::string::npos);
+  REQUIRE(out.str().find("--no-browser") == std::string::npos);
 }

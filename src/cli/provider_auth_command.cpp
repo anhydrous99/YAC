@@ -95,6 +95,14 @@ ProviderAuthCommand::ProviderAuthCommand(Options opts)
           return flow->RunBrowserAuthorization(observer);
         };
   }
+  if (!opts_.device_login_fn) {
+    auto flow = std::make_shared<provider::OpenAiAuthFlow>(
+        provider::OpenAiAuthFlow::Dependencies{.auth_store = auth_store_});
+    opts_.device_login_fn =
+        [flow](const provider::OpenAiDeviceAuthorizationObserver& observer) {
+          return flow->RunDeviceAuthorization(observer);
+        };
+  }
 }
 
 OpenAiLoginResult ProviderAuthCommand::LoginOpenAi(
@@ -106,6 +114,24 @@ OpenAiLoginResult ProviderAuthCommand::LoginOpenAi(
         if (!notice.browser_launched) {
           result.authorization_url = notice.authorization_url;
         }
+        if (observer) {
+          observer(notice);
+        }
+      });
+  if (!auth_store_->Load().has_value()) {
+    static_cast<void>(auth_store_->Save(auth));
+  }
+  return result;
+}
+
+OpenAiLoginResult ProviderAuthCommand::LoginOpenAiDevice(
+    const provider::OpenAiDeviceAuthorizationObserver& observer) {
+  OpenAiLoginResult result;
+  const provider::OpenAiOAuthAuth auth = opts_.device_login_fn(
+      [&result,
+       &observer](const provider::OpenAiDeviceAuthorizationNotice& notice) {
+        result.verification_url = notice.verification_url;
+        result.user_code = notice.user_code;
         if (observer) {
           observer(notice);
         }

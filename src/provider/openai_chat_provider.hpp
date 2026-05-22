@@ -23,6 +23,7 @@ class OpenAiChatProvider : public OpenAiCompatibleChatProvider {
       std::chrono::milliseconds timeout) override;
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override;
+  [[nodiscard]] static bool IsOAuthModelAllowed(std::string_view model_id);
 
  protected:
   [[nodiscard]] std::string ResolveApiKey() const override;

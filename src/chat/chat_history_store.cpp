@@ -1,5 +1,6 @@
 #include "chat/chat_history_store.hpp"
 
+#include "chat/agent_mode.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 
@@ -89,10 +90,11 @@ internal::CompactionOutcome ChatHistoryStore::MaybeAutoCompact(
 void ChatHistoryStore::FilterToolsForAgentMode(
     std::vector<ToolDefinition>& tools,
     const std::set<std::string>& static_excluded,
-    const std::set<std::string>& mode_excluded) {
+    const std::set<std::string>& mode_excluded, AgentMode mode) {
   std::erase_if(tools, [&](const ToolDefinition& definition) {
     return static_excluded.contains(definition.name) ||
-           mode_excluded.contains(definition.name);
+           mode_excluded.contains(definition.name) ||
+           !IsToolAllowedForMode(mode, definition.name);
   });
 }
 

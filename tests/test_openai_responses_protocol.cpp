@@ -12,6 +12,7 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
   ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
   request.temperature = 0.2;
+  request.responses_instructions = "system prompt";
   request.messages = {
       ChatMessage{.role = ChatRole::System, .content = "system prompt"},
       ChatMessage{.role = ChatRole::User, .content = "hello"},
@@ -42,34 +43,51 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
   REQUIRE(payload["stream"].get<bool>());
   REQUIRE_FALSE(payload["store"].get<bool>());
   REQUIRE(payload["temperature"].get<double>() == Catch::Approx(0.2));
-  REQUIRE(payload["input"].size() == 5);
-  REQUIRE(payload["input"][0]["role"].get<std::string>() == "system");
-  REQUIRE(payload["input"][0]["content"].get<std::string>() == "system prompt");
-  REQUIRE(payload["input"][1]["role"].get<std::string>() == "user");
-  REQUIRE(payload["input"][1]["content"][0]["type"].get<std::string>() ==
+  REQUIRE(payload["instructions"].get<std::string>() == "system prompt");
+  REQUIRE(payload["input"].size() == 4);
+  REQUIRE(payload["input"][0]["role"].get<std::string>() == "user");
+  REQUIRE(payload["input"][0]["content"][0]["type"].get<std::string>() ==
           "input_text");
-  REQUIRE(payload["input"][1]["content"][0]["text"].get<std::string>() ==
+  REQUIRE(payload["input"][0]["content"][0]["text"].get<std::string>() ==
           "hello");
-  REQUIRE(payload["input"][2]["role"].get<std::string>() == "assistant");
-  REQUIRE(payload["input"][2]["content"][0]["type"].get<std::string>() ==
+  REQUIRE(payload["input"][1]["role"].get<std::string>() == "assistant");
+  REQUIRE(payload["input"][1]["content"][0]["type"].get<std::string>() ==
           "output_text");
-  REQUIRE(payload["input"][2]["content"][0]["text"].get<std::string>() ==
+  REQUIRE(payload["input"][1]["content"][0]["text"].get<std::string>() ==
           "I will call a tool");
-  REQUIRE(payload["input"][3]["type"].get<std::string>() == "function_call");
-  REQUIRE(payload["input"][3]["call_id"].get<std::string>() == "call-1");
-  REQUIRE(payload["input"][3]["name"].get<std::string>() == "file_read");
-  REQUIRE(payload["input"][3]["arguments"].get<std::string>() ==
+  REQUIRE(payload["input"][2]["type"].get<std::string>() == "function_call");
+  REQUIRE(payload["input"][2]["call_id"].get<std::string>() == "call-1");
+  REQUIRE(payload["input"][2]["name"].get<std::string>() == "file_read");
+  REQUIRE(payload["input"][2]["arguments"].get<std::string>() ==
           R"({"path":"README.md"})");
-  REQUIRE(payload["input"][4]["type"].get<std::string>() ==
+  REQUIRE(payload["input"][3]["type"].get<std::string>() ==
           "function_call_output");
-  REQUIRE(payload["input"][4]["call_id"].get<std::string>() == "call-1");
-  REQUIRE(payload["input"][4]["output"].get<std::string>() ==
+  REQUIRE(payload["input"][3]["call_id"].get<std::string>() == "call-1");
+  REQUIRE(payload["input"][3]["output"].get<std::string>() ==
           R"({"contents":"ok"})");
   REQUIRE(payload["tool_choice"].get<std::string>() == "auto");
   REQUIRE(payload["tools"][0]["type"].get<std::string>() == "function");
   REQUIRE(payload["tools"][0]["name"].get<std::string>() == "file_read");
   REQUIRE(payload["tools"][0]["parameters"]["type"].get<std::string>() ==
           "object");
+}
+
+TEST_CASE("BuildResponsesPayload preserves system input without instructions") {
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-5.4"};
+  request.messages = {
+      ChatMessage{.role = ChatRole::System, .content = "system prompt"},
+      ChatMessage{.role = ChatRole::User, .content = "hello"},
+  };
+
+  ProviderConfig config;
+  const auto payload =
+      openai_responses_protocol::BuildResponsesPayload(request, config);
+
+  REQUIRE_FALSE(payload.contains("instructions"));
+  REQUIRE(payload["input"].size() == 2);
+  REQUIRE(payload["input"][0]["role"].get<std::string>() == "system");
+  REQUIRE(payload["input"][0]["content"].get<std::string>() == "system prompt");
 }
 
 TEST_CASE(

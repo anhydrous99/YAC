@@ -2,6 +2,7 @@
 
 #include "chat/chat_service_compactor.hpp"
 #include "chat/types.hpp"
+#include "core_types/agent_mode.hpp"
 #include "provider/language_model_provider.hpp"
 #include "tool_call/executor.hpp"
 
@@ -111,7 +112,7 @@ class ChatHistoryStore {
   static void FilterToolsForAgentMode(
       std::vector<ToolDefinition>& tools,
       const std::set<std::string>& static_excluded,
-      const std::set<std::string>& mode_excluded);
+      const std::set<std::string>& mode_excluded, AgentMode mode);
 
  private:
   std::mutex* history_mutex_;

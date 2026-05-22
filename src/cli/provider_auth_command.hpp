@@ -27,12 +27,16 @@ struct ProviderAuthStatusSummary {
 struct OpenAiLoginResult {
   bool browser_launched = true;
   std::optional<std::string> authorization_url;
+  std::optional<std::string> verification_url;
+  std::optional<std::string> user_code;
 };
 
 class ProviderAuthCommand {
  public:
   using LoginFn = std::function<provider::OpenAiOAuthAuth(
       const provider::OpenAiAuthorizationObserver&)>;
+  using DeviceLoginFn = std::function<provider::OpenAiOAuthAuth(
+      const provider::OpenAiDeviceAuthorizationObserver&)>;
   using EnvLookupFn =
       std::function<std::optional<std::string>(std::string_view)>;
   using LoadConfigFn =
@@ -42,6 +46,7 @@ class ProviderAuthCommand {
     std::filesystem::path settings_path;
     std::shared_ptr<provider::OpenAiAuthStore> auth_store;
     LoginFn login_fn;
+    DeviceLoginFn device_login_fn;
     EnvLookupFn env_lookup;
     LoadConfigFn load_config;
     std::istream* in = nullptr;
@@ -52,6 +57,8 @@ class ProviderAuthCommand {
 
   [[nodiscard]] OpenAiLoginResult LoginOpenAi(
       const provider::OpenAiAuthorizationObserver& observer = {});
+  [[nodiscard]] OpenAiLoginResult LoginOpenAiDevice(
+      const provider::OpenAiDeviceAuthorizationObserver& observer = {});
   [[nodiscard]] provider::OpenAiAuthStorageSource SetOpenAiApiKeyFromStdin();
   [[nodiscard]] ProviderAuthStatusSummary GetOpenAiStatus() const;
   [[nodiscard]] ProviderAuthStatusSummary LogoutOpenAi();

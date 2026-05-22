@@ -36,13 +36,13 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # OpenAI auth options when provider.id = "openai":
 # - Use OPENAI_API_KEY for the highest-priority API-key path.
 # - Run `yac auth openai login` for browser OAuth.
+# - Run `yac auth openai login --device` for device OAuth in headless shells.
 # - Run `yac auth openai status` to see the effective source.
 # - Run `yac auth openai logout` to clear stored OpenAI auth.
 # Stored OpenAI auth is keychain-first, with file fallback at
 # ~/.yac/provider/auth/openai.json.
 # Set YAC_OPENAI_AUTH_STORE=file to skip keychain probing in headless/CI
 # environments.
-# Unsupported for OpenAI auth: device-code, headless, and non-browser OAuth flows.
 
 # OpenAI provider opt-in example.
 # [provider]

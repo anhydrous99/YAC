@@ -26,6 +26,7 @@ inline constexpr std::string_view kBashToolName = "bash";
 inline constexpr std::string_view kFileEditToolName = "file_edit";
 inline constexpr std::string_view kGrepToolName = "grep";
 inline constexpr std::string_view kGlobToolName = "glob";
+inline constexpr std::string_view kPlanExitToolName = "plan_exit";
 inline constexpr std::string_view kMcpToolNamePrefix = "mcp_";
 inline constexpr std::string_view kMcpToolNameSeparator = "__";
 
@@ -235,6 +236,14 @@ struct AskUserCall {
   std::string error;
 };
 
+struct PlanExitCall {
+  std::string plan;
+  std::string plan_path;
+  bool approved{};
+  bool is_error{};
+  std::string error;
+};
+
 enum class McpResultBlockKind {
   Text,
   Image,
@@ -272,7 +281,7 @@ using ToolCallBlock =
                  ListDirCall, GrepCall, GlobCall, WebFetchCall, WebSearchCall,
                  LspDiagnosticsCall, LspReferencesCall, LspGotoDefinitionCall,
                  LspRenameCall, LspSymbolsCall, SubAgentCall, TodoWriteCall,
-                 AskUserCall, McpToolCall>;
+                 AskUserCall, PlanExitCall, McpToolCall>;
 
 namespace core_types {
 

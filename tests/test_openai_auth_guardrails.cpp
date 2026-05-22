@@ -32,13 +32,6 @@ bool Contains(std::string_view haystack, std::string_view needle) {
   return haystack.find(needle) != std::string_view::npos;
 }
 
-bool HasAnyUnsupportedMarker(std::string_view line) {
-  return Contains(line, "unsupported") || Contains(line, "out of scope") ||
-         Contains(line, "Unsupported") || Contains(line, "Out of scope") ||
-         Contains(line, "out-of-scope") || Contains(line, "not implemented") ||
-         Contains(line, "exclude") || Contains(line, "MUST NOT");
-}
-
 bool IsPathOrSuffix(std::string_view path, std::string_view suffix) {
   if (path == suffix) {
     return true;
@@ -49,39 +42,8 @@ bool IsPathOrSuffix(std::string_view path, std::string_view suffix) {
   return path[path.size() - suffix.size() - 1] == '/';
 }
 
-bool IsDocumentationPath(std::string_view path) {
-  return IsPathOrSuffix(path, "README.md") ||
-         IsPathOrSuffix(path, "settings.example.toml") ||
-         IsPathOrSuffix(path, "src/chat/settings_toml_template.hpp") ||
-         path.starts_with("docs/") || Contains(path, "/docs/");
-}
-
 bool IsGuardrailTest(std::string_view path) {
   return IsPathOrSuffix(path, "tests/test_openai_auth_guardrails.cpp");
-}
-
-bool IsAllowedForbiddenTokenMatch(const Match& match) {
-  if (IsGuardrailTest(match.path)) {
-    return true;
-  }
-  return IsDocumentationPath(match.path) && HasAnyUnsupportedMarker(match.line);
-}
-
-bool IsSuspiciousOpenAiHeadlessLine(std::string_view line) {
-  return Contains(line, "headless") &&
-         (Contains(line, "OpenAI") || Contains(line, "openai") ||
-          Contains(line, "OAuth") || Contains(line, "oauth") ||
-          Contains(line, "device") || Contains(line, "auth"));
-}
-
-bool IsAllowedHeadlessMatch(const Match& match) {
-  if (IsGuardrailTest(match.path)) {
-    return true;
-  }
-  if (!IsSuspiciousOpenAiHeadlessLine(match.line)) {
-    return true;
-  }
-  return IsDocumentationPath(match.path) && HasAnyUnsupportedMarker(match.line);
 }
 
 std::vector<Match> ScanForTokens(
@@ -153,18 +115,17 @@ std::string DescribeMatches(const std::vector<Match>& matches) {
 
 }  // namespace
 
-TEST_CASE("OpenAI auth has no device auth implementation tokens",
+TEST_CASE("MCP OAuth implementation has no OpenAI Codex protocol tokens",
           "[openai_auth_guardrails]") {
   const std::filesystem::path root = YAC_PROJECT_ROOT;
-  const std::vector<std::filesystem::path> scan_roots = {
-      "src", "tests", "README.md", "docs", "settings.example.toml"};
+  const std::vector<std::filesystem::path> scan_roots = {"src/mcp"};
   const std::vector<std::string_view> tokens = {
-      "deviceauth", "device_code", "device/code", "device_authorization"};
+      "OpenAI", "openai", "Codex", "codex", "ChatGPT-Account-Id", "originator"};
 
   const auto matches = ScanForTokens(root, scan_roots, tokens);
   std::vector<Match> violations;
   for (const auto& match : matches) {
-    if (!IsAllowedForbiddenTokenMatch(match)) {
+    if (!IsGuardrailTest(match.path)) {
       violations.push_back(match);
     }
   }
@@ -173,17 +134,21 @@ TEST_CASE("OpenAI auth has no device auth implementation tokens",
   REQUIRE(violations.empty());
 }
 
-TEST_CASE("OpenAI auth has no headless auth support references",
+TEST_CASE("OpenAI API-key provider path has no Codex OAuth headers",
           "[openai_auth_guardrails]") {
   const std::filesystem::path root = YAC_PROJECT_ROOT;
   const std::vector<std::filesystem::path> scan_roots = {
-      "src", "tests", "README.md", "docs", "settings.example.toml"};
-  const std::vector<std::string_view> tokens = {"headless"};
+      "src/provider/openai_compatible_chat_provider.cpp",
+      "src/provider/openai_compatible_chat_provider.hpp",
+      "src/provider/openai_compatible_chat_protocol.cpp",
+      "src/provider/openai_compatible_chat_protocol.hpp"};
+  const std::vector<std::string_view> tokens = {
+      "ChatGPT-Account-Id", "originator:", "/backend-api/codex", "session_id:"};
 
   const auto matches = ScanForTokens(root, scan_roots, tokens);
   std::vector<Match> violations;
   for (const auto& match : matches) {
-    if (!IsAllowedHeadlessMatch(match)) {
+    if (!IsGuardrailTest(match.path)) {
       violations.push_back(match);
     }
   }

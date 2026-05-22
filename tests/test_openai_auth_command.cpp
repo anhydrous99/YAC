@@ -207,6 +207,52 @@ TEST_CASE("openai login surfaces flow failure", "[openai_auth_command]") {
   REQUIRE_FALSE(store->Load().has_value());
 }
 
+TEST_CASE("openai device login stores oauth auth and exposes user code",
+          "[openai_auth_command]") {
+  TempDir tmp("yac_test_openai_auth_command_device_login");
+  const auto settings_path = tmp.Path() / "settings.toml";
+  WriteFile(settings_path, "[provider]\nid = \"openai-compatible\"\n");
+
+  const auto backend = std::make_shared<MemoryAuthBackend>();
+  const auto store = MakeStore(backend);
+  bool called = false;
+  yac::cli::ProviderAuthCommand cmd({
+      .settings_path = settings_path,
+      .auth_store = store,
+      .device_login_fn =
+          [&called](const yac::provider::OpenAiDeviceAuthorizationObserver&
+                        observer) {
+            called = true;
+            observer(yac::provider::OpenAiDeviceAuthorizationNotice{
+                .verification_url = "https://auth.openai.com/codex/device",
+                .user_code = "ABCD-EFGH",
+            });
+            return yac::provider::OpenAiOAuthAuth{
+                .refresh_token = "refresh-token",
+                .access_token = "access-token",
+                .expires_at =
+                    std::chrono::system_clock::time_point{
+                        std::chrono::seconds{4102444800}},
+                .account_id = std::string("acct-123"),
+            };
+          },
+  });
+
+  const auto result = cmd.LoginOpenAiDevice();
+
+  REQUIRE(called);
+  REQUIRE(result.verification_url ==
+          std::optional<std::string>{"https://auth.openai.com/codex/device"});
+  REQUIRE(result.user_code == std::optional<std::string>{"ABCD-EFGH"});
+  const auto stored = store->Load();
+  REQUIRE(stored.has_value());
+  const auto* oauth =
+      std::get_if<yac::provider::OpenAiOAuthAuth>(&stored->auth);
+  REQUIRE(oauth != nullptr);
+  REQUIRE(oauth->refresh_token == "refresh-token");
+  REQUIRE(oauth->account_id == std::optional<std::string>{"acct-123"});
+}
+
 TEST_CASE("set api key reads one line and stores api auth",
           "[openai_auth_command]") {
   TempDir tmp("yac_test_openai_auth_command_api");

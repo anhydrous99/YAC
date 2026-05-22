@@ -403,6 +403,23 @@ TEST_CASE("default settings TOML template matches registry-documented settings")
   RequireNoDocIssues(issues);
 }
 
+TEST_CASE("OpenAI auth settings templates describe device login") {
+  constexpr std::string_view kStaleUnsupportedOpenAiAuth =
+      "Unsupported for OpenAI auth: device-code, headless, and non-browser "
+      "OAuth flows.";
+  const std::string settings_example =
+      ReadFile(YAC_STRINGIFY(SETTINGS_EXAMPLE_TOML_PATH));
+
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(kStaleUnsupportedOpenAiAuth) ==
+          std::string_view::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              "yac auth openai login --device") != std::string_view::npos);
+  REQUIRE(settings_example.find(kStaleUnsupportedOpenAiAuth) ==
+          std::string::npos);
+  REQUIRE(settings_example.find("yac auth openai login --device") !=
+          std::string::npos);
+}
+
 TEST_CASE("MCP docs match registry-documented settings") {
   const auto tokens = ExtractDocTokens(ReadFile(YAC_STRINGIFY(MCP_DOCS_PATH)));
   const auto issues = ValidateDocTokens(
@@ -420,6 +437,24 @@ TEST_CASE("OpenAI auth docs match registry-documented settings") {
       &yac::chat::SettingsDocExpectation::openai_auth_docs);
 
   RequireNoDocIssues(issues);
+}
+
+
+TEST_CASE("OpenAI auth and Plan docs describe Task 11 behavior") {
+  const std::string readme = ReadFile(YAC_STRINGIFY(README_MD_PATH));
+  const std::string openai_docs = ReadFile(YAC_STRINGIFY(OPENAI_AUTH_DOCS_PATH));
+  const std::string combined = readme + openai_docs;
+
+  for (const auto* text : {&readme, &openai_docs}) {
+    REQUIRE(text->find("http://localhost:1455/auth/callback") !=
+            std::string::npos);
+    REQUIRE(text->find("yac auth openai login --device") !=
+            std::string::npos);
+    REQUIRE(text->find(".opencode/plans/") != std::string::npos);
+  }
+  REQUIRE(combined.find("Unsupported for OpenAI auth: device-code, headless, "
+                        "and non-browser OAuth flows.") == std::string::npos);
+  REQUIRE(combined.find("plan_exit") != std::string::npos);
 }
 
 TEST_CASE("provider preset prose stays within registered docs tokens") {

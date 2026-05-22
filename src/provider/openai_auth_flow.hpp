@@ -22,6 +22,14 @@ struct OpenAiAuthorizationNotice {
 using OpenAiAuthorizationObserver =
     std::function<void(const OpenAiAuthorizationNotice&)>;
 
+struct OpenAiDeviceAuthorizationNotice {
+  std::string verification_url;
+  std::string user_code;
+};
+
+using OpenAiDeviceAuthorizationObserver =
+    std::function<void(const OpenAiDeviceAuthorizationNotice&)>;
+
 class OpenAiAuthFlow {
  public:
   struct TokenResponse {
@@ -38,6 +46,7 @@ class OpenAiAuthFlow {
     std::function<std::string()> code_verifier_generator;
     std::function<std::string(std::string_view)> code_challenge_deriver;
     std::function<std::string()> state_generator;
+    std::function<bool(std::chrono::milliseconds, std::stop_token)> sleep_for;
     std::shared_ptr<OpenAiAuthStore> auth_store;
   };
 
@@ -47,6 +56,9 @@ class OpenAiAuthFlow {
   [[nodiscard]] std::optional<StoredOpenAiAuth> LoadStoredAuth() const;
   [[nodiscard]] OpenAiOAuthAuth RunBrowserAuthorization(
       const OpenAiAuthorizationObserver& observer = {},
+      std::stop_token stop_token = {});
+  [[nodiscard]] OpenAiOAuthAuth RunDeviceAuthorization(
+      const OpenAiDeviceAuthorizationObserver& observer = {},
       std::stop_token stop_token = {});
   [[nodiscard]] OpenAiOAuthAuth RefreshIfNeeded(const OpenAiOAuthAuth& auth);
   [[nodiscard]] OpenAiOAuthAuth Refresh(const OpenAiOAuthAuth& auth);

@@ -2,16 +2,23 @@
 
 #include "provider/openai_responses_protocol.hpp"
 
+#include <array>
 #include <cstdlib>
 #include <curl/curl.h>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <regex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/utsname.h>
+#endif
 
 namespace yac::provider {
 namespace {
@@ -105,6 +112,31 @@ struct OAuthWriteState {
          openai_responses_protocol::ResponsesPath();
 }
 
+[[nodiscard]] std::string PlatformDescription() {
+#ifdef _WIN32
+  SYSTEM_INFO info;
+  GetNativeSystemInfo(&info);
+  std::string arch = "unknown";
+  if (info.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
+    arch = "x86_64";
+  } else if (info.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64) {
+    arch = "arm64";
+  }
+  return "Windows unknown; " + arch;
+#else
+  utsname info{};
+  if (uname(&info) != 0) {
+    return "unknown unknown; unknown";
+  }
+  return std::string(info.sysname) + " " + info.release + "; " + info.machine;
+#endif
+}
+
+[[nodiscard]] std::string RuntimeUserAgent() {
+  return std::string("opencode/") + YAC_VERSION + " (" + PlatformDescription() +
+         ")";
+}
+
 [[nodiscard]] std::string ParseErrorMessage(std::string_view body) {
   if (body.empty()) {
     return {};
@@ -194,9 +226,13 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
   headers = curl_slist_append(headers, "Accept: text/event-stream");
   const auto auth_header = "Authorization: Bearer " + auth.access_token;
   headers = curl_slist_append(headers, auth_header.c_str());
-  headers = curl_slist_append(headers, "originator: yac");
-  const auto user_agent = std::string("User-Agent: yac/") + YAC_VERSION;
+  headers = curl_slist_append(headers, "originator: opencode");
+  const auto user_agent = "User-Agent: " + RuntimeUserAgent();
   headers = curl_slist_append(headers, user_agent.c_str());
+  if (request.session_id.has_value() && !request.session_id->empty()) {
+    const auto session_header = "session_id: " + *request.session_id;
+    headers = curl_slist_append(headers, session_header.c_str());
+  }
   if (auth.account_id.has_value() && !auth.account_id->empty()) {
     const auto account_header = "ChatGPT-Account-Id: " + *auth.account_id;
     headers = curl_slist_append(headers, account_header.c_str());
@@ -251,6 +287,31 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
 }
 
 }  // namespace
+
+bool OpenAiChatProvider::IsOAuthModelAllowed(std::string_view model_id) {
+  static constexpr std::array<std::string_view, 6> kStaticModels = {
+      "gpt-5.5", "gpt-5.2",     "gpt-5.3-codex", "gpt-5.3-codex-spark",
+      "gpt-5.4", "gpt-5.4-mini"};
+  for (const std::string_view static_model : kStaticModels) {
+    if (model_id == static_model) {
+      return true;
+    }
+  }
+
+  static const std::regex dynamic_model_regex(R"(^gpt-(\d+\.\d+))");
+  std::cmatch match;
+  const char* begin = model_id.data();
+  const char* end = begin + model_id.size();
+  if (!std::regex_search(begin, end, match, dynamic_model_regex)) {
+    return false;
+  }
+  try {
+    return std::stod(match[1].str()) > 5.4;
+  } catch (const std::exception& error) {
+    (void)error;
+    return false;
+  }
+}
 
 OpenAiChatProvider::OpenAiChatProvider(chat::ProviderConfig config)
     : OpenAiChatProvider(std::move(config), Dependencies{}) {}

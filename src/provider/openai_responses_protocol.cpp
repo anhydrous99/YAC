@@ -285,6 +285,9 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
   Json input = Json::array();
   for (const auto& message : request.messages) {
     if (message.role == chat::ChatRole::System) {
+      if (request.responses_instructions.has_value()) {
+        continue;
+      }
       input.push_back({{"role", "system"}, {"content", message.content}});
       continue;
     }
@@ -323,6 +326,10 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
                {"stream", true},
                {"temperature", request.temperature},
                {"store", false}};
+
+  if (request.responses_instructions.has_value()) {
+    payload["instructions"] = *request.responses_instructions;
+  }
 
   if (!request.tools.empty()) {
     Json tools = Json::array();

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -53,6 +54,10 @@ class ChatService {
   void ResolveToolApproval(ApprovalId approval_id, bool approved);
   void ResolveAskUser(const ApprovalId& approval_id, std::string response);
   [[nodiscard]] AgentMode GetAgentMode() const;
+  [[nodiscard]] bool HasEnteredPlanMode() const;
+  [[nodiscard]] std::optional<std::filesystem::path> ActivePlanPath() const;
+  void QueueBuildSwitchReminderForTest(std::filesystem::path plan_path);
+  [[nodiscard]] bool HasQueuedBuildSwitchReminderForTest() const;
   void SetAgentMode(AgentMode mode);
   void ResetConversation();
   void CompactConversation(decltype(sizeof(0)) keep_last = 10);
@@ -72,6 +77,9 @@ class ChatService {
   // on the worker for. Default is 2 seconds; tests use a shorter value
   // to keep slow-provider scenarios fast. Must be a positive duration.
   void SetResetDrainBudgetForTest(std::chrono::milliseconds budget);
+  void SetPlanClockForTest(
+      std::function<std::chrono::system_clock::time_point()> clock);
+  void SetSessionIdGeneratorForTest(std::function<std::string()> generator);
 
  private:
   struct PendingPrompt {
@@ -85,6 +93,11 @@ class ChatService {
   [[nodiscard]] ChatMessageId NextMessageId();
   [[nodiscard]] ChatConfig ConfigSnapshot() const;
   void InjectSubAgentContinuation(std::string body);
+  [[nodiscard]] ::yac::tool_call::ToolExecutionResult ApplyApprovedPlanExit(
+      const ::yac::tool_call::PreparedToolCall& prepared);
+  void EnsurePlanSessionLocked(const std::string& first_user_prompt);
+  void EnsureChatSessionIdLocked();
+  [[nodiscard]] std::string GenerateChatSessionId();
 
   static constexpr const char* kSubAgentRoleLabel = "Sub-agent";
 
@@ -105,6 +118,8 @@ class ChatService {
   std::deque<PendingPrompt> pending_;
   std::optional<TokenUsage> last_usage_;
   ChatEventCallback callback_;
+  std::function<std::chrono::system_clock::time_point()> plan_clock_;
+  std::function<std::string()> session_id_generator_;
 
   std::atomic<uint64_t> generation_{0};
   std::atomic<ChatMessageId> next_id_{1};

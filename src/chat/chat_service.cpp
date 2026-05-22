@@ -4,12 +4,100 @@
 #include "chat/chat_history_store.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"
+#include "tool_call/executor_arguments.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
+#include <random>
+#include <sstream>
 #include <utility>
 
 namespace yac::chat {
+
+namespace {
+
+constexpr std::size_t kMaxPlanSlugLength = 40;
+
+std::string SlugForPlanPrompt(const std::string& prompt) {
+  std::string slug;
+  bool pending_separator = false;
+  for (unsigned char ch : prompt) {
+    if (std::isalnum(ch) != 0) {
+      if (pending_separator && !slug.empty() &&
+          slug.size() < kMaxPlanSlugLength) {
+        slug.push_back('-');
+      }
+      pending_separator = false;
+      if (slug.size() < kMaxPlanSlugLength) {
+        slug.push_back(static_cast<char>(std::tolower(ch)));
+      }
+    } else {
+      pending_separator = true;
+    }
+    if (slug.size() == kMaxPlanSlugLength) {
+      break;
+    }
+  }
+  while (!slug.empty() && slug.back() == '-') {
+    slug.pop_back();
+  }
+  if (slug.empty()) {
+    return "plan";
+  }
+  return slug;
+}
+
+std::string FormatPlanTimestamp(std::chrono::system_clock::time_point time) {
+  const auto raw_time = std::chrono::system_clock::to_time_t(time);
+  std::tm tm{};
+#ifdef _WIN32
+  localtime_s(&tm, &raw_time);
+#else
+  localtime_r(&raw_time, &tm);
+#endif
+  std::ostringstream out;
+  out << std::put_time(&tm, "%Y%m%d-%H%M%S");
+  return out.str();
+}
+
+bool IsInsideWorkspace(const std::filesystem::path& workspace,
+                       const std::filesystem::path& path) {
+  const auto normal_workspace =
+      std::filesystem::absolute(workspace).lexically_normal();
+  const auto normal_path = std::filesystem::absolute(path).lexically_normal();
+  const auto relative = normal_path.lexically_relative(normal_workspace);
+  return !relative.empty() && *relative.begin() != "..";
+}
+
+std::string GenerateUuidV4() {
+  std::array<unsigned char, 16> bytes{};
+  std::random_device random;
+  for (auto& byte : bytes) {
+    byte = static_cast<unsigned char>(random());
+  }
+  bytes[6] = static_cast<unsigned char>((bytes[6] & 0x0f) | 0x40);
+  bytes[8] = static_cast<unsigned char>((bytes[8] & 0x3f) | 0x80);
+
+  std::ostringstream out;
+  out << std::hex << std::setfill('0');
+  std::size_t index = 0;
+  for (const unsigned char byte : bytes) {
+    if (index == 4 || index == 6 || index == 8 || index == 10) {
+      out << '-';
+    }
+    out << std::setw(2) << static_cast<int>(byte);
+    ++index;
+  }
+  return out.str();
+}
+
+}  // namespace
 
 ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
                          std::unique_ptr<core_types::IMcpManager> mcp_manager)
@@ -41,7 +129,18 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
             std::scoped_lock lock(mutex_);
             last_usage_ = usage;
           },
-          [this] { return LastUsage(); })) {
+          [this] { return LastUsage(); },
+          [this](std::string plan_path) {
+            std::scoped_lock lock(mutex_);
+            if (config_.build_switch_plan_path == plan_path) {
+              config_.build_switch_plan_path.reset();
+            }
+          },
+          [this](const ::yac::tool_call::PreparedToolCall& prepared) {
+            return ApplyApprovedPlanExit(prepared);
+          })) {
+  plan_clock_ = [] { return std::chrono::system_clock::now(); };
+  session_id_generator_ = [] { return GenerateUuidV4(); };
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   tool_executor_->SetToolApproval(tool_approval_.get());
   sub_agent_manager_->SetMcpManager(mcp_manager_.get());
@@ -78,6 +177,10 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
   auto queued_content = content;
   {
     std::scoped_lock lock(mutex_);
+    EnsureChatSessionIdLocked();
+    if (config_.agent_mode == AgentMode::Plan) {
+      EnsurePlanSessionLocked(queued_content);
+    }
     pending_.push_back({id, std::move(content)});
   }
   wake_.notify_one();
@@ -157,6 +260,30 @@ AgentMode ChatService::GetAgentMode() const {
   return config_.agent_mode;
 }
 
+bool ChatService::HasEnteredPlanMode() const {
+  std::scoped_lock lock(mutex_);
+  return config_.has_entered_plan_mode;
+}
+
+std::optional<std::filesystem::path> ChatService::ActivePlanPath() const {
+  std::scoped_lock lock(mutex_);
+  if (!config_.active_plan_path.has_value()) {
+    return std::nullopt;
+  }
+  return std::filesystem::path(*config_.active_plan_path);
+}
+
+void ChatService::QueueBuildSwitchReminderForTest(
+    std::filesystem::path plan_path) {
+  std::scoped_lock lock(mutex_);
+  config_.build_switch_plan_path = std::move(plan_path).string();
+}
+
+bool ChatService::HasQueuedBuildSwitchReminderForTest() const {
+  std::scoped_lock lock(mutex_);
+  return config_.build_switch_plan_path.has_value();
+}
+
 void ChatService::SetAgentMode(AgentMode mode) {
   {
     std::scoped_lock lock(mutex_);
@@ -164,6 +291,9 @@ void ChatService::SetAgentMode(AgentMode mode) {
       return;
     }
     config_.agent_mode = mode;
+    if (mode == AgentMode::Plan) {
+      config_.has_entered_plan_mode = true;
+    }
   }
   EmitEvent(ChatEvent{AgentModeChangedEvent{.mode = mode}});
 }
@@ -212,6 +342,10 @@ void ChatService::ResetConversation() {
     history_store_->Clear();
     last_usage_.reset();
     config_.agent_mode = AgentMode::Build;
+    config_.has_entered_plan_mode = false;
+    config_.active_plan_path.reset();
+    config_.build_switch_plan_path.reset();
+    config_.chat_session_id = GenerateChatSessionId();
   }
 
   sub_agent_manager_->CancelAll();
@@ -225,6 +359,21 @@ void ChatService::ResetConversation() {
 void ChatService::SetResetDrainBudgetForTest(std::chrono::milliseconds budget) {
   reset_drain_budget_ms_.store(std::max<int64_t>(1, budget.count()),
                                std::memory_order_relaxed);
+}
+
+void ChatService::SetPlanClockForTest(
+    std::function<std::chrono::system_clock::time_point()> clock) {
+  std::scoped_lock lock(mutex_);
+  plan_clock_ = std::move(clock);
+}
+
+void ChatService::SetSessionIdGeneratorForTest(
+    std::function<std::string()> generator) {
+  std::scoped_lock lock(mutex_);
+  session_id_generator_ = std::move(generator);
+  if (!active_ && pending_.empty() && history_store_->View().empty()) {
+    config_.chat_session_id = GenerateChatSessionId();
+  }
 }
 
 void ChatService::CompactConversation(decltype(sizeof(0)) keep_last) {
@@ -372,6 +521,108 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
     wake_.notify_one();
     EmitQueueDepth();
   }
+}
+
+::yac::tool_call::ToolExecutionResult ChatService::ApplyApprovedPlanExit(
+    const ::yac::tool_call::PreparedToolCall& prepared) {
+  auto call = std::get<::yac::tool_call::PlanExitCall>(prepared.preview);
+  std::filesystem::path plan_path;
+  {
+    std::scoped_lock lock(mutex_);
+    if (config_.agent_mode != AgentMode::Plan ||
+        !config_.active_plan_path.has_value()) {
+      return ::yac::tool_call::ToolExecutionResult{
+          .block =
+              ::yac::tool_call::PlanExitCall{
+                  .plan = std::move(call.plan),
+                  .is_error = true,
+                  .error = "plan_exit requires an active Plan session."},
+          .result_json =
+              ::yac::tool_call::Json{
+                  {"error", "plan_exit requires an active Plan session."}}
+                  .dump(),
+          .is_error = true,
+      };
+    }
+    plan_path = std::filesystem::path(*config_.active_plan_path);
+  }
+
+  {
+    std::ofstream plan_file(plan_path, std::ios::trunc);
+    if (!plan_file) {
+      return ::yac::tool_call::ToolExecutionResult{
+          .block =
+              ::yac::tool_call::PlanExitCall{
+                  .plan = std::move(call.plan),
+                  .plan_path = plan_path.string(),
+                  .is_error = true,
+                  .error = "Failed to write active plan file."},
+          .result_json =
+              ::yac::tool_call::Json{
+                  {"error", "Failed to write active plan file."}}
+                  .dump(),
+          .is_error = true,
+      };
+    }
+    plan_file << call.plan;
+  }
+
+  {
+    std::scoped_lock lock(mutex_);
+    config_.agent_mode = AgentMode::Build;
+    config_.build_switch_plan_path = plan_path.string();
+  }
+  call.plan_path = plan_path.string();
+  call.approved = true;
+  EmitEvent(ChatEvent{AgentModeChangedEvent{.mode = AgentMode::Build}});
+  return ::yac::tool_call::ToolExecutionResult{
+      .block = call,
+      .result_json = ::yac::tool_call::Json{{"approved", true},
+                                            {"plan_path", plan_path.string()}}
+                         .dump(),
+  };
+}
+
+void ChatService::EnsurePlanSessionLocked(
+    const std::string& first_user_prompt) {
+  config_.has_entered_plan_mode = true;
+  if (config_.active_plan_path.has_value()) {
+    return;
+  }
+
+  auto workspace_root = config_.workspace_root.empty()
+                            ? std::filesystem::current_path()
+                            : std::filesystem::path(config_.workspace_root);
+  workspace_root = std::filesystem::absolute(workspace_root).lexically_normal();
+  const auto plans_dir = workspace_root / ".opencode" / "plans";
+  const auto filename = FormatPlanTimestamp(plan_clock_()) + "-" +
+                        SlugForPlanPrompt(first_user_prompt) + ".md";
+  const auto plan_path = (plans_dir / filename).lexically_normal();
+  if (!IsInsideWorkspace(workspace_root, plan_path)) {
+    return;
+  }
+
+  std::filesystem::create_directories(plans_dir);
+  std::ofstream plan_file(plan_path, std::ios::app);
+  config_.active_plan_path = plan_path.string();
+}
+
+void ChatService::EnsureChatSessionIdLocked() {
+  if (!config_.chat_session_id.has_value() ||
+      config_.chat_session_id->empty()) {
+    config_.chat_session_id = GenerateChatSessionId();
+  }
+}
+
+std::string ChatService::GenerateChatSessionId() {
+  if (!session_id_generator_) {
+    return GenerateUuidV4();
+  }
+  auto id = session_id_generator_();
+  if (id.empty()) {
+    return GenerateUuidV4();
+  }
+  return id;
 }
 
 }  // namespace yac::chat

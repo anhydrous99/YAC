@@ -19,11 +19,14 @@ int main(int argc, char* argv[]) {
     if (argc >= 3 && std::string_view(argv[1]) == "run") {
       std::string prompt;
       bool auto_approve = false;
+      bool plan_mode = false;
       int cancel_after_ms = 0;
       for (int i = 2; i < argc; ++i) {
         std::string_view arg(argv[i]);
         if (arg == "--auto-approve") {
           auto_approve = true;
+        } else if (arg == "--plan") {
+          plan_mode = true;
         } else if (arg.starts_with("--cancel-after-ms=")) {
           try {
             cancel_after_ms = std::stoi(std::string(arg.substr(18)));
@@ -46,7 +49,8 @@ int main(int argc, char* argv[]) {
           prompt += argv[i];
         }
       }
-      return yac::app::RunHeadless(prompt, auto_approve, cancel_after_ms);
+      return yac::app::RunHeadless(prompt, auto_approve, cancel_after_ms,
+                                   plan_mode);
     }
     return yac::app::RunApp();
   } catch (const std::exception& e) {

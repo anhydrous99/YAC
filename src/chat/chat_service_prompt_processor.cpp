@@ -1,5 +1,6 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
+#include "chat/agent_mode.hpp"
 #include "chat/chat_history_store.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
@@ -10,7 +11,7 @@
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/tool_validation_error.hpp"
 
-#include <algorithm>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -22,6 +23,60 @@ namespace {
 
 std::string ToolRejectedJson() {
   return R"({"error":"User rejected tool execution."})";
+}
+
+std::string PlanModeDeniedMessage(const std::string& tool_name) {
+  return "Tool '" + tool_name + "' is not allowed in Plan mode.";
+}
+
+std::filesystem::path NormalizeWorkspacePath(
+    const std::filesystem::path& workspace_root, const std::string& path) {
+  std::filesystem::path candidate(path);
+  if (candidate.is_relative()) {
+    candidate = workspace_root / candidate;
+  }
+  return std::filesystem::absolute(candidate).lexically_normal();
+}
+
+bool IsActivePlanMarkdownPath(const ChatConfig& config,
+                              const std::string& requested_path) {
+  if (!config.active_plan_path.has_value() || config.workspace_root.empty()) {
+    return false;
+  }
+  const std::filesystem::path workspace_root(config.workspace_root);
+  const auto active_path =
+      NormalizeWorkspacePath(workspace_root, *config.active_plan_path);
+  const auto requested = NormalizeWorkspacePath(workspace_root, requested_path);
+  const auto expected_plan_dir =
+      NormalizeWorkspacePath(workspace_root, ".opencode/plans");
+  return requested == active_path && active_path.extension() == ".md" &&
+         active_path.parent_path() == expected_plan_dir;
+}
+
+std::optional<std::string> PlanModePermissionError(
+    const ChatConfig& config, const ToolCallRequest& request) {
+  if (config.agent_mode != AgentMode::Plan) {
+    return std::nullopt;
+  }
+  if (!IsToolAllowedForMode(AgentMode::Plan, request.name)) {
+    return PlanModeDeniedMessage(request.name);
+  }
+  namespace tc = ::yac::tool_call;
+  if (request.name != tc::kFileWriteToolName &&
+      request.name != tc::kFileEditToolName) {
+    return std::nullopt;
+  }
+  try {
+    const auto args = tc::ParseArguments(request);
+    const auto filepath = tc::RequireString(args, "filepath");
+    if (IsActivePlanMarkdownPath(config, filepath)) {
+      return std::nullopt;
+    }
+  } catch (const std::exception& error) {
+    return error.what();
+  }
+  return "Plan mode can only write or edit the active .opencode/plans/*.md "
+         "plan file.";
 }
 
 // Best-effort partial extraction of a string field from possibly-malformed
@@ -83,6 +138,9 @@ std::string PartialField(const std::string& arguments_json,
   if (name == tc::kAskUserToolName) {
     return tc::AskUserCall{.question = PartialField(args, "question")};
   }
+  if (name == tc::kPlanExitToolName) {
+    return tc::PlanExitCall{.plan = PartialField(args, "plan")};
+  }
   if (name == tc::kBashToolName) {
     return tc::BashCall{.command = PartialField(args, "command"),
                         .is_error = true};
@@ -143,7 +201,9 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
     ModeExcludedToolsFn mode_excluded_tools,
     PrepareBuiltInToolCallFn prepare_built_in_tool_call,
     ExecuteBuiltInToolCallFn execute_built_in_tool_call,
-    OnUsageReportedFn on_usage_reported, LastUsageFn last_usage)
+    OnUsageReportedFn on_usage_reported, LastUsageFn last_usage,
+    OnBuildSwitchReminderUsedFn on_build_switch_reminder_used,
+    OnPlanExitApprovedFn on_plan_exit_approved)
     : registry_(&registry),
       tool_executor_(&tool_executor),
       tool_approval_(&tool_approval),
@@ -173,7 +233,9 @@ ChatServicePromptProcessor::ChatServicePromptProcessor(
                   return tool_executor_ptr->Execute(prepared, stop_token);
                 }}),
       on_usage_reported_(std::move(on_usage_reported)),
-      last_usage_(std::move(last_usage)) {}
+      last_usage_(std::move(last_usage)),
+      on_build_switch_reminder_used_(std::move(on_build_switch_reminder_used)),
+      on_plan_exit_approved_(std::move(on_plan_exit_approved)) {}
 
 ChatServicePromptProcessor::RoundOutcome
 ChatServicePromptProcessor::RunOneRound(
@@ -397,25 +459,41 @@ void ChatServicePromptProcessor::ProcessPrompt(
 ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
     const ChatServiceRequestBuilder& request_builder, uint64_t generation,
     bool& aborted) const {
-  std::scoped_lock lock(*history_mutex_);
-  // Gate the read on a fresh generation — closes the window where
-  // ResetConversation clears history between an outer check and this
-  // read. Caller observes `aborted` and bails before issuing the
-  // upstream request.
-  if (ShouldAbortLocked(generation)) {
-    aborted = true;
-    return {};
+  (void)request_builder;
+  const auto config = config_snapshot_();
+  ChatRequest request;
+  std::optional<std::string> consumed_build_switch_path;
+  {
+    std::scoped_lock lock(*history_mutex_);
+    // Gate the read on a fresh generation — closes the window where
+    // ResetConversation clears history between an outer check and this
+    // read. Caller observes `aborted` and bails before issuing the
+    // upstream request.
+    if (ShouldAbortLocked(generation)) {
+      aborted = true;
+      return {};
+    }
+    auto tools = ::yac::tool_call::ToolExecutor::Definitions();
+    if (chat_service_mcp_ != nullptr) {
+      tools = yac::chat::internal::ChatServiceMcp::MergeBuiltInsAndMcp(
+          tools, chat_service_mcp_->BuildToolCatalogSnapshot());
+    }
+    auto mode_excluded =
+        mode_excluded_tools_ ? mode_excluded_tools_() : std::set<std::string>{};
+    ChatHistoryStore::FilterToolsForAgentMode(tools, excluded_tools_,
+                                              mode_excluded, config.agent_mode);
+    const ChatServiceRequestBuilder fresh_request_builder(config);
+    request = fresh_request_builder.BuildRequest(*history_, tools);
+    if (config.agent_mode == AgentMode::Build &&
+        config.build_switch_plan_path.has_value()) {
+      consumed_build_switch_path = *config.build_switch_plan_path;
+    }
   }
-  auto tools = ::yac::tool_call::ToolExecutor::Definitions();
-  if (chat_service_mcp_ != nullptr) {
-    tools = yac::chat::internal::ChatServiceMcp::MergeBuiltInsAndMcp(
-        tools, chat_service_mcp_->BuildToolCatalogSnapshot());
+  if (consumed_build_switch_path.has_value() &&
+      on_build_switch_reminder_used_) {
+    on_build_switch_reminder_used_(*consumed_build_switch_path);
   }
-  auto mode_excluded =
-      mode_excluded_tools_ ? mode_excluded_tools_() : std::set<std::string>{};
-  ChatHistoryStore::FilterToolsForAgentMode(tools, excluded_tools_,
-                                            mode_excluded);
-  return request_builder.BuildRequest(*history_, tools);
+  return request;
 }
 
 bool ChatServicePromptProcessor::ShouldAbortLocked(uint64_t generation) const {
@@ -436,6 +514,14 @@ ChatServicePromptProcessor::PrepareOneToolCall(const ToolCallRequest& request,
                                                bool is_mcp_tool) const {
   ToolPrep prep{.prepared = MakeFallbackPreparedToolCall(request)};
   try {
+    if (auto error = PlanModePermissionError(config_snapshot_(), request);
+        error.has_value()) {
+      prep.failure = ToolPrepFailure{
+          .error = *error,
+          .result_json = ::yac::tool_call::Json{{"error", *error}}.dump(),
+      };
+      return prep;
+    }
     if (is_mcp_tool) {
       if (chat_service_mcp_ == nullptr) {
         throw std::invalid_argument(
@@ -523,6 +609,10 @@ ChatServicePromptProcessor::ExecuteOneToolCall(
   }
   if (!approved) {
     return MakeRejectedToolResult(prepared);
+  }
+  if (prepared.request.name == ::yac::tool_call::kPlanExitToolName &&
+      on_plan_exit_approved_) {
+    return on_plan_exit_approved_(prepared);
   }
   if (is_mcp_tool) {
     try {

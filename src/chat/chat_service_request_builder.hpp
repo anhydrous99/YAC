@@ -23,6 +23,7 @@ class ChatServiceRequestBuilder {
 
  private:
   ChatConfig config_;
+  mutable bool build_switch_reminder_used_ = false;
 };
 
 [[nodiscard]] std::shared_ptr<::yac::tool_call::ToolExecutor>

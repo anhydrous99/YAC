@@ -35,6 +35,7 @@ using namespace std::chrono_literals;
 namespace yac::test {
 namespace {
 
+using yac::tests::openai_auth::DeterministicSessionId;
 using yac::tests::openai_auth::HttpRequest;
 using yac::tests::openai_auth::HttpResponse;
 using yac::tests::openai_auth::MakeAccountIdJwtLikeToken;
@@ -328,7 +329,9 @@ yac::provider::OpenAiChatProvider MakeProvider(
 yac::chat::ChatRequest MakeStreamingRequest() {
   yac::chat::ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
+  request.session_id = DeterministicSessionId();
   request.stream = true;
+  request.responses_instructions = "Follow the mock OAuth instructions.";
   request.messages = {yac::chat::ChatMessage{.role = yac::chat::ChatRole::User,
                                              .content = "hello"}};
   return request;
@@ -479,9 +482,18 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request.headers.at("Authorization") ==
             "Bearer " + std::string(kStoredAccessToken));
-    REQUIRE(request.headers.at("originator") == "yac");
-    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("yac/"));
+    REQUIRE(request.headers.at("originator") == "opencode");
+    REQUIRE_THAT(request.headers.at("User-Agent"),
+                 ContainsSubstring("opencode/"));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("("));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
+    REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-e2e");
+    REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
+    REQUIRE_THAT(request.body,
+                 ContainsSubstring("Follow the mock OAuth instructions."));
+    REQUIRE(request.body.find("\"role\":\"system\"") ==
+            std::string::npos);
     return OAuthStream("oauth-ok");
   });
 
@@ -532,7 +544,17 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
     REQUIRE(request_index == 1);
     REQUIRE(request.headers.at("Authorization") ==
             "Bearer " + refreshed_access);
+    REQUIRE(request.headers.at("originator") == "opencode");
+    REQUIRE_THAT(request.headers.at("User-Agent"),
+                 ContainsSubstring("opencode/"));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
+    REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-new");
+    REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
+    REQUIRE_THAT(request.body,
+                 ContainsSubstring("Follow the mock OAuth instructions."));
+    REQUIRE(request.body.find("\"role\":\"system\"") ==
+            std::string::npos);
     return OAuthStream("refresh-ok");
   });
 
@@ -562,6 +584,49 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
   const std::string auth_file = ReadFile(AuthPath(temp_dir.Path()));
   CHECK(auth_file.find(kStoredRefreshToken) == std::string::npos);
   CHECK(auth_file.find(kStoredAccessToken) == std::string::npos);
+}
+
+
+TEST_CASE("expired_oauth_refresh_failure_uses_only_mock_endpoint",
+          "[openai_auth_e2e]") {
+  TempDir temp_dir;
+  ScopedEnvVar home("HOME", temp_dir.Path().string());
+  ScopedEnvVar api_key_env("OPENAI_API_KEY", std::nullopt);
+
+  const auto store = MakeStoreForHome(temp_dir.Path());
+  static_cast<void>(store->Save(yac::provider::OpenAiOAuthAuth{
+      .refresh_token = std::string(kStoredRefreshToken),
+      .access_token = std::string(kStoredAccessToken),
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1110}},
+      .account_id = std::string("acct-old"),
+  }));
+
+  TestHttpServer server([](const HttpRequest& request, std::size_t index) {
+    REQUIRE(index == 0);
+    REQUIRE(request.path == "/oauth/token");
+    REQUIRE_THAT(request.body, ContainsSubstring("grant_type=refresh_token"));
+    REQUIRE_THAT(request.body,
+                 ContainsSubstring("refresh_token=" +
+                                   std::string(kStoredRefreshToken)));
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body = R"({"error":"invalid_grant","error_description":"mock refresh denied"})",
+    };
+  });
+
+  const auto flow = MakeFlow(
+      server.Url(""), store,
+      std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
+  auto provider = MakeProvider("http://127.0.0.1:1", flow, server.Url(""));
+  const auto events = RunStream(provider);
+
+  REQUIRE(server.Requests().size() == 1);
+  const std::string output = VisibleOutput(events);
+  CHECK_THAT(output, ContainsSubstring("mock refresh denied"));
+  CHECK(output.find(kStoredRefreshToken) == std::string::npos);
+  CHECK(output.find(kStoredAccessToken) == std::string::npos);
 }
 
 }  // namespace

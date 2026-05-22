@@ -1,4 +1,5 @@
 #include "chat/chat_service.hpp"
+#include "chat/agent_mode.hpp"
 #include "chat/config.hpp"
 #include "core_types/typed_ids.hpp"
 #include "lambda_mock_provider.hpp"
@@ -9,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -269,7 +271,130 @@ const ChatEvent& FindEvent(const std::vector<ChatEvent>& events,
   return *it;
 }
 
+std::string RequestContextText(const ChatRequest& request) {
+  std::string text;
+  if (request.responses_instructions.has_value()) {
+    text += *request.responses_instructions;
+  }
+  for (const auto& message : request.messages) {
+    text += "\n";
+    text += message.content;
+  }
+  return text;
+}
+
 }  // namespace
+
+
+TEST_CASE("ChatService injects Plan-mode plan-file reminder into requests") {
+  auto root = std::filesystem::temp_directory_path() / "yac_plan_reminder";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto provider = MakeFakeProvider();
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
+  config.workspace_root = root.string();
+  config.agent_mode = AgentMode::Plan;
+  auto service = MakeService(provider, config);
+  service.SetPlanClockForTest([] {
+    std::tm tm{};
+    tm.tm_year = 126;
+    tm.tm_mon = 4;
+    tm.tm_mday = 22;
+    tm.tm_hour = 17;
+    tm.tm_min = 5;
+    tm.tm_sec = 6;
+    return std::chrono::system_clock::from_time_t(std::mktime(&tm));
+  });
+
+  (void)CollectEvents(service, "Design OAuth parity");
+
+  const auto requests = provider->Requests();
+  REQUIRE(requests.size() == 1);
+  const auto active_plan = service.ActivePlanPath();
+  REQUIRE(active_plan.has_value());
+  const auto context = RequestContextText(requests[0]);
+  REQUIRE(context.find("<system-reminder>") != std::string::npos);
+  REQUIRE(context.find(active_plan->string()) != std::string::npos);
+  REQUIRE(context.find(".opencode/plans/") != std::string::npos);
+  REQUIRE(context.find("Plan mode is read-only") != std::string::npos);
+  REQUIRE(context.find("only create or edit the active `.opencode/plans/*.md`") !=
+          std::string::npos);
+  REQUIRE(context.find("read and search") != std::string::npos);
+  REQUIRE(context.find("delegate research") != std::string::npos);
+  REQUIRE(context.find("ask clarifying questions") != std::string::npos);
+  REQUIRE(context.find("write or update the active plan file") !=
+          std::string::npos);
+  REQUIRE(context.find("plan_exit") != std::string::npos);
+  REQUIRE(context.find("plan.txt") == std::string::npos);
+  REQUIRE(requests[0].messages.back().content == "Design OAuth parity");
+
+  const auto history = service.History();
+  REQUIRE(history.size() == 2);
+  REQUIRE(history[0].content == "Design OAuth parity");
+  REQUIRE(history[0].content.find("<system-reminder>") == std::string::npos);
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ChatService omits Plan reminder from normal Build-mode requests") {
+  auto provider = MakeFakeProvider();
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
+  config.agent_mode = AgentMode::Build;
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "Implement now");
+
+  const auto requests = provider->Requests();
+  REQUIRE(requests.size() == 1);
+  const auto context = RequestContextText(requests[0]);
+  REQUIRE(context.find("Plan mode") == std::string::npos);
+  REQUIRE(context.find("plan_exit") == std::string::npos);
+  REQUIRE(context.find(".opencode/plans/") == std::string::npos);
+  REQUIRE(context.find("build-switch") == std::string::npos);
+  REQUIRE(requests[0].messages.back().content == "Implement now");
+}
+
+TEST_CASE("ChatService injects queued build-switch reminder only once") {
+  auto root = std::filesystem::temp_directory_path() / "yac_build_switch";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / ".opencode" / "plans");
+  const auto plan_path = root / ".opencode" / "plans" / "approved.md";
+
+  auto provider = MakeFakeProvider();
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
+  config.workspace_root = root.string();
+  config.agent_mode = AgentMode::Build;
+  auto service = MakeService(provider, config);
+  service.QueueBuildSwitchReminderForTest(plan_path);
+
+  (void)CollectEvents(service, "Start build");
+  REQUIRE_FALSE(service.HasQueuedBuildSwitchReminderForTest());
+  (void)CollectEvents(service, "Continue build");
+
+  const auto requests = provider->Requests();
+  REQUIRE(requests.size() == 2);
+  const auto first_context = RequestContextText(requests[0]);
+  REQUIRE(first_context.find("<system-reminder>") != std::string::npos);
+  REQUIRE(first_context.find("switched from Plan mode to Build mode") !=
+          std::string::npos);
+  REQUIRE(first_context.find(plan_path.string()) != std::string::npos);
+  REQUIRE(first_context.find("approved plan file") != std::string::npos);
+  REQUIRE(first_context.find("plan.txt") == std::string::npos);
+  REQUIRE(requests[0].messages.back().content == "Start build");
+
+  const auto second_context = RequestContextText(requests[1]);
+  REQUIRE(second_context.find("switched from Plan mode to Build mode") ==
+          std::string::npos);
+  REQUIRE(second_context.find("approved plan file") == std::string::npos);
+  REQUIRE(requests[1].messages.back().content == "Continue build");
+  std::filesystem::remove_all(root);
+}
 
 TEST_CASE("ChatService streams provider events and records history") {
   auto service = MakeService();
@@ -328,6 +453,33 @@ TEST_CASE("ChatService executes a non-mutating tool round") {
            message.content.find("note.txt") != std::string::npos;
   }));
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("ChatService reuses and regenerates runtime session ids") {
+  auto provider = MakeFakeProvider();
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"fake"};
+  config.model = ::yac::ModelId{"fake-model"};
+  auto service = MakeService(provider, config);
+  int next_id = 1;
+  service.SetSessionIdGeneratorForTest([&] {
+    return "00000000-0000-4000-8000-" + std::string(11, '0') +
+           std::to_string(next_id++);
+  });
+
+  (void)CollectEvents(service, "list files");
+  auto requests = provider->Requests();
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].session_id.has_value());
+  REQUIRE(*requests[0].session_id == "00000000-0000-4000-8000-000000000001");
+
+  service.SetEventCallback({});
+  service.ResetConversation();
+  (void)CollectEvents(service, "list again");
+  requests = provider->Requests();
+  REQUIRE(requests.size() == 2);
+  REQUIRE(requests[1].session_id.has_value());
+  REQUIRE(*requests[1].session_id == "00000000-0000-4000-8000-000000000002");
 }
 
 TEST_CASE("ChatService continues tool rounds until the model stops") {

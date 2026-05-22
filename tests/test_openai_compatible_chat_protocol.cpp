@@ -12,6 +12,7 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
   ChatRequest request;
   request.model = ::yac::ModelId{"gpt-4.1"};
   request.temperature = 0.3;
+  request.responses_instructions = "system prompt";
   request.messages = {
       ChatMessage{.role = ChatRole::System, .content = "system prompt"},
       ChatMessage{.role = ChatRole::Assistant,
@@ -41,6 +42,10 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
   REQUIRE(payload["stream"].get<bool>());
   REQUIRE_FALSE(payload.contains("stream_options"));
   REQUIRE(payload["messages"].size() == 3);
+  REQUIRE(payload["messages"][0]["role"].get<std::string>() == "system");
+  REQUIRE(payload["messages"][0]["content"].get<std::string>() ==
+          "system prompt");
+  REQUIRE_FALSE(payload.contains("instructions"));
   REQUIRE(payload["messages"][1]["tool_calls"][0]["id"].get<std::string>() ==
           "call-1");
   REQUIRE(payload["messages"][1]["tool_calls"][0]["function"]["name"]

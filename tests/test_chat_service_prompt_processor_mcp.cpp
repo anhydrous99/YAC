@@ -1,3 +1,4 @@
+#include "chat/agent_mode.hpp"
 #include "chat/chat_service_mcp.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/tool_approval_manager.hpp"
@@ -64,6 +65,40 @@ std::shared_ptr<LambdaMockProvider> MakeTwoRoundToolProvider(
       });
 }
 
+std::shared_ptr<LambdaMockProvider> MakePlanMcpDeniedProvider(
+    std::shared_ptr<bool> saw_catalog_tool,
+    std::shared_ptr<std::string> tool_result,
+    std::shared_ptr<int> request_count) {
+  return std::make_shared<LambdaMockProvider>(
+      "test-provider", [saw_catalog_tool, tool_result, request_count](
+                           const ChatRequest& request, ChatEventSink sink,
+                           std::stop_token stop_token) {
+        REQUIRE_FALSE(stop_token.stop_requested());
+        ++(*request_count);
+        if (*request_count == 1) {
+          *saw_catalog_tool = std::ranges::any_of(
+              request.tools, [](const ToolDefinition& definition) {
+                return definition.name == "mcp_alpha__tool_a";
+              });
+          sink(ChatEvent{
+              ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
+                                         .id = "tool-1",
+                                         .name = "mcp_alpha__tool_a",
+                                         .arguments_json = R"({"value":1})",
+                                     }}}});
+          return;
+        }
+        const auto it = std::ranges::find_if(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == ::yac::ToolCallId{"tool-1"};
+            });
+        REQUIRE(it != request.messages.end());
+        *tool_result = it->content;
+        sink(ChatEvent{TextDeltaEvent{.text = "done"}});
+      });
+}
+
 struct CountingBuiltInExecutor {
   int prepare_count = 0;
   int execute_count = 0;
@@ -96,7 +131,7 @@ struct PromptProcessorHarness {
   explicit PromptProcessorHarness(
       std::shared_ptr<LanguageModelProvider> provider,
       MockMcpManager* mcp_manager, CountingBuiltInExecutor* built_in_executor,
-      bool auto_approve = false)
+      bool auto_approve = false, AgentMode agent_mode = AgentMode::Build)
       : workspace_root(std::filesystem::temp_directory_path() /
                        "yac_prompt_processor_mcp_tests"),
         tool_executor(workspace_root, nullptr, todo_state),
@@ -117,7 +152,8 @@ struct PromptProcessorHarness {
               events.push_back(std::move(event));
             },
             [this] { return next_message_id++; }, [this] { return config; },
-            [] { return uint64_t{1}; }, {}, nullptr, {},
+            [] { return uint64_t{1}; }, {}, nullptr,
+            [this] { return ExcludedToolsForMode(config.agent_mode); },
             [built_in_executor](const ToolCallRequest& request) {
               return built_in_executor->Prepare(request);
             },
@@ -129,6 +165,7 @@ struct PromptProcessorHarness {
     config.provider_id = ::yac::ProviderId{provider->Id()};
     config.model = ::yac::ModelId{"test-model"};
     config.workspace_root = workspace_root.string();
+    config.agent_mode = agent_mode;
     registry.Register(std::move(provider));
   }
 
@@ -217,4 +254,25 @@ TEST_CASE("approval_from_snapshot") {
         "mcp_alpha__tool_a");
   CHECK(mock_mcp_manager.invoke_count == 1);
   CHECK(built_in_executor.execute_count == 0);
+}
+
+TEST_CASE("plan_mode_hides_and_denies_mcp_tools") {
+  auto saw_catalog_tool = std::make_shared<bool>(true);
+  auto tool_result = std::make_shared<std::string>();
+  auto request_count = std::make_shared<int>(0);
+  auto provider =
+      MakePlanMcpDeniedProvider(saw_catalog_tool, tool_result, request_count);
+  MockMcpManager mock_mcp_manager;
+  mock_mcp_manager.AddTool("alpha", "tool_a");
+  CountingBuiltInExecutor built_in_executor;
+  PromptProcessorHarness harness(provider, &mock_mcp_manager,
+                                 &built_in_executor, false, AgentMode::Plan);
+
+  harness.processor.ProcessPrompt(1, "run mcp tool", 1,
+                                  std::stop_source{}.get_token());
+
+  REQUIRE_FALSE(*saw_catalog_tool);
+  CHECK(mock_mcp_manager.invoke_count == 0);
+  CHECK(built_in_executor.execute_count == 0);
+  CHECK(tool_result->find("not allowed in Plan mode") != std::string::npos);
 }

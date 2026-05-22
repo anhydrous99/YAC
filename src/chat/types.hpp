@@ -43,6 +43,8 @@ struct ChatMessage {
 struct ChatRequest {
   ProviderId provider_id{"openai-compatible"};
   ModelId model{"gpt-4o-mini"};
+  std::optional<std::string> responses_instructions;
+  std::optional<std::string> session_id;
   std::vector<ChatMessage> messages;
   std::vector<ToolDefinition> tools;
   double temperature = 0.7;
@@ -431,6 +433,10 @@ struct ChatConfig {
   std::vector<std::string> lsp_clangd_args;
   std::optional<std::string> system_prompt;
   AgentMode agent_mode{AgentMode::Build};
+  bool has_entered_plan_mode = false;
+  std::optional<std::string> active_plan_path;
+  std::optional<std::string> build_switch_plan_path;
+  std::optional<std::string> chat_session_id;
   bool sync_terminal_background = true;
   std::string theme_name = "vivid";
   std::string theme_density = "comfortable";
