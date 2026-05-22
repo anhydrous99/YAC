@@ -1,5 +1,6 @@
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "config_env_test_helpers.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -11,6 +12,8 @@
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
+
+using yac::testing::ScopedEnvClear;
 
 namespace {
 
@@ -82,7 +85,141 @@ constexpr const char* kBedrockToml =
 
 }  // namespace
 
+TEST_CASE("bedrock provider options are loaded from TOML") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_toml.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "model = \"anthropic.claude-3-5-haiku-20241022-v1:0\"\n"
+            "options.region = \"us-west-2\"\n"
+            "options.max_tokens = \"12000\"\n"
+            "options.profile = \"dev-profile\"\n"
+            "options.endpoint_override = \"https://bedrock.local\"\n"
+            "options.credential_refresh_command = \"aws sso login --profile "
+            "dev-profile\"\n");
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.options.at("region") == "us-west-2");
+  REQUIRE(result.config.options.at("max_tokens") == "12000");
+  REQUIRE(result.config.options.at("profile") == "dev-profile");
+  REQUIRE(result.config.options.at("endpoint_override") ==
+          "https://bedrock.local");
+  REQUIRE(result.config.options.at("credential_refresh_command") ==
+          "aws sso login --profile dev-profile");
+  REQUIRE_FALSE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+}
+
+TEST_CASE("bedrock provider options accept integer max_tokens from TOML") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_toml_integer.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "options.max_tokens = 6000\n");
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.options.at("max_tokens") == "6000");
+  REQUIRE_FALSE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+}
+
+TEST_CASE("bedrock env options override TOML provider options") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_env_overrides_toml.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "options.region = \"us-west-2\"\n"
+            "options.max_tokens = \"12000\"\n"
+            "options.profile = \"toml-profile\"\n"
+            "options.endpoint_override = \"https://toml.example\"\n"
+            "options.credential_refresh_command = \"toml refresh\"\n");
+
+  ScopedEnvVar region("YAC_BEDROCK_REGION", "eu-central-1");
+  ScopedEnvVar profile("YAC_BEDROCK_PROFILE", "env-profile");
+  ScopedEnvVar endpoint("YAC_BEDROCK_ENDPOINT_OVERRIDE", "https://env.example");
+  ScopedEnvVar refresh("YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND", "env refresh");
+  ScopedEnvVar max_tokens("YAC_BEDROCK_MAX_TOKENS", "8192");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.options.at("region") == "eu-central-1");
+  REQUIRE(result.config.options.at("max_tokens") == "8192");
+  REQUIRE(result.config.options.at("profile") == "env-profile");
+  REQUIRE(result.config.options.at("endpoint_override") ==
+          "https://env.example");
+  REQUIRE(result.config.options.at("credential_refresh_command") ==
+          "env refresh");
+  REQUIRE_FALSE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+}
+
+TEST_CASE("bedrock AWS_REGION fallback overrides TOML region") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_aws_region_overrides_toml.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "options.region = \"us-west-2\"\n");
+
+  ScopedEnvVar region("AWS_REGION", "ap-southeast-2");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.options.at("region") == "ap-southeast-2");
+}
+
+TEST_CASE("bedrock invalid TOML max_tokens falls back to 4096") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_invalid_toml_max_tokens.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "options.max_tokens = \"abc\"\n");
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+  REQUIRE(result.config.options.at("max_tokens") == "4096");
+}
+
+TEST_CASE(
+    "bedrock invalid env max_tokens overrides TOML and falls back to 4096") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_bedrock_options_invalid_env_max_tokens.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "options.max_tokens = \"12000\"\n");
+
+  ScopedEnvVar override("YAC_BEDROCK_MAX_TOKENS", "abc");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+  REQUIRE(result.config.options.at("max_tokens") == "4096");
+}
+
+TEST_CASE("non-bedrock provider ignores TOML provider options") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_non_bedrock_options_ignored.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-4o\"\n"
+            "options.region = \"us-west-2\"\n"
+            "options.max_tokens = \"abc\"\n"
+            "options.profile = \"dev-profile\"\n"
+            "options.endpoint_override = \"https://bedrock.local\"\n"
+            "options.credential_refresh_command = \"aws sso login\"\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.options.empty());
+  REQUIRE_FALSE(HasIssue(result.issues, "Invalid Bedrock max_tokens"));
+}
+
 TEST_CASE("bedrock max_tokens defaults to 4096 when unset") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_max_tokens_default.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -92,6 +229,7 @@ TEST_CASE("bedrock max_tokens defaults to 4096 when unset") {
 }
 
 TEST_CASE("bedrock max_tokens accepts a valid integer from env") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_max_tokens_env.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -102,6 +240,7 @@ TEST_CASE("bedrock max_tokens accepts a valid integer from env") {
 }
 
 TEST_CASE("bedrock max_tokens rejects non-numeric values") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_max_tokens_alpha.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -112,6 +251,7 @@ TEST_CASE("bedrock max_tokens rejects non-numeric values") {
 }
 
 TEST_CASE("bedrock max_tokens rejects partially-numeric values") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_max_tokens_partial.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -122,6 +262,7 @@ TEST_CASE("bedrock max_tokens rejects partially-numeric values") {
 }
 
 TEST_CASE("bedrock max_tokens rejects out-of-range values") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_max_tokens_oob.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -146,6 +287,7 @@ TEST_CASE("bedrock max_tokens rejects out-of-range values") {
 }
 
 TEST_CASE("non-bedrock provider does not validate max_tokens") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_non_bedrock_max_tokens.toml");
   WriteFile(file.Path(),
             "[provider]\n"
@@ -160,6 +302,7 @@ TEST_CASE("non-bedrock provider does not validate max_tokens") {
 }
 
 TEST_CASE("bedrock credential_refresh_command is absent when env var unset") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_refresh_cmd_default.toml");
   WriteFile(file.Path(), kBedrockToml);
 
@@ -171,6 +314,7 @@ TEST_CASE("bedrock credential_refresh_command is absent when env var unset") {
 }
 
 TEST_CASE("bedrock credential_refresh_command is populated from env var") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_bedrock_refresh_cmd_env.toml");
   WriteFile(file.Path(), kBedrockToml);
 

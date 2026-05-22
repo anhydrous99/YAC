@@ -8,6 +8,7 @@
 #include <exception>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -58,6 +59,75 @@ bool ApplyStringField(const toml::node_view<toml::node>& node,
   AddError(issues, "Invalid type for " + key + " in settings.toml",
            "Expected a string.");
   return false;
+}
+
+bool ApplyProviderOptionString(const toml::node_view<toml::node>& node,
+                               const std::string& key,
+                               std::map<std::string, std::string>& options,
+                               std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  if (auto* value = node.as_string()) {
+    options[key] = value->get();
+    return true;
+  }
+  AddError(issues,
+           "Invalid type for provider.options." + key + " in settings.toml",
+           "Expected a string.");
+  return false;
+}
+
+bool ApplyProviderOptionIntegerString(
+    const toml::node_view<toml::node>& node, const std::string& key,
+    std::map<std::string, std::string>& options,
+    std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  if (auto* value = node.as_string()) {
+    options[key] = value->get();
+    return true;
+  }
+  if (auto* value = node.as_integer()) {
+    options[key] = std::to_string(value->get());
+    return true;
+  }
+  AddError(issues,
+           "Invalid type for provider.options." + key + " in settings.toml",
+           "Expected a string or integer.");
+  return false;
+}
+
+void LoadBedrockProviderOptions(const toml::node_view<toml::node>& provider,
+                                ChatConfig& config,
+                                std::vector<ConfigIssue>& issues) {
+  if (config.provider_id.value != "bedrock") {
+    return;
+  }
+
+  const auto options = provider["options"];
+  if (!options) {
+    return;
+  }
+  auto* options_table = options.as_table();
+  if (options_table == nullptr) {
+    AddError(issues, "Invalid type for [provider.options] in settings.toml",
+             "Expected a table.");
+    return;
+  }
+
+  ApplyProviderOptionString((*options_table)["region"], "region",
+                            config.options, issues);
+  ApplyProviderOptionIntegerString((*options_table)["max_tokens"], "max_tokens",
+                                   config.options, issues);
+  ApplyProviderOptionString((*options_table)["profile"], "profile",
+                            config.options, issues);
+  ApplyProviderOptionString((*options_table)["endpoint_override"],
+                            "endpoint_override", config.options, issues);
+  ApplyProviderOptionString((*options_table)["credential_refresh_command"],
+                            "credential_refresh_command", config.options,
+                            issues);
 }
 
 bool ApplyTemperature(const toml::node_view<toml::node>& node, double& target,
@@ -446,6 +516,7 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
   fields.context_window = ApplyIntegerField(
       provider["context_window"], "provider.context_window", kMinContextWindow,
       kMaxContextWindow, config.context_window, issues);
+  LoadBedrockProviderOptions(provider, config, issues);
 }
 
 void LoadLspSection(toml::table& root, ChatConfig& config,
