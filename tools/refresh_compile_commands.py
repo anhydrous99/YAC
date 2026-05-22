@@ -6,6 +6,11 @@ import subprocess
 import sys
 
 
+CLANG_TIDY_UNSUPPORTED_ARGS = {
+    "-fno-canonical-system-headers",
+}
+
+
 def run(command):
     return subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE)
 
@@ -49,6 +54,8 @@ def rewrite_args(args, workspace):
     execroot_link = workspace / f"bazel-{workspace.name}"
     rewritten = []
     for arg in args:
+        if arg in CLANG_TIDY_UNSUPPORTED_ARGS:
+            continue
         rewritten.append(rewrite_arg(arg, workspace, execroot_link))
     return rewritten
 

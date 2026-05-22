@@ -21,8 +21,17 @@ while IFS= read -r file; do
   files+=("${file}")
 done < <(find src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) | sort)
 
+extra_args=()
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  sdkroot="$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+  if [[ -n "${sdkroot}" ]]; then
+    extra_args+=("-extra-arg=-isysroot" "-extra-arg=${sdkroot}")
+  fi
+fi
+
 "${run_clang_tidy}" \
   -p . \
   -header-filter='^(src|tests)/' \
   -j 0 \
+  "${extra_args[@]}" \
   "${files[@]}"
