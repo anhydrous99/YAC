@@ -38,20 +38,20 @@ MCP servers are declared as `[[mcp.servers]]` array-of-tables in
 | `auto_start` | bool | `true` | no | Start the server automatically when YAC launches. |
 | `requires_approval` | bool | `false` | no | Require user approval before every tool call on this server. |
 | `approval_required_tools` | array of strings | `[]` | no | Per-tool approval list (raw tool names as reported by the server). |
-| `[mcp.servers.auth.api_key_env]` | string | | no | Name of an env var holding a Bearer token. Sent as `Authorization: Bearer <value>`. |
-| `[mcp.servers.auth.oauth2]` | table | | no | OAuth 2.0 PKCE config. See sub-fields below. |
+| `[mcp.servers.auth]` | table | | no | Bearer or OAuth auth config. See sub-fields below. |
 
-#### `[mcp.servers.auth.oauth2]` sub-fields
+#### `[mcp.servers.auth]` sub-fields
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `authorization_url` | string | yes | Authorization endpoint URL. Must be `https://` or loopback `http://`. |
-| `token_url` | string | yes | Token endpoint URL. Same URL restrictions apply. |
-| `client_id` | string | yes | OAuth client ID. |
+| `type` | string | yes | `"bearer"` or `"oauth"`. |
+| `api_key_env` | string | bearer only | Name of an env var holding a Bearer token. Sent as `Authorization: Bearer <value>`. |
+| `authorization_url` | string | OAuth only | Authorization endpoint URL. Must be `https://` or loopback `http://`. |
+| `token_url` | string | OAuth only | Token endpoint URL. Same URL restrictions apply. |
+| `client_id` | string | OAuth only | OAuth client ID. |
 | `scopes` | array of strings | no | Requested scopes. Joined with spaces in the authorization request. |
 
-`auth.api_key_env` and `auth.oauth2` are mutually exclusive. Omit both for
-unauthenticated servers.
+Omit `[mcp.servers.auth]` for unauthenticated servers.
 
 ### Global MCP settings
 
@@ -69,11 +69,23 @@ env var name is `YAC_MCP_<UPPER_ID>_<FIELD>`, where `<UPPER_ID>` is the server
 
 | Field | Env var pattern |
 |---|---|
+| `mcp.result_max_bytes` | `YAC_MCP_RESULT_MAX_BYTES` |
+| `transport` | `YAC_MCP_<ID>_TRANSPORT` |
 | `command` | `YAC_MCP_<ID>_COMMAND` |
-| `args` | `YAC_MCP_<ID>_ARGS` (comma-separated) |
+| `args` | `YAC_MCP_<ID>_ARGS` (whitespace-separated) |
 | `url` | `YAC_MCP_<ID>_URL` |
 | `enabled` | `YAC_MCP_<ID>_ENABLED` |
+| `auto_start` | `YAC_MCP_<ID>_AUTO_START` |
+| `requires_approval` | `YAC_MCP_<ID>_REQUIRES_APPROVAL` |
+| `approval_required_tools` | `YAC_MCP_<ID>_APPROVAL_REQUIRED_TOOLS` (whitespace-separated) |
+| `env` | `YAC_MCP_<ID>_ENV_JSON` |
+| `headers` | `YAC_MCP_<ID>_HEADERS_JSON` |
+| `auth.type` | `YAC_MCP_<ID>_AUTH_TYPE` |
 | `auth.api_key_env` | `YAC_MCP_<ID>_API_KEY_ENV` |
+| `auth.authorization_url` | `YAC_MCP_<ID>_OAUTH_AUTHORIZATION_URL` |
+| `auth.token_url` | `YAC_MCP_<ID>_OAUTH_TOKEN_URL` |
+| `auth.client_id` | `YAC_MCP_<ID>_OAUTH_CLIENT_ID` |
+| `auth.scopes` | `YAC_MCP_<ID>_OAUTH_SCOPES` (whitespace-separated) |
 
 Example: for a server with `id = "my-server"`, set `YAC_MCP_MY_SERVER_COMMAND`
 to override its command.
@@ -103,7 +115,8 @@ enabled          = true
 auto_start       = false
 requires_approval = false
 
-[mcp.servers.auth.oauth2]
+[mcp.servers.auth]
+type              = "oauth"
 authorization_url = "https://auth.example.com/authorize"
 token_url         = "https://auth.example.com/token"
 client_id         = "your-client-id"
@@ -119,8 +132,12 @@ transport = "http"
 url       = "https://mcp.example.com/api"
 
 [mcp.servers.auth]
+type        = "bearer"
 api_key_env = "MY_API_TOKEN"
 ```
+
+Set `YAC_MCP_TOKEN_STORE=file` to use file-backed OAuth token storage in
+headless environments where keychain access is not available.
 
 ---
 
