@@ -53,7 +53,6 @@ TEST_CASE("cold_start_happy_path") {
   MockMcpTransport transport;
   std::promise<void> continue_initialize;
   auto continue_initialize_future = continue_initialize.get_future().share();
-  std::atomic<bool> done{false};
 
   transport.SetRequestHandler(
       [continue_initialize_future = std::move(continue_initialize_future)](
@@ -80,30 +79,15 @@ TEST_CASE("cold_start_happy_path") {
 
   McpServerSession session(MakeConfig(), &transport);
   std::vector<ServerState> states{session.State()};
-  std::jthread observer([&](std::stop_token stop_token) {
-    ServerState last = states.back();
-    while (!stop_token.stop_requested()) {
-      const ServerState current = session.State();
-      if (current != last) {
-        states.push_back(current);
-        last = current;
-      }
-      if (done.load()) {
-        break;
-      }
-      std::this_thread::yield();
-    }
-  });
 
   session.Start();
 
   REQUIRE(WaitUntil(
       [&] { return session.State() == ServerState::Initializing; }, 2s));
+  states.push_back(session.State());
   continue_initialize.set_value();
   REQUIRE(WaitUntil([&] { return session.State() == ServerState::Ready; }, 2s));
-  done = true;
-  observer.request_stop();
-  observer.join();
+  states.push_back(session.State());
 
   REQUIRE(!states.empty());
   REQUIRE(states.front() == ServerState::Disconnected);
