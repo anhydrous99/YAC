@@ -16,15 +16,22 @@ id          = "openai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"
+# api_key   = ""
 ```
 
-When only `id = "openai"` is set, YAC fills in those defaults. API-key mode uses
-OpenAI-compatible chat completions. Browser OAuth mode uses the ChatGPT/Codex
-Responses endpoint at `https://chatgpt.com/backend-api/codex/responses`.
+When only `id = "openai"` is set, YAC fills in those defaults. Explicit
+`provider.model`, `provider.base_url`, and `provider.api_key_env` TOML values are
+not overwritten by the preset, and `YAC_*` env overrides still win over TOML.
+API-key mode uses OpenAI-compatible chat completions. Browser OAuth mode uses the
+ChatGPT/Codex Responses endpoint at
+`https://chatgpt.com/backend-api/codex/responses`.
+Set `YAC_API_KEY_ENV` if you need `provider.api_key_env` to name a different
+secret env var.
 
 Auth precedence is `env API key > stored OpenAI auth > inline settings API key`.
 That means `OPENAI_API_KEY` wins over a stored OAuth login or stored API key. A
-stored login wins over `[provider].api_key` in `~/.yac/settings.toml`.
+stored login wins over `[provider].api_key` in `~/.yac/settings.toml`. Keep
+`provider.api_key` unset when possible so secrets stay out of plaintext TOML.
 
 ## Commands
 
