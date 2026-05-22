@@ -114,7 +114,9 @@ key remains unset.
 YAC reads `~/.yac/settings.toml`. On first launch the file is auto-created with
 a commented default template; edit it and restart to pick up changes. At
 startup, shell environment variables named `YAC_*` override whatever is in the
-file, which is useful for CI, per-shell experiments, and quick flips.
+file, which is useful for CI, per-shell experiments, and quick flips. Provider
+presets fill only missing fields: explicit TOML wins over preset defaults, and
+`YAC_*` env overrides win over both.
 
 YAC also reads predefined prompts from `~/.yac/prompts/*.toml` at startup. The
 directory is auto-created, and missing `init.toml` and `review.toml` files are
@@ -161,14 +163,17 @@ args    = []
 | `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
 | `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
 | `provider.api_key` | unset | unset | Optional inline key; lowest priority for `openai`; prefer the configured env var or stored auth |
+| `provider.context_window` | `YAC_CONTEXT_WINDOW` | `0` | Manual context window override in tokens; `0` means auto-detect |
 | `temperature` | `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
 | `system_prompt` | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
 | `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
 | `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
 | `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
-| `mcp.servers[].{command,args,url,enabled,auth.api_key_env}` | `YAC_MCP_<ID>_COMMAND`, `YAC_MCP_<ID>_ARGS`, `YAC_MCP_<ID>_URL`, `YAC_MCP_<ID>_ENABLED`, `YAC_MCP_<ID>_API_KEY_ENV` | unset | Override an existing MCP server by ID (`<ID>` = upper snake case, non-alnum → `_`) |
+| `mcp.result_max_bytes` | `YAC_MCP_RESULT_MAX_BYTES` | `262144` | Maximum bytes kept for a single MCP tool result payload |
+| `mcp.servers[].{transport,command,args,url,enabled,auto_start,requires_approval,approval_required_tools,env,headers,auth.type,auth.api_key_env,auth.authorization_url,auth.token_url,auth.client_id,auth.scopes}` | `YAC_MCP_<ID>_TRANSPORT`, `YAC_MCP_<ID>_COMMAND`, `YAC_MCP_<ID>_ARGS`, `YAC_MCP_<ID>_URL`, `YAC_MCP_<ID>_ENABLED`, `YAC_MCP_<ID>_AUTO_START`, `YAC_MCP_<ID>_REQUIRES_APPROVAL`, `YAC_MCP_<ID>_APPROVAL_REQUIRED_TOOLS`, `YAC_MCP_<ID>_ENV_JSON`, `YAC_MCP_<ID>_HEADERS_JSON`, `YAC_MCP_<ID>_AUTH_TYPE`, `YAC_MCP_<ID>_API_KEY_ENV`, `YAC_MCP_<ID>_OAUTH_AUTHORIZATION_URL`, `YAC_MCP_<ID>_OAUTH_TOKEN_URL`, `YAC_MCP_<ID>_OAUTH_CLIENT_ID`, `YAC_MCP_<ID>_OAUTH_SCOPES` | unset | Override an existing MCP server by ID (`<ID>` = upper snake case, non-alnum → `_`) |
 | `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
 | `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
+| `theme.sync_terminal_background` | `YAC_SYNC_TERMINAL_BACKGROUND` | `true` | Paint and restore the terminal background to match the active theme canvas |
 | `compact.auto_enabled` | `YAC_COMPACT_AUTO_ENABLED` | `true` | Auto-compact history before each new user prompt when usage crosses `compact.threshold` |
 | `compact.threshold` | `YAC_COMPACT_THRESHOLD` | `0.8` | Fraction of context window (0.05-1.0) at which auto-compact fires |
 | `compact.keep_last` | `YAC_COMPACT_KEEP_LAST` | `20` | Most-recent non-system messages preserved through compaction |
@@ -176,9 +181,11 @@ args    = []
 
 Set `[provider].id = "openai"` (or `YAC_PROVIDER=openai`) to use the built-in
 OpenAI preset. When only `id` is set, the preset fills in `gpt-4o-mini`,
-`https://api.openai.com/v1/`, and `OPENAI_API_KEY`. API-key mode uses the
-normal OpenAI-compatible chat completions endpoint. Browser OAuth mode uses the
-ChatGPT/Codex Responses endpoint and is managed by stored provider auth.
+`https://api.openai.com/v1/`, and `OPENAI_API_KEY`; explicit `provider.model`,
+`provider.base_url`, or `provider.api_key_env` values keep winning over those
+preset defaults. API-key mode uses the normal OpenAI-compatible chat completions
+endpoint. Browser OAuth mode uses the ChatGPT/Codex Responses endpoint and is
+managed by stored provider auth.
 
 OpenAI auth commands:
 
@@ -207,8 +214,10 @@ explicitly overrides the preset.
 
 ### Bedrock provider
 
-Set `[provider].id = "bedrock"` to use AWS Bedrock via the Converse API.
-Credentials come from the AWS SDK's default chain (env vars, `~/.aws/credentials`, IAM role, SSO).
+Set `[provider].id = "bedrock"` to use AWS Bedrock via the Converse API. The
+preset fills only missing provider fields, so explicit TOML values and `YAC_*`
+env overrides still win. Credentials come from the AWS SDK's default chain (env
+vars, `~/.aws/credentials`, IAM role, SSO).
 
 | Setting | Env override | Default | Purpose |
 | --- | --- | --- | --- |
@@ -218,6 +227,7 @@ Credentials come from the AWS SDK's default chain (env vars, `~/.aws/credentials
 | `provider.options.max_tokens` | `YAC_BEDROCK_MAX_TOKENS` | `4096` | Max output tokens |
 | `provider.options.profile` | `YAC_BEDROCK_PROFILE` | unset | AWS profile name |
 | `provider.options.endpoint_override` | `YAC_BEDROCK_ENDPOINT_OVERRIDE` | unset | VPC endpoint URL |
+| `provider.options.credential_refresh_command` | `YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND` | unset | Shell command to run once on auth failure before retrying |
 
 Known-good model IDs: `anthropic.claude-3-5-sonnet-20241022-v2:0`, `anthropic.claude-3-5-haiku-20241022-v1:0`, `amazon.nova-pro-v1:0`, `amazon.nova-lite-v1:0`, `amazon.nova-micro-v1:0`, `meta.llama3-1-70b-instruct-v1:0`, `mistral.mistral-large-2407-v1:0`.
 Inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) are supported.

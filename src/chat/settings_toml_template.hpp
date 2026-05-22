@@ -26,7 +26,8 @@ id          = "openai-compatible"         # "openai-compatible", "openai", or "z
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"            # env var that holds the key
-# api_key   = ""                          # optional; lowest priority for openai
+# api_key        = ""                     # optional; lowest priority for openai
+# context_window = 0                      # override context window size (tokens); 0 = auto-detect
 
 # OpenAI provider auth is opt-in: set provider.id = "openai" to use stored
 # OpenAI auth or browser OAuth. With the default openai-compatible provider,
@@ -62,6 +63,17 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # (glm-5.1, https://api.z.ai/api/coding/paas/v4, ZAI_API_KEY).
 # [provider]
 # id = "zai"
+
+# Bedrock provider: set id = "bedrock" to use AWS Bedrock (Converse API).
+# Credentials: AWS SDK default chain (env vars, ~/.aws/credentials, IAM role, SSO).
+# [provider]
+# id          = "bedrock"
+# model       = "anthropic.claude-3-5-haiku-20241022-v1:0"
+# options.region             = "us-east-1"   # or set AWS_REGION / YAC_BEDROCK_REGION
+# options.max_tokens         = "4096"
+# options.profile            = ""            # AWS profile (optional)
+# options.endpoint_override  = ""            # VPC endpoint (optional)
+# options.credential_refresh_command = ""    # command to run on auth failure before retrying; also settable via YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND
 
 [lsp.clangd]
 command = "clangd"
@@ -114,7 +126,8 @@ mode         = "summarize"               # "summarize" (default) or "truncate"
 # enabled = true
 # auto_start = false
 # requires_approval = false
-# [mcp.servers.auth.oauth2]
+# [mcp.servers.auth]
+# type = "oauth"
 # authorization_url = "https://auth.example.com/authorize"
 # token_url = "https://auth.example.com/token"
 # client_id = "your-client-id"

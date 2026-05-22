@@ -122,7 +122,8 @@ mode         = "summarize"               # "summarize" (default) or "truncate"
 # enabled = true
 # auto_start = false
 # requires_approval = false
-# [mcp.servers.auth.oauth2]
+# [mcp.servers.auth]
+# type = "oauth"
 # authorization_url = "https://auth.example.com/authorize"
 # token_url = "https://auth.example.com/token"
 # client_id = "your-client-id"
