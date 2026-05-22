@@ -1,6 +1,7 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "core_types/typed_ids.hpp"
+#include "config_env_test_helpers.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 
@@ -21,45 +22,10 @@
 
 using namespace yac::chat;
 using namespace yac::provider;
+using yac::testing::ScopedEnvClear;
 using yac::testing::LambdaMockProvider;
 
 namespace {
-
-class ScopedEnvClear {
- public:
-  ScopedEnvClear() {
-    static constexpr std::array kVars = {"YAC_PROVIDER",
-                                         "YAC_MODEL",
-                                         "YAC_BASE_URL",
-                                         "YAC_TEMPERATURE",
-                                         "YAC_API_KEY_ENV",
-                                         "YAC_SYSTEM_PROMPT",
-                                         "YAC_WORKSPACE_ROOT",
-                                         "OPENAI_API_KEY",
-                                         "ZAI_API_KEY",
-                                         "YAC_CUSTOM_ZAI_KEY",
-                                         "YAC_TEST_API_KEY_FROM_FILE",
-                                         "YAC_TEST_API_KEY_OVERRIDE"};
-    for (const auto* name : kVars) {
-      if (const char* val = std::getenv(name)) {
-        saved_.emplace_back(name, val);
-        unsetenv(name);
-      }
-    }
-  }
-  ~ScopedEnvClear() {
-    for (const auto& [name, val] : saved_) {
-      setenv(name.c_str(), val.c_str(), 1);
-    }
-  }
-  ScopedEnvClear(const ScopedEnvClear&) = delete;
-  ScopedEnvClear& operator=(const ScopedEnvClear&) = delete;
-  ScopedEnvClear(ScopedEnvClear&&) = delete;
-  ScopedEnvClear& operator=(ScopedEnvClear&&) = delete;
-
- private:
-  std::vector<std::pair<std::string, std::string>> saved_;
-};
 
 std::shared_ptr<LambdaMockProvider> MakeFakeProvider(
     ::yac::ModelId expected_model = ::yac::ModelId{"fake-model"}) {
@@ -243,7 +209,10 @@ TEST_CASE("ChatService assigns unique message IDs") {
 }
 
 TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_defaults.toml");
   auto config =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
@@ -256,7 +225,10 @@ TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
 
 TEST_CASE(
     "LoadChatConfigResult creates settings.toml on first run when requested") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_first_run.toml");
   REQUIRE_FALSE(std::filesystem::exists(settings.Path()));
   auto result =
@@ -267,7 +239,10 @@ TEST_CASE(
 }
 
 TEST_CASE("LoadChatConfigResult warns when API key is missing") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_missing_key.toml");
 
   auto result =
@@ -282,7 +257,10 @@ TEST_CASE("LoadChatConfigResult warns when API key is missing") {
 }
 
 TEST_CASE("YAC_TEMPERATURE env var reports invalid values") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_bad_temp_env.toml");
   setenv("YAC_TEMPERATURE", "too-hot", 1);
 
@@ -299,7 +277,10 @@ TEST_CASE("YAC_TEMPERATURE env var reports invalid values") {
 }
 
 TEST_CASE("settings.toml reports out-of-range temperature as an error") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_bad_temp_toml.toml");
   settings.Write("temperature = 5.0\n");
 
@@ -314,7 +295,10 @@ TEST_CASE("settings.toml reports out-of-range temperature as an error") {
 }
 
 TEST_CASE("[provider].id = zai applies the Z.ai preset") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_zai_defaults.toml");
   settings.Write(
       "[provider]\n"
@@ -335,7 +319,10 @@ TEST_CASE("[provider].id = zai applies the Z.ai preset") {
 }
 
 TEST_CASE("TOML values override the Z.ai preset") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_zai_overrides.toml");
   settings.Write(
       "[provider]\n"
@@ -358,8 +345,36 @@ TEST_CASE("TOML values override the Z.ai preset") {
   unsetenv("YAC_CUSTOM_ZAI_KEY");
 }
 
+TEST_CASE("TOML values override the Bedrock preset") {
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_BEDROCK_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
+  ScopedSettingsFile settings("yac_test_cfg_bedrock_overrides.toml");
+  settings.Write(
+      "[provider]\n"
+      "id = \"bedrock\"\n"
+      "model = \"bedrock-custom-model\"\n"
+      "base_url = \"https://bedrock.example.invalid/\"\n"
+      "api_key_env = \"YAC_CUSTOM_BEDROCK_KEY\"\n");
+
+  auto result =
+      LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false);
+
+  REQUIRE(result.config.provider_id.value == "bedrock");
+  REQUIRE(result.config.model.value == "bedrock-custom-model");
+  REQUIRE(result.config.base_url == "https://bedrock.example.invalid/");
+  REQUIRE(result.config.api_key_env == "YAC_CUSTOM_BEDROCK_KEY");
+  REQUIRE(result.config.api_key.empty());
+  REQUIRE(result.issues.empty());
+}
+
 TEST_CASE("settings.toml values are read end-to-end") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_full.toml");
   settings.Write(
       "temperature = 1.5\n"
@@ -388,7 +403,11 @@ TEST_CASE("settings.toml values are read end-to-end") {
 }
 
 TEST_CASE("YAC_* env vars override settings.toml values") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_ENV",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_env_override.toml");
   settings.Write(
       "temperature = 1.5\n"
@@ -396,12 +415,16 @@ TEST_CASE("YAC_* env vars override settings.toml values") {
       "[provider]\n"
       "id = \"file-provider\"\n"
       "model = \"file-model\"\n"
+      "base_url = \"https://file.example.com/v1/\"\n"
       "api_key_env = \"YAC_TEST_API_KEY_OVERRIDE\"\n");
 
   setenv("YAC_PROVIDER", "env-provider", 1);
   setenv("YAC_MODEL", "env-model", 1);
+  setenv("YAC_BASE_URL", "https://env.example.com/v1/", 1);
+  setenv("YAC_API_KEY_ENV", "YAC_TEST_API_KEY_FROM_ENV", 1);
   setenv("YAC_TEMPERATURE", "0.8", 1);
-  setenv("YAC_TEST_API_KEY_OVERRIDE", "env-api-key", 1);
+  setenv("YAC_TEST_API_KEY_FROM_ENV", "env-api-key", 1);
+  setenv("YAC_TEST_API_KEY_OVERRIDE", "toml-api-key", 1);
 
   auto config =
       LoadChatConfigResultFrom(settings.Path(), /*create_if_missing=*/false)
@@ -409,20 +432,27 @@ TEST_CASE("YAC_* env vars override settings.toml values") {
 
   REQUIRE(config.provider_id.value == "env-provider");
   REQUIRE(config.model.value == "env-model");
+  REQUIRE(config.base_url == "https://env.example.com/v1/");
   REQUIRE(config.temperature == 0.8);
-  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_OVERRIDE");
+  REQUIRE(config.api_key_env == "YAC_TEST_API_KEY_FROM_ENV");
   REQUIRE(config.api_key == "env-api-key");
 
   unsetenv("YAC_PROVIDER");
   unsetenv("YAC_MODEL");
+  unsetenv("YAC_BASE_URL");
+  unsetenv("YAC_API_KEY_ENV");
   unsetenv("YAC_TEMPERATURE");
+  unsetenv("YAC_TEST_API_KEY_FROM_ENV");
   unsetenv("YAC_TEST_API_KEY_OVERRIDE");
 }
 
 TEST_CASE(
     "Malformed settings.toml reports an error but yields a usable "
     "config") {
-  ScopedEnvClear env_guard;
+  ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
+                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_malformed.toml");
   settings.Write("this is =  not = valid\n");
 

@@ -1,5 +1,6 @@
 #include "chat/config.hpp"
 #include "chat/types.hpp"
+#include "config_env_test_helpers.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -9,6 +10,8 @@
 #include <utility>
 
 #include <catch2/catch_test_macros.hpp>
+
+using yac::testing::ScopedEnvClear;
 
 namespace {
 
@@ -69,6 +72,7 @@ void WriteFile(const std::filesystem::path& path, std::string_view content) {
 }  // namespace
 
 TEST_CASE("openai preset applies default model, base url, and key env") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_openai_defaults.toml");
   WriteFile(file.Path(), "[provider]\nid = \"openai\"\n");
 
@@ -84,6 +88,7 @@ TEST_CASE("openai preset applies default model, base url, and key env") {
 }
 
 TEST_CASE("openai preset preserves explicit overrides") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_openai_overrides.toml");
   WriteFile(file.Path(),
             "[provider]\n"
@@ -104,6 +109,7 @@ TEST_CASE("openai preset preserves explicit overrides") {
 }
 
 TEST_CASE("YAC_PROVIDER=openai applies the openai preset") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_openai_env_provider.toml");
   WriteFile(file.Path(), "[provider]\nid = \"openai-compatible\"\n");
 
@@ -119,7 +125,30 @@ TEST_CASE("YAC_PROVIDER=openai applies the openai preset") {
   REQUIRE(result.issues.empty());
 }
 
+TEST_CASE("YAC_PROVIDER=openai preserves explicit TOML provider fields") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_openai_env_provider_preserves_toml.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "id = \"openai-compatible\"\n"
+            "model = \"toml-openai-model\"\n"
+            "base_url = \"https://toml-openai.example/v1/\"\n"
+            "api_key_env = \"YAC_OPENAI_ENV_PROVIDER_KEY\"\n");
+
+  ScopedEnvVar provider("YAC_PROVIDER", "openai");
+  ScopedEnvVar api_key("YAC_OPENAI_ENV_PROVIDER_KEY", "toml-key");
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.provider_id.value == "openai");
+  REQUIRE(result.config.model.value == "toml-openai-model");
+  REQUIRE(result.config.base_url == "https://toml-openai.example/v1/");
+  REQUIRE(result.config.api_key_env == "YAC_OPENAI_ENV_PROVIDER_KEY");
+  REQUIRE(result.config.api_key == "toml-key");
+  REQUIRE(result.issues.empty());
+}
+
 TEST_CASE("default provider stays openai-compatible when id is absent") {
+  ScopedEnvClear env_guard;
   TempFile file("yac_test_openai_default_unchanged.toml");
   WriteFile(file.Path(), "temperature = 0.4\n");
 
