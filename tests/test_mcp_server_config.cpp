@@ -133,3 +133,17 @@ TEST_CASE("preset_fill_in") {
   REQUIRE(srv.command == "npx");
   REQUIRE(srv.args == std::vector<std::string>{"-y", "@upstash/context7-mcp"});
 }
+
+TEST_CASE("parses_mcp_result_max_bytes") {
+  TempFile file("yac_test_mcp_result_max_bytes.toml");
+  WriteFile(file.Path(),
+            "[mcp]\n"
+            "result_max_bytes = 12345\n");
+
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  LoadSettingsFromToml(file.Path(), config, issues);
+
+  REQUIRE(issues.empty());
+  REQUIRE(config.mcp.result_max_bytes == 12345);
+}

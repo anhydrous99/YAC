@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -46,6 +47,183 @@ double ParseTemperature(const std::string& value) {
     throw std::out_of_range("YAC_TEMPERATURE must be between 0.0 and 2.0");
   }
   return temp;
+}
+
+int ParseContextWindow(const std::string& value) {
+  size_t consumed = 0;
+  const int parsed = std::stoi(value, &consumed);
+  if (consumed != value.size()) {
+    throw std::invalid_argument("YAC_CONTEXT_WINDOW must be an integer");
+  }
+  if (parsed < kMinContextWindow || parsed > kMaxContextWindow) {
+    throw std::out_of_range("YAC_CONTEXT_WINDOW must be between " +
+                            std::to_string(kMinContextWindow) + " and " +
+                            std::to_string(kMaxContextWindow));
+  }
+  return parsed;
+}
+
+uintmax_t ParsePositiveUintmax(const std::string& value,
+                               std::string_view env_var) {
+  if (value.empty() || !std::ranges::all_of(value, [](unsigned char ch) {
+        return std::isdigit(ch) != 0;
+      })) {
+    throw std::invalid_argument(std::string(env_var) +
+                                " must be a positive integer");
+  }
+  size_t consumed = 0;
+  const auto parsed = std::stoull(value, &consumed);
+  if (consumed != value.size() || parsed == 0) {
+    throw std::invalid_argument(std::string(env_var) +
+                                " must be a positive integer");
+  }
+  if (parsed > std::numeric_limits<uintmax_t>::max()) {
+    throw std::out_of_range(std::string(env_var) + " is too large");
+  }
+  return static_cast<uintmax_t>(parsed);
+}
+
+void SkipJsonWhitespace(std::string_view value, size_t& pos) {
+  while (pos < value.size() &&
+         std::isspace(static_cast<unsigned char>(value[pos])) != 0) {
+    ++pos;
+  }
+}
+
+bool ParseJsonString(std::string_view value, size_t& pos, std::string& out) {
+  if (pos >= value.size() || value[pos] != '"') {
+    return false;
+  }
+  ++pos;
+  out.clear();
+  while (pos < value.size()) {
+    const char ch = value[pos++];
+    if (ch == '"') {
+      return true;
+    }
+    if (ch != '\\') {
+      out.push_back(ch);
+      continue;
+    }
+    if (pos >= value.size()) {
+      return false;
+    }
+    const char escaped = value[pos++];
+    switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+        out.push_back(escaped);
+        break;
+      case 'b':
+        out.push_back('\b');
+        break;
+      case 'f':
+        out.push_back('\f');
+        break;
+      case 'n':
+        out.push_back('\n');
+        break;
+      case 'r':
+        out.push_back('\r');
+        break;
+      case 't':
+        out.push_back('\t');
+        break;
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
+void AddJsonMapError(std::string_view env_var, std::string detail,
+                     std::vector<ConfigIssue>& issues) {
+  issues.push_back({.severity = ConfigIssueSeverity::Error,
+                    .message = "Invalid " + std::string(env_var),
+                    .detail = std::move(detail)});
+}
+
+std::optional<std::unordered_map<std::string, std::string>> ParseStringMapJson(
+    std::string_view env_var, const std::string& value,
+    std::vector<ConfigIssue>& issues) {
+  std::unordered_map<std::string, std::string> parsed;
+  size_t pos = 0;
+  SkipJsonWhitespace(value, pos);
+  if (pos >= value.size() || value[pos] != '{') {
+    AddJsonMapError(env_var, "Expected a JSON object of string values.",
+                    issues);
+    return std::nullopt;
+  }
+  ++pos;
+  SkipJsonWhitespace(value, pos);
+  if (pos < value.size() && value[pos] == '}') {
+    ++pos;
+    SkipJsonWhitespace(value, pos);
+    if (pos == value.size()) {
+      return parsed;
+    }
+    AddJsonMapError(env_var, "Unexpected trailing characters.", issues);
+    return std::nullopt;
+  }
+
+  while (pos < value.size()) {
+    std::string key;
+    std::string map_value;
+    if (!ParseJsonString(value, pos, key)) {
+      AddJsonMapError(env_var, "Expected JSON object string keys.", issues);
+      return std::nullopt;
+    }
+    SkipJsonWhitespace(value, pos);
+    if (pos >= value.size() || value[pos] != ':') {
+      AddJsonMapError(env_var, "Expected ':' after JSON object key.", issues);
+      return std::nullopt;
+    }
+    ++pos;
+    SkipJsonWhitespace(value, pos);
+    if (!ParseJsonString(value, pos, map_value)) {
+      AddJsonMapError(env_var, "All JSON object values must be strings.",
+                      issues);
+      return std::nullopt;
+    }
+    parsed[std::move(key)] = std::move(map_value);
+    SkipJsonWhitespace(value, pos);
+    if (pos < value.size() && value[pos] == ',') {
+      ++pos;
+      SkipJsonWhitespace(value, pos);
+      continue;
+    }
+    if (pos < value.size() && value[pos] == '}') {
+      ++pos;
+      SkipJsonWhitespace(value, pos);
+      if (pos == value.size()) {
+        return parsed;
+      }
+      AddJsonMapError(env_var, "Unexpected trailing characters.", issues);
+      return std::nullopt;
+    }
+    AddJsonMapError(env_var, "Expected ',' or '}' in JSON object.", issues);
+    return std::nullopt;
+  }
+
+  AddJsonMapError(env_var, "Unterminated JSON object.", issues);
+  return std::nullopt;
+}
+
+mcp::McpAuthBearer& EnsureBearerAuth(mcp::McpServerConfig& server) {
+  if (!server.auth.has_value() ||
+      !std::holds_alternative<mcp::McpAuthBearer>(*server.auth)) {
+    server.auth = mcp::McpAuthBearer{};
+  }
+  return std::get<mcp::McpAuthBearer>(*server.auth);
+}
+
+mcp::McpAuthOAuth& EnsureOAuthAuth(mcp::McpServerConfig& server) {
+  if (!server.auth.has_value() ||
+      !std::holds_alternative<mcp::McpAuthOAuth>(*server.auth)) {
+    server.auth = mcp::McpAuthOAuth{};
+  }
+  return std::get<mcp::McpAuthOAuth>(*server.auth);
 }
 
 std::vector<std::string> SplitArgs(const std::string& value) {
@@ -145,6 +323,16 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
                         .detail = error.what()});
     }
   }
+  if (auto val = GetEnv("YAC_CONTEXT_WINDOW")) {
+    try {
+      config.context_window = ParseContextWindow(*val);
+      fields.context_window = true;
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_CONTEXT_WINDOW",
+                        .detail = error.what()});
+    }
+  }
   if (auto val = GetEnv("YAC_API_KEY_ENV")) {
     config.api_key_env = std::move(*val);
     fields.api_key_env = true;
@@ -227,6 +415,17 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     }
   }
 
+  if (auto val = GetEnv("YAC_MCP_RESULT_MAX_BYTES")) {
+    try {
+      config.mcp.result_max_bytes =
+          ParsePositiveUintmax(*val, "YAC_MCP_RESULT_MAX_BYTES");
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_MCP_RESULT_MAX_BYTES",
+                        .detail = error.what()});
+    }
+  }
+
   // Bedrock-specific env overrides
   if (config.provider_id.value == "bedrock") {
     if (!config.options.contains("region")) {
@@ -279,10 +478,34 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     }
   }
 
-  for (auto& server : config.mcp.servers) {
-    const std::string server_prefix =
-        "YAC_MCP_" + UpperSnakeCase(server.id) + "_";
+  std::unordered_map<std::string, int> normalized_server_id_counts;
+  for (const auto& server : config.mcp.servers) {
+    ++normalized_server_id_counts[UpperSnakeCase(server.id)];
+  }
+  std::vector<std::string> colliding_normalized_server_ids;
+  for (const auto& [normalized_id, count] : normalized_server_id_counts) {
+    if (count > 1) {
+      colliding_normalized_server_ids.push_back(normalized_id);
+      issues.push_back(
+          {.severity = ConfigIssueSeverity::Error,
+           .message = "MCP server ids collide after upper-snake normalization",
+           .detail = "YAC_MCP_" + normalized_id +
+                     "_* overrides are ambiguous and were ignored."});
+    }
+  }
 
+  for (auto& server : config.mcp.servers) {
+    const std::string normalized_server_id = UpperSnakeCase(server.id);
+    if (std::ranges::find(colliding_normalized_server_ids,
+                          normalized_server_id) !=
+        colliding_normalized_server_ids.end()) {
+      continue;
+    }
+    const std::string server_prefix = "YAC_MCP_" + normalized_server_id + "_";
+
+    if (auto val = GetEnv((server_prefix + "TRANSPORT").c_str())) {
+      server.transport = std::move(*val);
+    }
     if (auto val = GetEnv((server_prefix + "COMMAND").c_str())) {
       server.command = std::move(*val);
     }
@@ -295,12 +518,58 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     if (auto val = GetEnv((server_prefix + "ENABLED").c_str())) {
       server.enabled = ParseEnvBool(*val);
     }
+    if (auto val = GetEnv((server_prefix + "AUTO_START").c_str())) {
+      server.auto_start = ParseEnvBool(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "REQUIRES_APPROVAL").c_str())) {
+      server.requires_approval = ParseEnvBool(*val);
+    }
+    if (auto val =
+            GetEnv((server_prefix + "APPROVAL_REQUIRED_TOOLS").c_str())) {
+      server.approval_required_tools = SplitArgs(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "ENV_JSON").c_str())) {
+      if (auto parsed =
+              ParseStringMapJson(server_prefix + "ENV_JSON", *val, issues)) {
+        server.env = std::move(*parsed);
+      }
+    }
+    if (auto val = GetEnv((server_prefix + "HEADERS_JSON").c_str())) {
+      if (auto parsed = ParseStringMapJson(server_prefix + "HEADERS_JSON", *val,
+                                           issues)) {
+        server.headers = std::move(*parsed);
+      }
+    }
+    if (auto val = GetEnv((server_prefix + "AUTH_TYPE").c_str())) {
+      if (*val == "bearer") {
+        EnsureBearerAuth(server);
+      } else if (*val == "oauth") {
+        EnsureOAuthAuth(server);
+      } else {
+        issues.push_back({.severity = ConfigIssueSeverity::Error,
+                          .message = "Invalid " + server_prefix + "AUTH_TYPE",
+                          .detail = "Expected 'bearer' or 'oauth'."});
+      }
+    }
     if (auto val = GetEnv((server_prefix + "API_KEY_ENV").c_str())) {
       if (server.auth.has_value()) {
         if (auto* bearer = std::get_if<mcp::McpAuthBearer>(&*server.auth)) {
           bearer->api_key_env = std::move(*val);
         }
       }
+    }
+    if (auto val =
+            GetEnv((server_prefix + "OAUTH_AUTHORIZATION_URL").c_str())) {
+      EnsureOAuthAuth(server).authorization_url = std::move(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "OAUTH_TOKEN_URL").c_str())) {
+      EnsureOAuthAuth(server).token_url = std::move(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "OAUTH_CLIENT_ID").c_str())) {
+      EnsureOAuthAuth(server).client_id = std::move(*val);
+    }
+    if (auto val = GetEnv((server_prefix + "OAUTH_SCOPES").c_str())) {
+      EnsureOAuthAuth(server).scopes = SplitArgs(*val);
     }
   }
 }

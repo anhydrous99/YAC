@@ -3,6 +3,7 @@
 #include "chat/prompt_library.hpp"
 #include "chat/settings_toml.hpp"
 #include "chat/types.hpp"
+#include "config_env_test_helpers.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -26,6 +27,7 @@ using yac::chat::LoadChatConfigResultFrom;
 using yac::chat::LoadConfig;
 using yac::chat::LoadPromptLibrary;
 using yac::chat::LoadSettingsFromToml;
+using yac::testing::ScopedEnvClear;
 
 namespace {
 
@@ -52,33 +54,6 @@ class ScopedEnvVar {
   ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
   ScopedEnvVar(ScopedEnvVar&&) = delete;
   ScopedEnvVar& operator=(ScopedEnvVar&&) = delete;
-
- private:
-  std::string name_;
-  std::string previous_;
-  bool has_previous_ = false;
-};
-
-class ScopedUnsetEnvVar {
- public:
-  explicit ScopedUnsetEnvVar(std::string name) : name_(std::move(name)) {
-    const char* previous = std::getenv(name_.c_str());
-    if (previous != nullptr) {
-      has_previous_ = true;
-      previous_ = previous;
-    }
-    unsetenv(name_.c_str());
-  }
-  ~ScopedUnsetEnvVar() {
-    if (has_previous_) {
-      setenv(name_.c_str(), previous_.c_str(), 1);
-    }
-  }
-
-  ScopedUnsetEnvVar(const ScopedUnsetEnvVar&) = delete;
-  ScopedUnsetEnvVar& operator=(const ScopedUnsetEnvVar&) = delete;
-  ScopedUnsetEnvVar(ScopedUnsetEnvVar&&) = delete;
-  ScopedUnsetEnvVar& operator=(ScopedUnsetEnvVar&&) = delete;
 
  private:
   std::string name_;
@@ -122,6 +97,15 @@ bool HasIssue(const std::vector<ConfigIssue>& issues,
   return std::ranges::any_of(issues, [&](const ConfigIssue& issue) {
     return issue.message.find(substring) != std::string::npos ||
            issue.detail.find(substring) != std::string::npos;
+  });
+}
+
+bool HasErrorIssue(const std::vector<ConfigIssue>& issues,
+                   std::string_view substring) {
+  return std::ranges::any_of(issues, [&](const ConfigIssue& issue) {
+    return issue.severity == yac::chat::ConfigIssueSeverity::Error &&
+           (issue.message.find(substring) != std::string::npos ||
+            issue.detail.find(substring) != std::string::npos);
   });
 }
 
@@ -195,6 +179,7 @@ TEST_CASE("settings.example.toml round-trips through copy-and-reparse") {
 }
 
 TEST_CASE("LoadConfig aggregates settings.toml and prompt library") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_aggregate");
   const auto settings_path = dir.Path() / "settings.toml";
   const auto prompts_dir = dir.Path() / "prompts";
@@ -225,6 +210,7 @@ TEST_CASE("LoadConfig aggregates settings.toml and prompt library") {
 }
 
 TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {
+  ScopedEnvClear env_guard;
   TempDir dir_aggregate("yac_test_config_loader_aggregate_compare");
   TempDir dir_split("yac_test_config_loader_split_compare");
 
@@ -266,6 +252,7 @@ TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {
 }
 
 TEST_CASE("env-precedence: YAC_* overrides TOML values") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_env_precedence");
   const auto settings_path = dir.Path() / "settings.toml";
 
@@ -278,6 +265,7 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
             "model = \"file-model\"\n"
             "base_url = \"https://file.example.com/\"\n"
             "api_key_env = \"FILE_API_KEY\"\n"
+            "context_window = 1000\n"
             "[lsp.clangd]\n"
             "command = \"file-clangd\"\n"
             "args = [\"--file\"]\n"
@@ -291,6 +279,7 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
   ScopedEnvVar yac_api_key_env("YAC_API_KEY_ENV", "ENV_API_KEY");
   ScopedEnvVar env_api_key("ENV_API_KEY", "secret-from-env");
   ScopedEnvVar yac_temperature("YAC_TEMPERATURE", "1.4");
+  ScopedEnvVar yac_context_window("YAC_CONTEXT_WINDOW", "2000");
   ScopedEnvVar yac_system_prompt("YAC_SYSTEM_PROMPT", "env-prompt");
   ScopedEnvVar yac_workspace_root("YAC_WORKSPACE_ROOT", "/from-env");
   ScopedEnvVar yac_lsp_command("YAC_LSP_CLANGD_COMMAND", "env-clangd");
@@ -307,6 +296,7 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
   REQUIRE(result.config.api_key_env == "ENV_API_KEY");
   REQUIRE(result.config.api_key == "secret-from-env");
   REQUIRE(result.config.temperature == 1.4);
+  REQUIRE(result.config.context_window == 2000);
   REQUIRE(result.config.system_prompt == std::string{"env-prompt"});
   REQUIRE(result.config.workspace_root == "/from-env");
   REQUIRE(result.config.lsp_clangd_command == "env-clangd");
@@ -317,7 +307,106 @@ TEST_CASE("env-precedence: YAC_* overrides TOML values") {
   REQUIRE_FALSE(HasIssue(result.issues, "Invalid"));
 }
 
+TEST_CASE("env-precedence: invalid YAC_CONTEXT_WINDOW preserves safe value") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_context_window_invalid");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "context_window = 1000\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+
+  SECTION("non-numeric") {
+    ScopedEnvVar yac_context_window("YAC_CONTEXT_WINDOW", "abc");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.context_window == 1000);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_CONTEXT_WINDOW"));
+  }
+
+  SECTION("zero") {
+    ScopedEnvVar yac_context_window("YAC_CONTEXT_WINDOW", "0");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.context_window == 1000);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_CONTEXT_WINDOW"));
+  }
+
+  SECTION("above max") {
+    ScopedEnvVar yac_context_window("YAC_CONTEXT_WINDOW", "10000001");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.context_window == 1000);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_CONTEXT_WINDOW"));
+  }
+}
+
+TEST_CASE("env-precedence: empty env values count as present") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_empty_env_present");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "system_prompt = \"file-prompt\"\n"
+            "[provider]\n"
+            "context_window = 1000\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+
+  SECTION("empty string env overrides TOML string") {
+    ScopedEnvVar system_prompt("YAC_SYSTEM_PROMPT", "");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.system_prompt == std::string{});
+    REQUIRE_FALSE(HasErrorIssue(result.issues, "YAC_SYSTEM_PROMPT"));
+  }
+
+  SECTION("empty numeric env is invalid and preserves TOML numeric") {
+    ScopedEnvVar context_window("YAC_CONTEXT_WINDOW", "");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.context_window == 1000);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_CONTEXT_WINDOW"));
+  }
+}
+
+TEST_CASE("env-precedence: invalid YAC_TEMPERATURE preserves TOML value") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_temperature_invalid");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path, "temperature = 0.55\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+
+  SECTION("non-numeric") {
+    ScopedEnvVar yac_temperature("YAC_TEMPERATURE", "abc");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.temperature == 0.55);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_TEMPERATURE"));
+  }
+
+  SECTION("above max") {
+    ScopedEnvVar yac_temperature("YAC_TEMPERATURE", "2.1");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.config.temperature == 0.55);
+    REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_TEMPERATURE"));
+  }
+}
+
 TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_env_unset");
   const auto settings_path = dir.Path() / "settings.toml";
 
@@ -327,10 +416,6 @@ TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
             "id = \"openai-compatible\"\n"
             "model = \"toml-model\"\n");
 
-  ScopedUnsetEnvVar unset_provider("YAC_PROVIDER");
-  ScopedUnsetEnvVar unset_model("YAC_MODEL");
-  ScopedUnsetEnvVar unset_base_url("YAC_BASE_URL");
-  ScopedUnsetEnvVar unset_temperature("YAC_TEMPERATURE");
   ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
 
   auto result = LoadChatConfigResultFrom(settings_path,
@@ -342,6 +427,7 @@ TEST_CASE("env-precedence: TOML value used when YAC_* env var unset") {
 }
 
 TEST_CASE("env-precedence: YAC_MCP_<ID>_* overrides per-server fields") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_env_mcp");
   const auto settings_path = dir.Path() / "settings.toml";
 
@@ -370,6 +456,7 @@ TEST_CASE("env-precedence: YAC_MCP_<ID>_* overrides per-server fields") {
 }
 
 TEST_CASE("LoadConfig preserves env-precedence ordering") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_aggregate_env");
   const auto settings_path = dir.Path() / "settings.toml";
   const auto prompts_dir = dir.Path() / "prompts";
@@ -388,6 +475,7 @@ TEST_CASE("LoadConfig preserves env-precedence ordering") {
 }
 
 TEST_CASE("env boolean overrides share false-value spellings") {
+  ScopedEnvClear env_guard;
   TempDir dir("yac_test_config_loader_env_bool_false");
   const auto settings_path = dir.Path() / "settings.toml";
 
@@ -413,4 +501,55 @@ TEST_CASE("env boolean overrides share false-value spellings") {
   REQUIRE_FALSE(result.config.auto_compact_enabled);
   REQUIRE(result.config.mcp.servers.size() == 1);
   REQUIRE_FALSE(result.config.mcp.servers[0].enabled);
+}
+
+TEST_CASE("env boolean false spellings are case-insensitive") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_env_bool_false_spellings");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai-compatible\"\n"
+            "model = \"gpt-4o-mini\"\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+
+  SECTION("0") {
+    ScopedEnvVar sync_terminal_background("YAC_SYNC_TERMINAL_BACKGROUND", "0");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.issues.empty());
+    REQUIRE_FALSE(result.config.sync_terminal_background);
+  }
+
+  SECTION("false") {
+    ScopedEnvVar sync_terminal_background("YAC_SYNC_TERMINAL_BACKGROUND",
+                                          "FALSE");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.issues.empty());
+    REQUIRE_FALSE(result.config.sync_terminal_background);
+  }
+
+  SECTION("no") {
+    ScopedEnvVar sync_terminal_background("YAC_SYNC_TERMINAL_BACKGROUND", "No");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.issues.empty());
+    REQUIRE_FALSE(result.config.sync_terminal_background);
+  }
+
+  SECTION("off") {
+    ScopedEnvVar sync_terminal_background("YAC_SYNC_TERMINAL_BACKGROUND",
+                                          "oFf");
+
+    auto result = LoadChatConfigResultFrom(settings_path, false);
+
+    REQUIRE(result.issues.empty());
+    REQUIRE_FALSE(result.config.sync_terminal_background);
+  }
 }
