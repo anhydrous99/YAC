@@ -1,52 +1,62 @@
 # Contributing to YAC
 
-Thanks for your interest in contributing. This guide covers everything you need
-to build, test, and submit changes.
+This guide covers the build, test, and quality checks expected before opening a
+change.
 
 ## Development Setup
 
-Requires CMake >= 3.21, Ninja, and git submodules.
+Install Bazelisk or a `bazel` binary that honors `.bazelversion`, plus a C++20
+toolchain.
+
+Linux packages commonly needed:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ripgrep clangd
+```
+
+macOS packages commonly needed:
+
+```bash
+brew install bazelisk ripgrep llvm
+export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+```
+
+Build the app:
 
 ```bash
 git clone <repo-url>
 cd yac
-git submodule update --init --recursive
-./external/vcpkg/bootstrap-vcpkg.sh   # one-time, ~30s
-cmake --preset debug
-cmake --build build
+bazel build //src:yac
 ```
 
-The first configure downloads and builds `aws-sdk-cpp` (~15 min on a cold
-cache). Subsequent configures are under 30 seconds because vcpkg caches
-installed packages under `external/vcpkg/`.
-
-System packages needed: `libcurl`, OpenSSL, `ripgrep`, `clangd`. On Linux,
-also `libsecret-1-dev` and DBus for keychain support (gracefully degrades
-without them).
+The first build downloads pinned Bazel module dependencies and compiles the AWS
+Bedrock SDK overlay. Later builds reuse Bazel's repository and action caches.
 
 ## Running Tests
-
-List all discovered tests:
-
-```bash
-ctest --test-dir build -N
-```
 
 Run the full suite:
 
 ```bash
-ctest --test-dir build --output-on-failure
+bazel test //tests:all_tests
 ```
 
-Filter by name (Catch2 test name, not binary name):
+Run one test target:
 
 ```bash
-ctest --test-dir build -R "<name>" --output-on-failure
+bazel test //tests:yac_test_renderer
 ```
 
-Tests are discovered as `<binary_name>::<Catch test name>`, e.g.
-`yac_test_chat_service::Reset clears history`. Register a new test by adding
-`yac_add_test(<binary> <source>)` to `tests/CMakeLists.txt`, then reconfigure.
+List test targets:
+
+```bash
+bazel query 'tests(//tests:*)'
+```
+
+Tests are registered in `tests/BUILD.bazel` with `yac_test(...)`,
+`yac_aws_test(...)`, helper binaries, or shell tests. Integration tests under
+`tests/integration/` use `yac_test_e2e_runner` and JSONL scripts; see
+[tests/integration/README.md](tests/integration/README.md).
 
 ## Code Style
 
@@ -57,42 +67,34 @@ Google base, 2-space indent, 80-column limit. Naming rules from `.clang-tidy`:
 | Functions, types, enum constants | `CamelCase` |
 | Variables, parameters, members | `lower_case` |
 | `constexpr` / global constants | `kCamelCase` |
-| Private members | `lower_case_` (trailing underscore) |
+| Private members | `lower_case_` |
 
-Run `cmake --build build --target format` to auto-apply clang-format before
-committing.
+Apply formatting before committing:
+
+```bash
+bazel run //tools:format
+```
 
 ## Quality Gates
 
 All three must pass before a PR can land:
 
 ```bash
-cmake --build build --target format-check   # fails on any formatting diff
-cmake --build build --target lint           # parallel clang-tidy
-ctest --test-dir build --output-on-failure  # full test suite
+bazel test //tests:all_tests
+bazel test //tools:format_check
+bazel run //tools:lint
 ```
 
-CI runs these on both Linux and macOS for every PR.
-
-## Adding Source or Test Files
-
-After adding or renaming any source file, **reconfigure**:
-
-```bash
-cmake --preset debug
-```
-
-The `format`, `lint`, and `ALL_SOURCES` targets glob at configure time. New
-files are invisible to them until you reconfigure. This applies to both
-`src/` additions and new test binaries in `tests/CMakeLists.txt`.
+CI runs these on Linux and macOS for every PR. Coverage runs only on PRs and
+requires reviewer approval for the `coverage-approval` GitHub environment.
 
 ## Tooling Versions
 
-CI pins to clang-format-21 and clang-tidy-21. CMake's `find_program` looks for
-the `-21` suffixed binaries first, then falls back to unsuffixed. Older local
-versions may pass locally and still fail CI.
+CI pins to clang-format-21, clang-tidy-21, and run-clang-tidy-21. Local scripts
+look for the `-21` suffixed tools first and then fall back to unsuffixed names.
+Older local versions may pass locally and still fail CI.
 
-**Linux** (Ubuntu/Debian):
+Linux:
 
 ```bash
 wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
@@ -100,57 +102,71 @@ wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
 sudo add-apt-repository \
   "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
 sudo apt-get update
-sudo apt-get install -y clang-format-21 clang-tidy-21
+sudo apt-get install -y clang-format-21 clang-tidy-21 clang-tools-21
 ```
 
-**macOS** (Homebrew):
+macOS:
 
 ```bash
 brew install llvm
 export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
 ```
 
-Add the `PATH` export to your shell profile so CMake finds the right binaries
-on every session.
+The `lint` and `coverage` targets also require `python3` on PATH. Generate
+editor compile commands with:
 
-The `lint` and `coverage` targets also require `python3` on PATH to drive
-`run-clang-tidy` and `llvm-cov`.
+```bash
+bazel run //tools:refresh_compile_commands
+```
+
+Run coverage with:
+
+```bash
+bazel run //tools:coverage
+```
+
+## Adding Source Or Test Files
+
+Add new implementation files to the relevant `src/BUILD.bazel` target. Add new
+tests to `tests/BUILD.bazel` with the appropriate test macro and any data
+dependencies required by the test.
+
+After changing build metadata, run the narrow target first, then the full suite
+or the CI-equivalent commands above.
 
 ## PR Process
 
 - One PR per logical change. Keep diffs focused.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
   `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, etc.
-- CI must pass on both Linux and macOS before merge.
-- Coverage runs only on PRs and requires a reviewer to approve the
-  `coverage-approval` environment in GitHub before the job starts.
+- CI must pass on Linux and macOS before merge.
+- Coverage is gated by the `coverage-approval` environment on PRs.
 
 ## Adding a Provider
 
-Implement the interface in `src/provider/provider_interface.hpp`. Look at the
-existing `OpenAiChatProvider` and `BedrockChatProvider` implementations for
-patterns: registration in `src/main.cpp`, config loading, and streaming event
-emission.
+Implement the interface in `src/provider/provider_interface.hpp`. Follow the
+existing OpenAI-compatible and Bedrock providers for registration, config
+loading, streaming events, and tests.
 
 ## Adding an MCP Server
 
-See **[docs/mcp.md](docs/mcp.md)** for the full config schema, OAuth flow, and
+See [docs/mcp.md](docs/mcp.md) for the full config schema, OAuth flow, and
 approval policy reference.
 
-The quickest way to register a server without editing TOML by hand:
+Register a server without editing TOML by hand:
 
 ```bash
 yac mcp add <id> --transport stdio --command <cmd> --args '<arg1>,<arg2>'
 ```
 
-From inside the TUI, use `/mcp add` instead. List servers with `yac mcp list`.
+From inside the TUI, use `/mcp add`. List servers with `yac mcp list`.
 
 ## Issue Reporting
 
 Open a GitHub issue with:
 
-- Steps to reproduce (minimal, copy-pasteable)
-- OS, compiler, and libc++/libstdc++ version
-- CMake and Ninja versions (`cmake --version`, `ninja --version`)
-- If MCP-related: attach `~/.yac/logs/mcp/<server-id>.log`
-- If a crash: stack trace or sanitizer output if available
+- Steps to reproduce.
+- OS, compiler, standard library, and Bazel/Bazelisk version.
+- Relevant provider, model, and config details with secrets redacted.
+- If MCP-related: attach `~/.yac/logs/mcp/<server-id>.log`.
+- If a crash: stack trace or sanitizer output if available.

@@ -27,6 +27,7 @@ enum class SettingClassification {
 
 struct SettingsDocExpectation {
   bool readme = false;
+  bool configuration_docs = false;
   bool settings_example = false;
   bool default_template = false;
   bool mcp_docs = false;

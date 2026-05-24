@@ -34,6 +34,10 @@ using yac::chat::ValidateSettingsRegistry;
 #error "SETTINGS_EXAMPLE_TOML_PATH must point at settings.example.toml"
 #endif
 
+#ifndef CONFIGURATION_DOCS_PATH
+#error "CONFIGURATION_DOCS_PATH must point at docs/configuration.md"
+#endif
+
 #ifndef MCP_DOCS_PATH
 #error "MCP_DOCS_PATH must point at docs/mcp.md"
 #endif
@@ -249,6 +253,8 @@ std::vector<DocValidationIssue> ValidateDocTokens(
     bool yac::chat::SettingsDocExpectation::*expectation) {
   std::vector<DocValidationIssue> issues;
   const bool readme = expectation == &yac::chat::SettingsDocExpectation::readme;
+  const bool configuration_docs =
+      expectation == &yac::chat::SettingsDocExpectation::configuration_docs;
   const bool mcp_docs =
       expectation == &yac::chat::SettingsDocExpectation::mcp_docs;
   const bool openai_auth_docs =
@@ -281,8 +287,8 @@ std::vector<DocValidationIssue> ValidateDocTokens(
     }
     const bool require_toml = !record.toml_path.empty();
     const bool require_env = !record.env_var.empty() &&
-                             (readme || mcp_docs || openai_auth_docs ||
-                              record.toml_path.empty());
+                             (readme || configuration_docs || mcp_docs ||
+                              openai_auth_docs || record.toml_path.empty());
     if (require_toml && !tokens.toml_paths.contains(
                             std::string(record.toml_path))) {
       issues.push_back({.message = "Missing TOML key: " +
@@ -375,11 +381,21 @@ TEST_CASE("registry helper tracks every user-facing env var") {
   REQUIRE(helper_env_vars == expected_env_vars);
 }
 
-TEST_CASE("README documents only registered settings env vars") {
+TEST_CASE("README settings summary uses only registered settings tokens") {
   const auto tokens = ExtractDocTokens(ReadFile(YAC_STRINGIFY(README_MD_PATH)));
   const auto issues = ValidateDocTokens(
       tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
       &yac::chat::SettingsDocExpectation::readme);
+
+  RequireNoDocIssues(issues);
+}
+
+TEST_CASE("configuration docs match registry-documented settings") {
+  const auto tokens =
+      ExtractDocTokens(ReadFile(YAC_STRINGIFY(CONFIGURATION_DOCS_PATH)));
+  const auto issues = ValidateDocTokens(
+      tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
+      &yac::chat::SettingsDocExpectation::configuration_docs);
 
   RequireNoDocIssues(issues);
 }
@@ -669,7 +685,7 @@ TEST_CASE(
     REQUIRE(record->classification == expected_record.classification);
     if (record->env_var == "OPENAI_API_KEY" ||
         record->env_var == "ZAI_API_KEY") {
-      REQUIRE(record->docs.readme);
+      REQUIRE(record->docs.configuration_docs);
       REQUIRE(record->toml_path.empty());
     }
     env_only_records.push_back(*record);

@@ -1,447 +1,110 @@
 # YAC
 
-Yet Another Chat is a C++20 terminal chat client built on FTXUI. It combines an
-OpenAI-compatible streaming chat service with a presentation layer for
-Markdown-heavy responses, command UI, and structured tool-call rendering.
+Yet Another Chat is a C++20 terminal chat client built on FTXUI. It provides a
+keyboard-first chat surface for OpenAI-compatible streaming providers, structured
+tool calls, MCP servers, Markdown-heavy responses, and headless automation.
 
 ## Preview
-
-The SVG previews show the current chat surface and command palette.
 
 ![YAC terminal chat preview](docs/yac-screenshot.svg)
 
 ![YAC command palette preview](docs/yac-demo.svg)
 
-## Snapshot
-
-| Piece | What it does |
-| --- | --- |
-| `yac` | Fullscreen terminal app |
-| `yac_app` | Bridges chat service events into `ChatUI` updates |
-| `yac_service` | Queues prompts, tracks history, and streams provider responses |
-| `yac_presentation` | FTXUI components, Markdown rendering, theming, and tool cards |
-| Provider | OpenAI-compatible `/chat/completions` streaming via libcurl, with `openai`, `openai-compatible`, and `zai` presets |
-| Config | `~/.yac/settings.toml`, with `YAC_*` environment variable overrides |
-
 ## Highlights
 
-- Streaming assistant responses with status updates, cancellation, and prompt
-  queue handling
-- OpenAI provider setup through `OPENAI_API_KEY`, stored provider auth,
-  browser OAuth, or device OAuth, plus OpenAI-compatible configuration for
-  custom endpoints
-- Z.ai Coding API preset with startup model discovery and command-palette model
-  switching
-- First-run setup status for provider/model, workspace, API key, and clangd
-  availability
-- Rich Markdown rendering for headings, lists, blockquotes, links, inline code,
-  fenced code blocks, bold, italic, and strikethrough
-- Keyword-based syntax highlighting for C++, Python, JavaScript, and Rust
-- Structured tool-call rendering for file reads/writes, directory listings, LSP
-  diagnostics/navigation/rename/symbols, and legacy bash/search-style blocks
-- `file_edit` tool for surgical string-replacement edits with human approval,
-  avoiding full-file overwrites
-- `grep` tool for ripgrep-backed content search across the workspace, with
-  filename and line-number output
-- `glob` tool for native filesystem walks with gitignore filtering, returning
-  paths sorted by modification time
-- Scrollable transcript with cached Markdown parsing and rendered elements for
-  smoother redraws
-- Command palette plus slash command autocomplete for help, clear, cancel,
-  task, and quit commands
-- User-defined predefined prompt commands loaded from `~/.yac/prompts/*.toml`,
-  with seeded `/init` and `/review` prompts
-- Selectable theme presets (`vivid`, `system`) with a bright, high-saturation
-  visual language built around semantic color roles
-
-## System Setup
-
-Install system dependencies before building.
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt-get install -y ripgrep
-```
-
-For contributors (lint + format-check): install clang-format-21 / clang-tidy-21 from [apt.llvm.org](https://apt.llvm.org/).
-
-### macOS (Homebrew)
-
-```bash
-brew install bazelisk ripgrep
-```
-
-For contributors: `brew install llvm` provides `clang-format` / `clang-tidy` at `/opt/homebrew/opt/llvm/bin/`. Prepend to PATH:
-
-```bash
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-```
-
-### Prerequisites
-
-Bazelisk is recommended so the `.bazelversion` pin is honored automatically.
-GitHub Actions runners already include Bazelisk; locally, `bazel` from Homebrew
-or Bazelisk both work as long as they resolve to the pinned version.
-
-No git submodules or vcpkg bootstrap step is required.
+- Streaming chat with cancellation, prompt queueing, usage reporting, and model
+  switching.
+- Providers for OpenAI-compatible chat completions, OpenAI stored auth, Z.ai,
+  and AWS Bedrock.
+- Markdown rendering, syntax highlighting, command palette, slash commands, and
+  file mentions.
+- Built-in tools for filesystem reads/writes, precise edits, ripgrep search,
+  globbing, LSP navigation, sub-agents, and TODO tracking.
+- MCP over stdio or HTTP, with OAuth, bearer auth, approval policy, resources,
+  and admin commands.
+- Plan and Build modes for separating planning from code-changing work.
 
 ## Quick Start
 
-### Build
+Install Bazelisk or a `bazel` binary that honors `.bazelversion`, plus
+`ripgrep` for the built-in `grep` tool.
 
 ```bash
 bazel build //src:yac
-```
-
-For an optimized release binary, use `bazel build --config=release //src:yac`.
-The first build downloads pinned Bazel module dependencies and compiles the AWS
-Bedrock SDK overlay; subsequent builds reuse Bazel's repository and action
-caches.
-
-### Run
-
-```bash
 export OPENAI_API_KEY=sk-...
 bazel run //src:yac
 ```
 
-If the API key is missing, the app still starts and shows the setup warning in
-the empty transcript. Requests still surface the provider error in chat if the
-key remains unset.
+Headless and admin entrypoints use the same binary:
+
+```bash
+bazel run //src:yac -- run "prompt"
+bazel run //src:yac -- run "prompt" --auto-approve
+bazel run //src:yac -- run "prompt" --cancel-after-ms=5000
+bazel run //src:yac -- mcp list
+```
+
+For release builds:
+
+```bash
+bazel build --config=release //src:yac
+```
 
 ## Configuration
 
-YAC reads `~/.yac/settings.toml`. On first launch the file is auto-created with
-a commented default template; edit it and restart to pick up changes. At
-startup, shell environment variables named `YAC_*` override whatever is in the
-file, which is useful for CI, per-shell experiments, and quick flips. Provider
-presets fill only missing fields: explicit TOML wins over preset defaults, and
-`YAC_*` env overrides win over both.
+YAC reads `~/.yac/settings.toml`, creating it from the built-in template on
+first launch. The repo copy, [settings.example.toml](settings.example.toml),
+shows the supported shape. Shell env vars named `YAC_*` override TOML at
+startup.
 
-YAC also reads predefined prompts from `~/.yac/prompts/*.toml` at startup. The
-directory is auto-created, and missing `init.toml` and `review.toml` files are
-seeded from pinned OpenCode prompt templates. Each TOML file becomes a slash
-command named from the file stem, such as `~/.yac/prompts/review.toml` becoming
-`/review`. Built-in slash commands keep priority if a prompt file name
-collides.
+Common provider fields are `provider.id`, `provider.model`,
+`provider.base_url`, and `provider.api_key_env`; matching env overrides include
+`YAC_PROVIDER`, `YAC_MODEL`, `YAC_BASE_URL`, and `YAC_API_KEY_ENV`. Use
+`OPENAI_API_KEY` or `ZAI_API_KEY` for API keys instead of plaintext TOML.
+Bedrock uses provider options such as `provider.options.region` and
+`provider.options.max_tokens`, with `YAC_BEDROCK_REGION` and
+`YAC_BEDROCK_MAX_TOKENS` overrides.
 
-For the built-in `openai` provider, auth precedence is `env API key > stored
-OpenAI auth > inline settings API key`. The env API key is read from
-`provider.api_key_env`, normally `OPENAI_API_KEY`. Stored OpenAI auth can be an
-API key saved by the CLI or a browser OAuth login. Inline `provider.api_key` is
-kept for compatibility, but prefer the env var or stored auth so secrets don't
-sit in plaintext TOML.
+OpenAI browser auth uses the fixed callback
+`http://localhost:1455/auth/callback`. For headless shells, an installed binary
+can run `yac auth openai login --device`; with Bazel, run
+`bazel run //src:yac -- auth openai login --device`.
 
-Don't paste API keys into the TUI. Use `OPENAI_API_KEY` or store one safely from
-stdin:
+Full references:
 
-```bash
-printf 'sk-...' | yac auth openai set-api-key --stdin
-```
-
-Example `~/.yac/settings.toml`:
-
-```toml
-temperature = 0.7
-# system_prompt = "You are a helpful assistant."
-
-[provider]
-id          = "openai"
-model       = "gpt-4o-mini"
-base_url    = "https://api.openai.com/v1/"
-api_key_env = "OPENAI_API_KEY"
-
-[lsp.clangd]
-command = "clangd"
-args    = []
-```
-
-| Setting | Env override | Default | Purpose |
-| --- | --- | --- | --- |
-| `provider.id` | `YAC_PROVIDER` | `openai-compatible` | Provider ID registered by the app; use `openai` for OpenAI API keys or browser OAuth |
-| `provider.model` | `YAC_MODEL` | `gpt-4o-mini` | Model sent to the chat completions endpoint |
-| `provider.base_url` | `YAC_BASE_URL` | `https://api.openai.com/v1/` | OpenAI-compatible API base URL |
-| `provider.api_key_env` | `YAC_API_KEY_ENV` | `OPENAI_API_KEY` | Name of the env var holding the secret |
-| `provider.api_key` | unset | unset | Optional inline key; lowest priority for `openai`; prefer the configured env var or stored auth |
-| `provider.context_window` | `YAC_CONTEXT_WINDOW` | `0` | Manual context window override in tokens; `0` means auto-detect |
-| `temperature` | `YAC_TEMPERATURE` | `0.7` | Sampling temperature from `0.0` to `2.0` |
-| `system_prompt` | `YAC_SYSTEM_PROMPT` | unset | Optional system prompt prepended to requests |
-| `workspace_root` | `YAC_WORKSPACE_ROOT` | launch CWD | Root directory for workspace-scoped tools |
-| `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command |
-| `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments |
-| `mcp.result_max_bytes` | `YAC_MCP_RESULT_MAX_BYTES` | `262144` | Maximum bytes kept for a single MCP tool result payload |
-| `mcp.servers[].{transport,command,args,url,enabled,auto_start,requires_approval,approval_required_tools,env,headers,auth.type,auth.api_key_env,auth.authorization_url,auth.token_url,auth.client_id,auth.scopes}` | `YAC_MCP_<ID>_TRANSPORT`, `YAC_MCP_<ID>_COMMAND`, `YAC_MCP_<ID>_ARGS`, `YAC_MCP_<ID>_URL`, `YAC_MCP_<ID>_ENABLED`, `YAC_MCP_<ID>_AUTO_START`, `YAC_MCP_<ID>_REQUIRES_APPROVAL`, `YAC_MCP_<ID>_APPROVAL_REQUIRED_TOOLS`, `YAC_MCP_<ID>_ENV_JSON`, `YAC_MCP_<ID>_HEADERS_JSON`, `YAC_MCP_<ID>_AUTH_TYPE`, `YAC_MCP_<ID>_API_KEY_ENV`, `YAC_MCP_<ID>_OAUTH_AUTHORIZATION_URL`, `YAC_MCP_<ID>_OAUTH_TOKEN_URL`, `YAC_MCP_<ID>_OAUTH_CLIENT_ID`, `YAC_MCP_<ID>_OAUTH_SCOPES` | unset | Override an existing MCP server by ID (`<ID>` = upper snake case, non-alnum → `_`) |
-| `theme.name` | `YAC_THEME_NAME` | `"vivid"` | Active theme preset (`vivid`, `system`) |
-| `theme.density` | `YAC_THEME_DENSITY` | `"comfortable"` | Theme density: `"comfortable"` (normal spacing) or `"compact"` (tighter) |
-| `theme.sync_terminal_background` | `YAC_SYNC_TERMINAL_BACKGROUND` | `true` | Paint and restore the terminal background to match the active theme canvas |
-| `compact.auto_enabled` | `YAC_COMPACT_AUTO_ENABLED` | `true` | Auto-compact history before each new user prompt when usage crosses `compact.threshold` |
-| `compact.threshold` | `YAC_COMPACT_THRESHOLD` | `0.8` | Fraction of context window (0.05-1.0) at which auto-compact fires |
-| `compact.keep_last` | `YAC_COMPACT_KEEP_LAST` | `20` | Most-recent non-system messages preserved through compaction |
-| `compact.mode` | `YAC_COMPACT_MODE` | `"summarize"` | `"summarize"` (LLM-summarized) or `"truncate"` (drop and insert a synthetic note) |
-
-Set `[provider].id = "openai"` (or `YAC_PROVIDER=openai`) to use the built-in
-OpenAI preset. When only `id` is set, the preset fills in `gpt-4o-mini`,
-`https://api.openai.com/v1/`, and `OPENAI_API_KEY`; explicit `provider.model`,
-`provider.base_url`, or `provider.api_key_env` values keep winning over those
-preset defaults. API-key mode uses the normal OpenAI-compatible chat completions
-endpoint. Browser and device OAuth use the ChatGPT/Codex Responses endpoint and
-are managed by stored provider auth.
-
-OpenAI auth commands:
-
-```bash
-yac auth openai login
-yac auth openai login --device
-printf 'sk-...' | yac auth openai set-api-key --stdin
-yac auth openai status
-yac auth openai logout
-```
-
-`yac auth openai login` opens browser OAuth with the fixed callback
-`http://localhost:1455/auth/callback`. If that port is busy, free it and retry,
-or use `yac auth openai login --device` from a headless shell. The device flow
-prints `https://auth.openai.com/codex/device` and a user code without printing
-tokens or authorization codes. `status` shows the configured provider, whether
-stored auth exists, and the effective auth source without printing secrets.
-`logout` clears stored OpenAI auth. Provider auth is stored keychain-first, with
-file fallback at `~/.yac/provider/auth/openai.json`. Set
-`YAC_OPENAI_AUTH_STORE=file` in headless/CI environments that should skip OS
-keychain probing and use the auth file directly. See
-[docs/openai-auth.md](docs/openai-auth.md) for precedence, storage, and
-troubleshooting.
-
-Set `[provider].id = "zai"` (or `YAC_PROVIDER=zai`) to use the Z.ai Coding API
-preset. When only `id` is set, the preset fills in `glm-5.1`,
-`https://api.z.ai/api/coding/paas/v4`, and `ZAI_API_KEY`; any field you set
-explicitly overrides the preset.
-
-### Bedrock provider
-
-Set `[provider].id = "bedrock"` to use AWS Bedrock via the Converse API. The
-preset fills only missing provider fields, so explicit TOML values and `YAC_*`
-env overrides still win. Credentials come from the AWS SDK's default chain (env
-vars, `~/.aws/credentials`, IAM role, SSO).
-
-| Setting | Env override | Default | Purpose |
-| --- | --- | --- | --- |
-| `provider.id` | `YAC_PROVIDER` | unset | Set to `"bedrock"` |
-| `provider.model` | `YAC_MODEL` | `anthropic.claude-3-5-haiku-20241022-v1:0` | Bedrock model ID |
-| `provider.options.region` | `YAC_BEDROCK_REGION`, `AWS_REGION` | `us-east-1` | AWS region |
-| `provider.options.max_tokens` | `YAC_BEDROCK_MAX_TOKENS` | `4096` | Max output tokens |
-| `provider.options.profile` | `YAC_BEDROCK_PROFILE` | unset | AWS profile name |
-| `provider.options.endpoint_override` | `YAC_BEDROCK_ENDPOINT_OVERRIDE` | unset | VPC endpoint URL |
-| `provider.options.credential_refresh_command` | `YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND` | unset | Shell command to run once on auth failure before retrying |
-
-Known-good model IDs: `anthropic.claude-3-5-sonnet-20241022-v2:0`, `anthropic.claude-3-5-haiku-20241022-v1:0`, `amazon.nova-pro-v1:0`, `amazon.nova-lite-v1:0`, `amazon.nova-micro-v1:0`, `meta.llama3-1-70b-instruct-v1:0`, `mistral.mistral-large-2407-v1:0`.
-Inference profile prefixes (`us.`, `eu.`, `apac.`, `global.`) are supported.
-Out of scope: prompt caching, Guardrails, Knowledge Bases, document/image content.
-
-API keys: prefer exporting `OPENAI_API_KEY` / `ZAI_API_KEY` in your shell, or
-using `yac auth openai set-api-key --stdin` for OpenAI, over placing `api_key`
-in the TOML file. Plaintext secrets in `$HOME` are harder to rotate safely and
-don't travel well across shells or CI.
-
-Example `~/.yac/prompts/review.toml`:
-
-```toml
-description = "Review current changes"
-prompt = """
-Review the requested target:
-$ARGUMENTS
-"""
-```
-
-Command arguments replace every literal `$ARGUMENTS` token in the prompt body.
-For example, `/review main` sends the rendered prompt with `main` substituted.
-Prompt files are loaded on startup, so restart YAC after editing them.
-
-YAC shows the active provider/model in the footer. It starts the UI immediately,
-then fetches models in the background and adds a `Switch Model` command when a
-model list is available. If Z.ai discovery fails, YAC falls back to a built-in
-GLM model list seeded with `glm-5.1`.
+- [Configuration](docs/configuration.md)
+- [OpenAI auth](docs/openai-auth.md)
+- [MCP](docs/mcp.md)
 
 ## Usage
 
-The interface is keyboard-first:
+In the TUI, `Enter` sends, `Shift+Enter` inserts a newline, `Ctrl+P` opens the
+command palette, and `Shift+Tab` switches between Plan and Build modes. Slash
+commands include `/help`, `/clear`, `/cancel`, `/task`, `/mcp`, `/auth`, `/quit`,
+and prompt files loaded from `~/.yac/prompts/*.toml`.
 
-- `Enter` sends the current message
-- `Shift+Enter`, `Ctrl+Enter`, and `Alt+Enter` insert a newline in the composer
-- `Shift+Tab` toggles between plan and build mode
-- `Ctrl+P` opens the command palette
-- `Help` opens shortcuts, setup status, and workspace status
-- `Switch Model` opens the model picker for future responses
-- `Escape` closes the command palette or slash command menu
-- `Up` and `Down` move through palette or slash command results
-- `Tab` moves upward through slash command results
-- `Enter` in a command menu runs the selected command
-- Typing `/` opens slash command autocomplete; `/help`, `/?`, `/clear`,
-  `/cancel`, `/task <description>`, `/quit`, and `/exit` are built in
-- `/init` and `/review` are seeded predefined prompts; add more by placing
-  TOML files in `~/.yac/prompts`
-- `PageUp` and `PageDown` scroll the transcript by a page
-- `Home` jumps to the top of the chat history
-- `End` jumps to the bottom
-- Mouse wheel and scrollbar dragging also work for transcript navigation
+Plan mode writes the active plan under `.opencode/plans/*.md`. When planning is
+complete, the assistant calls `plan_exit`; approving it writes the plan and
+switches the session to Build.
 
-The command palette filters by case-insensitive substring matching across both
-name and description. It includes `New Chat`, `Clear Messages`,
-`Cancel Response`, and `Help`; `Switch Model` appears when model discovery has
-at least one model.
+See [Usage](docs/usage.md) for shortcuts, slash commands, headless mode, and
+Plan/Build behavior.
 
-### Plan Mode
-
-Press `Shift+Tab` in the TUI to switch between Plan and Build. Headless runs can
-start in Plan with `yac run --plan "prompt"`. The first Plan request creates an
-active plan file under `.opencode/plans/*.md`; Plan-mode file writes and edits
-are limited to that file while normal source changes wait for Build.
-
-When the plan is ready, the assistant calls `plan_exit` with the final plan. YAC
-asks for approval, writes the approved plan to the active `.opencode/plans/*.md`
-file, switches to Build on approval, and sends one Build-mode reminder that
-points back to the approved plan. Rejecting the approval leaves the chat in
-Plan.
-
-## MCP Integration
-
-YAC supports the [Model Context Protocol](https://modelcontextprotocol.io/specification/2025-11-25/)
-(version 2025-11-25), letting you connect external tool servers over stdio or
-HTTP. Connected servers expose their tools directly to the assistant, which
-calls them the same way it calls built-in tools.
-
-See **[docs/mcp.md](docs/mcp.md)** for the full reference: config schema,
-OAuth flow, token storage, approval policy, resource lookup, and
-troubleshooting.
-
-### Quick setup
-
-Add a stdio server (e.g. Context7 via npx) to `~/.yac/settings.toml`:
-
-```toml
-[[mcp.servers]]
-id        = "context7"
-transport = "stdio"
-command   = "npx"
-args      = ["-y", "@upstash/context7-mcp"]
-enabled   = true
-```
-
-Or register it from the CLI without editing the file:
-
-```bash
-yac mcp add context7 --transport stdio --command npx --args '-y,@upstash/context7-mcp'
-```
-
-From inside the TUI, use `/mcp add` instead. List configured servers with
-`yac mcp list` (CLI) or `/mcp list` (TUI). Authenticate an OAuth server with
-`yac mcp auth <server-id>`.
-
-Tool names follow the pattern `mcp_<server-id>__<tool-name>` (double
-underscore). The assistant picks them up automatically once the server starts.
-
-## Tests
-
-Run the full suite:
+## Development
 
 ```bash
 bazel test //tests:all_tests
-```
-
-Run one test target:
-
-```bash
-bazel test //tests:yac_test_renderer
-```
-
-## Quality Tools
-
-```bash
-bazel run //tools:format
 bazel test //tools:format_check
-bazel run //tools:refresh_compile_commands
 bazel run //tools:lint
-bazel run //tools:coverage
+bazel run //tools:refresh_compile_commands
 ```
 
-## Project Map
-
-- `src/main.cpp` is a thin handoff to app bootstrap; it loads config, registers the provider, and wires minimal startup hooks, delegating full startup orchestration to the app bootstrap component
-- `src/app/chat_event_bridge.*` translates service events into presentation
-  updates
-- `src/chat/` contains chat config loading (`~/.yac/settings.toml` + env var
-  overrides), predefined prompt loading (`~/.yac/prompts/*.toml`), queueing,
-  history, cancellation, and stream event flow
-- `src/provider/` contains the provider interface, registry, and OpenAI
-  chat-completions implementation
-- `src/presentation/chat_ui.*` owns messages, input handling, scrolling, command
-  palette, and slash command menu state
-- `src/presentation/message_renderer.*` renders messages, using cached Markdown
-  blocks when available
-- `src/presentation/markdown/` contains the custom parser and renderer
-- `src/presentation/syntax/` contains the keyword-based syntax highlighter
-- `src/presentation/tool_call/` contains tool-call types and their renderer
-- `src/presentation/theme.*` defines the shared color system
-- `src/presentation/util/` contains header-only helpers for scrolling, string
-  utilities, and relative time
-
-## Architecture
-
-```mermaid
-flowchart TD
-  Main["src/main.cpp"] --> Bootstrap["app::RunApp<br/>startup wiring"]
-  Bootstrap --> Config["LoadChatConfigResult<br/>settings.toml + env overrides"]
-  Config --> Provider["OpenAiChatProvider<br/>OpenAI-compatible config"]
-  Bootstrap --> Registry["ProviderRegistry"]
-  Provider --> Registry
-  Bootstrap --> Service["ChatService<br/>prompt queue + history worker"]
-  Registry --> Service
-  Config --> Service
-  Bootstrap --> UI["ChatUI<br/>FTXUI surface"]
-  Bootstrap --> Bridge["ChatEventBridge"]
-  Bootstrap --> Discovery["model discovery worker"]
-  Discovery --> Provider
-  Discovery -- "model list/status" --> UI
-
-  UI -- "send / commands / tool approval" --> Service
-  Service -- "ChatEvent" --> Bridge
-  Bridge -- "presentation updates" --> UI
-
-  Service --> Processor["ChatServicePromptProcessor"]
-  Processor --> Request["ChatServiceRequestBuilder<br/>system prompt + history + tools"]
-  Request --> Registry
-  Registry --> Provider
-  Provider -- "text deltas / tool calls / usage" --> Processor
-
-  Processor -- "tool requests" --> Executor["ToolExecutor"]
-  Processor -- "approval wait" --> Approval["ChatServiceToolApproval"]
-  Approval -- "approval request event" --> Bridge
-  Executor --> Workspace["WorkspaceFilesystem<br/>file read/write/list"]
-  Executor --> Lsp["JsonRpcLspClient + clangd<br/>diagnostics/navigation/rename/symbols"]
-  Executor --> SubAgents["SubAgentManager<br/>foreground/background agents"]
-  SubAgents --> AgentProcessor["isolated prompt processor<br/>sub-agent history"]
-  AgentProcessor --> Registry
-  AgentProcessor --> Executor
-  SubAgents -- "progress/result events" --> Bridge
-
-  UI --> UiState["ChatSession + composer<br/>palette/slash menu/scroll state"]
-  UI --> Renderer["MessageRenderer"]
-  Renderer --> Markdown["Markdown parser / renderer"]
-  Renderer --> ToolCards["Tool-call renderer"]
-  Markdown --> Syntax["Syntax highlighter"]
-```
-
-## Notes
-
-- The `grep` tool requires ripgrep (`rg`) in PATH. Install: `apt install ripgrep` or `brew install ripgrep`.
-- Dependencies are resolved by Bazel/Bzlmod. `FTXUI`, `openai-cpp`,
-  `tomlplusplus`, `Catch2`, `keychain`, `curl`, `BoringSSL`, and the AWS
-  Bedrock SDK overlay are pinned in `MODULE.bazel` and `third_party/`.
-- `FTXUI` and `openai-cpp` are pinned to specific commits and are not tracking upstream `main`.
-- `Catch2` is pinned to `v3.5.2`.
-- `hrantzsch/keychain` is fetched at `v1.3.1`; on Linux it uses `libsecret-1-dev` and DBus.
-- `compile_commands.json` is generated with `bazel run //tools:refresh_compile_commands`
-  and is used by `.clangd`.
+Use `bazel run //tools:format` to apply formatting and
+`bazel run //tools:coverage` for the PR coverage report. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for contributor setup and
+[Architecture](docs/architecture.md) for the project map.
 
 ## License
 
-YAC is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for full text.
+YAC is licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE)
+for full text.

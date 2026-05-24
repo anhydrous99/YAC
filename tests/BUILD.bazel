@@ -121,6 +121,7 @@ yac_test(
     ],
     defines = [
         "README_MD_PATH=\"$(rootpath //:README.md)\"",
+        "CONFIGURATION_DOCS_PATH=\"docs/configuration.md\"",
         "SETTINGS_EXAMPLE_TOML_PATH=\"$(rootpath //:settings.example.toml)\"",
         "MCP_DOCS_PATH=\"docs/mcp.md\"",
         "OPENAI_AUTH_DOCS_PATH=\"docs/openai-auth.md\"",
