@@ -3,13 +3,17 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <future>
+#include <memory>
 #include <netinet/in.h>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <sys/socket.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -70,6 +74,50 @@ namespace {
       token.substr(first_dot + 1, second_dot - first_dot - 1));
 }
 
+[[nodiscard]] unsigned short PortFromUrl(std::string_view url) {
+  const auto host_start = url.find("127.0.0.1");
+  REQUIRE(host_start != std::string_view::npos);
+  const auto port_start = url.find(':', host_start) + 1;
+  const auto port_end = url.find('/', port_start);
+  const std::string port =
+      std::string(url.substr(port_start, port_end - port_start));
+  return static_cast<unsigned short>(std::stoul(port));
+}
+
+[[nodiscard]] int ConnectToServer(const TestHttpServer& server,
+                                  std::string_view path) {
+  const unsigned short port = PortFromUrl(server.Url(path));
+  const int sock = socket(AF_INET, SOCK_STREAM, 0);
+  REQUIRE(sock >= 0);
+
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = htons(port);
+  REQUIRE(connect(sock, reinterpret_cast<const sockaddr*>(&addr),
+                  sizeof(addr)) == 0);
+  return sock;
+}
+
+void RequireDestroyCompletesWithOpenClient(
+    std::unique_ptr<TestHttpServer> server, int client_fd) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  auto destroy = std::async(std::launch::async,
+                            [server = std::move(server)]() mutable {
+                              server.reset();
+                            });
+  const bool completed = destroy.wait_for(std::chrono::seconds(1)) ==
+                         std::future_status::ready;
+  close(client_fd);
+
+  if (!completed) {
+    REQUIRE(destroy.wait_for(std::chrono::seconds(1)) ==
+            std::future_status::ready);
+  }
+  REQUIRE(completed);
+}
+
 }  // namespace
 
 TEST_CASE("http_server_captures_requests") {
@@ -97,20 +145,7 @@ TEST_CASE("http_server_captures_requests") {
   const auto url = server.Url("/token");
   REQUIRE_THAT(url, ContainsSubstring("http://127.0.0.1:"));
 
-  const auto port_start = url.find(':', url.find("127.0.0.1")) + 1;
-  const auto port_end = url.find('/', port_start);
-  const auto port = static_cast<unsigned short>(
-      std::stoul(url.substr(port_start, port_end - port_start)));
-
-  const int sock = socket(AF_INET, SOCK_STREAM, 0);
-  REQUIRE(sock >= 0);
-
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  addr.sin_port = htons(port);
-  REQUIRE(connect(sock, reinterpret_cast<const sockaddr*>(&addr),
-                  sizeof(addr)) == 0);
+  const int sock = ConnectToServer(server, "/token");
   REQUIRE(send(sock, request.data(), request.size(), 0) ==
           static_cast<ssize_t>(request.size()));
 
@@ -121,6 +156,120 @@ TEST_CASE("http_server_captures_requests") {
   const auto requests = server.Requests();
   REQUIRE(requests.size() == 1);
   REQUIRE(requests[0].path == "/token");
+}
+
+TEST_CASE("http_server_repeated_idle_teardown_is_stable") {
+  std::atomic<int> request_count = 0;
+
+  for (int iteration = 0; iteration < 100; ++iteration) {
+    TestHttpServer server([&request_count](const HttpRequest&, std::size_t) {
+      request_count.fetch_add(1);
+      return HttpResponse{.status = 204};
+    });
+    REQUIRE_THAT(server.Url("/idle"), ContainsSubstring("http://127.0.0.1:"));
+  }
+
+  REQUIRE(request_count.load() == 0);
+}
+
+TEST_CASE("http_server_request_then_immediate_teardown_is_stable") {
+  std::atomic<int> request_count = 0;
+
+  for (int iteration = 0; iteration < 50; ++iteration) {
+    {
+      TestHttpServer server([&request_count](const HttpRequest& request,
+                                             std::size_t index) {
+        REQUIRE(request.path == "/ping");
+        REQUIRE(index == 0);
+        request_count.fetch_add(1);
+        return HttpResponse{.status = 200, .body = "ok"};
+      });
+
+      const std::string request =
+          "GET /ping HTTP/1.1\r\n"
+          "Host: 127.0.0.1\r\n"
+          "Content-Length: 0\r\n"
+          "\r\n";
+      const int sock = ConnectToServer(server, "/ping");
+      REQUIRE(send(sock, request.data(), request.size(), 0) ==
+              static_cast<ssize_t>(request.size()));
+
+      std::array<char, 64> buffer{};
+      REQUIRE(recv(sock, buffer.data(), buffer.size(), 0) > 0);
+      close(sock);
+    }
+
+    REQUIRE(request_count.load() == iteration + 1);
+  }
+}
+
+TEST_CASE("http_server_teardown_stops_client_that_sends_no_bytes") {
+  std::atomic<int> request_count = 0;
+  auto server = std::make_unique<TestHttpServer>(
+      [&request_count](const HttpRequest&, std::size_t) {
+        request_count.fetch_add(1);
+        return HttpResponse{.status = 200, .body = "unexpected"};
+      });
+
+  const int sock = ConnectToServer(*server, "/never-sent");
+  RequireDestroyCompletesWithOpenClient(std::move(server), sock);
+
+  REQUIRE(request_count.load() == 0);
+}
+
+TEST_CASE("http_server_teardown_stops_client_with_partial_body") {
+  std::atomic<int> request_count = 0;
+  auto server = std::make_unique<TestHttpServer>(
+      [&request_count](const HttpRequest&, std::size_t) {
+        request_count.fetch_add(1);
+        return HttpResponse{.status = 200, .body = "unexpected"};
+      });
+
+  const std::string request =
+      "POST /partial HTTP/1.1\r\n"
+      "Host: 127.0.0.1\r\n"
+      "Content-Length: 32\r\n"
+      "\r\n"
+      "short";
+  const int sock = ConnectToServer(*server, "/partial");
+  REQUIRE(send(sock, request.data(), request.size(), 0) ==
+          static_cast<ssize_t>(request.size()));
+  RequireDestroyCompletesWithOpenClient(std::move(server), sock);
+
+  REQUIRE(request_count.load() == 0);
+}
+
+TEST_CASE("http_server_teardown_stops_client_not_reading_large_response") {
+  std::atomic<int> request_count = 0;
+  auto server = std::make_unique<TestHttpServer>(
+      [&request_count](const HttpRequest& request, std::size_t index) {
+        REQUIRE(request.path == "/large");
+        REQUIRE(index == 0);
+        std::string body(8 * 1024 * 1024, 'x');
+        request_count.fetch_add(1);
+        return HttpResponse{.status = 200, .body = body};
+      });
+
+  const int sock = ConnectToServer(*server, "/large");
+  int receive_buffer_size = 4096;
+  REQUIRE(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &receive_buffer_size,
+                     sizeof(receive_buffer_size)) == 0);
+
+  const std::string request =
+      "GET /large HTTP/1.1\r\n"
+      "Host: 127.0.0.1\r\n"
+      "Content-Length: 0\r\n"
+      "\r\n";
+  REQUIRE(send(sock, request.data(), request.size(), 0) ==
+          static_cast<ssize_t>(request.size()));
+
+  for (int attempt = 0; attempt < 100 && request_count.load() == 0;
+       ++attempt) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(request_count.load() == 1);
+
+  RequireDestroyCompletesWithOpenClient(std::move(server), sock);
 }
 
 TEST_CASE("fake_browser_launcher_records_urls") {

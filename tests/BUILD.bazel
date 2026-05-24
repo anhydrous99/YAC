@@ -216,6 +216,7 @@ yac_test(
         "test_openai_auth_flow.cpp",
         "openai_auth_test_helpers.cpp",
     ],
+    tags = ["exclusive"],
 )
 
 yac_test(

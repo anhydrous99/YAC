@@ -50,11 +50,14 @@ class TestHttpServer {
   [[nodiscard]] std::vector<HttpRequest> Requests() const;
 
  private:
-  [[nodiscard]] static HttpRequest ReadRequest(int client_fd);
-  static void WriteResponse(int client_fd, const HttpResponse& response);
-  void Run(std::stop_token stop_token);
-
   class Impl;
+
+  [[nodiscard]] static HttpRequest ReadRequest(int client_fd,
+                                               std::stop_token stop_token);
+  static void WriteResponse(int client_fd, const HttpResponse& response,
+                            std::stop_token stop_token);
+  static void Run(Impl* impl, std::stop_token stop_token);
+
   std::unique_ptr<Impl> impl_;
 };
 

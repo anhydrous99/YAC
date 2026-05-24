@@ -3,10 +3,13 @@
 #include <arpa/inet.h>
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdexcept>
 #include <string_view>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
@@ -92,6 +95,65 @@ namespace {
   return escaped;
 }
 
+void WaitForReadable(int fd, std::stop_token stop_token) {
+  while (!stop_token.stop_requested()) {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+
+    timeval timeout{};
+    timeout.tv_usec = 10'000;
+
+    const int ready = select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
+    if (ready < 0) {
+      throw std::runtime_error("select failed");
+    }
+    if (ready > 0 && FD_ISSET(fd, &read_fds)) {
+      return;
+    }
+  }
+  throw std::runtime_error("request read stopped");
+}
+
+void WaitForWritable(int fd, std::stop_token stop_token) {
+  while (!stop_token.stop_requested()) {
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(fd, &write_fds);
+
+    timeval timeout{};
+    timeout.tv_usec = 10'000;
+
+    const int ready = select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
+    if (ready < 0) {
+      throw std::runtime_error("select failed");
+    }
+    if (ready > 0 && FD_ISSET(fd, &write_fds)) {
+      return;
+    }
+  }
+  throw std::runtime_error("response write stopped");
+}
+
+void ConfigureAcceptedClient(int client_fd) {
+  const int flags = fcntl(client_fd, F_GETFL, 0);
+  if (flags >= 0) {
+    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+  }
+#ifdef SO_NOSIGPIPE
+  int enabled = 1;
+  setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+#endif
+}
+
+int SendFlags() {
+  int flags = MSG_DONTWAIT;
+#ifdef MSG_NOSIGNAL
+  flags |= MSG_NOSIGNAL;
+#endif
+  return flags;
+}
+
 }  // namespace
 
 class TestHttpServer::Impl {
@@ -146,12 +208,18 @@ TestHttpServer::TestHttpServer(Handler handler)
   }
   impl_->port_ = ntohs(addr.sin_port);
 
-  impl_->worker_ =
-      std::jthread([this](std::stop_token stop_token) { Run(stop_token); });
+  impl_->worker_ = std::jthread(
+      [impl = impl_.get()](std::stop_token stop_token) {
+        Run(impl, stop_token);
+      });
 }
 
 TestHttpServer::~TestHttpServer() {
   impl_->stop_ = true;
+  impl_->worker_.request_stop();
+  if (impl_->worker_.joinable()) {
+    impl_->worker_.join();
+  }
   if (impl_->listen_fd_ >= 0) {
     shutdown(impl_->listen_fd_, SHUT_RDWR);
     close(impl_->listen_fd_);
@@ -168,12 +236,17 @@ std::vector<HttpRequest> TestHttpServer::Requests() const {
   return impl_->requests_;
 }
 
-HttpRequest TestHttpServer::ReadRequest(int client_fd) {
+HttpRequest TestHttpServer::ReadRequest(int client_fd,
+                                        std::stop_token stop_token) {
   std::string buffer;
   std::array<char, 1024> chunk{};
   std::size_t header_end = std::string::npos;
   while ((header_end = buffer.find("\r\n\r\n")) == std::string::npos) {
+    WaitForReadable(client_fd, stop_token);
     const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
+    if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      continue;
+    }
     if (bytes <= 0) {
       throw std::runtime_error("recv header failed");
     }
@@ -216,7 +289,11 @@ HttpRequest TestHttpServer::ReadRequest(int client_fd) {
 
   request.body = buffer.substr(header_end + 4);
   while (request.body.size() < content_length) {
+    WaitForReadable(client_fd, stop_token);
     const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
+    if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      continue;
+    }
     if (bytes <= 0) {
       throw std::runtime_error("recv body failed");
     }
@@ -225,8 +302,8 @@ HttpRequest TestHttpServer::ReadRequest(int client_fd) {
   return request;
 }
 
-void TestHttpServer::WriteResponse(int client_fd,
-                                   const HttpResponse& response) {
+void TestHttpServer::WriteResponse(int client_fd, const HttpResponse& response,
+                                   std::stop_token stop_token) {
   std::string wire = "HTTP/1.1 " + std::to_string(response.status) + " " +
                      ReasonPhrase(response.status) + "\r\n";
   for (const auto& [key, value] : response.headers) {
@@ -238,8 +315,12 @@ void TestHttpServer::WriteResponse(int client_fd,
 
   std::size_t written = 0;
   while (written < wire.size()) {
-    const ssize_t bytes =
-        send(client_fd, wire.data() + written, wire.size() - written, 0);
+    WaitForWritable(client_fd, stop_token);
+    const ssize_t bytes = send(client_fd, wire.data() + written,
+                               wire.size() - written, SendFlags());
+    if (bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      continue;
+    }
     if (bytes <= 0) {
       throw std::runtime_error("send failed");
     }
@@ -247,29 +328,44 @@ void TestHttpServer::WriteResponse(int client_fd,
   }
 }
 
-void TestHttpServer::Run(std::stop_token stop_token) {
-  while (!impl_->stop_.load() && !stop_token.stop_requested()) {
+void TestHttpServer::Run(Impl* impl, std::stop_token stop_token) {
+  const int listen_fd = impl->listen_fd_;
+  while (!impl->stop_.load() && !stop_token.stop_requested()) {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(listen_fd, &read_fds);
+
+    timeval timeout{};
+    timeout.tv_usec = 10'000;
+
+    const int ready = select(listen_fd + 1, &read_fds, nullptr, nullptr,
+                             &timeout);
+    if (ready <= 0) {
+      continue;
+    }
+
     sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
     const int client_fd =
-        accept(impl_->listen_fd_, reinterpret_cast<sockaddr*>(&client_addr),
+        accept(listen_fd, reinterpret_cast<sockaddr*>(&client_addr),
                &client_len);
     if (client_fd < 0) {
-      if (impl_->stop_.load() || stop_token.stop_requested()) {
+      if (impl->stop_.load() || stop_token.stop_requested()) {
         return;
       }
       continue;
     }
+    ConfigureAcceptedClient(client_fd);
 
     try {
-      HttpRequest request = ReadRequest(client_fd);
+      HttpRequest request = ReadRequest(client_fd, stop_token);
       const std::size_t request_index = [&] {
-        std::scoped_lock lock(impl_->mutex_);
-        impl_->requests_.push_back(request);
-        return impl_->requests_.size() - 1;
+        std::scoped_lock lock(impl->mutex_);
+        impl->requests_.push_back(request);
+        return impl->requests_.size() - 1;
       }();
-      const HttpResponse response = impl_->handler_(request, request_index);
-      WriteResponse(client_fd, response);
+      const HttpResponse response = impl->handler_(request, request_index);
+      WriteResponse(client_fd, response, stop_token);
     } catch (const std::exception&) {
       close(client_fd);
       continue;
