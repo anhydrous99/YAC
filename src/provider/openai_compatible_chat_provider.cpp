@@ -1,5 +1,6 @@
 #include "provider/openai_compatible_chat_provider.hpp"
 
+#include "provider/http_sse_client.hpp"
 #include "provider/openai_compatible_chat_protocol.hpp"
 #include "provider/zai_context_windows.hpp"
 
@@ -10,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace yac::provider {
 namespace {
@@ -21,29 +23,6 @@ size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* buffer = static_cast<std::string*>(userdata);
   buffer->append(ptr, bytes);
   return bytes;
-}
-
-size_t WriteStream(char* ptr, size_t size, size_t nmemb, void* userdata) {
-  const auto bytes = size * nmemb;
-  auto* state = static_cast<openai_compatible_protocol::StreamState*>(userdata);
-  openai_compatible_protocol::ConsumeSseChunk(std::string_view(ptr, bytes),
-                                              *state);
-  return bytes;
-}
-struct ProgressState {
-  std::stop_token* stop_token = nullptr;
-};
-
-int ProgressCallback(void* clientp, curl_off_t download_total,
-                     curl_off_t download_now, curl_off_t upload_total,
-                     curl_off_t upload_now) {
-  (void)download_total;
-  (void)download_now;
-  (void)upload_total;
-  (void)upload_now;
-
-  const auto* state = static_cast<ProgressState*>(clientp);
-  return state->stop_token->stop_requested() ? 1 : 0;
 }
 
 std::string TrimTrailingSlash(std::string value) {
@@ -227,57 +206,33 @@ void OpenAiCompatibleChatProvider::CompleteStreaming(
     throw std::runtime_error(config_.api_key_env + " is not set.");
   }
 
-  CURL* curl = curl_easy_init();
-  if (curl == nullptr) {
-    throw std::runtime_error("curl_easy_init failed.");
-  }
-
-  const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
-  std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
-
   auto payload =
       openai_compatible_protocol::BuildChatPayload(request, true, config_)
           .dump();
   openai_compatible_protocol::StreamState stream_state{.sink = &sink};
-  ProgressState progress_state{.stop_token = &stop_token};
-
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Accept: text/event-stream");
   const auto auth_header = "Authorization: Bearer " + api_key;
-  headers = curl_slist_append(headers, auth_header.c_str());
-
-  const auto cleanup_headers = [](curl_slist* list) {
-    curl_slist_free_all(list);
-  };
-  std::unique_ptr<curl_slist, decltype(cleanup_headers)> header_handle(
-      headers, cleanup_headers);
 
   const auto url = CompletionUrl();
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, payload.size());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteStream);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &stream_state);
-  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-  curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
-  curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progress_state);
-
-  const auto result = curl_easy_perform(curl);
-  if (stop_token.stop_requested()) {
+  const auto response = internal::PerformHttpStreamPost(
+      internal::HttpStreamPostRequest{
+          .url = url,
+          .payload = std::move(payload),
+          .headers = {"Content-Type: application/json",
+                      "Accept: text/event-stream", auth_header},
+          .on_body_chunk =
+              [&stream_state](std::string_view chunk) {
+                openai_compatible_protocol::ConsumeSseChunk(chunk,
+                                                            stream_state);
+              }},
+      stop_token);
+  if (response.cancelled) {
     return;
   }
-  if (result != CURLE_OK) {
-    throw std::runtime_error(curl_easy_strerror(result));
-  }
 
-  long status = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-  if (status >= 400) {
+  if (response.status_code >= 400) {
     std::ostringstream message;
-    message << "OpenAI request failed with HTTP " << status << ".";
+    message << "OpenAI request failed with HTTP " << response.status_code
+            << ".";
     throw std::runtime_error(message.str());
   }
 

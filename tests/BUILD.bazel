@@ -93,6 +93,13 @@ yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
 yac_test("yac_test_openai_auth_command", ["test_openai_auth_command.cpp"])
 yac_test("yac_test_openai_responses_protocol", ["test_openai_responses_protocol.cpp"])
 yac_test(
+    "yac_test_provider_http_sse_client",
+    [
+        "test_provider_http_sse_client.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+)
+yac_test(
     "yac_test_openai_auth_guardrails",
     ["test_openai_auth_guardrails.cpp"],
     data = ROOT_SCAN_DATA,

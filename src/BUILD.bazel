@@ -119,6 +119,7 @@ yac_cc_library(
         "provider/bedrock_aws_api_guard.cpp",
         "provider/bedrock_chat_provider.cpp",
         "provider/bedrock_chat_protocol.cpp",
+        "provider/http_sse_client.cpp",
         "provider/openai_auth.cpp",
         "provider/openai_auth_flow.cpp",
         "provider/openai_auth_store.cpp",

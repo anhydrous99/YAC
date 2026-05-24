@@ -1,10 +1,10 @@
 #include "provider/openai_chat_provider.hpp"
 
+#include "provider/http_sse_client.hpp"
 #include "provider/openai_responses_protocol.hpp"
 
 #include <array>
 #include <cstdlib>
-#include <curl/curl.h>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -41,26 +42,14 @@ struct OAuthWriteState {
   std::string error_body;
 };
 
-[[nodiscard]] size_t WriteString(char* ptr, size_t size, size_t nmemb,
-                                 void* userdata) {
-  const auto bytes = size * nmemb;
-  auto* buffer = static_cast<std::string*>(userdata);
-  buffer->append(ptr, bytes);
-  return bytes;
-}
-
-[[nodiscard]] size_t CaptureHeaders(char* buffer, size_t size, size_t nitems,
-                                    void* userdata) {
-  const auto bytes = size * nitems;
-  auto* state = static_cast<HeaderState*>(userdata);
-  std::string_view line(buffer, bytes);
+void CaptureHeaderLine(std::string_view line, HeaderState& state) {
   if (!line.starts_with("HTTP/")) {
-    return bytes;
+    return;
   }
 
   const auto first_space = line.find(' ');
   if (first_space == std::string_view::npos) {
-    return bytes;
+    return;
   }
   const auto second_space = line.find(' ', first_space + 1);
   const auto code_text =
@@ -68,36 +57,30 @@ struct OAuthWriteState {
                                        ? std::string_view::npos
                                        : second_space - first_space - 1);
   try {
-    state->status_code = std::stol(std::string(code_text));
-    state->saw_status_line = true;
+    state.status_code = std::stol(std::string(code_text));
+    state.saw_status_line = true;
   } catch (const std::exception& error) {
     (void)error;
   }
-  return bytes;
 }
 
-[[nodiscard]] size_t WriteOAuthBody(char* ptr, size_t size, size_t nmemb,
-                                    void* userdata) {
-  const auto bytes = size * nmemb;
-  auto* state = static_cast<OAuthWriteState*>(userdata);
-  const std::string_view chunk(ptr, bytes);
-  if (!state->header_state->saw_status_line) {
-    state->pending_before_status.append(chunk.data(), chunk.size());
-    return bytes;
+void ConsumeOAuthBody(std::string_view chunk, OAuthWriteState& state) {
+  if (!state.header_state->saw_status_line) {
+    state.pending_before_status.append(chunk.data(), chunk.size());
+    return;
   }
 
-  if (state->header_state->status_code >= 400) {
-    state->error_body.append(chunk.data(), chunk.size());
-    return bytes;
+  if (state.header_state->status_code >= 400) {
+    state.error_body.append(chunk.data(), chunk.size());
+    return;
   }
 
-  if (!state->pending_before_status.empty()) {
-    openai_responses_protocol::ConsumeSseChunk(state->pending_before_status,
-                                               *state->stream_state);
-    state->pending_before_status.clear();
+  if (!state.pending_before_status.empty()) {
+    openai_responses_protocol::ConsumeSseChunk(state.pending_before_status,
+                                               *state.stream_state);
+    state.pending_before_status.clear();
   }
-  openai_responses_protocol::ConsumeSseChunk(chunk, *state->stream_state);
-  return bytes;
+  openai_responses_protocol::ConsumeSseChunk(chunk, *state.stream_state);
 }
 
 [[nodiscard]] std::string TrimTrailingSlash(std::string value) {
@@ -179,22 +162,6 @@ struct OAuthWriteState {
   return message.str();
 }
 
-struct ProgressState {
-  std::stop_token* stop_token = nullptr;
-};
-
-int ProgressCallback(void* clientp, curl_off_t download_total,
-                     curl_off_t download_now, curl_off_t upload_total,
-                     curl_off_t upload_now) {
-  (void)download_total;
-  (void)download_now;
-  (void)upload_total;
-  (void)upload_now;
-
-  const auto* state = static_cast<ProgressState*>(clientp);
-  return state->stop_token->stop_requested() ? 1 : 0;
-}
-
 struct OAuthAttemptResult {
   long status_code = 0;
   std::string error_body;
@@ -206,69 +173,50 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
                                        const OpenAiOAuthAuth& auth,
                                        ChatEventSink sink,
                                        std::stop_token stop_token) {
-  CURL* curl = curl_easy_init();
-  if (curl == nullptr) {
-    throw std::runtime_error("curl_easy_init failed.");
-  }
-  const auto cleanup_curl = [](CURL* handle) { curl_easy_cleanup(handle); };
-  std::unique_ptr<CURL, decltype(cleanup_curl)> curl_handle(curl, cleanup_curl);
-
   auto payload =
       openai_responses_protocol::BuildResponsesPayload(request, config).dump();
   openai_responses_protocol::StreamState stream_state{.sink = &sink};
   HeaderState header_state;
   OAuthWriteState write_state{.header_state = &header_state,
                               .stream_state = &stream_state};
-  ProgressState progress_state{.stop_token = &stop_token};
 
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Accept: text/event-stream");
+  std::vector<std::string> headers = {"Content-Type: application/json",
+                                      "Accept: text/event-stream"};
   const auto auth_header = "Authorization: Bearer " + auth.access_token;
-  headers = curl_slist_append(headers, auth_header.c_str());
-  headers = curl_slist_append(headers, "originator: opencode");
+  headers.push_back(auth_header);
+  headers.emplace_back("originator: opencode");
   const auto user_agent = "User-Agent: " + RuntimeUserAgent();
-  headers = curl_slist_append(headers, user_agent.c_str());
+  headers.push_back(user_agent);
   if (request.session_id.has_value() && !request.session_id->empty()) {
     const auto session_header = "session_id: " + *request.session_id;
-    headers = curl_slist_append(headers, session_header.c_str());
+    headers.push_back(session_header);
   }
   if (auth.account_id.has_value() && !auth.account_id->empty()) {
     const auto account_header = "ChatGPT-Account-Id: " + *auth.account_id;
-    headers = curl_slist_append(headers, account_header.c_str());
+    headers.push_back(account_header);
   }
-  const auto cleanup_headers = [](curl_slist* list) {
-    curl_slist_free_all(list);
-  };
-  std::unique_ptr<curl_slist, decltype(cleanup_headers)> header_handle(
-      headers, cleanup_headers);
 
   const auto url = OAuthRequestUrl(oauth_base_url);
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, payload.size());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, CaptureHeaders);
-  curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_state);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteOAuthBody);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &write_state);
-  curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-  curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
-  curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progress_state);
-
-  const auto result = curl_easy_perform(curl);
-  if (stop_token.stop_requested()) {
+  const auto response = internal::PerformHttpStreamPost(
+      internal::HttpStreamPostRequest{
+          .url = url,
+          .payload = std::move(payload),
+          .headers = std::move(headers),
+          .on_header_line =
+              [&header_state](std::string_view line) {
+                CaptureHeaderLine(line, header_state);
+              },
+          .on_body_chunk =
+              [&write_state](std::string_view chunk) {
+                ConsumeOAuthBody(chunk, write_state);
+              }},
+      stop_token);
+  if (response.cancelled) {
     return {};
   }
-  if (result != CURLE_OK) {
-    throw std::runtime_error(curl_easy_strerror(result));
-  }
 
-  long status_code = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
-  if (status_code >= 400) {
-    return {.status_code = status_code,
+  if (response.status_code >= 400) {
+    return {.status_code = response.status_code,
             .error_body = std::move(write_state.error_body)};
   }
 
@@ -283,7 +231,7 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
         .model = request.model,
         .usage = std::move(*stream_state.pending_usage)}});
   }
-  return {.status_code = status_code};
+  return {.status_code = response.status_code};
 }
 
 }  // namespace
