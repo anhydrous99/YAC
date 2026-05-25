@@ -26,6 +26,9 @@ namespace yac::tool_call {
 
 namespace {
 
+inline constexpr std::string_view kUnsupportedWebToolError =
+    "Built-in web tools are unsupported and not configured in YAC.";
+
 PreparedToolCall PrepareFileWriteTool(const chat::ToolCallRequest& request,
                                       const Json& args) {
   const auto filepath = RequireString(args, "filepath");
@@ -217,6 +220,22 @@ PreparedToolCall PrepareGlobTool(const chat::ToolCallRequest& request,
                           .requires_approval = false};
 }
 
+PreparedToolCall PrepareWebFetchTool(const chat::ToolCallRequest& request,
+                                     const Json& args) {
+  const auto url = RequireString(args, "url");
+  return PreparedToolCall{.request = request,
+                          .preview = WebFetchCall{.url = url},
+                          .requires_approval = false};
+}
+
+PreparedToolCall PrepareWebSearchTool(const chat::ToolCallRequest& request,
+                                      const Json& args) {
+  const auto query = RequireString(args, "query");
+  return PreparedToolCall{.request = request,
+                          .preview = WebSearchCall{.query = query},
+                          .requires_approval = false};
+}
+
 // Execute helpers — one per tool. Each takes the prepared call plus the
 // shared ExecutionContext and returns a ToolExecutionResult. Most ignore
 // most of `ctx`; that is fine — packing the deps in one struct keeps the
@@ -345,6 +364,12 @@ ToolExecutionResult ExecuteGlobDispatch(const PreparedToolCall& prepared,
   return ExecuteGlobTool(prepared.request, ctx.workspace_filesystem);
 }
 
+ToolExecutionResult ExecuteUnsupportedWebDispatch(
+    const PreparedToolCall& prepared, const ExecutionContext& ctx) {
+  (void)ctx;
+  return ErrorResult(prepared.preview, std::string(kUnsupportedWebToolError));
+}
+
 using HandlerRegistry = std::unordered_map<std::string_view, ToolHandler>;
 
 const HandlerRegistry kToolHandlers = {
@@ -384,6 +409,12 @@ const HandlerRegistry kToolHandlers = {
      {.prepare = &PrepareGrepTool, .execute = &ExecuteGrepDispatch}},
     {kGlobToolName,
      {.prepare = &PrepareGlobTool, .execute = &ExecuteGlobDispatch}},
+    {kWebFetchToolName,
+     {.prepare = &PrepareWebFetchTool,
+      .execute = &ExecuteUnsupportedWebDispatch}},
+    {kWebSearchToolName,
+     {.prepare = &PrepareWebSearchTool,
+      .execute = &ExecuteUnsupportedWebDispatch}},
 };
 
 }  // namespace
@@ -475,6 +506,20 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
                       "descending.",
        .parameters_schema_json =
            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
+      {.name = std::string(kWebFetchToolName),
+       .description =
+           "unsupported built-in web fetch placeholder. This tool is not "
+           "configured in YAC and always returns an unsupported error without "
+           "network I/O.",
+       .parameters_schema_json =
+           R"json({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"URL that would be fetched if web tools were configured."}},"required":["url"]})json"},
+      {.name = std::string(kWebSearchToolName),
+       .description =
+           "unsupported built-in web search placeholder. This tool is not "
+           "configured in YAC and always returns an unsupported error without "
+           "network I/O.",
+       .parameters_schema_json =
+           R"json({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query that would be sent if web tools were configured."}},"required":["query"]})json"},
   };
 }
 

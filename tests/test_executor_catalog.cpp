@@ -1,9 +1,15 @@
 #include "core_types/chat_ids.hpp"
+#include "tool_call/executor.hpp"
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/executor_catalog.hpp"
+#include "tool_call/todo_state.hpp"
 #include "tool_call/tool_validation_error.hpp"
+#include "tool_call/workspace_filesystem.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <memory>
+#include <stop_token>
 #include <string>
 #include <unordered_set>
 #include <variant>
@@ -15,6 +21,8 @@ using yac::tool_call::Json;
 using yac::tool_call::LookupToolHandler;
 using yac::tool_call::PrepareToolCall;
 using yac::tool_call::ToolDefinitions;
+using yac::tool_call::ToolExecutionResult;
+using yac::tool_call::ToolHandler;
 using yac::tool_call::ToolHandlerCount;
 using yac::tool_call::ToolValidationError;
 
@@ -24,6 +32,30 @@ ToolCallRequest MakeRequest(std::string name, std::string args_json) {
   return ToolCallRequest{.id = "t",
                          .name = std::move(name),
                          .arguments_json = std::move(args_json)};
+}
+
+yac::chat::ToolDefinition RequireDefinition(std::string_view name) {
+  const auto defs = ToolDefinitions();
+  const auto it = std::ranges::find_if(
+      defs, [name](const auto& def) { return def.name == name; });
+  REQUIRE(it != defs.end());
+  return *it;
+}
+
+ToolExecutionResult ExecuteThroughCatalog(const ToolHandler& handler,
+                                          const ToolCallRequest& request) {
+  auto prepared = handler.prepare(request, Json::parse(request.arguments_json));
+  yac::tool_call::WorkspaceFilesystem workspace(
+      std::filesystem::current_path());
+  std::shared_ptr<yac::tool_call::ILspClient> lsp_client;
+  yac::tool_call::TodoState todo_state;
+  yac::tool_call::ExecutionContext context{.workspace_filesystem = workspace,
+                                           .lsp_client = lsp_client,
+                                           .todo_state = todo_state,
+                                           .sub_agent_manager = nullptr,
+                                           .tool_approval = nullptr,
+                                           .stop = std::stop_token{}};
+  return handler.execute(prepared, context);
 }
 
 }  // namespace
@@ -205,4 +237,62 @@ TEST_CASE(
   REQUIRE(schema["properties"].size() == 1);
   REQUIRE(schema["properties"].contains("plan"));
   REQUIRE(schema["properties"]["plan"]["type"] == "string");
+}
+
+TEST_CASE("ToolDefinitions: web tools are declared as unsupported built-ins") {
+  SECTION("web_fetch") {
+    const auto& def = RequireDefinition("web_fetch");
+    CHECK(def.description.find("unsupported") != std::string::npos);
+    CHECK(def.description.find("not configured") != std::string::npos);
+
+    const auto schema = Json::parse(def.parameters_schema_json);
+    REQUIRE(schema["required"].size() == 1);
+    CHECK(schema["required"][0] == "url");
+    CHECK(schema["properties"]["url"]["type"] == "string");
+  }
+
+  SECTION("web_search") {
+    const auto& def = RequireDefinition("web_search");
+    CHECK(def.description.find("unsupported") != std::string::npos);
+    CHECK(def.description.find("not configured") != std::string::npos);
+
+    const auto schema = Json::parse(def.parameters_schema_json);
+    REQUIRE(schema["required"].size() == 1);
+    CHECK(schema["required"][0] == "query");
+    CHECK(schema["properties"]["query"]["type"] == "string");
+  }
+}
+
+TEST_CASE("LookupToolHandler: web tools return stable unsupported errors") {
+  constexpr std::string_view kUnsupportedWebToolError =
+      "Built-in web tools are unsupported and not configured in YAC.";
+
+  SECTION("web_fetch") {
+    const auto* handler = LookupToolHandler("web_fetch");
+    REQUIRE(handler != nullptr);
+
+    const auto result = ExecuteThroughCatalog(
+        *handler, MakeRequest("web_fetch", R"({"url":"https://example.com"})"));
+
+    REQUIRE(result.is_error);
+    CHECK(Json::parse(result.result_json)["error"] == kUnsupportedWebToolError);
+    REQUIRE(std::holds_alternative<yac::tool_call::WebFetchCall>(result.block));
+    CHECK(std::get<yac::tool_call::WebFetchCall>(result.block).url ==
+          "https://example.com");
+  }
+
+  SECTION("web_search") {
+    const auto* handler = LookupToolHandler("web_search");
+    REQUIRE(handler != nullptr);
+
+    const auto result = ExecuteThroughCatalog(
+        *handler, MakeRequest("web_search", R"({"query":"yac terminal"})"));
+
+    REQUIRE(result.is_error);
+    CHECK(Json::parse(result.result_json)["error"] == kUnsupportedWebToolError);
+    REQUIRE(
+        std::holds_alternative<yac::tool_call::WebSearchCall>(result.block));
+    CHECK(std::get<yac::tool_call::WebSearchCall>(result.block).query ==
+          "yac terminal");
+  }
 }
