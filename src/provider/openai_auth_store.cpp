@@ -292,12 +292,23 @@ OpenAiAuthStore::Dependencies OpenAiAuthStore::BuildDefaultDependencies() {
       .file_backend = std::make_shared<OpenAiFileAuthBackend>()};
 }
 
+void OpenAiAuthStore::StoreCache(std::optional<StoredOpenAiAuth> auth) const {
+  cached_auth_ = std::move(auth);
+}
+
 std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
+  std::scoped_lock lock(cache_mutex_);
+  if (cached_auth_.has_value()) {
+    return *cached_auth_;
+  }
+
   try {
     if (const auto auth_json = dependencies_.keychain_backend->Get();
         auth_json.has_value()) {
-      return StoredOpenAiAuth{.auth = ParseOpenAiAuth(*auth_json),
+      StoredOpenAiAuth stored{.auth = ParseOpenAiAuth(*auth_json),
                               .source = OpenAiAuthStorageSource::Keychain};
+      StoreCache(stored);
+      return stored;
     }
   } catch (const OpenAiAuthKeychainUnavailableError& error) {
     (void)error;
@@ -305,30 +316,40 @@ std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
 
   if (const auto auth_json = dependencies_.file_backend->Get();
       auth_json.has_value()) {
-    return StoredOpenAiAuth{.auth = ParseOpenAiAuth(*auth_json),
+    StoredOpenAiAuth stored{.auth = ParseOpenAiAuth(*auth_json),
                             .source = OpenAiAuthStorageSource::File};
+    StoreCache(stored);
+    return stored;
   }
+  StoreCache(std::nullopt);
   return std::nullopt;
 }
 
 OpenAiAuthStorageSource OpenAiAuthStore::Save(const OpenAiAuth& auth) const {
   const std::string auth_json = SerializeOpenAiAuth(auth);
+  std::scoped_lock lock(cache_mutex_);
   try {
     dependencies_.keychain_backend->Set(auth_json);
+    StoreCache(StoredOpenAiAuth{.auth = auth,
+                                .source = OpenAiAuthStorageSource::Keychain});
     return OpenAiAuthStorageSource::Keychain;
   } catch (const OpenAiAuthKeychainUnavailableError&) {
     dependencies_.file_backend->Set(auth_json);
+    StoreCache(StoredOpenAiAuth{.auth = auth,
+                                .source = OpenAiAuthStorageSource::File});
     return OpenAiAuthStorageSource::File;
   }
 }
 
 void OpenAiAuthStore::Erase() const {
+  std::scoped_lock lock(cache_mutex_);
   try {
     dependencies_.keychain_backend->Erase();
   } catch (const OpenAiAuthKeychainUnavailableError& error) {
     (void)error;
   }
   dependencies_.file_backend->Erase();
+  StoreCache(std::nullopt);
 }
 
 }  // namespace yac::provider

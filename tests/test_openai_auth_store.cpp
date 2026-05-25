@@ -121,6 +121,79 @@ class ThrowingKeychainBackend : public IOpenAiAuthBackend {
   }
 };
 
+class CountingAuthBackend : public IOpenAiAuthBackend {
+ public:
+  explicit CountingAuthBackend(
+      std::optional<std::string> initial = std::nullopt)
+      : value_(std::move(initial)) {}
+
+  [[nodiscard]] std::optional<std::string> Get() const override {
+    ++get_count_;
+    if (keychain_unavailable_on_get_) {
+      throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
+    }
+    if (throw_on_get_) {
+      throw std::runtime_error("backend read failed");
+    }
+    return value_;
+  }
+
+  void Set(std::string_view auth_json) override {
+    ++set_count_;
+    if (keychain_unavailable_on_set_) {
+      throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
+    }
+    value_ = std::string(auth_json);
+  }
+
+  void Erase() override {
+    ++erase_count_;
+    if (keychain_unavailable_on_erase_) {
+      throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
+    }
+    value_.reset();
+  }
+
+  void SetValue(std::optional<std::string> value) { value_ = std::move(value); }
+  void SetKeychainUnavailable(bool unavailable) {
+    keychain_unavailable_on_get_ = unavailable;
+    keychain_unavailable_on_set_ = unavailable;
+    keychain_unavailable_on_erase_ = unavailable;
+  }
+  void SetThrowOnGet(bool throw_on_get) { throw_on_get_ = throw_on_get; }
+
+  [[nodiscard]] int GetCount() const { return get_count_; }
+  [[nodiscard]] int SetCount() const { return set_count_; }
+  [[nodiscard]] int EraseCount() const { return erase_count_; }
+
+ private:
+  std::optional<std::string> value_;
+  mutable int get_count_ = 0;
+  int set_count_ = 0;
+  int erase_count_ = 0;
+  bool keychain_unavailable_on_get_ = false;
+  bool keychain_unavailable_on_set_ = false;
+  bool keychain_unavailable_on_erase_ = false;
+  bool throw_on_get_ = false;
+};
+
+[[nodiscard]] std::shared_ptr<OpenAiAuthStore> MakeCountingStore(
+    const std::shared_ptr<CountingAuthBackend>& keychain,
+    const std::shared_ptr<CountingAuthBackend>& file_backend) {
+  return std::make_shared<OpenAiAuthStore>(OpenAiAuthStore::Dependencies{
+      .keychain_backend = keychain,
+      .file_backend = file_backend,
+  });
+}
+
+[[nodiscard]] const OpenAiApiKeyAuth* RequireApiKeyAuth(
+    const std::optional<StoredOpenAiAuth>& stored) {
+  REQUIRE(stored.has_value());
+  const auto* api_key = std::get_if<OpenAiApiKeyAuth>(&stored->auth);
+  REQUIRE(api_key != nullptr);
+  return api_key;
+}
+
 }  // namespace
 
 TEST_CASE("api_key_serialization_round_trip", "[openai_auth_store]") {
@@ -229,6 +302,135 @@ TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
   const auto* api_key = std::get_if<OpenAiApiKeyAuth>(&loaded->auth);
   REQUIRE(api_key != nullptr);
   REQUIRE(api_key->key == "sk-test-fallback");
+}
+
+TEST_CASE("load_caches_stored_keychain_auth", "[openai_auth_store]") {
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-keychain-cache"};
+  auto keychain =
+      std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  const auto first = store->Load();
+  const auto second = store->Load();
+
+  REQUIRE(first->source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(second->source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(RequireApiKeyAuth(first)->key == "sk-test-keychain-cache");
+  REQUIRE(RequireApiKeyAuth(second)->key == "sk-test-keychain-cache");
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
+}
+
+TEST_CASE("load_caches_keychain_unavailable_file_fallback",
+          "[openai_auth_store]") {
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-file-cache"};
+  auto keychain = std::make_shared<CountingAuthBackend>();
+  keychain->SetKeychainUnavailable(true);
+  auto file_backend =
+      std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  const auto first = store->Load();
+  const auto second = store->Load();
+
+  REQUIRE(first->source == OpenAiAuthStorageSource::File);
+  REQUIRE(second->source == OpenAiAuthStorageSource::File);
+  REQUIRE(RequireApiKeyAuth(first)->key == "sk-test-file-cache");
+  REQUIRE(RequireApiKeyAuth(second)->key == "sk-test-file-cache");
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 1);
+}
+
+TEST_CASE("load_caches_missing_auth", "[openai_auth_store]") {
+  auto keychain = std::make_shared<CountingAuthBackend>();
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 1);
+}
+
+TEST_CASE("save_updates_load_cache", "[openai_auth_store]") {
+  SECTION("keychain save") {
+    auto keychain = std::make_shared<CountingAuthBackend>();
+    auto file_backend = std::make_shared<CountingAuthBackend>();
+    const auto store = MakeCountingStore(keychain, file_backend);
+
+    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "sk-test-save-keychain"}) ==
+            OpenAiAuthStorageSource::Keychain);
+    const auto loaded = store->Load();
+
+    REQUIRE(loaded->source == OpenAiAuthStorageSource::Keychain);
+    REQUIRE(RequireApiKeyAuth(loaded)->key == "sk-test-save-keychain");
+    REQUIRE(keychain->SetCount() == 1);
+    REQUIRE(keychain->GetCount() == 0);
+    REQUIRE(file_backend->GetCount() == 0);
+  }
+
+  SECTION("file fallback save") {
+    auto keychain = std::make_shared<CountingAuthBackend>();
+    keychain->SetKeychainUnavailable(true);
+    auto file_backend = std::make_shared<CountingAuthBackend>();
+    const auto store = MakeCountingStore(keychain, file_backend);
+
+    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "sk-test-save-file"}) ==
+            OpenAiAuthStorageSource::File);
+    const auto loaded = store->Load();
+
+    REQUIRE(loaded->source == OpenAiAuthStorageSource::File);
+    REQUIRE(RequireApiKeyAuth(loaded)->key == "sk-test-save-file");
+    REQUIRE(keychain->SetCount() == 1);
+    REQUIRE(file_backend->SetCount() == 1);
+    REQUIRE(keychain->GetCount() == 0);
+    REQUIRE(file_backend->GetCount() == 0);
+  }
+}
+
+TEST_CASE("erase_updates_load_cache", "[openai_auth_store]") {
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-erase-cache"};
+  auto keychain =
+      std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  REQUIRE(store->Load().has_value());
+  store->Erase();
+
+  REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
+  REQUIRE(keychain->EraseCount() == 1);
+  REQUIRE(file_backend->EraseCount() == 1);
+}
+
+TEST_CASE("load_failures_are_not_cached", "[openai_auth_store]") {
+  SECTION("parse error retries") {
+    auto keychain = std::make_shared<CountingAuthBackend>();
+    auto file_backend = std::make_shared<CountingAuthBackend>("{");
+    const auto store = MakeCountingStore(keychain, file_backend);
+
+    REQUIRE_THROWS(store->Load());
+    REQUIRE_THROWS(store->Load());
+    REQUIRE(keychain->GetCount() == 2);
+    REQUIRE(file_backend->GetCount() == 2);
+  }
+
+  SECTION("file read error retries") {
+    auto keychain = std::make_shared<CountingAuthBackend>();
+    auto file_backend = std::make_shared<CountingAuthBackend>();
+    file_backend->SetThrowOnGet(true);
+    const auto store = MakeCountingStore(keychain, file_backend);
+
+    REQUIRE_THROWS_WITH(store->Load(),
+                        ContainsSubstring("backend read failed"));
+    REQUIRE_THROWS_WITH(store->Load(),
+                        ContainsSubstring("backend read failed"));
+    REQUIRE(keychain->GetCount() == 2);
+    REQUIRE(file_backend->GetCount() == 2);
+  }
 }
 
 TEST_CASE("file_env_skips_keychain_backend", "[openai_auth_store]") {

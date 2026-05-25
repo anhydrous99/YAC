@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -70,8 +71,11 @@ class OpenAiAuthStore {
 
  private:
   [[nodiscard]] static Dependencies BuildDefaultDependencies();
+  void StoreCache(std::optional<StoredOpenAiAuth> auth) const;
 
   Dependencies dependencies_;
+  mutable std::mutex cache_mutex_;
+  mutable std::optional<std::optional<StoredOpenAiAuth>> cached_auth_;
 };
 
 }  // namespace yac::provider
