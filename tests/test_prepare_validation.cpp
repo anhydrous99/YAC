@@ -80,13 +80,18 @@ struct Harness {
                        "yac_prepare_validation_tests"),
         tool_executor(workspace_root, nullptr, todo_state),
         mcp_helper(mcp_manager),
-        processor(
-            registry, tool_executor, tool_approval,
-            mcp_manager != nullptr ? &mcp_helper : nullptr, history_mutex,
-            history,
-            [this](ChatEvent event) { events.push_back(std::move(event)); },
-            [this] { return next_message_id++; }, [this] { return config; },
-            [] { return uint64_t{1}; }) {
+        processor(ChatServicePromptProcessor::PromptRunContext{
+            .registry = &registry,
+            .tool_executor = &tool_executor,
+            .tool_approval = &tool_approval,
+            .chat_service_mcp = mcp_manager != nullptr ? &mcp_helper : nullptr,
+            .history_mutex = &history_mutex,
+            .history = &history,
+            .emit_event =
+                [this](ChatEvent event) { events.push_back(std::move(event)); },
+            .next_message_id = [this] { return next_message_id++; },
+            .config_snapshot = [this] { return config; },
+            .generation_value = [] { return uint64_t{1}; }}) {
     std::filesystem::create_directories(workspace_root);
     config.provider_id = ::yac::ProviderId{provider->Id()};
     config.model = ::yac::ModelId{"test-model"};

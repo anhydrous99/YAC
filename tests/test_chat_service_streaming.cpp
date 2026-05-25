@@ -1,5 +1,5 @@
-#include "chat/chat_service.hpp"
 #include "chat/agent_mode.hpp"
+#include "chat/chat_service.hpp"
 #include "chat/config.hpp"
 #include "core_types/typed_ids.hpp"
 #include "lambda_mock_provider.hpp"
@@ -285,7 +285,6 @@ std::string RequestContextText(const ChatRequest& request) {
 
 }  // namespace
 
-
 TEST_CASE("ChatService injects Plan-mode plan-file reminder into requests") {
   auto root = std::filesystem::temp_directory_path() / "yac_plan_reminder";
   std::filesystem::remove_all(root);
@@ -320,8 +319,9 @@ TEST_CASE("ChatService injects Plan-mode plan-file reminder into requests") {
   REQUIRE(context.find(active_plan->string()) != std::string::npos);
   REQUIRE(context.find(".opencode/plans/") != std::string::npos);
   REQUIRE(context.find("Plan mode is read-only") != std::string::npos);
-  REQUIRE(context.find("only create or edit the active `.opencode/plans/*.md`") !=
-          std::string::npos);
+  REQUIRE(
+      context.find("only create or edit the active `.opencode/plans/*.md`") !=
+      std::string::npos);
   REQUIRE(context.find("read and search") != std::string::npos);
   REQUIRE(context.find("delegate research") != std::string::npos);
   REQUIRE(context.find("ask clarifying questions") != std::string::npos);

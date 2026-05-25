@@ -1,7 +1,7 @@
 #include "chat/chat_service.hpp"
 #include "chat/config.hpp"
-#include "core_types/typed_ids.hpp"
 #include "config_env_test_helpers.hpp"
+#include "core_types/typed_ids.hpp"
 #include "lambda_mock_provider.hpp"
 #include "provider/language_model_provider.hpp"
 
@@ -22,8 +22,8 @@
 
 using namespace yac::chat;
 using namespace yac::provider;
-using yac::testing::ScopedEnvClear;
 using yac::testing::LambdaMockProvider;
+using yac::testing::ScopedEnvClear;
 
 namespace {
 
@@ -210,8 +210,7 @@ TEST_CASE("ChatService assigns unique message IDs") {
 
 TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_defaults.toml");
   auto config =
@@ -226,8 +225,7 @@ TEST_CASE("LoadChatConfig returns defaults when settings.toml is absent") {
 TEST_CASE(
     "LoadChatConfigResult creates settings.toml on first run when requested") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_first_run.toml");
   REQUIRE_FALSE(std::filesystem::exists(settings.Path()));
@@ -240,8 +238,7 @@ TEST_CASE(
 
 TEST_CASE("LoadChatConfigResult warns when API key is missing") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_missing_key.toml");
 
@@ -258,8 +255,7 @@ TEST_CASE("LoadChatConfigResult warns when API key is missing") {
 
 TEST_CASE("YAC_TEMPERATURE env var reports invalid values") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_bad_temp_env.toml");
   setenv("YAC_TEMPERATURE", "too-hot", 1);
@@ -278,8 +274,7 @@ TEST_CASE("YAC_TEMPERATURE env var reports invalid values") {
 
 TEST_CASE("settings.toml reports out-of-range temperature as an error") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_bad_temp_toml.toml");
   settings.Write("temperature = 5.0\n");
@@ -296,8 +291,7 @@ TEST_CASE("settings.toml reports out-of-range temperature as an error") {
 
 TEST_CASE("[provider].id = zai applies the Z.ai preset") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_zai_defaults.toml");
   settings.Write(
@@ -320,8 +314,7 @@ TEST_CASE("[provider].id = zai applies the Z.ai preset") {
 
 TEST_CASE("TOML values override the Z.ai preset") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_zai_overrides.toml");
   settings.Write(
@@ -347,8 +340,7 @@ TEST_CASE("TOML values override the Z.ai preset") {
 
 TEST_CASE("TOML values override the Bedrock preset") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_BEDROCK_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
+                            "YAC_CUSTOM_BEDROCK_KEY", "YAC_CUSTOM_ZAI_KEY",
                             "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_bedrock_overrides.toml");
@@ -372,8 +364,7 @@ TEST_CASE("TOML values override the Bedrock preset") {
 
 TEST_CASE("settings.toml values are read end-to-end") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_full.toml");
   settings.Write(
@@ -404,8 +395,7 @@ TEST_CASE("settings.toml values are read end-to-end") {
 
 TEST_CASE("YAC_* env vars override settings.toml values") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_ENV",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_ENV",
                             "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_env_override.toml");
@@ -450,8 +440,7 @@ TEST_CASE(
     "Malformed settings.toml reports an error but yields a usable "
     "config") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY",
-                            "YAC_CUSTOM_ZAI_KEY",
-                            "YAC_TEST_API_KEY_FROM_FILE",
+                            "YAC_CUSTOM_ZAI_KEY", "YAC_TEST_API_KEY_FROM_FILE",
                             "YAC_TEST_API_KEY_OVERRIDE"});
   ScopedSettingsFile settings("yac_test_cfg_malformed.toml");
   settings.Write("this is =  not = valid\n");

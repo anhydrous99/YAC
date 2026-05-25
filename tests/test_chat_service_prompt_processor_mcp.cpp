@@ -131,36 +131,46 @@ struct PromptProcessorHarness {
   explicit PromptProcessorHarness(
       std::shared_ptr<LanguageModelProvider> provider,
       MockMcpManager* mcp_manager, CountingBuiltInExecutor* built_in_executor,
-      bool auto_approve = false, AgentMode agent_mode = AgentMode::Build)
+      bool auto_approve = false, AgentMode agent_mode = AgentMode::Build,
+      bool use_round_model_snapshot = false)
       : workspace_root(std::filesystem::temp_directory_path() /
                        "yac_prompt_processor_mcp_tests"),
         tool_executor(workspace_root, nullptr, todo_state),
         mcp_helper(mcp_manager),
-        processor(
-            registry, tool_executor, tool_approval,
-            mcp_manager != nullptr ? &mcp_helper : nullptr, history_mutex,
-            history,
-            [this, auto_approve](ChatEvent event) {
-              if (auto_approve) {
-                if (const auto* approval =
-                        event.As<ToolApprovalRequestedEvent>();
-                    approval != nullptr) {
-                  tool_approval.ResolveToolApproval(approval->approval_id,
-                                                    true);
-                }
-              }
-              events.push_back(std::move(event));
-            },
-            [this] { return next_message_id++; }, [this] { return config; },
-            [] { return uint64_t{1}; }, {}, nullptr,
-            [this] { return ExcludedToolsForMode(config.agent_mode); },
-            [built_in_executor](const ToolCallRequest& request) {
-              return built_in_executor->Prepare(request);
-            },
-            [built_in_executor](const PreparedToolCall& prepared,
-                                std::stop_token stop_token) {
-              return built_in_executor->Execute(prepared, stop_token);
-            }) {
+        use_round_model_snapshot(use_round_model_snapshot),
+        processor(ChatServicePromptProcessor::PromptRunContext{
+            .registry = &registry,
+            .tool_executor = &tool_executor,
+            .tool_approval = &tool_approval,
+            .chat_service_mcp = mcp_manager != nullptr ? &mcp_helper : nullptr,
+            .history_mutex = &history_mutex,
+            .history = &history,
+            .emit_event =
+                [this, auto_approve](ChatEvent event) {
+                  if (auto_approve) {
+                    if (const auto* approval =
+                            event.As<ToolApprovalRequestedEvent>();
+                        approval != nullptr) {
+                      tool_approval.ResolveToolApproval(approval->approval_id,
+                                                        true);
+                    }
+                  }
+                  events.push_back(std::move(event));
+                },
+            .next_message_id = [this] { return next_message_id++; },
+            .config_snapshot = [this] { return SnapshotConfig(); },
+            .generation_value = [] { return uint64_t{1}; },
+            .mode_excluded_tools =
+                [this] { return ExcludedToolsForMode(config.agent_mode); },
+            .prepare_built_in_tool_call =
+                [built_in_executor](const ToolCallRequest& request) {
+                  return built_in_executor->Prepare(request);
+                },
+            .execute_built_in_tool_call =
+                [built_in_executor](const PreparedToolCall& prepared,
+                                    std::stop_token stop_token) {
+                  return built_in_executor->Execute(prepared, stop_token);
+                }}) {
     std::filesystem::create_directories(workspace_root);
     config.provider_id = ::yac::ProviderId{provider->Id()};
     config.model = ::yac::ModelId{"test-model"};
@@ -175,6 +185,15 @@ struct PromptProcessorHarness {
   PromptProcessorHarness(PromptProcessorHarness&&) = delete;
   PromptProcessorHarness& operator=(PromptProcessorHarness&&) = delete;
 
+  ChatConfig SnapshotConfig() {
+    ++config_snapshot_calls;
+    auto snapshot = config;
+    if (use_round_model_snapshot && config_snapshot_calls > 1) {
+      snapshot.model = ::yac::ModelId{"round-model"};
+    }
+    return snapshot;
+  }
+
   std::filesystem::path workspace_root;
   ProviderRegistry registry;
   TodoState todo_state;
@@ -185,6 +204,8 @@ struct PromptProcessorHarness {
   std::vector<ChatMessage> history;
   std::vector<ChatEvent> events;
   ChatConfig config;
+  int config_snapshot_calls = 0;
+  bool use_round_model_snapshot = false;
   ChatMessageId next_message_id = 100;
   ChatServicePromptProcessor processor;
 };
@@ -275,4 +296,32 @@ TEST_CASE("plan_mode_hides_and_denies_mcp_tools") {
   CHECK(mock_mcp_manager.invoke_count == 0);
   CHECK(built_in_executor.execute_count == 0);
   CHECK(tool_result->find("not allowed in Plan mode") != std::string::npos);
+}
+
+TEST_CASE(
+    "round request uses fresh config snapshot while provider stays fixed") {
+  auto saw_round_model = std::make_shared<bool>(false);
+  auto provider = std::make_shared<LambdaMockProvider>(
+      "test-provider",
+      [saw_round_model](const ChatRequest& request, ChatEventSink sink,
+                        std::stop_token stop_token) {
+        REQUIRE_FALSE(stop_token.stop_requested());
+        *saw_round_model = request.model == ::yac::ModelId{"round-model"};
+        sink(ChatEvent{TextDeltaEvent{.text = "done"}});
+      });
+  CountingBuiltInExecutor built_in_executor;
+  PromptProcessorHarness harness(provider, nullptr, &built_in_executor, false,
+                                 AgentMode::Build, true);
+
+  harness.processor.ProcessPrompt(1, "use latest round config", 1,
+                                  std::stop_source{}.get_token());
+
+  REQUIRE(*saw_round_model);
+  REQUIRE(harness.config_snapshot_calls >= 2);
+  const auto started_it =
+      std::ranges::find_if(harness.events, [](const ChatEvent& event) {
+        return event.Type() == ChatEventType::Started;
+      });
+  REQUIRE(started_it != harness.events.end());
+  CHECK(started_it->Get<StartedEvent>().model == ::yac::ModelId{"test-model"});
 }
