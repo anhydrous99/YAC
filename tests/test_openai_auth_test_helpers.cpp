@@ -103,12 +103,11 @@ void RequireDestroyCompletesWithOpenClient(
     std::unique_ptr<TestHttpServer> server, int client_fd) {
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-  auto destroy = std::async(std::launch::async,
-                            [server = std::move(server)]() mutable {
-                              server.reset();
-                            });
-  const bool completed = destroy.wait_for(std::chrono::seconds(1)) ==
-                         std::future_status::ready;
+  auto destroy =
+      std::async(std::launch::async,
+                 [server = std::move(server)]() mutable { server.reset(); });
+  const bool completed =
+      destroy.wait_for(std::chrono::seconds(1)) == std::future_status::ready;
   close(client_fd);
 
   if (!completed) {
@@ -177,13 +176,13 @@ TEST_CASE("http_server_request_then_immediate_teardown_is_stable") {
 
   for (int iteration = 0; iteration < 50; ++iteration) {
     {
-      TestHttpServer server([&request_count](const HttpRequest& request,
-                                             std::size_t index) {
-        REQUIRE(request.path == "/ping");
-        REQUIRE(index == 0);
-        request_count.fetch_add(1);
-        return HttpResponse{.status = 200, .body = "ok"};
-      });
+      TestHttpServer server(
+          [&request_count](const HttpRequest& request, std::size_t index) {
+            REQUIRE(request.path == "/ping");
+            REQUIRE(index == 0);
+            request_count.fetch_add(1);
+            return HttpResponse{.status = 200, .body = "ok"};
+          });
 
       const std::string request =
           "GET /ping HTTP/1.1\r\n"
@@ -263,8 +262,7 @@ TEST_CASE("http_server_teardown_stops_client_not_reading_large_response") {
   REQUIRE(send(sock, request.data(), request.size(), 0) ==
           static_cast<ssize_t>(request.size()));
 
-  for (int attempt = 0; attempt < 100 && request_count.load() == 0;
-       ++attempt) {
+  for (int attempt = 0; attempt < 100 && request_count.load() == 0; ++attempt) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   REQUIRE(request_count.load() == 1);

@@ -492,8 +492,7 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
     REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
     REQUIRE_THAT(request.body,
                  ContainsSubstring("Follow the mock OAuth instructions."));
-    REQUIRE(request.body.find("\"role\":\"system\"") ==
-            std::string::npos);
+    REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("oauth-ok");
   });
 
@@ -553,8 +552,7 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
     REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
     REQUIRE_THAT(request.body,
                  ContainsSubstring("Follow the mock OAuth instructions."));
-    REQUIRE(request.body.find("\"role\":\"system\"") ==
-            std::string::npos);
+    REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("refresh-ok");
   });
 
@@ -586,7 +584,6 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
   CHECK(auth_file.find(kStoredAccessToken) == std::string::npos);
 }
 
-
 TEST_CASE("expired_oauth_refresh_failure_uses_only_mock_endpoint",
           "[openai_auth_e2e]") {
   TempDir temp_dir;
@@ -606,13 +603,14 @@ TEST_CASE("expired_oauth_refresh_failure_uses_only_mock_endpoint",
     REQUIRE(index == 0);
     REQUIRE(request.path == "/oauth/token");
     REQUIRE_THAT(request.body, ContainsSubstring("grant_type=refresh_token"));
-    REQUIRE_THAT(request.body,
-                 ContainsSubstring("refresh_token=" +
-                                   std::string(kStoredRefreshToken)));
+    REQUIRE_THAT(
+        request.body,
+        ContainsSubstring("refresh_token=" + std::string(kStoredRefreshToken)));
     return HttpResponse{
         .status = 400,
         .headers = {{"Content-Type", "application/json"}},
-        .body = R"({"error":"invalid_grant","error_description":"mock refresh denied"})",
+        .body =
+            R"({"error":"invalid_grant","error_description":"mock refresh denied"})",
     };
   });
 

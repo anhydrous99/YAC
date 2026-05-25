@@ -208,8 +208,8 @@ TestHttpServer::TestHttpServer(Handler handler)
   }
   impl_->port_ = ntohs(addr.sin_port);
 
-  impl_->worker_ = std::jthread(
-      [impl = impl_.get()](std::stop_token stop_token) {
+  impl_->worker_ =
+      std::jthread([impl = impl_.get()](std::stop_token stop_token) {
         Run(impl, stop_token);
       });
 }
@@ -338,17 +338,16 @@ void TestHttpServer::Run(Impl* impl, std::stop_token stop_token) {
     timeval timeout{};
     timeout.tv_usec = 10'000;
 
-    const int ready = select(listen_fd + 1, &read_fds, nullptr, nullptr,
-                             &timeout);
+    const int ready =
+        select(listen_fd + 1, &read_fds, nullptr, nullptr, &timeout);
     if (ready <= 0) {
       continue;
     }
 
     sockaddr_in client_addr{};
     socklen_t client_len = sizeof(client_addr);
-    const int client_fd =
-        accept(listen_fd, reinterpret_cast<sockaddr*>(&client_addr),
-               &client_len);
+    const int client_fd = accept(
+        listen_fd, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
     if (client_fd < 0) {
       if (impl->stop_.load() || stop_token.stop_requested()) {
         return;
