@@ -34,6 +34,7 @@ class MemoryAuthBackend : public IOpenAiAuthBackend {
  public:
   [[nodiscard]] std::optional<std::string> Get() const override {
     std::scoped_lock lock(mutex_);
+    ++get_count_;
     return value_;
   }
 
@@ -47,14 +48,21 @@ class MemoryAuthBackend : public IOpenAiAuthBackend {
     value_.reset();
   }
 
+  [[nodiscard]] int GetCount() const {
+    std::scoped_lock lock(mutex_);
+    return get_count_;
+  }
+
  private:
   mutable std::mutex mutex_;
   std::optional<std::string> value_;
+  mutable int get_count_ = 0;
 };
 
 class ThrowingKeychainBackend : public IOpenAiAuthBackend {
  public:
   [[nodiscard]] std::optional<std::string> Get() const override {
+    ++get_count_;
     throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
   }
 
@@ -66,6 +74,11 @@ class ThrowingKeychainBackend : public IOpenAiAuthBackend {
   void Erase() override {
     throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
   }
+
+  [[nodiscard]] int GetCount() const { return get_count_; }
+
+ private:
+  mutable int get_count_ = 0;
 };
 
 class ScopedEnvVar {
@@ -326,6 +339,34 @@ TEST_CASE("stored_api_key_is_used_for_openai_runtime",
   const auto events = RunStream(provider);
   REQUIRE(server.Requests().size() == 1);
   REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
+}
+
+TEST_CASE("stored_api_key_cache_is_reused_for_source_and_models",
+          "[openai_chat_provider_auth]") {
+  ScopedEnvUnset env("OPENAI_API_KEY");
+  const auto keychain = std::make_shared<ThrowingKeychainBackend>();
+  const auto file_backend = MakeFileBackend();
+  file_backend->Set(
+      SerializeOpenAiAuth(OpenAiApiKeyAuth{.key = "stored-api-key-cache"}));
+  const auto store =
+      std::make_shared<OpenAiAuthStore>(OpenAiAuthStore::Dependencies{
+          .keychain_backend = keychain, .file_backend = file_backend});
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    REQUIRE(request.path == "/models");
+    REQUIRE(request.headers.at("Authorization") ==
+            "Bearer stored-api-key-cache");
+    return ModelsResponse();
+  });
+
+  auto provider = MakeProvider(server.Url(""), store);
+  REQUIRE(provider.ResolveEffectiveAuthSource() ==
+          OpenAiChatProvider::EffectiveAuthSource::StoredApiKey);
+  const auto models = provider.ListModels(500ms);
+
+  REQUIRE(models.size() == 1);
+  REQUIRE(server.Requests().size() == 1);
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 1);
 }
 
 TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
