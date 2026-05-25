@@ -15,15 +15,15 @@
 
 temperature = 0.7
 # system_prompt = "You are a helpful assistant."
-# workspace_root = "/path/to/workspace"   # defaults to the launch directory
+# workspace_root = "/path/to/workspace"   # defaults to launch current working directory
 
 [provider]
 id          = "openai-compatible"         # "openai-compatible", "openai", or "zai"
 model       = "gpt-4o-mini"
 base_url    = "https://api.openai.com/v1/"
 api_key_env = "OPENAI_API_KEY"            # env var that holds the key
-# api_key        = ""                     # optional; lowest priority for openai
-# context_window = 0                      # override context window size (tokens); 0 = auto-detect
+# api_key        = ""                     # optional; unset; lowest-priority inline secret for openai
+# context_window = 0                      # override context window size (tokens); 0 means auto-detect; valid range 1 to 10000000 when set
 
 # OpenAI provider auth is opt-in: set provider.id = "openai" to use stored
 # OpenAI auth or browser OAuth. With the default openai-compatible provider,
@@ -60,8 +60,8 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # [provider]
 # id = "zai"
 
-# Bedrock provider: set id = "bedrock" to use AWS Bedrock (Converse API)
-# Credentials: AWS SDK default chain (env vars, ~/.aws/credentials, IAM role, SSO)
+# Bedrock provider: set id = "bedrock" to use AWS Bedrock (Converse API).
+# Credentials: AWS SDK default chain (env vars, ~/.aws/credentials, IAM role, SSO).
 # [provider]
 # id          = "bedrock"
 # model       = "anthropic.claude-3-5-haiku-20241022-v1:0"
@@ -69,7 +69,7 @@ api_key_env = "OPENAI_API_KEY"            # env var that holds the key
 # options.max_tokens         = "4096"
 # options.profile            = ""            # AWS profile (optional)
 # options.endpoint_override  = ""            # VPC endpoint (optional)
-# options.credential_refresh_command = ""    # shell command to run on auth failure before retrying (e.g. "aws sso login --profile foo"); also settable via YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND
+# options.credential_refresh_command = ""    # command to run on auth failure before retrying; also settable via YAC_BEDROCK_CREDENTIAL_REFRESH_COMMAND
 
 [lsp.clangd]
 command = "clangd"
@@ -92,7 +92,7 @@ sync_terminal_background = true
 
 [compact]
 # Auto-compact the conversation history when projected prompt-token usage
-# crosses `threshold` × the model's context window. Fired before each new
+# crosses `threshold` x the model's context window. Fired before each new
 # user prompt; never splits a tool_call/tool_result pair.
 auto_enabled = true
 threshold    = 0.8                       # 0.05 .. 1.0
