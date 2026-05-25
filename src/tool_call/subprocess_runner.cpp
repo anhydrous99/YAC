@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <vector>
 
 namespace yac::tool_call {
 
@@ -27,21 +28,33 @@ void AppendCapped(std::string& output, const char* data, size_t n,
   }
 }
 
-void KillWithGrace(pid_t pid, int kill_grace_ms) {
-  kill(pid, SIGTERM);
+void KillProcessGroupWithGrace(pid_t pid, int kill_grace_ms) {
+  const pid_t process_group = -pid;
+  kill(process_group, SIGTERM);
   const auto grace_start = std::chrono::steady_clock::now();
   int status = 0;
-  while (waitpid(pid, &status, WNOHANG) == 0) {
+  bool child_reaped = false;
+  while (true) {
+    if (!child_reaped) {
+      const pid_t waited = waitpid(pid, &status, WNOHANG);
+      if (waited == pid || (waited < 0 && errno == ECHILD)) {
+        child_reaped = true;
+      }
+    }
+
     const auto grace_elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - grace_start)
             .count();
     if (grace_elapsed >= kill_grace_ms) {
-      kill(pid, SIGKILL);
-      waitpid(pid, &status, 0);
       break;
     }
     usleep(10000);
+  }
+
+  kill(process_group, SIGKILL);
+  if (!child_reaped) {
+    waitpid(pid, &status, 0);
   }
 }
 
@@ -50,6 +63,8 @@ void KillWithGrace(pid_t pid, int kill_grace_ms) {
 SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
                                       std::stop_token stop_token) {
   SubprocessResult result;
+  std::vector<const char*> argv = opts.argv;
+  argv.push_back(nullptr);
 
   std::array<int, 2> pipe_fds{};
   if (pipe(pipe_fds.data()) != 0) {
@@ -68,6 +83,7 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
   }
 
   if (pid == 0) {
+    setpgid(0, 0);
     close(pipe_fds[0]);
     dup2(pipe_fds[1], STDOUT_FILENO);
     dup2(pipe_fds[1], STDERR_FILENO);
@@ -86,9 +102,11 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
     // execvp's POSIX signature takes char* const argv[]; the const_cast is
     // required to bridge from our std::vector<const char*> argument storage.
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-    execvp(opts.argv[0], const_cast<char* const*>(opts.argv.data()));
+    execvp(argv[0], const_cast<char* const*>(argv.data()));
     _exit(127);
   }
+
+  setpgid(pid, pid);
 
   close(pipe_fds[1]);
 
@@ -171,7 +189,7 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
   close(read_fd);
 
   if (result.cancelled || result.timed_out) {
-    KillWithGrace(pid, opts.kill_grace_ms);
+    KillProcessGroupWithGrace(pid, opts.kill_grace_ms);
     return result;
   }
 

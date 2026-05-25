@@ -1,8 +1,15 @@
 #include "tool_call/subprocess_runner.hpp"
 
+#include <cerrno>
 #include <chrono>
+#include <csignal>
+#include <filesystem>
+#include <fstream>
 #include <stop_token>
+#include <string>
+#include <string_view>
 #include <thread>
+#include <unistd.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -10,6 +17,45 @@ namespace {
 
 using yac::tool_call::RunSubprocessCapture;
 using yac::tool_call::SubprocessOptions;
+
+std::filesystem::path MarkerPath(std::string_view test_name) {
+  return std::filesystem::temp_directory_path() /
+         ("yac_subprocess_" + std::string(test_name) + "_" +
+          std::to_string(getpid()) + ".pid");
+}
+
+pid_t ReadPid(const std::filesystem::path& path) {
+  std::ifstream in(path);
+  pid_t pid = -1;
+  in >> pid;
+  return pid;
+}
+
+bool ProcessExists(pid_t pid) {
+  if (pid <= 0) {
+    return false;
+  }
+  if (kill(pid, 0) == 0) {
+    return true;
+  }
+  return errno == EPERM;
+}
+
+bool WaitForProcessExit(pid_t pid) {
+  for (int attempt = 0; attempt < 50; ++attempt) {
+    if (!ProcessExists(pid)) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  return false;
+}
+
+void CleanupProcess(pid_t pid) {
+  if (ProcessExists(pid)) {
+    kill(pid, SIGKILL);
+  }
+}
 
 }  // namespace
 
@@ -25,6 +71,20 @@ TEST_CASE("SubprocessRunner: echo captures stdout") {
   REQUIRE_FALSE(result.cancelled);
   REQUIRE(result.exit_code == 0);
   REQUIRE(result.output.find("hello world") != std::string::npos);
+}
+
+TEST_CASE("SubprocessRunner: argv need not include trailing nullptr") {
+  SubprocessOptions opts{
+      .argv = {"/bin/sh", "-c", "printf ok"},
+  };
+  std::stop_source ss;
+  const auto result = RunSubprocessCapture(opts, ss.get_token());
+
+  REQUIRE_FALSE(result.spawn_failed);
+  REQUIRE_FALSE(result.timed_out);
+  REQUIRE_FALSE(result.cancelled);
+  REQUIRE(result.exit_code == 0);
+  REQUIRE(result.output == "ok");
 }
 
 TEST_CASE("SubprocessRunner: stderr is merged into output") {
@@ -80,6 +140,31 @@ TEST_CASE("SubprocessRunner: timeout kills runaway command") {
   REQUIRE(elapsed < 5000);
 }
 
+TEST_CASE("SubprocessRunner: timeout kills shell descendants") {
+  const auto marker = MarkerPath("timeout_descendant");
+  std::filesystem::remove(marker);
+  const std::string command =
+      "sleep 30 & echo $! > '" + marker.string() + "'; wait";
+  SubprocessOptions opts{
+      .argv = {"/bin/sh", "-c", command.c_str()},
+      .timeout_ms = 200,
+      .kill_grace_ms = 100,
+  };
+  std::stop_source ss;
+  const auto result = RunSubprocessCapture(opts, ss.get_token());
+  const pid_t descendant_pid = ReadPid(marker);
+  const bool descendant_exited = WaitForProcessExit(descendant_pid);
+
+  if (!descendant_exited) {
+    CleanupProcess(descendant_pid);
+  }
+  REQUIRE(result.timed_out);
+  REQUIRE_FALSE(result.cancelled);
+  REQUIRE(descendant_pid > 0);
+  REQUIRE(descendant_exited);
+  std::filesystem::remove(marker);
+}
+
 TEST_CASE("SubprocessRunner: stop_token cancels the run") {
   SubprocessOptions opts{
       .argv = {"/bin/sh", "-c", "sleep 30", nullptr},
@@ -104,6 +189,37 @@ TEST_CASE("SubprocessRunner: stop_token cancels the run") {
   REQUIRE_FALSE(result.timed_out);
   REQUIRE(result.exit_code == -1);
   REQUIRE(elapsed < 5000);
+}
+
+TEST_CASE("SubprocessRunner: cancellation kills shell descendants") {
+  const auto marker = MarkerPath("cancel_descendant");
+  std::filesystem::remove(marker);
+  const std::string command =
+      "sleep 30 & echo $! > '" + marker.string() + "'; wait";
+  SubprocessOptions opts{
+      .argv = {"/bin/sh", "-c", command.c_str()},
+      .kill_grace_ms = 100,
+  };
+  std::stop_source ss;
+
+  std::thread cancel_thread([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    ss.request_stop();
+  });
+
+  const auto result = RunSubprocessCapture(opts, ss.get_token());
+  cancel_thread.join();
+  const pid_t descendant_pid = ReadPid(marker);
+  const bool descendant_exited = WaitForProcessExit(descendant_pid);
+
+  if (!descendant_exited) {
+    CleanupProcess(descendant_pid);
+  }
+  REQUIRE(result.cancelled);
+  REQUIRE_FALSE(result.timed_out);
+  REQUIRE(descendant_pid > 0);
+  REQUIRE(descendant_exited);
+  std::filesystem::remove(marker);
 }
 
 TEST_CASE("SubprocessRunner: output truncates at max_output_bytes") {
