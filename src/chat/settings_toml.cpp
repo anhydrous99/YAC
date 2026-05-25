@@ -1,5 +1,6 @@
 #include "chat/settings_toml.hpp"
 
+#include "chat/settings_registry.hpp"
 #include "chat/settings_toml_template.hpp"
 #include "mcp/mcp_server_config.hpp"
 #include "util/string_util.hpp"
@@ -42,6 +43,203 @@ void AddWarning(std::vector<ConfigIssue>& issues, std::string message,
   issues.push_back({.severity = ConfigIssueSeverity::Warning,
                     .message = std::move(message),
                     .detail = std::move(detail)});
+}
+
+const SettingMetadata& Metadata(std::string_view key) {
+  return *FindSettingsRegistryRecord(key);
+}
+
+std::string FormatNumber(double value) {
+  std::ostringstream detail;
+  detail << value;
+  return detail.str();
+}
+
+std::string JoinAllowedValues(std::span<const std::string_view> values) {
+  std::string joined;
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      joined += i + 1 == values.size() ? " or " : ", ";
+    }
+    joined += "'";
+    joined += values[i];
+    joined += "'";
+  }
+  return joined;
+}
+
+std::string ValidationDetail(const SettingValidationMetadata& validation) {
+  switch (validation.type) {
+    case SettingValidationType::NumberRange:
+      return "Value must be between " + FormatNumber(validation.min_number) +
+             " and " + FormatNumber(validation.max_number) + ".";
+    case SettingValidationType::IntegerRange:
+      return "Value must be between " + std::to_string(validation.min_integer) +
+             " and " + std::to_string(validation.max_integer) + ".";
+    case SettingValidationType::PositiveInteger:
+      return "Value must be a positive integer.";
+    case SettingValidationType::StringEnum:
+      return "Value must be " + JoinAllowedValues(validation.allowed_values) +
+             ".";
+    case SettingValidationType::None:
+    case SettingValidationType::Required:
+      return {};
+  }
+  return {};
+}
+
+void ApplyRegistryRuntimeDefaults(ChatConfig& config) {
+  const auto& temperature = Metadata("temperature").runtime_default;
+  config.temperature = temperature.number_value;
+  const auto& context_window =
+      Metadata("provider.context_window").runtime_default;
+  config.context_window = context_window.integer_value;
+  const auto& sync_terminal_background =
+      Metadata("theme.sync_terminal_background").runtime_default;
+  config.sync_terminal_background = sync_terminal_background.bool_value;
+  const auto& compact_threshold = Metadata("compact.threshold").runtime_default;
+  config.auto_compact_threshold = compact_threshold.number_value;
+  const auto& compact_keep_last = Metadata("compact.keep_last").runtime_default;
+  config.auto_compact_keep_last = compact_keep_last.integer_value;
+  const auto& compact_mode = Metadata("compact.mode").runtime_default;
+  config.auto_compact_mode = compact_mode.string_value;
+  const auto& result_max_bytes =
+      Metadata("mcp.result_max_bytes").runtime_default;
+  config.mcp.result_max_bytes =
+      static_cast<uintmax_t>(result_max_bytes.integer_value);
+}
+
+bool ValidateNumberSetting(std::string_view key, double parsed,
+                           std::vector<ConfigIssue>& issues) {
+  const auto& validation = Metadata(key).validation;
+  if (validation.type == SettingValidationType::NumberRange &&
+      (parsed < validation.min_number || parsed > validation.max_number)) {
+    AddError(issues, "Invalid " + std::string(key) + " in settings.toml",
+             ValidationDetail(validation));
+    return false;
+  }
+  return true;
+}
+
+bool ValidateIntegerSetting(std::string_view key, int64_t parsed,
+                            std::vector<ConfigIssue>& issues) {
+  const auto& validation = Metadata(key).validation;
+  if (validation.type == SettingValidationType::IntegerRange &&
+      (parsed < validation.min_integer || parsed > validation.max_integer)) {
+    AddError(issues, "Invalid " + std::string(key) + " in settings.toml",
+             ValidationDetail(validation));
+    return false;
+  }
+  if (validation.type == SettingValidationType::PositiveInteger &&
+      parsed <= 0) {
+    AddError(issues, "Invalid " + std::string(key) + " in settings.toml",
+             ValidationDetail(validation));
+    return false;
+  }
+  return true;
+}
+
+bool ValidateStringEnumSetting(std::string_view key, std::string_view parsed,
+                               std::vector<ConfigIssue>& issues) {
+  const auto& validation = Metadata(key).validation;
+  if (validation.type != SettingValidationType::StringEnum) {
+    return true;
+  }
+  for (const auto allowed : validation.allowed_values) {
+    if (parsed == allowed) {
+      return true;
+    }
+  }
+  AddError(issues, "Invalid " + std::string(key) + " in settings.toml",
+           ValidationDetail(validation));
+  return false;
+}
+
+bool ApplyNumberSetting(const toml::node_view<toml::node>& node,
+                        std::string_view key, double& target,
+                        std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  double parsed = 0.0;
+  if (auto* value = node.as_floating_point()) {
+    parsed = value->get();
+  } else if (auto* value = node.as_integer()) {
+    parsed = static_cast<double>(value->get());
+  } else {
+    AddError(issues,
+             "Invalid type for " + std::string(key) + " in settings.toml",
+             "Expected a number.");
+    return false;
+  }
+  if (!ValidateNumberSetting(key, parsed, issues)) {
+    return false;
+  }
+  target = parsed;
+  return true;
+}
+
+bool ApplyIntegerSetting(const toml::node_view<toml::node>& node,
+                         std::string_view key, int& target,
+                         std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  auto* value = node.as_integer();
+  if (value == nullptr) {
+    AddError(issues,
+             "Invalid type for " + std::string(key) + " in settings.toml",
+             "Expected an integer.");
+    return false;
+  }
+  const auto parsed = value->get();
+  if (!ValidateIntegerSetting(key, parsed, issues)) {
+    return false;
+  }
+  target = static_cast<int>(parsed);
+  return true;
+}
+
+bool ApplyPositiveUintmaxSetting(const toml::node_view<toml::node>& node,
+                                 std::string_view key, uintmax_t& target,
+                                 std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  auto* value = node.as_integer();
+  if (value == nullptr) {
+    AddError(issues,
+             "Invalid type for " + std::string(key) + " in settings.toml",
+             "Expected an integer.");
+    return false;
+  }
+  const auto parsed = value->get();
+  if (!ValidateIntegerSetting(key, parsed, issues)) {
+    return false;
+  }
+  target = static_cast<uintmax_t>(parsed);
+  return true;
+}
+
+bool ApplyStringEnumSetting(const toml::node_view<toml::node>& node,
+                            std::string_view key, std::string& target,
+                            std::vector<ConfigIssue>& issues) {
+  if (!node) {
+    return false;
+  }
+  auto* value = node.as_string();
+  if (value == nullptr) {
+    AddError(issues,
+             "Invalid type for " + std::string(key) + " in settings.toml",
+             "Expected a string.");
+    return false;
+  }
+  const std::string parsed = value->get();
+  if (!ValidateStringEnumSetting(key, parsed, issues)) {
+    return false;
+  }
+  target = parsed;
+  return true;
 }
 
 // Reads a string key from a TOML node; emits an error if the node is the
@@ -132,49 +330,7 @@ void LoadBedrockProviderOptions(const toml::node_view<toml::node>& provider,
 
 bool ApplyTemperature(const toml::node_view<toml::node>& node, double& target,
                       std::vector<ConfigIssue>& issues) {
-  if (!node) {
-    return false;
-  }
-  double parsed = 0.0;
-  if (auto* value = node.as_floating_point()) {
-    parsed = value->get();
-  } else if (auto* value = node.as_integer()) {
-    parsed = static_cast<double>(value->get());
-  } else {
-    AddError(issues, "Invalid type for temperature in settings.toml",
-             "Expected a number between 0.0 and 2.0.");
-    return false;
-  }
-  if (parsed < kMinTemperature || parsed > kMaxTemperature) {
-    AddError(issues, "Invalid temperature in settings.toml",
-             "Value must be between 0.0 and 2.0.");
-    return false;
-  }
-  target = parsed;
-  return true;
-}
-
-bool ApplyIntegerField(const toml::node_view<toml::node>& node,
-                       const std::string& key, int min_value, int max_value,
-                       int& target, std::vector<ConfigIssue>& issues) {
-  if (!node) {
-    return false;
-  }
-  auto* value = node.as_integer();
-  if (value == nullptr) {
-    AddError(issues, "Invalid type for " + key + " in settings.toml",
-             "Expected an integer.");
-    return false;
-  }
-  const auto parsed = value->get();
-  if (parsed < min_value || parsed > max_value) {
-    AddError(issues, "Invalid " + key + " in settings.toml",
-             "Value must be between " + std::to_string(min_value) + " and " +
-                 std::to_string(max_value) + ".");
-    return false;
-  }
-  target = static_cast<int>(parsed);
-  return true;
+  return ApplyNumberSetting(node, "temperature", target, issues);
 }
 
 bool ApplyBoolField(const toml::node_view<toml::node>& node,
@@ -190,34 +346,6 @@ bool ApplyBoolField(const toml::node_view<toml::node>& node,
   AddError(issues, "Invalid type for " + key + " in settings.toml",
            "Expected a boolean (true or false).");
   return false;
-}
-
-bool ApplyDoubleField(const toml::node_view<toml::node>& node,
-                      const std::string& key, double min_value,
-                      double max_value, double& target,
-                      std::vector<ConfigIssue>& issues) {
-  if (!node) {
-    return false;
-  }
-  double parsed = 0.0;
-  if (auto* value = node.as_floating_point()) {
-    parsed = value->get();
-  } else if (auto* value = node.as_integer()) {
-    parsed = static_cast<double>(value->get());
-  } else {
-    AddError(issues, "Invalid type for " + key + " in settings.toml",
-             "Expected a number.");
-    return false;
-  }
-  if (parsed < min_value || parsed > max_value) {
-    std::ostringstream detail;
-    detail << "Value must be between " << min_value << " and " << max_value
-           << ".";
-    AddError(issues, "Invalid " + key + " in settings.toml", detail.str());
-    return false;
-  }
-  target = parsed;
-  return true;
 }
 
 bool ApplyStringArray(const toml::node_view<toml::node>& node,
@@ -513,9 +641,9 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
                        config.api_key_env, issues);
   fields.api_key = ApplyStringField(provider["api_key"], "provider.api_key",
                                     config.api_key, issues);
-  fields.context_window = ApplyIntegerField(
-      provider["context_window"], "provider.context_window", kMinContextWindow,
-      kMaxContextWindow, config.context_window, issues);
+  fields.context_window =
+      ApplyIntegerSetting(provider["context_window"], "provider.context_window",
+                          config.context_window, issues);
   LoadBedrockProviderOptions(provider, config, issues);
 }
 
@@ -585,21 +713,12 @@ void LoadCompactSection(toml::table& root, ChatConfig& config,
   }
   ApplyBoolField(compact_section["auto_enabled"], "compact.auto_enabled",
                  config.auto_compact_enabled, issues);
-  ApplyDoubleField(compact_section["threshold"], "compact.threshold",
-                   kMinAutoCompactThreshold, kMaxAutoCompactThreshold,
-                   config.auto_compact_threshold, issues);
-  ApplyIntegerField(compact_section["keep_last"], "compact.keep_last",
-                    kMinAutoCompactKeepLast, kMaxAutoCompactKeepLast,
-                    config.auto_compact_keep_last, issues);
-  if (ApplyStringField(compact_section["mode"], "compact.mode",
-                       config.auto_compact_mode, issues)) {
-    if (config.auto_compact_mode != "summarize" &&
-        config.auto_compact_mode != "truncate") {
-      AddError(issues, "Invalid compact.mode in settings.toml",
-               "Value must be 'summarize' or 'truncate'.");
-      config.auto_compact_mode = "summarize";
-    }
-  }
+  ApplyNumberSetting(compact_section["threshold"], "compact.threshold",
+                     config.auto_compact_threshold, issues);
+  ApplyIntegerSetting(compact_section["keep_last"], "compact.keep_last",
+                      config.auto_compact_keep_last, issues);
+  ApplyStringEnumSetting(compact_section["mode"], "compact.mode",
+                         config.auto_compact_mode, issues);
 }
 
 // Reads the [auth] sub-table for an MCP server and returns the parsed auth
@@ -790,18 +909,9 @@ void LoadMcpSection(toml::table& root, ChatConfig& config,
     return;
   }
 
-  if (const auto* v = mcp_section["result_max_bytes"].as_integer()) {
-    const auto raw = v->get();
-    if (raw <= 0) {
-      AddError(issues, "Invalid mcp.result_max_bytes in settings.toml",
-               "Must be a positive integer.");
-    } else {
-      config.mcp.result_max_bytes = static_cast<uintmax_t>(raw);
-    }
-  } else if (mcp_section["result_max_bytes"]) {
-    AddError(issues, "Invalid type for mcp.result_max_bytes in settings.toml",
-             "Expected an integer.");
-  }
+  ApplyPositiveUintmaxSetting(mcp_section["result_max_bytes"],
+                              "mcp.result_max_bytes",
+                              config.mcp.result_max_bytes, issues);
 
   const auto servers_node = mcp_section["servers"];
   if (!servers_node.is_array()) {
@@ -834,6 +944,7 @@ void LoadMcpSection(toml::table& root, ChatConfig& config,
 ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
                                         ChatConfig& config,
                                         std::vector<ConfigIssue>& issues) {
+  ApplyRegistryRuntimeDefaults(config);
   ChatConfigFieldSet fields;
   std::error_code ec;
   if (!std::filesystem::exists(path, ec) || ec) {

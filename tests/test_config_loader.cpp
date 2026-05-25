@@ -1,6 +1,7 @@
 #include "chat/config.hpp"
 #include "chat/config_loader.hpp"
 #include "chat/prompt_library.hpp"
+#include "chat/settings_registry.hpp"
 #include "chat/settings_toml.hpp"
 #include "chat/types.hpp"
 #include "config_env_test_helpers.hpp"
@@ -143,6 +144,13 @@ TEST_CASE("settings.example.toml parses cleanly via LoadSettingsFromToml") {
   REQUIRE(config.auto_compact_mode == "summarize");
 }
 
+TEST_CASE("settings.example.toml is the registry-generated example") {
+  const std::filesystem::path example_path{SETTINGS_EXAMPLE_TOML_PATH};
+  REQUIRE(std::filesystem::exists(example_path));
+
+  REQUIRE(ReadFile(example_path) == yac::chat::GenerateSettingsExampleToml());
+}
+
 TEST_CASE("settings.example.toml round-trips through copy-and-reparse") {
   const std::filesystem::path example_path{SETTINGS_EXAMPLE_TOML_PATH};
   TempDir dir("yac_test_config_loader_roundtrip");
@@ -249,6 +257,70 @@ TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {
           split_prompts_result.prompts.size());
   REQUIRE(aggregate.prompt_library.issues.size() ==
           split_prompts_result.issues.size());
+}
+
+TEST_CASE("registry defaults apply before env overrides") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_registry_defaults");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai-compatible\"\n"
+            "model = \"gpt-4o-mini\"\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+  ScopedEnvVar temperature("YAC_TEMPERATURE", "1.6");
+  ScopedEnvVar threshold("YAC_COMPACT_THRESHOLD", "0.6");
+  ScopedEnvVar keep_last("YAC_COMPACT_KEEP_LAST", "9");
+  ScopedEnvVar mode("YAC_COMPACT_MODE", "truncate");
+  ScopedEnvVar result_max_bytes("YAC_MCP_RESULT_MAX_BYTES", "8192");
+
+  auto result = LoadChatConfigResultFrom(settings_path, false);
+
+  REQUIRE(result.issues.empty());
+  REQUIRE(result.config.temperature == 1.6);
+  REQUIRE(result.config.context_window == 0);
+  REQUIRE(result.config.sync_terminal_background);
+  REQUIRE(result.config.auto_compact_threshold == 0.6);
+  REQUIRE(result.config.auto_compact_keep_last == 9);
+  REQUIRE(result.config.auto_compact_mode == "truncate");
+  REQUIRE(result.config.mcp.result_max_bytes == 8192);
+}
+
+TEST_CASE("registry validation rejects invalid env override values") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_registry_env_validation");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "temperature = 0.4\n"
+            "[compact]\n"
+            "threshold = 0.7\n"
+            "keep_last = 8\n"
+            "mode = \"summarize\"\n"
+            "[mcp]\n"
+            "result_max_bytes = 1024\n");
+
+  ScopedEnvVar api_key("OPENAI_API_KEY", "dummy-key");
+  ScopedEnvVar temperature("YAC_TEMPERATURE", "3");
+  ScopedEnvVar threshold("YAC_COMPACT_THRESHOLD", "0.01");
+  ScopedEnvVar keep_last("YAC_COMPACT_KEEP_LAST", "0");
+  ScopedEnvVar mode("YAC_COMPACT_MODE", "invalid");
+  ScopedEnvVar result_max_bytes("YAC_MCP_RESULT_MAX_BYTES", "0");
+
+  auto result = LoadChatConfigResultFrom(settings_path, false);
+
+  REQUIRE(result.config.temperature == 0.4);
+  REQUIRE(result.config.auto_compact_threshold == 0.7);
+  REQUIRE(result.config.auto_compact_keep_last == 8);
+  REQUIRE(result.config.auto_compact_mode == "summarize");
+  REQUIRE(result.config.mcp.result_max_bytes == 1024);
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_TEMPERATURE"));
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_THRESHOLD"));
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_KEEP_LAST"));
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_MODE"));
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_MCP_RESULT_MAX_BYTES"));
 }
 
 TEST_CASE("env-precedence: YAC_* overrides TOML values") {

@@ -55,6 +55,14 @@ std::string ReadFile(const std::filesystem::path& path) {
           std::istreambuf_iterator<char>()};
 }
 
+bool HasIssueContaining(const std::vector<ConfigIssue>& issues,
+                        std::string_view text) {
+  return std::ranges::any_of(issues, [&](const ConfigIssue& issue) {
+    return issue.message.find(text) != std::string::npos ||
+           issue.detail.find(text) != std::string::npos;
+  });
+}
+
 }  // namespace
 
 TEST_CASE("LoadSettingsFromToml is a no-op when the file is missing") {
@@ -65,6 +73,102 @@ TEST_CASE("LoadSettingsFromToml is a no-op when the file is missing") {
   REQUIRE(issues.empty());
   REQUIRE_FALSE(fields.provider_id);
   REQUIRE(config.model.value == "gpt-4o-mini");
+}
+
+TEST_CASE("LoadSettingsFromToml applies registry defaults to omitted values") {
+  TempFile file("yac_test_settings_registry_defaults.toml");
+  WriteFile(file.Path(), "system_prompt = \"hi\"\n");
+  ChatConfig config;
+  config.temperature = -1.0;
+  config.context_window = -1;
+  config.sync_terminal_background = false;
+  config.auto_compact_threshold = -1.0;
+  config.auto_compact_keep_last = -1;
+  config.auto_compact_mode = "sentinel";
+  config.mcp.result_max_bytes = 1;
+
+  std::vector<ConfigIssue> issues;
+  const auto fields = LoadSettingsFromToml(file.Path(), config, issues);
+
+  REQUIRE(issues.empty());
+  REQUIRE_FALSE(fields.temperature);
+  REQUIRE_FALSE(fields.context_window);
+  REQUIRE(config.temperature == 0.7);
+  REQUIRE(config.context_window == 0);
+  REQUIRE(config.sync_terminal_background);
+  REQUIRE(config.auto_compact_threshold == 0.8);
+  REQUIRE(config.auto_compact_keep_last == 20);
+  REQUIRE(config.auto_compact_mode == "summarize");
+  REQUIRE(config.mcp.result_max_bytes == 262144);
+}
+
+TEST_CASE(
+    "LoadSettingsFromToml keeps explicit TOML values over registry defaults") {
+  TempFile file("yac_test_settings_registry_explicit.toml");
+  WriteFile(file.Path(),
+            "temperature = 1.1\n"
+            "[provider]\n"
+            "context_window = 4096\n"
+            "[theme]\n"
+            "sync_terminal_background = false\n"
+            "[compact]\n"
+            "threshold = 0.55\n"
+            "keep_last = 7\n"
+            "mode = \"truncate\"\n"
+            "[mcp]\n"
+            "result_max_bytes = 12345\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+
+  const auto fields = LoadSettingsFromToml(file.Path(), config, issues);
+
+  REQUIRE(issues.empty());
+  REQUIRE(fields.temperature);
+  REQUIRE(fields.context_window);
+  REQUIRE(config.temperature == 1.1);
+  REQUIRE(config.context_window == 4096);
+  REQUIRE_FALSE(config.sync_terminal_background);
+  REQUIRE(config.auto_compact_threshold == 0.55);
+  REQUIRE(config.auto_compact_keep_last == 7);
+  REQUIRE(config.auto_compact_mode == "truncate");
+  REQUIRE(config.mcp.result_max_bytes == 12345);
+}
+
+TEST_CASE("LoadSettingsFromToml reports registry-backed validation details") {
+  TempFile file("yac_test_settings_registry_validation.toml");
+  WriteFile(file.Path(),
+            "temperature = 3.0\n"
+            "[provider]\n"
+            "context_window = 10000001\n"
+            "[compact]\n"
+            "threshold = 0.01\n"
+            "keep_last = 0\n"
+            "mode = \"invalid\"\n"
+            "[mcp]\n"
+            "result_max_bytes = 0\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+
+  LoadSettingsFromToml(file.Path(), config, issues);
+
+  REQUIRE(HasIssueContaining(issues, "temperature"));
+  REQUIRE(HasIssueContaining(issues, "0"));
+  REQUIRE(HasIssueContaining(issues, "2"));
+  REQUIRE(HasIssueContaining(issues, "provider.context_window"));
+  REQUIRE(HasIssueContaining(issues, "10000000"));
+  REQUIRE(HasIssueContaining(issues, "compact.threshold"));
+  REQUIRE(HasIssueContaining(issues, "0.05"));
+  REQUIRE(HasIssueContaining(issues, "compact.keep_last"));
+  REQUIRE(HasIssueContaining(issues, "compact.mode"));
+  REQUIRE(HasIssueContaining(issues, "summarize"));
+  REQUIRE(HasIssueContaining(issues, "mcp.result_max_bytes"));
+  REQUIRE(HasIssueContaining(issues, "positive integer"));
+  REQUIRE(config.temperature == 0.7);
+  REQUIRE(config.context_window == 0);
+  REQUIRE(config.auto_compact_threshold == 0.8);
+  REQUIRE(config.auto_compact_keep_last == 20);
+  REQUIRE(config.auto_compact_mode == "summarize");
+  REQUIRE(config.mcp.result_max_bytes == 262144);
 }
 
 TEST_CASE("LoadSettingsFromToml overlays explicit values") {

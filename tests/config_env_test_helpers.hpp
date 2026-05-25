@@ -31,8 +31,7 @@ class ScopedEnvClear {
  public:
   ScopedEnvClear() : ScopedEnvClear({}) {}
 
-  ScopedEnvClear(
-      std::initializer_list<std::string_view> extra_env_vars) {
+  ScopedEnvClear(std::initializer_list<std::string_view> extra_env_vars) {
     auto env_vars = RegistryUserFacingEnvVars();
     for (std::string_view extra_env_var : extra_env_vars) {
       env_vars.emplace_back(extra_env_var);
@@ -65,4 +64,4 @@ class ScopedEnvClear {
   std::vector<std::pair<std::string, std::string>> saved_;
 };
 
-}
+}  // namespace yac::testing

@@ -1,6 +1,7 @@
 #include "chat/config.hpp"
 
 #include "chat/config_paths.hpp"
+#include "chat/settings_registry.hpp"
 #include "chat/settings_toml.hpp"
 
 #include <algorithm>
@@ -41,44 +42,127 @@ bool ParseEnvBool(const std::string& value) {
            normalized == "off");
 }
 
-double ParseTemperature(const std::string& value) {
-  const double temp = std::stod(value);
-  if (temp < kMinTemperature || temp > kMaxTemperature) {
-    throw std::out_of_range("YAC_TEMPERATURE must be between 0.0 and 2.0");
-  }
-  return temp;
+const SettingMetadata& Metadata(std::string_view key) {
+  return *FindSettingsRegistryRecord(key);
 }
 
-int ParseContextWindow(const std::string& value) {
+std::string FormatNumber(double value) {
+  std::ostringstream output;
+  output << value;
+  return output.str();
+}
+
+std::string JoinAllowedValues(std::span<const std::string_view> values) {
+  std::string joined;
+  for (size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      joined += i + 1 == values.size() ? " or " : ", ";
+    }
+    joined += "'";
+    joined += values[i];
+    joined += "'";
+  }
+  return joined;
+}
+
+std::string ValidationDetail(const SettingValidationMetadata& validation) {
+  switch (validation.type) {
+    case SettingValidationType::NumberRange:
+      return "must be between " + FormatNumber(validation.min_number) +
+             " and " + FormatNumber(validation.max_number);
+    case SettingValidationType::IntegerRange:
+      return "must be between " + std::to_string(validation.min_integer) +
+             " and " + std::to_string(validation.max_integer);
+    case SettingValidationType::PositiveInteger:
+      return "must be a positive integer";
+    case SettingValidationType::StringEnum:
+      return "must be " + JoinAllowedValues(validation.allowed_values);
+    case SettingValidationType::None:
+    case SettingValidationType::Required:
+      return {};
+  }
+  return {};
+}
+
+void ValidateEnvNumber(std::string_view key, std::string_view env_var,
+                       double parsed) {
+  const auto& validation = Metadata(key).validation;
+  if (validation.type == SettingValidationType::NumberRange &&
+      (parsed < validation.min_number || parsed > validation.max_number)) {
+    throw std::out_of_range(std::string(env_var) + " " +
+                            ValidationDetail(validation));
+  }
+}
+
+void ValidateEnvInteger(std::string_view key, std::string_view env_var,
+                        int64_t parsed) {
+  const auto& validation = Metadata(key).validation;
+  if (validation.type == SettingValidationType::IntegerRange &&
+      (parsed < validation.min_integer || parsed > validation.max_integer)) {
+    throw std::out_of_range(std::string(env_var) + " " +
+                            ValidationDetail(validation));
+  }
+  if (validation.type == SettingValidationType::PositiveInteger &&
+      parsed <= 0) {
+    throw std::invalid_argument(std::string(env_var) + " " +
+                                ValidationDetail(validation));
+  }
+}
+
+double ParseEnvNumber(const std::string& value, std::string_view key,
+                      std::string_view env_var) {
   size_t consumed = 0;
-  const int parsed = std::stoi(value, &consumed);
+  const double parsed = std::stod(value, &consumed);
   if (consumed != value.size()) {
-    throw std::invalid_argument("YAC_CONTEXT_WINDOW must be an integer");
+    throw std::invalid_argument(std::string(env_var) + " must be a number");
   }
-  if (parsed < kMinContextWindow || parsed > kMaxContextWindow) {
-    throw std::out_of_range("YAC_CONTEXT_WINDOW must be between " +
-                            std::to_string(kMinContextWindow) + " and " +
-                            std::to_string(kMaxContextWindow));
-  }
+  ValidateEnvNumber(key, env_var, parsed);
   return parsed;
 }
 
-uintmax_t ParsePositiveUintmax(const std::string& value,
+int ParseEnvInteger(const std::string& value, std::string_view key,
+                    std::string_view env_var) {
+  size_t consumed = 0;
+  const int parsed = std::stoi(value, &consumed);
+  if (consumed != value.size()) {
+    throw std::invalid_argument(std::string(env_var) + " must be an integer");
+  }
+  ValidateEnvInteger(key, env_var, parsed);
+  return parsed;
+}
+
+std::string ParseEnvStringEnum(const std::string& value, std::string_view key,
+                               std::string_view env_var) {
+  const auto& validation = Metadata(key).validation;
+  for (const auto allowed : validation.allowed_values) {
+    if (value == allowed) {
+      return value;
+    }
+  }
+  throw std::invalid_argument(std::string(env_var) + " " +
+                              ValidationDetail(validation));
+}
+
+uintmax_t ParsePositiveUintmax(const std::string& value, std::string_view key,
                                std::string_view env_var) {
   if (value.empty() || !std::ranges::all_of(value, [](unsigned char ch) {
         return std::isdigit(ch) != 0;
       })) {
-    throw std::invalid_argument(std::string(env_var) +
-                                " must be a positive integer");
+    throw std::invalid_argument(std::string(env_var) + " " +
+                                ValidationDetail(Metadata(key).validation));
   }
   size_t consumed = 0;
   const auto parsed = std::stoull(value, &consumed);
-  if (consumed != value.size() || parsed == 0) {
-    throw std::invalid_argument(std::string(env_var) +
-                                " must be a positive integer");
+  if (consumed != value.size()) {
+    throw std::invalid_argument(std::string(env_var) + " " +
+                                ValidationDetail(Metadata(key).validation));
   }
   if (parsed > std::numeric_limits<uintmax_t>::max()) {
     throw std::out_of_range(std::string(env_var) + " is too large");
+  }
+  if (parsed == 0) {
+    throw std::invalid_argument(std::string(env_var) + " " +
+                                ValidationDetail(Metadata(key).validation));
   }
   return static_cast<uintmax_t>(parsed);
 }
@@ -315,7 +399,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
   if (auto val = GetEnv("YAC_TEMPERATURE")) {
     try {
-      config.temperature = ParseTemperature(*val);
+      config.temperature =
+          ParseEnvNumber(*val, "temperature", "YAC_TEMPERATURE");
       fields.temperature = true;
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
@@ -325,7 +410,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
   if (auto val = GetEnv("YAC_CONTEXT_WINDOW")) {
     try {
-      config.context_window = ParseContextWindow(*val);
+      config.context_window = ParseEnvInteger(*val, "provider.context_window",
+                                              "YAC_CONTEXT_WINDOW");
       fields.context_window = true;
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
@@ -369,15 +455,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
   if (auto val = GetEnv("YAC_COMPACT_THRESHOLD")) {
     try {
-      const double parsed = std::stod(*val);
-      if (parsed < kMinAutoCompactThreshold ||
-          parsed > kMaxAutoCompactThreshold) {
-        throw std::out_of_range("YAC_COMPACT_THRESHOLD must be between " +
-                                std::to_string(kMinAutoCompactThreshold) +
-                                " and " +
-                                std::to_string(kMaxAutoCompactThreshold));
-      }
-      config.auto_compact_threshold = parsed;
+      config.auto_compact_threshold =
+          ParseEnvNumber(*val, "compact.threshold", "YAC_COMPACT_THRESHOLD");
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_COMPACT_THRESHOLD",
@@ -386,19 +465,8 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
   }
   if (auto val = GetEnv("YAC_COMPACT_KEEP_LAST")) {
     try {
-      size_t consumed = 0;
-      const int parsed = std::stoi(*val, &consumed);
-      if (consumed != val->size()) {
-        throw std::invalid_argument("YAC_COMPACT_KEEP_LAST must be an integer");
-      }
-      if (parsed < kMinAutoCompactKeepLast ||
-          parsed > kMaxAutoCompactKeepLast) {
-        throw std::out_of_range("YAC_COMPACT_KEEP_LAST must be between " +
-                                std::to_string(kMinAutoCompactKeepLast) +
-                                " and " +
-                                std::to_string(kMaxAutoCompactKeepLast));
-      }
-      config.auto_compact_keep_last = parsed;
+      config.auto_compact_keep_last =
+          ParseEnvInteger(*val, "compact.keep_last", "YAC_COMPACT_KEEP_LAST");
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_COMPACT_KEEP_LAST",
@@ -406,19 +474,20 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     }
   }
   if (auto val = GetEnv("YAC_COMPACT_MODE")) {
-    if (*val == "summarize" || *val == "truncate") {
-      config.auto_compact_mode = std::move(*val);
-    } else {
+    try {
+      config.auto_compact_mode =
+          ParseEnvStringEnum(*val, "compact.mode", "YAC_COMPACT_MODE");
+    } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_COMPACT_MODE",
-                        .detail = "Value must be 'summarize' or 'truncate'."});
+                        .detail = error.what()});
     }
   }
 
   if (auto val = GetEnv("YAC_MCP_RESULT_MAX_BYTES")) {
     try {
-      config.mcp.result_max_bytes =
-          ParsePositiveUintmax(*val, "YAC_MCP_RESULT_MAX_BYTES");
+      config.mcp.result_max_bytes = ParsePositiveUintmax(
+          *val, "mcp.result_max_bytes", "YAC_MCP_RESULT_MAX_BYTES");
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid YAC_MCP_RESULT_MAX_BYTES",
@@ -432,7 +501,9 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
       config.options["region"] = "us-east-1";
     }
     if (!config.options.contains("max_tokens")) {
-      config.options["max_tokens"] = "4096";
+      config.options["max_tokens"] =
+          std::to_string(Metadata("provider.options.max_tokens")
+                             .runtime_default.integer_value);
     }
     if (auto val = GetEnv("YAC_BEDROCK_REGION")) {
       config.options["region"] = std::move(*val);
@@ -451,30 +522,17 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     if (auto val = GetEnv("YAC_BEDROCK_MAX_TOKENS")) {
       config.options["max_tokens"] = std::move(*val);
     }
-    // Validate max_tokens after all sources have had a chance to set it.
-    // Bedrock InferenceConfiguration requires a positive integer; bound the
-    // upper end against what current Bedrock models accept so a typo like
-    // "9999999" doesn't produce a confusing API rejection.
-    constexpr int kMinBedrockMaxTokens = 1;
-    constexpr int kMaxBedrockMaxTokens = 200000;
-    constexpr const char* kDefaultBedrockMaxTokens = "4096";
     try {
       const std::string& raw = config.options.at("max_tokens");
-      size_t consumed = 0;
-      const int parsed = std::stoi(raw, &consumed);
-      if (consumed != raw.size()) {
-        throw std::invalid_argument("Bedrock max_tokens must be an integer");
-      }
-      if (parsed < kMinBedrockMaxTokens || parsed > kMaxBedrockMaxTokens) {
-        throw std::out_of_range("Bedrock max_tokens must be between " +
-                                std::to_string(kMinBedrockMaxTokens) + " and " +
-                                std::to_string(kMaxBedrockMaxTokens));
-      }
+      static_cast<void>(ParseEnvInteger(raw, "provider.options.max_tokens",
+                                        "Bedrock max_tokens"));
     } catch (const std::exception& error) {
       issues.push_back({.severity = ConfigIssueSeverity::Error,
                         .message = "Invalid Bedrock max_tokens",
                         .detail = error.what()});
-      config.options["max_tokens"] = kDefaultBedrockMaxTokens;
+      config.options["max_tokens"] =
+          std::to_string(Metadata("provider.options.max_tokens")
+                             .runtime_default.integer_value);
     }
   }
 
