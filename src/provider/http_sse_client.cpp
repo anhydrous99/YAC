@@ -1,7 +1,6 @@
 #include "provider/http_sse_client.hpp"
 
 #include <curl/curl.h>
-
 #include <memory>
 #include <optional>
 #include <stdexcept>

@@ -108,10 +108,10 @@ TEST_CASE("HttpStreamPost surfaces server disconnect errors") {
   });
 
   REQUIRE_THROWS_AS(
-      PerformHttpStreamPost(HttpStreamPostRequest{
-                                .url = server.Url("/disconnect"),
+      PerformHttpStreamPost(
+          HttpStreamPostRequest{.url = server.Url("/disconnect"),
                                 .payload = "{}",
                                 .headers = {"Content-Type: application/json"}},
-                            {}),
+          {}),
       std::runtime_error);
 }
