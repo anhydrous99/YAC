@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core_types/agent_mode.hpp"
 #include "core_types/typed_ids.hpp"
 #include "message.hpp"
 #include "ui_status.hpp"
@@ -44,6 +45,7 @@ class ChatEventSink {
                                  std::vector<std::string> options) = 0;
   virtual void SetProviderModel(::yac::ProviderId provider_id,
                                 ::yac::ModelId model) = 0;
+  virtual void SetAgentMode(::yac::chat::AgentMode mode) = 0;
   virtual void SetLastUsage(UsageStats usage) = 0;
   virtual void SetContextWindowTokens(int tokens) = 0;
   virtual void SetQueueDepth(int queue_depth) = 0;

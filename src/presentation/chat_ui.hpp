@@ -48,7 +48,7 @@ class ChatUI : public ChatEventSink {
 
   [[nodiscard]] ftxui::Component Build();
 
-  void SetAgentMode(chat::AgentMode mode);
+  void SetAgentMode(chat::AgentMode mode) override;
   void SetUiTaskRunner(UiTaskRunner ui_task_runner);
   MessageId AddMessage(Sender sender, std::string content,
                        MessageStatus status = MessageStatus::Complete);

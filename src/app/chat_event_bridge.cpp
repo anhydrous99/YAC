@@ -40,7 +40,7 @@ ChatEventBridge::ChatEventBridge(presentation::ChatEventSink& chat_ui,
       context_window_resolver_(std::move(context_window_resolver)) {}
 
 void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
-  std::visit([this](auto& payload) { Handle(std::move(payload)); },
+  std::visit([this](auto& payload) { this->Handle(std::move(payload)); },
              event.payload);
 }
 
@@ -171,9 +171,7 @@ void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
 }
 
 void ChatEventBridge::Handle(chat::AgentModeChangedEvent event) {
-  if (auto* ui = dynamic_cast<presentation::ChatUI*>(&chat_ui_.get())) {
-    ui->SetAgentMode(event.mode);
-  }
+  chat_ui_.get().SetAgentMode(event.mode);
 }
 
 void ChatEventBridge::Handle(chat::UsageReportedEvent event) {

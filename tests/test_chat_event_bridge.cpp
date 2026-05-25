@@ -11,6 +11,65 @@ using namespace yac::chat;
 using namespace yac::presentation;
 using namespace yac::tool_call;
 
+namespace {
+
+class RecordingChatEventSink : public ChatEventSink {
+ public:
+  MessageId AddMessageWithId(MessageId id, Sender, std::string, MessageStatus,
+                             std::string = "") override {
+    return id;
+  }
+
+  MessageId StartAgentMessage(MessageId id) override { return id; }
+
+  void AppendToAgentMessage(MessageId, std::string) override {}
+
+  void SetMessageStatus(MessageId, MessageStatus) override {}
+
+  void AddToolCallSegment(MessageId, ::yac::tool_call::ToolCallBlock,
+                          MessageStatus) override {}
+
+  void UpdateToolCallMessage(MessageId, ::yac::tool_call::ToolCallBlock,
+                             MessageStatus) override {}
+
+  void UpdateSubAgentToolCallMessage(MessageId, ::yac::ToolCallId, std::string,
+                                     ::yac::tool_call::ToolCallBlock,
+                                     MessageStatus) override {}
+
+  void ShowToolApproval(
+      ::yac::ApprovalId, std::string, std::string,
+      std::optional<::yac::tool_call::ToolCallBlock>) override {}
+
+  void ShowAskUserDialog(::yac::ApprovalId, std::string,
+                         std::vector<std::string>) override {}
+
+  void SetProviderModel(::yac::ProviderId, ::yac::ModelId) override {}
+
+  void SetAgentMode(AgentMode mode) override { agent_mode = mode; }
+
+  void SetLastUsage(UsageStats) override {}
+
+  void SetContextWindowTokens(int) override {}
+
+  void SetQueueDepth(int) override {}
+
+  MessageId AppendNotice(UiNotice) override { return 0; }
+
+  void SetTyping(bool) override {}
+
+  void ClearMessages() override {}
+
+  [[nodiscard]] bool HasMessage(MessageId) const override { return false; }
+
+  [[nodiscard]] bool HasToolSegment(MessageId) const override { return false; }
+
+  [[nodiscard]] std::string Model() const override { return "stub"; }
+
+  AgentMode agent_mode = AgentMode::Build;
+};
+
+}  // namespace
+
 TEST_CASE("ChatEventBridge inserts queued user message by service ID") {
   ChatUI ui;
   ChatEventBridge bridge(ui);
@@ -76,6 +135,15 @@ TEST_CASE("ChatEventBridge updates provider and model display") {
 
   REQUIRE(ui.ProviderId() == "zai");
   REQUIRE(ui.Model() == "glm-5.1");
+}
+
+TEST_CASE("ChatEventBridge forwards agent mode changes through ChatEventSink") {
+  RecordingChatEventSink sink;
+  ChatEventBridge bridge(sink);
+
+  bridge.HandleEvent(ChatEvent{AgentModeChangedEvent{.mode = AgentMode::Plan}});
+
+  REQUIRE(sink.agent_mode == AgentMode::Plan);
 }
 
 TEST_CASE(
