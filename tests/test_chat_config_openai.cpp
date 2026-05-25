@@ -15,6 +15,16 @@ using yac::testing::ScopedEnvClear;
 
 namespace {
 
+bool HasIssueMessage(const std::vector<yac::chat::ConfigIssue>& issues,
+                     std::string_view message) {
+  for (const auto& issue : issues) {
+    if (issue.message.find(message) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class ScopedEnvVar {
  public:
   ScopedEnvVar(std::string name, std::string value) : name_(std::move(name)) {
@@ -160,4 +170,41 @@ TEST_CASE("default provider stays openai-compatible when id is absent") {
   REQUIRE(result.config.base_url == "https://api.openai.com/v1/");
   REQUIRE(result.config.api_key_env == "OPENAI_API_KEY");
   REQUIRE(result.config.api_key == "default-key");
+}
+
+TEST_CASE("openai provider defers missing auth warning to startup") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_openai_missing_auth_deferred.toml");
+  WriteFile(file.Path(), "[provider]\nid = \"openai\"\n");
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  REQUIRE(result.config.provider_id.value == "openai");
+  REQUIRE(result.config.api_key.empty());
+  REQUIRE_FALSE(HasIssueMessage(result.issues, "OPENAI_API_KEY is not set"));
+}
+
+TEST_CASE("api key providers still warn when key is missing") {
+  ScopedEnvClear env_guard;
+
+  SECTION("openai compatible") {
+    TempFile file("yac_test_openai_compatible_missing_key.toml");
+    WriteFile(file.Path(),
+              "[provider]\n"
+              "id = \"openai-compatible\"\n"
+              "api_key_env = \"OPENAI_API_KEY\"\n");
+
+    const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+    REQUIRE(HasIssueMessage(result.issues, "OPENAI_API_KEY is not set"));
+  }
+
+  SECTION("zai") {
+    TempFile file("yac_test_zai_missing_key.toml");
+    WriteFile(file.Path(), "[provider]\nid = \"zai\"\n");
+
+    const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+    REQUIRE(HasIssueMessage(result.issues, "ZAI_API_KEY is not set"));
+  }
 }

@@ -341,6 +341,25 @@ OpenAiChatProvider::EffectiveAuth OpenAiChatProvider::ResolveEffectiveAuth()
   return {};
 }
 
+OpenAiChatProvider::EffectiveAuthSource
+OpenAiChatProvider::ResolveEffectiveAuthSource() const {
+  if (const char* env = std::getenv(config_.api_key_env.c_str())) {
+    if (*env != '\0') {
+      return EffectiveAuthSource::EnvApiKey;
+    }
+  }
+  if (const auto stored = auth_flow_->LoadStoredAuth(); stored.has_value()) {
+    if (std::holds_alternative<OpenAiApiKeyAuth>(stored->auth)) {
+      return EffectiveAuthSource::StoredApiKey;
+    }
+    return EffectiveAuthSource::StoredOAuth;
+  }
+  if (!config_.api_key.empty()) {
+    return EffectiveAuthSource::InlineApiKey;
+  }
+  return EffectiveAuthSource::None;
+}
+
 std::vector<chat::ModelInfo> OpenAiChatProvider::OAuthModelAllowlist() {
   return {
       {.id = "gpt-5.5", .display_name = "gpt-5.5"},

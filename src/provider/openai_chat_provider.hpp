@@ -11,6 +11,14 @@ namespace yac::provider {
 
 class OpenAiChatProvider : public OpenAiCompatibleChatProvider {
  public:
+  enum class EffectiveAuthSource {
+    None,
+    EnvApiKey,
+    StoredApiKey,
+    StoredOAuth,
+    InlineApiKey,
+  };
+
   struct Dependencies {
     std::shared_ptr<OpenAiAuthFlow> auth_flow;
     std::string oauth_base_url;
@@ -24,6 +32,7 @@ class OpenAiChatProvider : public OpenAiCompatibleChatProvider {
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override;
   [[nodiscard]] static bool IsOAuthModelAllowed(std::string_view model_id);
+  [[nodiscard]] EffectiveAuthSource ResolveEffectiveAuthSource() const;
 
  protected:
   [[nodiscard]] std::string ResolveApiKey() const override;

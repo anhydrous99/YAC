@@ -97,6 +97,33 @@ class ScopedEnvVar {
   bool had_old_value_ = false;
 };
 
+class ScopedEnvUnset {
+ public:
+  explicit ScopedEnvUnset(std::string name) : name_(std::move(name)) {
+    if (const char* current = std::getenv(name_.c_str())) {
+      had_old_value_ = true;
+      old_value_ = current;
+    }
+    unsetenv(name_.c_str());
+  }
+
+  ~ScopedEnvUnset() {
+    if (had_old_value_) {
+      setenv(name_.c_str(), old_value_.c_str(), 1);
+    }
+  }
+
+  ScopedEnvUnset(const ScopedEnvUnset&) = delete;
+  ScopedEnvUnset& operator=(const ScopedEnvUnset&) = delete;
+  ScopedEnvUnset(ScopedEnvUnset&&) = delete;
+  ScopedEnvUnset& operator=(ScopedEnvUnset&&) = delete;
+
+ private:
+  std::string name_;
+  std::string old_value_;
+  bool had_old_value_ = false;
+};
+
 [[nodiscard]] std::shared_ptr<MemoryAuthBackend> MakeFileBackend() {
   return std::make_shared<MemoryAuthBackend>();
 }
@@ -198,6 +225,82 @@ TEST_CASE("env_api_key_wins_over_stored_openai_auth",
   const auto models = provider.ListModels(500ms);
   REQUIRE(models.size() == 1);
   REQUIRE(server.Requests().size() == 1);
+}
+
+TEST_CASE("effective_auth_source_reports_precedence_without_secrets",
+          "[openai_chat_provider_auth]") {
+  ScopedEnvUnset env("OPENAI_API_KEY");
+
+  SECTION("none") {
+    const auto store = MakeStore(MakeFileBackend());
+    auto provider = MakeProvider("http://127.0.0.1:1", store);
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::None);
+  }
+
+  SECTION("inline key") {
+    const auto store = MakeStore(MakeFileBackend());
+    chat::ProviderConfig config;
+    config.id = ::yac::ProviderId{"openai"};
+    config.model = ::yac::ModelId{"gpt-5.4"};
+    config.base_url = "http://127.0.0.1:1";
+    config.api_key_env = "OPENAI_API_KEY";
+    config.api_key = "inline-secret";
+    OpenAiChatProvider provider(
+        config, OpenAiChatProvider::Dependencies{
+                    .auth_flow = std::make_shared<OpenAiAuthFlow>(
+                        MakeFlowDependencies(config.base_url, store)),
+                    .oauth_base_url = config.base_url,
+                });
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
+  }
+
+  SECTION("stored OAuth beats inline key") {
+    const auto store = MakeStore(MakeFileBackend());
+    (void)store->Save(OpenAiOAuthAuth{
+        .refresh_token = "refresh-stored",
+        .access_token = "access-stored",
+        .expires_at =
+            std::chrono::system_clock::time_point{std::chrono::seconds{2000}}});
+    chat::ProviderConfig config;
+    config.id = ::yac::ProviderId{"openai"};
+    config.model = ::yac::ModelId{"gpt-5.4"};
+    config.base_url = "http://127.0.0.1:1";
+    config.api_key_env = "OPENAI_API_KEY";
+    config.api_key = "inline-secret";
+    OpenAiChatProvider provider(
+        config, OpenAiChatProvider::Dependencies{
+                    .auth_flow = std::make_shared<OpenAiAuthFlow>(
+                        MakeFlowDependencies(config.base_url, store)),
+                    .oauth_base_url = config.base_url,
+                });
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::StoredOAuth);
+  }
+
+  SECTION("stored API key") {
+    const auto store = MakeStore(MakeFileBackend());
+    (void)store->Save(OpenAiApiKeyAuth{.key = "stored-secret"});
+    auto provider = MakeProvider("http://127.0.0.1:1", store);
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::StoredApiKey);
+  }
+
+  SECTION("env key shadows stored auth") {
+    const auto store = MakeStore(MakeFileBackend());
+    (void)store->Save(OpenAiOAuthAuth{.refresh_token = "refresh-stored",
+                                      .access_token = "access-stored"});
+    ScopedEnvVar env_key("OPENAI_API_KEY", "env-secret");
+    auto provider = MakeProvider("http://127.0.0.1:1", store);
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::EnvApiKey);
+  }
 }
 
 TEST_CASE("stored_api_key_is_used_for_openai_runtime",

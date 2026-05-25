@@ -319,6 +319,7 @@ yac_cc_library(
         "app/provider_factory.cpp",
         "app/prompt_slash_commands.cpp",
         "app/provider_auth_command_handlers.cpp",
+        "app/provider_auth_startup.cpp",
         "app/streaming_coalescer.cpp",
     ],
     hdrs = glob(["app/**/*.hpp"]),

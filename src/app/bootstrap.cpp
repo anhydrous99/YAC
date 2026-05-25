@@ -5,6 +5,7 @@
 #include "app/model_discovery.hpp"
 #include "app/prompt_slash_commands.hpp"
 #include "app/provider_auth_command_handlers.hpp"
+#include "app/provider_auth_startup.hpp"
 #include "app/provider_factory.hpp"
 #include "app/streaming_coalescer.hpp"
 #include "chat/chat_service.hpp"
@@ -490,7 +491,7 @@ int RunApp() {
   auto& prompt_result = loaded.prompt_library;
   auto startup_issues = prompt_result.issues;
 
-  auto provider = MakeLanguageModelProvider(chat::ProviderConfig{
+  const chat::ProviderConfig provider_config{
       .id = config.provider_id,
       .model = config.model,
       .api_key = config.api_key,
@@ -499,7 +500,10 @@ int RunApp() {
       .system_prompt = config.system_prompt,
       .options = config.options,
       .context_window = config.context_window,
-  });
+  };
+  auto provider = MakeLanguageModelProvider(provider_config);
+  AppendProviderAuthStartupIssues(provider_config, *provider,
+                                  config_result.issues);
 
   {
     auto theme = presentation::theme::GetTheme(config.theme_name);
