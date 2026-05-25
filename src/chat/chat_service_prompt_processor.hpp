@@ -1,7 +1,7 @@
 #pragma once
 
-#include "chat/chat_service_request_builder.hpp"
 #include "chat/tool_approval_manager.hpp"
+#include "chat/types.hpp"
 #include "provider/language_model_provider.hpp"
 #include "provider/provider_registry.hpp"
 #include "tool_call/executor.hpp"
@@ -42,21 +42,33 @@ class ChatServicePromptProcessor {
       std::function<::yac::tool_call::ToolExecutionResult(
           const ::yac::tool_call::PreparedToolCall&)>;
 
-  ChatServicePromptProcessor(
-      provider::ProviderRegistry& registry,
-      ::yac::tool_call::ToolExecutor& tool_executor,
-      ToolApprovalManager& tool_approval, ChatServiceMcp* chat_service_mcp,
-      std::mutex& history_mutex, std::vector<ChatMessage>& history,
-      EmitEventFn emit_event, NextMessageIdFn next_message_id,
-      ConfigSnapshotFn config_snapshot, GenerationValueFn generation_value,
-      std::set<std::string> excluded_tools = {},
-      std::mutex* approval_gate = nullptr,
-      ModeExcludedToolsFn mode_excluded_tools = {},
-      PrepareBuiltInToolCallFn prepare_built_in_tool_call = {},
-      ExecuteBuiltInToolCallFn execute_built_in_tool_call = {},
-      OnUsageReportedFn on_usage_reported = {}, LastUsageFn last_usage = {},
-      OnBuildSwitchReminderUsedFn on_build_switch_reminder_used = {},
-      OnPlanExitApprovedFn on_plan_exit_approved = {});
+  // Non-owning dependency bundle for one prompt-processing host. References and
+  // pointers must outlive the processor. Callbacks may capture host state, but
+  // must not transfer ownership of UI, providers, transports, or config parsers
+  // into prompt processing.
+  struct PromptRunContext {
+    provider::ProviderRegistry* registry = nullptr;
+    ::yac::tool_call::ToolExecutor* tool_executor = nullptr;
+    ToolApprovalManager* tool_approval = nullptr;
+    ChatServiceMcp* chat_service_mcp = nullptr;
+    std::mutex* history_mutex = nullptr;
+    std::vector<ChatMessage>* history = nullptr;
+    EmitEventFn emit_event;
+    NextMessageIdFn next_message_id;
+    ConfigSnapshotFn config_snapshot;
+    GenerationValueFn generation_value;
+    std::set<std::string> excluded_tools;
+    std::mutex* approval_gate = nullptr;
+    ModeExcludedToolsFn mode_excluded_tools;
+    PrepareBuiltInToolCallFn prepare_built_in_tool_call;
+    ExecuteBuiltInToolCallFn execute_built_in_tool_call;
+    OnUsageReportedFn on_usage_reported;
+    LastUsageFn last_usage;
+    OnBuildSwitchReminderUsedFn on_build_switch_reminder_used;
+    OnPlanExitApprovedFn on_plan_exit_approved;
+  };
+
+  explicit ChatServicePromptProcessor(PromptRunContext context);
 
   void ProcessPrompt(ChatMessageId prompt_id, const std::string& prompt_content,
                      uint64_t generation, std::stop_token stop_token);
@@ -87,49 +99,19 @@ class ChatServicePromptProcessor {
   // events are NOT emitted from here — the caller observes Stop::Aborted /
   // Stop::StreamError and decides what to surface.
   [[nodiscard]] RoundOutcome RunOneRound(
-      provider::LanguageModelProvider& provider,
-      const ChatServiceRequestBuilder& request_builder,
-      ChatMessageId assistant_id, uint64_t generation,
-      std::stop_token stop_token);
+      provider::LanguageModelProvider& provider, ChatMessageId assistant_id,
+      uint64_t generation, std::stop_token stop_token);
 
   // Builds the per-round request snapshot under the history lock.
   // `aborted` is set to true when the captured `generation` is stale —
   // the caller must observe it and bail before sending the (empty)
   // request.
-  [[nodiscard]] ChatRequest BuildRoundRequest(
-      const ChatServiceRequestBuilder& request_builder, uint64_t generation,
-      bool& aborted) const;
+  [[nodiscard]] ChatRequest BuildRoundRequest(uint64_t generation,
+                                              bool& aborted) const;
   void RunToolRound(
       const std::vector<ToolCallRequest>& requested_tools,
       const std::unordered_map<ToolCallId, ChatMessageId>& streaming_card_ids,
-      uint64_t generation, std::stop_token stop_token);
-
-  // Holds a successful Prepare result alongside any preparation failure that
-  // surfaced — fallback previews are always populated even on failure so the
-  // tool card can render a meaningful error.
-  struct ToolPrepFailure {
-    std::string error;
-    std::string result_json;
-  };
-  struct ToolPrep {
-    ::yac::tool_call::PreparedToolCall prepared;
-    std::optional<ToolPrepFailure> failure;
-  };
-
-  [[nodiscard]] ToolPrep PrepareOneToolCall(const ToolCallRequest& request,
-                                            bool is_mcp_tool) const;
-  // Awaits user approval (or auto-approves ask_user). Returns true when
-  // the call should proceed. Sets *gate_aborted when stop fires while the
-  // approval gate is held; the caller must observe and bail without
-  // appending history.
-  [[nodiscard]] bool MaybeAwaitApproval(
-      ::yac::tool_call::PreparedToolCall& prepared,
-      const ToolCallRequest& tool_request, ChatMessageId tool_message_id,
-      std::stop_token stop_token, bool& gate_aborted);
-  [[nodiscard]] ::yac::tool_call::ToolExecutionResult ExecuteOneToolCall(
-      const ::yac::tool_call::PreparedToolCall& prepared,
-      const std::optional<ToolPrepFailure>& failure, bool approved,
-      bool is_mcp_tool, std::stop_token stop_token);
+      uint64_t generation, std::stop_token stop_token) const;
   // Returns true when ResetConversation or CancelActiveResponse has
   // bumped generation past `generation`. Caller must hold
   // *history_mutex_; this is shorthand for the recurring re-check
@@ -139,11 +121,7 @@ class ChatServicePromptProcessor {
   // generation-mismatch / abort exit point. Must be called outside the
   // history lock — see the lock-then-emit comment in ProcessPrompt.
   void EmitCancellation(ChatMessageId assistant_id) const;
-  [[nodiscard]] static ::yac::tool_call::ToolExecutionResult
-  MakeRejectedToolResult(const ::yac::tool_call::PreparedToolCall& prepared);
-
   provider::ProviderRegistry* registry_;
-  ::yac::tool_call::ToolExecutor* tool_executor_;
   ToolApprovalManager* tool_approval_;
   ChatServiceMcp* chat_service_mcp_;
   std::mutex* history_mutex_;

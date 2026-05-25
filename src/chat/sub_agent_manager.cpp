@@ -245,12 +245,20 @@ void SubAgentManager::AttachPromptProcessor(SubAgentSession& session) {
   };
   session.prompt_processor =
       std::make_unique<internal::ChatServicePromptProcessor>(
-          *registry_, *tool_executor_, *tool_approval_,
-          session.chat_service_mcp.get(), session.history_mutex,
-          session.history, filtered_emit, next_message_id, config_snapshot,
-          generation_value,
-          std::set<std::string>{std::string(tool_call::kSubAgentToolName)},
-          &approval_gate_);
+          internal::ChatServicePromptProcessor::PromptRunContext{
+              .registry = registry_,
+              .tool_executor = tool_executor_.get(),
+              .tool_approval = tool_approval_,
+              .chat_service_mcp = session.chat_service_mcp.get(),
+              .history_mutex = &session.history_mutex,
+              .history = &session.history,
+              .emit_event = filtered_emit,
+              .next_message_id = next_message_id,
+              .config_snapshot = config_snapshot,
+              .generation_value = generation_value,
+              .excluded_tools = std::set<std::string>{std::string(
+                  tool_call::kSubAgentToolName)},
+              .approval_gate = &approval_gate_});
 }
 
 SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
@@ -273,9 +281,9 @@ SubAgentManager::EmitEventFn SubAgentManager::MakeFilteredEmit(
 }
 
 SubAgentManager::SubAgentCompletion SubAgentManager::RunSession(
-    SubAgentSession& session, std::stop_token parent_stop_token) {
-  auto request_parent_stop = [this, &session] {
-    RequestSessionStop(session, true);
+    SubAgentSession& session, std::stop_token parent_stop_token) const {
+  auto request_parent_stop = [&session] {
+    SubAgentManager::RequestSessionStop(session, true);
   };
   std::stop_callback<decltype(request_parent_stop)> parent_stop_callback(
       parent_stop_token, request_parent_stop);

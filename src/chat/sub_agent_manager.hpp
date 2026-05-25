@@ -86,7 +86,7 @@ class SubAgentManager {
   void AttachPromptProcessor(SubAgentSession& session);
   [[nodiscard]] EmitEventFn MakeFilteredEmit(SubAgentSession& session);
   [[nodiscard]] SubAgentCompletion RunSession(
-      SubAgentSession& session, std::stop_token parent_stop_token = {});
+      SubAgentSession& session, std::stop_token parent_stop_token = {}) const;
   void EmitSessionCompleted(const SubAgentSession& session,
                             const SubAgentCompletion& completion);
   void DeliverBackgroundResult(const SubAgentSession& session,

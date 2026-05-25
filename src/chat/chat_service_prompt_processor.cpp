@@ -1,252 +1,61 @@
 #include "chat/chat_service_prompt_processor.hpp"
 
-#include "chat/agent_mode.hpp"
 #include "chat/chat_history_store.hpp"
 #include "chat/chat_service_compactor.hpp"
 #include "chat/chat_service_history.hpp"
 #include "chat/chat_service_mcp.hpp"
-#include "chat/tool_call_argument_parser.hpp"
-#include "mcp/tool_naming.hpp"
+#include "chat/chat_service_request_builder.hpp"
+#include "chat/tool_round_runner.hpp"
 #include "provider/model_context_windows.hpp"
-#include "tool_call/executor_arguments.hpp"
-#include "tool_call/tool_validation_error.hpp"
 
-#include <filesystem>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
 namespace yac::chat::internal {
 
-namespace {
-
-std::string ToolRejectedJson() {
-  return R"({"error":"User rejected tool execution."})";
-}
-
-std::string PlanModeDeniedMessage(const std::string& tool_name) {
-  return "Tool '" + tool_name + "' is not allowed in Plan mode.";
-}
-
-std::filesystem::path NormalizeWorkspacePath(
-    const std::filesystem::path& workspace_root, const std::string& path) {
-  std::filesystem::path candidate(path);
-  if (candidate.is_relative()) {
-    candidate = workspace_root / candidate;
-  }
-  return std::filesystem::absolute(candidate).lexically_normal();
-}
-
-bool IsActivePlanMarkdownPath(const ChatConfig& config,
-                              const std::string& requested_path) {
-  if (!config.active_plan_path.has_value() || config.workspace_root.empty()) {
-    return false;
-  }
-  const std::filesystem::path workspace_root(config.workspace_root);
-  const auto active_path =
-      NormalizeWorkspacePath(workspace_root, *config.active_plan_path);
-  const auto requested = NormalizeWorkspacePath(workspace_root, requested_path);
-  const auto expected_plan_dir =
-      NormalizeWorkspacePath(workspace_root, ".opencode/plans");
-  return requested == active_path && active_path.extension() == ".md" &&
-         active_path.parent_path() == expected_plan_dir;
-}
-
-std::optional<std::string> PlanModePermissionError(
-    const ChatConfig& config, const ToolCallRequest& request) {
-  if (config.agent_mode != AgentMode::Plan) {
-    return std::nullopt;
-  }
-  if (!IsToolAllowedForMode(AgentMode::Plan, request.name)) {
-    return PlanModeDeniedMessage(request.name);
-  }
-  namespace tc = ::yac::tool_call;
-  if (request.name != tc::kFileWriteToolName &&
-      request.name != tc::kFileEditToolName) {
-    return std::nullopt;
-  }
-  try {
-    const auto args = tc::ParseArguments(request);
-    const auto filepath = tc::RequireString(args, "filepath");
-    if (IsActivePlanMarkdownPath(config, filepath)) {
-      return std::nullopt;
-    }
-  } catch (const std::exception& error) {
-    return error.what();
-  }
-  return "Plan mode can only write or edit the active .opencode/plans/*.md "
-         "plan file.";
-}
-
-// Best-effort partial extraction of a string field from possibly-malformed
-// streamed arguments. Returns empty string when not present or when JSON is
-// truncated before the value starts.
-std::string PartialField(const std::string& arguments_json,
-                         const std::string& field) {
-  const auto value =
-      ::yac::chat::ExtractStringFieldPartial(arguments_json, field);
-  return value.has_value() ? *value : std::string{};
-}
-
-::yac::tool_call::ToolCallBlock MakeBuiltinFallbackBlock(
-    const ::yac::chat::ToolCallRequest& request) {
-  namespace tc = ::yac::tool_call;
-  const auto& name = request.name;
-  const auto& args = request.arguments_json;
-  if (name == tc::kFileEditToolName) {
-    return tc::FileEditCall{.filepath = PartialField(args, "filepath")};
-  }
-  if (name == tc::kFileReadToolName) {
-    return tc::FileReadCall{.filepath = PartialField(args, "filepath")};
-  }
-  if (name == tc::kFileWriteToolName) {
-    return tc::FileWriteCall{.filepath = PartialField(args, "filepath")};
-  }
-  if (name == tc::kListDirToolName) {
-    return tc::ListDirCall{.path = PartialField(args, "path")};
-  }
-  if (name == tc::kGrepToolName) {
-    return tc::GrepCall{.pattern = PartialField(args, "pattern")};
-  }
-  if (name == tc::kGlobToolName) {
-    return tc::GlobCall{.pattern = PartialField(args, "pattern")};
-  }
-  if (name == tc::kLspDiagnosticsToolName) {
-    return tc::LspDiagnosticsCall{.file_path = PartialField(args, "file_path")};
-  }
-  if (name == tc::kLspReferencesToolName) {
-    return tc::LspReferencesCall{.file_path = PartialField(args, "file_path")};
-  }
-  if (name == tc::kLspGotoDefinitionToolName) {
-    return tc::LspGotoDefinitionCall{.file_path =
-                                         PartialField(args, "file_path")};
-  }
-  if (name == tc::kLspRenameToolName) {
-    return tc::LspRenameCall{.file_path = PartialField(args, "file_path"),
-                             .new_name = PartialField(args, "new_name")};
-  }
-  if (name == tc::kLspSymbolsToolName) {
-    return tc::LspSymbolsCall{.file_path = PartialField(args, "file_path")};
-  }
-  if (name == tc::kSubAgentToolName) {
-    return tc::SubAgentCall{.task = PartialField(args, "task")};
-  }
-  if (name == tc::kTodoWriteToolName) {
-    return tc::TodoWriteCall{};
-  }
-  if (name == tc::kAskUserToolName) {
-    return tc::AskUserCall{.question = PartialField(args, "question")};
-  }
-  if (name == tc::kPlanExitToolName) {
-    return tc::PlanExitCall{.plan = PartialField(args, "plan")};
-  }
-  if (name == tc::kBashToolName) {
-    return tc::BashCall{.command = PartialField(args, "command"),
-                        .is_error = true};
-  }
-  return tc::BashCall{.command = name, .is_error = true};
-}
-
-::yac::tool_call::PreparedToolCall MakeFallbackPreparedToolCall(
-    const ::yac::chat::ToolCallRequest& request) {
-  if (const auto parsed = ::yac::mcp::SplitMcpToolName(request.name);
-      parsed.has_value()) {
-    return ::yac::tool_call::PreparedToolCall{
-        .request = request,
-        .preview = ::yac::tool_call::McpToolCall{
-            .server_id = ::yac::McpServerId{parsed->first},
-            .tool_name = request.name,
-            .original_tool_name = parsed->second,
-            .arguments_json = request.arguments_json,
-        }};
-  }
-  return ::yac::tool_call::PreparedToolCall{
-      .request = request, .preview = MakeBuiltinFallbackBlock(request)};
-}
-
-::yac::tool_call::ToolExecutionResult MakeErrorToolResult(
-    ::yac::tool_call::ToolCallBlock block, std::string message) {
-  std::visit(
-      [&message](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
-          call.is_error = true;
-          call.error = message;
-        } else if constexpr (requires { call.is_error; }) {
-          call.is_error = true;
-        }
-      },
-      block);
-  return ::yac::tool_call::ToolExecutionResult{
-      .block = std::move(block),
-      .result_json =
-          ::yac::tool_call::Json{{"error", std::move(message)}}.dump(),
-      .is_error = true,
-  };
-}
-
-}  // namespace
-
-ChatServicePromptProcessor::ChatServicePromptProcessor(
-    provider::ProviderRegistry& registry,
-    ::yac::tool_call::ToolExecutor& tool_executor,
-    ToolApprovalManager& tool_approval, ChatServiceMcp* chat_service_mcp,
-    std::mutex& history_mutex, std::vector<ChatMessage>& history,
-    EmitEventFn emit_event, NextMessageIdFn next_message_id,
-    ConfigSnapshotFn config_snapshot, GenerationValueFn generation_value,
-    std::set<std::string> excluded_tools, std::mutex* approval_gate,
-    ModeExcludedToolsFn mode_excluded_tools,
-    PrepareBuiltInToolCallFn prepare_built_in_tool_call,
-    ExecuteBuiltInToolCallFn execute_built_in_tool_call,
-    OnUsageReportedFn on_usage_reported, LastUsageFn last_usage,
-    OnBuildSwitchReminderUsedFn on_build_switch_reminder_used,
-    OnPlanExitApprovedFn on_plan_exit_approved)
-    : registry_(&registry),
-      tool_executor_(&tool_executor),
-      tool_approval_(&tool_approval),
-      chat_service_mcp_(chat_service_mcp),
-      history_mutex_(&history_mutex),
-      history_(&history),
-      emit_event_(std::move(emit_event)),
-      next_message_id_(std::move(next_message_id)),
-      config_snapshot_(std::move(config_snapshot)),
-      generation_value_(std::move(generation_value)),
-      excluded_tools_(std::move(excluded_tools)),
-      approval_gate_(approval_gate),
-      mode_excluded_tools_(std::move(mode_excluded_tools)),
+ChatServicePromptProcessor::ChatServicePromptProcessor(PromptRunContext context)
+    : registry_(context.registry),
+      tool_approval_(context.tool_approval),
+      chat_service_mcp_(context.chat_service_mcp),
+      history_mutex_(context.history_mutex),
+      history_(context.history),
+      emit_event_(std::move(context.emit_event)),
+      next_message_id_(std::move(context.next_message_id)),
+      config_snapshot_(std::move(context.config_snapshot)),
+      generation_value_(std::move(context.generation_value)),
+      excluded_tools_(std::move(context.excluded_tools)),
+      approval_gate_(context.approval_gate),
+      mode_excluded_tools_(std::move(context.mode_excluded_tools)),
       prepare_built_in_tool_call_(
-          prepare_built_in_tool_call
-              ? std::move(prepare_built_in_tool_call)
+          context.prepare_built_in_tool_call
+              ? std::move(context.prepare_built_in_tool_call)
               : PrepareBuiltInToolCallFn{[](const ToolCallRequest& request) {
                   return ::yac::tool_call::ToolExecutor::Prepare(request);
                 }}),
       execute_built_in_tool_call_(
-          execute_built_in_tool_call
-              ? std::move(execute_built_in_tool_call)
-              : ExecuteBuiltInToolCallFn{[tool_executor_ptr = &tool_executor](
+          context.execute_built_in_tool_call
+              ? std::move(context.execute_built_in_tool_call)
+              : ExecuteBuiltInToolCallFn{[tool_executor_ptr =
+                                              context.tool_executor](
                                              const ::yac::tool_call::
                                                  PreparedToolCall& prepared,
                                              std::stop_token stop_token) {
                   return tool_executor_ptr->Execute(prepared, stop_token);
                 }}),
-      on_usage_reported_(std::move(on_usage_reported)),
-      last_usage_(std::move(last_usage)),
-      on_build_switch_reminder_used_(std::move(on_build_switch_reminder_used)),
-      on_plan_exit_approved_(std::move(on_plan_exit_approved)) {}
+      on_usage_reported_(std::move(context.on_usage_reported)),
+      last_usage_(std::move(context.last_usage)),
+      on_build_switch_reminder_used_(
+          std::move(context.on_build_switch_reminder_used)),
+      on_plan_exit_approved_(std::move(context.on_plan_exit_approved)) {}
 
 ChatServicePromptProcessor::RoundOutcome
 ChatServicePromptProcessor::RunOneRound(
-    provider::LanguageModelProvider& provider,
-    const ChatServiceRequestBuilder& request_builder,
-    ChatMessageId assistant_id, uint64_t generation,
-    std::stop_token stop_token) {
+    provider::LanguageModelProvider& provider, ChatMessageId assistant_id,
+    uint64_t generation, std::stop_token stop_token) {
   RoundOutcome outcome;
   bool round_aborted = false;
-  const ChatRequest request =
-      BuildRoundRequest(request_builder, generation, round_aborted);
+  const ChatRequest request = BuildRoundRequest(generation, round_aborted);
   if (round_aborted) {
     outcome.stop = RoundOutcome::Stop::Aborted;
     return outcome;
@@ -392,8 +201,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
 
   std::string visible_assistant_text;
   while (true) {
-    auto outcome = RunOneRound(*provider, request_builder, assistant_id,
-                               generation, stop_token);
+    auto outcome = RunOneRound(*provider, assistant_id, generation, stop_token);
     visible_assistant_text += outcome.round_text;
     if (outcome.stop == RoundOutcome::Stop::Aborted) {
       EmitCancellation(assistant_id);
@@ -456,10 +264,12 @@ void ChatServicePromptProcessor::ProcessPrompt(
   emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
 }
 
-ChatRequest ChatServicePromptProcessor::BuildRoundRequest(
-    const ChatServiceRequestBuilder& request_builder, uint64_t generation,
-    bool& aborted) const {
-  (void)request_builder;
+ChatRequest ChatServicePromptProcessor::BuildRoundRequest(uint64_t generation,
+                                                          bool& aborted) const {
+  // Each model round intentionally rebuilds from a fresh config snapshot while
+  // provider selection and prompt start metadata keep the ProcessPrompt entry
+  // snapshot. This lets mode/tool changes from approved plan_exit apply to the
+  // next round without changing the active provider mid-prompt.
   const auto config = config_snapshot_();
   ChatRequest request;
   std::optional<std::string> consumed_build_switch_path;
@@ -509,212 +319,26 @@ void ChatServicePromptProcessor::EmitCancellation(
   emit_event_(ChatEvent{FinishedEvent{.message_id = assistant_id}});
 }
 
-ChatServicePromptProcessor::ToolPrep
-ChatServicePromptProcessor::PrepareOneToolCall(const ToolCallRequest& request,
-                                               bool is_mcp_tool) const {
-  ToolPrep prep{.prepared = MakeFallbackPreparedToolCall(request)};
-  try {
-    if (auto error = PlanModePermissionError(config_snapshot_(), request);
-        error.has_value()) {
-      prep.failure = ToolPrepFailure{
-          .error = *error,
-          .result_json = ::yac::tool_call::Json{{"error", *error}}.dump(),
-      };
-      return prep;
-    }
-    if (is_mcp_tool) {
-      if (chat_service_mcp_ == nullptr) {
-        throw std::invalid_argument(
-            "MCP tool requested but MCP is unavailable: " + request.name);
-      }
-      prep.prepared = chat_service_mcp_->PrepareMcpToolCall(request);
-    } else {
-      prep.prepared = prepare_built_in_tool_call_(request);
-    }
-  } catch (const ::yac::tool_call::ToolValidationError& error) {
-    auto definitions = ::yac::tool_call::ToolExecutor::Definitions();
-    if (chat_service_mcp_ != nullptr) {
-      definitions = ChatServiceMcp::MergeBuiltInsAndMcp(
-          definitions, chat_service_mcp_->BuildToolCatalogSnapshot());
-    }
-    prep.failure = ToolPrepFailure{
-        .error = error.what(),
-        .result_json =
-            ::yac::tool_call::BuildValidationErrorJson(error, definitions),
-    };
-  } catch (const std::exception& error) {
-    prep.failure = ToolPrepFailure{
-        .error = error.what(),
-        .result_json = ::yac::tool_call::BuildValidationErrorJson(
-            error.what(), request.name, request.arguments_json),
-    };
-  }
-  return prep;
-}
-
-bool ChatServicePromptProcessor::MaybeAwaitApproval(
-    ::yac::tool_call::PreparedToolCall& prepared,
-    const ToolCallRequest& tool_request, ChatMessageId tool_message_id,
-    std::stop_token stop_token, bool& gate_aborted) {
-  std::unique_lock<std::mutex> gate_lock;
-  if (approval_gate_ != nullptr) {
-    gate_lock = std::unique_lock<std::mutex>(*approval_gate_);
-    if (stop_token.stop_requested()) {
-      gate_aborted = true;
-      return false;
-    }
-  }
-  auto approval_id = tool_approval_->RequestApproval(
-      ToolCallId{tool_request.id}, tool_request.name,
-      tool_request.arguments_json);
-  prepared.approval_id = approval_id;
-  std::string question;
-  std::vector<std::string> options;
-  if (const auto* ask_user =
-          std::get_if<::yac::tool_call::AskUserCall>(&prepared.preview);
-      ask_user != nullptr) {
-    question = ask_user->question;
-    options = ask_user->options;
-  }
-  emit_event_(ChatEvent{
-      ToolApprovalRequestedEvent{.message_id = tool_message_id,
-                                 .role = ChatRole::Tool,
-                                 .text = prepared.approval_prompt,
-                                 .tool_call_id = ToolCallId{tool_request.id},
-                                 .tool_name = tool_request.name,
-                                 .approval_id = approval_id,
-                                 .tool_call = prepared.preview,
-                                 .status = ChatMessageStatus::Queued,
-                                 .question = std::move(question),
-                                 .options = std::move(options)}});
-  // ask_user has its own resolution wait inside ExecuteAskUserDispatch; here
-  // we just want to surface the approval card without blocking on it.
-  if (tool_request.name == ::yac::tool_call::kAskUserToolName) {
-    return true;
-  }
-  return tool_approval_->WaitForResolution(approval_id, stop_token).approved;
-}
-
-::yac::tool_call::ToolExecutionResult
-ChatServicePromptProcessor::ExecuteOneToolCall(
-    const ::yac::tool_call::PreparedToolCall& prepared,
-    const std::optional<ToolPrepFailure>& failure, bool approved,
-    bool is_mcp_tool, std::stop_token stop_token) {
-  if (failure.has_value()) {
-    auto result = MakeErrorToolResult(prepared.preview, failure->error);
-    if (!failure->result_json.empty()) {
-      result.result_json = failure->result_json;
-    }
-    return result;
-  }
-  if (!approved) {
-    return MakeRejectedToolResult(prepared);
-  }
-  if (prepared.request.name == ::yac::tool_call::kPlanExitToolName &&
-      on_plan_exit_approved_) {
-    return on_plan_exit_approved_(prepared);
-  }
-  if (is_mcp_tool) {
-    try {
-      return chat_service_mcp_->ExecuteMcpToolCall(prepared, stop_token);
-    } catch (const std::exception& error) {
-      return MakeErrorToolResult(prepared.preview, error.what());
-    }
-  }
-  return execute_built_in_tool_call_(prepared, stop_token);
-}
-
 void ChatServicePromptProcessor::RunToolRound(
     const std::vector<ToolCallRequest>& requested_tools,
     const std::unordered_map<ToolCallId, ChatMessageId>& streaming_card_ids,
-    uint64_t generation, std::stop_token stop_token) {
-  for (const auto& tool_request : requested_tools) {
-    ChatMessageId tool_message_id = 0;
-    if (auto it = streaming_card_ids.find(ToolCallId{tool_request.id});
-        it != streaming_card_ids.end()) {
-      tool_message_id = it->second;
-    } else {
-      tool_message_id = next_message_id_();
-    }
-    const bool is_mcp_tool = ::yac::mcp::IsMcpToolName(tool_request.name);
-    auto prep = PrepareOneToolCall(tool_request, is_mcp_tool);
-    prep.prepared.card_message_id = tool_message_id;
-    emit_event_(ChatEvent{
-        ToolCallStartedEvent{.message_id = tool_message_id,
-                             .role = ChatRole::Tool,
-                             .tool_call_id = ToolCallId{tool_request.id},
-                             .tool_name = tool_request.name,
-                             .tool_call = prep.prepared.preview,
-                             .status = ChatMessageStatus::Active}});
-
-    bool approved = true;
-    if (!prep.failure.has_value() && prep.prepared.requires_approval) {
-      bool gate_aborted = false;
-      approved = MaybeAwaitApproval(prep.prepared, tool_request,
-                                    tool_message_id, stop_token, gate_aborted);
-      if (gate_aborted) {
-        return;
-      }
-    }
-
-    auto result = ExecuteOneToolCall(prep.prepared, prep.failure, approved,
-                                     is_mcp_tool, stop_token);
-
-    // For a background sub_agent call, the tool itself has "completed" (the
-    // spawn succeeded) but the sub-agent session is still running. Keep the
-    // card Active so the spinner stays until SubAgentCompleted fires.
-    ChatMessageStatus done_status = result.is_error
-                                        ? ChatMessageStatus::Error
-                                        : ChatMessageStatus::Complete;
-    if (const auto* sub =
-            std::get_if<::yac::tool_call::SubAgentCall>(&result.block);
-        sub != nullptr && !result.is_error &&
-        sub->status == ::yac::tool_call::SubAgentStatus::Running) {
-      done_status = ChatMessageStatus::Active;
-    }
-
-    emit_event_(
-        ChatEvent{ToolCallDoneEvent{.message_id = tool_message_id,
-                                    .role = ChatRole::Tool,
-                                    .tool_call_id = ToolCallId{tool_request.id},
-                                    .tool_name = tool_request.name,
-                                    .tool_call = result.block,
-                                    .status = done_status}});
-    {
-      std::scoped_lock lock(*history_mutex_);
-      if (ShouldAbortLocked(generation)) {
-        return;
-      }
-      ChatServiceHistory(*history_).AppendToolResult(tool_message_id,
-                                                     tool_request, result);
-    }
-
-    if (stop_token.stop_requested()) {
-      return;
-    }
-  }
-}
-
-::yac::tool_call::ToolExecutionResult
-ChatServicePromptProcessor::MakeRejectedToolResult(
-    const ::yac::tool_call::PreparedToolCall& prepared) {
-  ::yac::tool_call::ToolExecutionResult result{
-      .block = prepared.preview,
-      .result_json = ToolRejectedJson(),
-      .is_error = true,
-  };
-  std::visit(
-      [](auto& call) {
-        if constexpr (requires {
-                        call.is_error;
-                        call.error;
-                      }) {
-          call.is_error = true;
-          call.error = "User rejected tool execution.";
-        }
-      },
-      result.block);
-  return result;
+    uint64_t generation, std::stop_token stop_token) const {
+  ToolRoundRunner(PromptRunContext{
+                      .tool_executor = nullptr,
+                      .tool_approval = tool_approval_,
+                      .chat_service_mcp = chat_service_mcp_,
+                      .history_mutex = history_mutex_,
+                      .history = history_,
+                      .emit_event = emit_event_,
+                      .next_message_id = next_message_id_,
+                      .config_snapshot = config_snapshot_,
+                      .generation_value = generation_value_,
+                      .approval_gate = approval_gate_,
+                      .prepare_built_in_tool_call = prepare_built_in_tool_call_,
+                      .execute_built_in_tool_call = execute_built_in_tool_call_,
+                      .on_plan_exit_approved = on_plan_exit_approved_,
+                  })
+      .Run(requested_tools, streaming_card_ids, generation, stop_token);
 }
 
 }  // namespace yac::chat::internal

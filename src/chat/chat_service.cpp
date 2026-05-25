@@ -115,30 +115,39 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
           [this] { return ConfigSnapshot(); })),
       history_store_(std::make_unique<ChatHistoryStore>(mutex_)),
       prompt_processor_(std::make_unique<internal::ChatServicePromptProcessor>(
-          registry_, *tool_executor_, *tool_approval_, mcp_helper_.get(),
-          mutex_, history_store_->MutableView(),
-          [this](ChatEvent event) { EmitEvent(std::move(event)); },
-          [this] { return NextMessageId(); },
-          [this] { return ConfigSnapshot(); },
-          [this] { return generation_.load(); }, std::set<std::string>{},
-          sub_agent_manager_->GetApprovalGate(),
-          [this] { return ExcludedToolsForMode(config_.agent_mode); },
-          internal::ChatServicePromptProcessor::PrepareBuiltInToolCallFn{},
-          internal::ChatServicePromptProcessor::ExecuteBuiltInToolCallFn{},
-          [this](const TokenUsage& usage) {
-            std::scoped_lock lock(mutex_);
-            last_usage_ = usage;
-          },
-          [this] { return LastUsage(); },
-          [this](std::string plan_path) {
-            std::scoped_lock lock(mutex_);
-            if (config_.build_switch_plan_path == plan_path) {
-              config_.build_switch_plan_path.reset();
-            }
-          },
-          [this](const ::yac::tool_call::PreparedToolCall& prepared) {
-            return ApplyApprovedPlanExit(prepared);
-          })) {
+          internal::ChatServicePromptProcessor::PromptRunContext{
+              .registry = &registry_,
+              .tool_executor = tool_executor_.get(),
+              .tool_approval = tool_approval_.get(),
+              .chat_service_mcp = mcp_helper_.get(),
+              .history_mutex = &mutex_,
+              .history = &history_store_->MutableView(),
+              .emit_event =
+                  [this](ChatEvent event) { EmitEvent(std::move(event)); },
+              .next_message_id = [this] { return NextMessageId(); },
+              .config_snapshot = [this] { return ConfigSnapshot(); },
+              .generation_value = [this] { return generation_.load(); },
+              .excluded_tools = {},
+              .approval_gate = sub_agent_manager_->GetApprovalGate(),
+              .mode_excluded_tools =
+                  [this] { return ExcludedToolsForMode(config_.agent_mode); },
+              .on_usage_reported =
+                  [this](const TokenUsage& usage) {
+                    std::scoped_lock lock(mutex_);
+                    last_usage_ = usage;
+                  },
+              .last_usage = [this] { return LastUsage(); },
+              .on_build_switch_reminder_used =
+                  [this](std::string plan_path) {
+                    std::scoped_lock lock(mutex_);
+                    if (config_.build_switch_plan_path == plan_path) {
+                      config_.build_switch_plan_path.reset();
+                    }
+                  },
+              .on_plan_exit_approved =
+                  [this](const ::yac::tool_call::PreparedToolCall& prepared) {
+                    return ApplyApprovedPlanExit(prepared);
+                  }})) {
   plan_clock_ = [] { return std::chrono::system_clock::now(); };
   session_id_generator_ = [] { return GenerateUuidV4(); };
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
