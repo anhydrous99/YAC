@@ -72,12 +72,18 @@ class McpManager : public core_types::IMcpManager {
   class ObservedTransport;
 
   struct SessionRecord;
+  struct SessionSnapshot;
 
   [[nodiscard]] static Dependencies BuildDefaultDependencies();
-  [[nodiscard]] core_types::McpToolCatalogSnapshot BuildSnapshotLocked() const;
+  [[nodiscard]] core_types::McpToolCatalogSnapshot BuildSnapshot(
+      const std::vector<SessionSnapshot>& sessions) const;
   [[nodiscard]] SessionRecord& RequireRecord(std::string_view server_id);
   [[nodiscard]] const SessionRecord& RequireRecord(
       std::string_view server_id) const;
+  [[nodiscard]] SessionSnapshot SnapshotRecordLocked(
+      std::string_view server_id) const;
+  [[nodiscard]] std::vector<SessionSnapshot> SnapshotSessionsLocked() const;
+  void ThrowIfStoppedLocked() const;
   void EnsureSessionsCreated() const;
   void EmitStateChanges() const;
   void HandleNotification(std::string_view server_id, std::string_view method,
@@ -91,6 +97,7 @@ class McpManager : public core_types::IMcpManager {
   mutable core_types::McpToolCatalogSnapshot latest_snapshot_;
   mutable std::atomic<uint64_t> next_revision_id_{1};
   bool started_ = false;
+  bool stopped_ = false;
 };
 
 }  // namespace yac::mcp

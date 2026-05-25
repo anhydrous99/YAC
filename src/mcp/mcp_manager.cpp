@@ -254,10 +254,16 @@ class McpManager::ObservedTransport : public IMcpTransport {
 
 struct McpManager::SessionRecord {
   McpServerConfig config;
-  std::unique_ptr<ObservedTransport> transport;
-  std::unique_ptr<McpDebugLog> debug_log;
-  std::unique_ptr<McpServerSession> session;
+  std::shared_ptr<ObservedTransport> transport;
+  std::shared_ptr<McpDebugLog> debug_log;
+  std::shared_ptr<McpServerSession> session;
   std::string last_emitted_state = "Disconnected";
+};
+
+struct McpManager::SessionSnapshot {
+  McpServerConfig config;
+  std::shared_ptr<ObservedTransport> transport;
+  std::shared_ptr<McpServerSession> session;
 };
 
 McpManager::Dependencies McpManager::BuildDefaultDependencies() {
@@ -317,13 +323,13 @@ void McpManager::EnsureSessionsCreated() const {
   sessions_.reserve(config_.servers.size());
   for (const auto& server : config_.servers) {
     auto transport = deps_.transport_factory(server);
-    auto observed_transport = std::make_unique<ObservedTransport>(
+    auto observed_transport = std::make_shared<ObservedTransport>(
         std::move(transport), [this, server_id = server.id](
                                   std::string_view method, const Json& params) {
           HandleNotification(server_id, method, params);
         });
-    auto debug_log = std::make_unique<McpDebugLog>(server.id);
-    auto session = std::make_unique<McpServerSession>(
+    auto debug_log = std::make_shared<McpDebugLog>(server.id);
+    auto session = std::make_shared<McpServerSession>(
         server, observed_transport.get(), debug_log.get());
     sessions_.push_back(
         SessionRecord{.config = server,
@@ -334,32 +340,50 @@ void McpManager::EnsureSessionsCreated() const {
 }
 
 void McpManager::Start() {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  if (started_) {
-    EmitStateChanges();
-    return;
+  std::vector<std::shared_ptr<McpServerSession>> sessions_to_start;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    stopped_ = false;
+    if (started_) {
+      EmitStateChanges();
+      return;
+    }
+
+    for (auto& record : sessions_) {
+      if (record.config.auto_start && record.config.enabled) {
+        sessions_to_start.push_back(record.session);
+      }
+    }
+    started_ = true;
   }
 
-  for (auto& record : sessions_) {
-    if (record.config.auto_start && record.config.enabled) {
-      record.session->Start();
-    }
+  for (const auto& session : sessions_to_start) {
+    session->Start();
   }
-  started_ = true;
+  std::scoped_lock lock(mutex_);
   EmitStateChanges();
 }
 
 void McpManager::Stop() {
-  std::scoped_lock lock(mutex_);
-  if (sessions_.empty()) {
+  std::vector<std::shared_ptr<McpServerSession>> sessions_to_stop;
+  {
+    std::scoped_lock lock(mutex_);
     started_ = false;
-    return;
+    stopped_ = true;
+    if (sessions_.empty()) {
+      return;
+    }
+    sessions_to_stop.reserve(sessions_.size());
+    for (auto& record : sessions_) {
+      sessions_to_stop.push_back(record.session);
+    }
   }
-  for (auto& record : sessions_) {
-    record.session->Stop();
+
+  for (const auto& session : sessions_to_stop) {
+    session->Stop();
   }
-  started_ = false;
+  std::scoped_lock lock(mutex_);
   EmitStateChanges();
 }
 
@@ -385,6 +409,32 @@ const McpManager::SessionRecord& McpManager::RequireRecord(
     throw std::runtime_error("Unknown MCP server: " + std::string(server_id));
   }
   return *it;
+}
+
+McpManager::SessionSnapshot McpManager::SnapshotRecordLocked(
+    std::string_view server_id) const {
+  const auto& record = RequireRecord(server_id);
+  return SessionSnapshot{.config = record.config,
+                         .transport = record.transport,
+                         .session = record.session};
+}
+
+std::vector<McpManager::SessionSnapshot> McpManager::SnapshotSessionsLocked()
+    const {
+  std::vector<SessionSnapshot> snapshots;
+  snapshots.reserve(sessions_.size());
+  for (const auto& record : sessions_) {
+    snapshots.push_back(SessionSnapshot{.config = record.config,
+                                        .transport = record.transport,
+                                        .session = record.session});
+  }
+  return snapshots;
+}
+
+void McpManager::ThrowIfStoppedLocked() const {
+  if (stopped_) {
+    throw std::runtime_error("MCP manager is stopped");
+  }
 }
 
 void McpManager::EmitStateChanges() const {
@@ -413,18 +463,26 @@ void McpManager::HandleNotification(std::string_view server_id,
 }
 
 core_types::McpToolCatalogSnapshot McpManager::GetToolCatalogSnapshot() const {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  EmitStateChanges();
+  std::vector<SessionSnapshot> sessions;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    EmitStateChanges();
+    sessions = SnapshotSessionsLocked();
+  }
 
-  latest_snapshot_ = BuildSnapshotLocked();
+  auto snapshot = BuildSnapshot(sessions);
+
+  std::scoped_lock lock(mutex_);
+  latest_snapshot_ = snapshot;
   return latest_snapshot_;
 }
 
-core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
+core_types::McpToolCatalogSnapshot McpManager::BuildSnapshot(
+    const std::vector<SessionSnapshot>& sessions) const {
   core_types::McpToolCatalogSnapshot snapshot;
   snapshot.revision_id = next_revision_id_.fetch_add(1);
-  for (auto& record : sessions_) {
+  for (const auto& record : sessions) {
     record.session->RefreshIfDirty();
     const auto tools = record.session->Tools();
     if (!tools) {
@@ -463,23 +521,40 @@ core_types::McpToolCatalogSnapshot McpManager::BuildSnapshotLocked() const {
 core_types::ToolExecutionResult McpManager::InvokeTool(
     std::string_view qualified_name, std::string_view arguments_json,
     std::stop_token stop) {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  if (!latest_snapshot_.name_to_server_tool.contains(
-          std::string(qualified_name))) {
-    latest_snapshot_ = BuildSnapshotLocked();
+  const std::string tool_name(qualified_name);
+  std::vector<SessionSnapshot> sessions;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    ThrowIfStoppedLocked();
+    if (!latest_snapshot_.name_to_server_tool.contains(tool_name)) {
+      sessions = SnapshotSessionsLocked();
+    }
+  }
+  if (!sessions.empty()) {
+    auto snapshot = BuildSnapshot(sessions);
+    std::scoped_lock lock(mutex_);
+    latest_snapshot_ = std::move(snapshot);
   }
 
-  const auto it =
-      latest_snapshot_.name_to_server_tool.find(std::string(qualified_name));
-  if (it == latest_snapshot_.name_to_server_tool.end()) {
-    throw std::runtime_error("Unknown MCP tool: " +
-                             std::string(qualified_name));
-  }
+  SessionSnapshot record;
+  std::string original_tool_name;
+  std::uintmax_t result_max_bytes = 0;
+  {
+    std::scoped_lock lock(mutex_);
+    ThrowIfStoppedLocked();
 
-  auto& record = RequireRecord(it->second.first);
+    const auto it = latest_snapshot_.name_to_server_tool.find(tool_name);
+    if (it == latest_snapshot_.name_to_server_tool.end()) {
+      throw std::runtime_error("Unknown MCP tool: " + tool_name);
+    }
+
+    record = SnapshotRecordLocked(it->second.first);
+    original_tool_name = it->second.second;
+    result_max_bytes = config_.result_max_bytes;
+  }
   Json params = Json::object();
-  params[std::string(protocol::kFieldName)] = it->second.second;
+  params[std::string(protocol::kFieldName)] = original_tool_name;
   params[std::string(protocol::kFieldArguments)] =
       arguments_json.empty() ? Json::object() : Json::parse(arguments_json);
   const Json response_json = record.transport->SendRequest(
@@ -490,8 +565,8 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
 
   tool_call::McpToolCall block{
       .server_id = ::yac::McpServerId{record.config.id},
-      .tool_name = std::string(qualified_name),
-      .original_tool_name = it->second.second,
+      .tool_name = tool_name,
+      .original_tool_name = original_tool_name,
       .arguments_json = std::string(arguments_json),
       .is_error = response.is_error,
       .result_bytes = response_json.dump().size()};
@@ -499,9 +574,9 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
   for (const auto& result_block : response.result_blocks) {
     block.result_blocks.push_back(ConvertResultBlock(result_block));
   }
-  if (block.result_bytes > config_.result_max_bytes) {
+  if (block.result_bytes > result_max_bytes) {
     block.is_truncated = true;
-    TruncateResult(block, config_.result_max_bytes);
+    TruncateResult(block, result_max_bytes);
   }
 
   Json result_json = Json::object();
@@ -550,9 +625,13 @@ std::vector<core_types::McpServerStatus> McpManager::GetServerStatusSnapshot()
 
 std::vector<core_types::McpResourceDescriptor> McpManager::ListResources(
     std::string_view server_id, std::stop_token stop) {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  auto& record = RequireRecord(server_id);
+  SessionSnapshot record;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    ThrowIfStoppedLocked();
+    record = SnapshotRecordLocked(server_id);
+  }
 
   std::vector<ResourceDescriptor> all_resources;
   std::optional<std::string> cursor;
@@ -576,9 +655,15 @@ std::vector<core_types::McpResourceDescriptor> McpManager::ListResources(
 
 core_types::McpResourceContent McpManager::ReadResource(
     std::string_view server_id, std::string_view uri, std::stop_token stop) {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  auto& record = RequireRecord(server_id);
+  SessionSnapshot record;
+  std::uintmax_t result_max_bytes = 0;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    ThrowIfStoppedLocked();
+    record = SnapshotRecordLocked(server_id);
+    result_max_bytes = config_.result_max_bytes;
+  }
 
   const auto response_json = record.transport->SendRequest(
       protocol::kMethodResourcesRead,
@@ -593,11 +678,11 @@ core_types::McpResourceContent McpManager::ReadResource(
   const std::string text = content.text.value_or(std::string{});
   const std::string blob_text = content.blob.value_or(std::string{});
   const std::uintmax_t total_bytes = text.size() + blob_text.size();
-  const bool truncated = total_bytes > config_.result_max_bytes;
+  const bool truncated = total_bytes > result_max_bytes;
   const std::size_t text_limit = static_cast<std::size_t>(
-      std::min<std::uintmax_t>(config_.result_max_bytes, text.size()));
+      std::min<std::uintmax_t>(result_max_bytes, text.size()));
   const std::size_t blob_limit = static_cast<std::size_t>(
-      std::min<std::uintmax_t>(config_.result_max_bytes, blob_text.size()));
+      std::min<std::uintmax_t>(result_max_bytes, blob_text.size()));
 
   return core_types::McpResourceContent{
       .uri = content.uri,
@@ -612,18 +697,21 @@ core_types::McpResourceContent McpManager::ReadResource(
 void McpManager::Authenticate(std::string_view server_id,
                               const oauth::OAuthInteractionMode& mode,
                               std::stop_token stop) {
-  std::scoped_lock lock(mutex_);
-  EnsureSessionsCreated();
-  auto& record = RequireRecord(server_id);
+  McpServerConfig config;
+  {
+    std::scoped_lock lock(mutex_);
+    EnsureSessionsCreated();
+    ThrowIfStoppedLocked();
+    config = SnapshotRecordLocked(server_id).config;
+  }
   emit_event_(chat::MakeMcpAuthRequiredEvent(
-      ::yac::McpServerId{record.config.id},
+      ::yac::McpServerId{config.id},
       "OAuth authentication required for MCP server."));
 
-  const oauth::OAuthTokens tokens =
-      deps_.authenticate_fn(record.config, mode, stop);
+  const oauth::OAuthTokens tokens = deps_.authenticate_fn(config, mode, stop);
   const std::string token_json = SerializeOAuthTokens(tokens);
   try {
-    deps_.keychain_token_store->Set(record.config.id, token_json);
+    deps_.keychain_token_store->Set(config.id, token_json);
   } catch (const KeychainUnavailableError& error) {
     if (deps_.emit_issue) {
       deps_.emit_issue(chat::ConfigIssue{
@@ -632,7 +720,7 @@ void McpManager::Authenticate(std::string_view server_id,
           .detail = error.what(),
       });
     }
-    deps_.file_token_store->Set(record.config.id, token_json);
+    deps_.file_token_store->Set(config.id, token_json);
   }
 }
 
