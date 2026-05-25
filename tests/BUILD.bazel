@@ -87,6 +87,10 @@ yac_test(
         "test_openai_compatible_chat_provider.cpp",
         "openai_auth_test_helpers.cpp",
     ],
+    common_deps = [
+        "//src:provider",
+        "@catch2//:catch2_main",
+    ],
 )
 yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
 yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
@@ -109,7 +113,14 @@ yac_aws_test("yac_test_bedrock_chat_protocol", ["test_bedrock_chat_protocol.cpp"
 yac_aws_test("yac_test_bedrock_tool_translator", ["test_bedrock_tool_translator.cpp"])
 yac_test("yac_test_model_context_windows", ["test_model_context_windows.cpp"])
 yac_test("yac_test_provider_context_window", ["test_provider_context_window.cpp"])
-yac_test("yac_test_provider_registry", ["test_provider_registry.cpp"])
+yac_test(
+    "yac_test_provider_registry",
+    ["test_provider_registry.cpp"],
+    common_deps = [
+        "//src:provider",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test("yac_test_auto_compact", ["test_auto_compact.cpp"])
 yac_test("yac_test_slash_command_registry", ["test_slash_command_registry.cpp"])
 yac_test("yac_test_slash_command_task", ["test_slash_command_task.cpp"])
@@ -121,6 +132,10 @@ yac_test("yac_test_settings_toml", ["test_settings_toml.cpp"])
 yac_test(
     "yac_test_settings_registry",
     ["test_settings_registry.cpp"],
+    common_deps = [
+        "//src:config",
+        "@catch2//:catch2_main",
+    ],
     data = [
         "//:README.md",
         "//:guardrail_docs",
@@ -141,6 +156,10 @@ yac_test("yac_test_prompt_library", ["test_prompt_library.cpp"])
 yac_test(
     "yac_test_config_loader",
     ["test_config_loader.cpp"],
+    common_deps = [
+        "//src:config",
+        "@catch2//:catch2_main",
+    ],
     data = ["//:settings.example.toml"],
     defines = ["SETTINGS_EXAMPLE_TOML_PATH=\\\"$(rootpath //:settings.example.toml)\\\""],
 )
@@ -175,7 +194,14 @@ yac_test("yac_test_workspace_walker", ["test_workspace_walker.cpp"])
 yac_test("yac_test_file_mention_inliner", ["test_file_mention_inliner.cpp"])
 yac_test("yac_test_file_mention_menu", ["test_file_mention_menu.cpp"])
 yac_test("yac_test_grep_tool_executor", ["test_grep_tool_executor.cpp"])
-yac_test("yac_test_subprocess_runner", ["test_subprocess_runner.cpp"])
+yac_test(
+    "yac_test_subprocess_runner",
+    ["test_subprocess_runner.cpp"],
+    common_deps = [
+        "//src:tool_call",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test("yac_test_mcp_protocol_constants", ["test_mcp_protocol_constants.cpp"])
 yac_test("yac_test_mcp_tool_naming", ["test_mcp_tool_naming.cpp"])
 yac_test("yac_test_mcp_tool_name_invariant", ["test_mcp_tool_name_invariant.cpp"])
@@ -184,10 +210,23 @@ yac_test("yac_test_mcp_secret_redaction", ["test_mcp_secret_redaction.cpp"])
 yac_test("yac_test_mcp_debug_log", ["test_mcp_debug_log.cpp"])
 yac_test("yac_test_mcp_file_token_store", ["test_mcp_file_token_store.cpp"])
 yac_test("yac_test_core_types_mcp_manager", ["test_core_types_mcp_manager.cpp"])
-yac_test("yac_test_chat_service_mcp", ["test_chat_service_mcp.cpp"])
+yac_test(
+    "yac_test_chat_service_mcp",
+    ["test_chat_service_mcp.cpp"],
+    common_deps = [
+        "//src:chat_service",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test(
     "yac_test_chat_service_prompt_processor_mcp",
     ["test_chat_service_prompt_processor_mcp.cpp"],
+    common_deps = [
+        "//src:chat_service",
+        "//src:provider",
+        "//src:tool_call",
+        "@catch2//:catch2_main",
+    ],
 )
 yac_test("yac_test_tool_validation_error", ["test_tool_validation_error.cpp"])
 yac_test("yac_test_prepare_validation", ["test_prepare_validation.cpp"])
@@ -266,6 +305,10 @@ yac_test(
     [
         "mock_mcp_transport.cpp",
         "test_mcp_manager.cpp",
+    ],
+    common_deps = [
+        "//src:mcp",
+        "@catch2//:catch2_main",
     ],
 )
 

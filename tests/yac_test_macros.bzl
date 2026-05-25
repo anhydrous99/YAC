@@ -11,7 +11,7 @@ AWS_DEPS = [
     "@aws_sdk_bedrock//:bedrock-runtime",
 ]
 
-def yac_test(name, srcs, deps = [], data = [], defines = [], tags = [], **kwargs):
+def yac_test(name, srcs, deps = [], data = [], defines = [], tags = [], common_deps = COMMON_DEPS, **kwargs):
     yac_cc_test(
         name = name,
         srcs = srcs + [":all_test_headers"],
@@ -19,7 +19,7 @@ def yac_test(name, srcs, deps = [], data = [], defines = [], tags = [], **kwargs
         defines = defines,
         includes = ["."],
         tags = tags,
-        deps = COMMON_DEPS + deps,
+        deps = common_deps + deps,
         **kwargs
     )
 
