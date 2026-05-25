@@ -20,6 +20,8 @@
 
 using yac::chat::DynamicSettingPattern;
 using yac::chat::DynamicSettingsRegistryPatterns;
+using yac::chat::GenerateDefaultSettingsTomlTemplate;
+using yac::chat::GenerateSettingsExampleToml;
 using yac::chat::SettingClassification;
 using yac::chat::SettingClassifications;
 using yac::chat::SettingMetadata;
@@ -160,7 +162,8 @@ DocTokens ExtractDocTokens(std::string_view content) {
        it != std::sregex_iterator(); ++it) {
     tokens.env_vars.insert(it->str());
   }
-  for (auto it = std::sregex_iterator(text.begin(), text.end(), toml_path_regex);
+  for (auto it =
+           std::sregex_iterator(text.begin(), text.end(), toml_path_regex);
        it != std::sregex_iterator(); ++it) {
     tokens.toml_paths.insert((*it)[1].str());
   }
@@ -173,13 +176,13 @@ DocTokens ExtractDocTokens(std::string_view content) {
       trimmed = Trim(trimmed.substr(1));
     }
     if (trimmed.starts_with("[[") && trimmed.ends_with("]]")) {
-      current_table = NormalizeTomlTable(
-          Trim(trimmed.substr(2, trimmed.size() - 4)));
+      current_table =
+          NormalizeTomlTable(Trim(trimmed.substr(2, trimmed.size() - 4)));
       continue;
     }
     if (trimmed.starts_with("[") && trimmed.ends_with("]")) {
-      current_table = NormalizeTomlTable(
-          Trim(trimmed.substr(1, trimmed.size() - 2)));
+      current_table =
+          NormalizeTomlTable(Trim(trimmed.substr(1, trimmed.size() - 2)));
       continue;
     }
 
@@ -232,25 +235,27 @@ std::string RegexForDynamicEnv(std::string_view pattern) {
 
 bool MatchesDynamicEnv(std::string_view env_var,
                        std::span<const DynamicSettingPattern> patterns) {
-  return std::ranges::any_of(patterns, [&](const DynamicSettingPattern& pattern) {
-    return !pattern.env_var_pattern.empty() &&
-           std::regex_match(std::string(env_var),
-                            std::regex(RegexForDynamicEnv(
-                                pattern.env_var_pattern)));
-  });
+  return std::ranges::any_of(
+      patterns, [&](const DynamicSettingPattern& pattern) {
+        return !pattern.env_var_pattern.empty() &&
+               std::regex_match(
+                   std::string(env_var),
+                   std::regex(RegexForDynamicEnv(pattern.env_var_pattern)));
+      });
 }
 
 bool MatchesDynamicToml(std::string_view toml_path,
                         std::span<const DynamicSettingPattern> patterns) {
-  return std::ranges::any_of(patterns, [&](const DynamicSettingPattern& pattern) {
-    return pattern.toml_path_pattern == toml_path;
-  });
+  return std::ranges::any_of(patterns,
+                             [&](const DynamicSettingPattern& pattern) {
+                               return pattern.toml_path_pattern == toml_path;
+                             });
 }
 
 std::vector<DocValidationIssue> ValidateDocTokens(
     const DocTokens& tokens, std::span<const SettingMetadata> records,
     std::span<const DynamicSettingPattern> patterns,
-    bool yac::chat::SettingsDocExpectation::*expectation) {
+    bool yac::chat::SettingsDocExpectation::* expectation) {
   std::vector<DocValidationIssue> issues;
   const bool readme = expectation == &yac::chat::SettingsDocExpectation::readme;
   const bool configuration_docs =
@@ -264,18 +269,17 @@ std::vector<DocValidationIssue> ValidateDocTokens(
     if (env_var.find('<') != std::string::npos) {
       continue;
     }
-    const bool registered = std::ranges::any_of(records, [&](const auto& record) {
-      return record.env_var == env_var;
-    });
+    const bool registered = std::ranges::any_of(
+        records, [&](const auto& record) { return record.env_var == env_var; });
     if (!registered && !MatchesDynamicEnv(env_var, patterns)) {
       issues.push_back({.message = "Unregistered env var: " + env_var});
     }
   }
 
   for (const auto& toml_path : tokens.toml_paths) {
-    const bool registered = std::ranges::any_of(records, [&](const auto& record) {
-      return record.toml_path == toml_path;
-    });
+    const bool registered = std::ranges::any_of(
+        records,
+        [&](const auto& record) { return record.toml_path == toml_path; });
     if (!registered && !MatchesDynamicToml(toml_path, patterns)) {
       issues.push_back({.message = "Unregistered TOML key: " + toml_path});
     }
@@ -289,10 +293,10 @@ std::vector<DocValidationIssue> ValidateDocTokens(
     const bool require_env = !record.env_var.empty() &&
                              (readme || configuration_docs || mcp_docs ||
                               openai_auth_docs || record.toml_path.empty());
-    if (require_toml && !tokens.toml_paths.contains(
-                            std::string(record.toml_path))) {
-      issues.push_back({.message = "Missing TOML key: " +
-                                   std::string(record.toml_path)});
+    if (require_toml &&
+        !tokens.toml_paths.contains(std::string(record.toml_path))) {
+      issues.push_back(
+          {.message = "Missing TOML key: " + std::string(record.toml_path)});
     }
     if (require_env && !tokens.env_vars.contains(std::string(record.env_var))) {
       issues.push_back(
@@ -304,10 +308,10 @@ std::vector<DocValidationIssue> ValidateDocTokens(
     if (!(pattern.docs.*expectation)) {
       continue;
     }
-    const bool require_toml = !pattern.toml_path_pattern.empty() &&
-                              pattern.env_var_pattern.empty();
-    const bool require_env = !pattern.env_var_pattern.empty() &&
-                             (readme || mcp_docs);
+    const bool require_toml =
+        !pattern.toml_path_pattern.empty() && pattern.env_var_pattern.empty();
+    const bool require_env =
+        !pattern.env_var_pattern.empty() && (readme || mcp_docs);
     if (require_toml &&
         !tokens.toml_paths.contains(std::string(pattern.toml_path_pattern))) {
       issues.push_back({.message = "Missing TOML key: " +
@@ -362,6 +366,86 @@ TEST_CASE("settings registry production metadata satisfies invariants") {
   REQUIRE(issues.empty());
 }
 
+TEST_CASE("settings registry exposes typed runtime defaults") {
+  const auto* temperature =
+      FindRecord(SettingsRegistryRecords(), "temperature");
+  REQUIRE(temperature != nullptr);
+  REQUIRE(temperature->runtime_default.type ==
+          yac::chat::SettingRuntimeDefaultType::Number);
+  REQUIRE(temperature->runtime_default.number_value == 0.7);
+  REQUIRE(temperature->default_description.find("0.7") !=
+          std::string_view::npos);
+
+  const auto* context_window =
+      FindRecord(SettingsRegistryRecords(), "provider.context_window");
+  REQUIRE(context_window != nullptr);
+  REQUIRE(context_window->runtime_default.type ==
+          yac::chat::SettingRuntimeDefaultType::Integer);
+  REQUIRE(context_window->runtime_default.integer_value == 0);
+
+  const auto* sync_background =
+      FindRecord(SettingsRegistryRecords(), "theme.sync_terminal_background");
+  REQUIRE(sync_background != nullptr);
+  REQUIRE(sync_background->runtime_default.type ==
+          yac::chat::SettingRuntimeDefaultType::Bool);
+  REQUIRE(sync_background->runtime_default.bool_value);
+
+  const auto* compact_threshold =
+      FindRecord(SettingsRegistryRecords(), "compact.threshold");
+  REQUIRE(compact_threshold != nullptr);
+  REQUIRE(compact_threshold->runtime_default.type ==
+          yac::chat::SettingRuntimeDefaultType::Number);
+  REQUIRE(compact_threshold->runtime_default.number_value == 0.8);
+
+  const auto patterns = DynamicSettingsRegistryPatterns();
+  const auto enabled =
+      std::ranges::find_if(patterns, [](const DynamicSettingPattern& pattern) {
+        return pattern.key == "mcp.servers.enabled";
+      });
+  REQUIRE(enabled != patterns.end());
+  REQUIRE(enabled->runtime_default.type ==
+          yac::chat::SettingRuntimeDefaultType::Bool);
+  REQUIRE(enabled->runtime_default.bool_value);
+}
+
+TEST_CASE("settings registry exposes validation metadata") {
+  const auto* temperature =
+      FindRecord(SettingsRegistryRecords(), "temperature");
+  REQUIRE(temperature != nullptr);
+  REQUIRE(temperature->validation.type ==
+          yac::chat::SettingValidationType::NumberRange);
+  REQUIRE(temperature->validation.min_number == 0.0);
+  REQUIRE(temperature->validation.max_number == 2.0);
+
+  const auto* context_window =
+      FindRecord(SettingsRegistryRecords(), "provider.context_window");
+  REQUIRE(context_window != nullptr);
+  REQUIRE(context_window->validation.type ==
+          yac::chat::SettingValidationType::IntegerRange);
+  REQUIRE(context_window->validation.min_integer == 1);
+  REQUIRE(context_window->validation.max_integer == 10000000);
+
+  const auto* compact_threshold =
+      FindRecord(SettingsRegistryRecords(), "compact.threshold");
+  REQUIRE(compact_threshold != nullptr);
+  REQUIRE(compact_threshold->validation.type ==
+          yac::chat::SettingValidationType::NumberRange);
+  REQUIRE(compact_threshold->validation.min_number == 0.05);
+  REQUIRE(compact_threshold->validation.max_number == 1.0);
+
+  const auto patterns = DynamicSettingsRegistryPatterns();
+  const auto transport =
+      std::ranges::find_if(patterns, [](const DynamicSettingPattern& pattern) {
+        return pattern.key == "mcp.servers.transport";
+      });
+  REQUIRE(transport != patterns.end());
+  REQUIRE(transport->validation.type ==
+          yac::chat::SettingValidationType::StringEnum);
+  REQUIRE(transport->validation.allowed_values.size() == 2);
+  REQUIRE(transport->validation.allowed_values[0] == "stdio");
+  REQUIRE(transport->validation.allowed_values[1] == "http");
+}
+
 TEST_CASE("registry helper tracks every user-facing env var") {
   const auto helper_env_vars = yac::testing::RegistryUserFacingEnvVars();
   std::vector<std::string> expected_env_vars;
@@ -410,13 +494,74 @@ TEST_CASE("settings.example.toml matches registry-documented settings") {
   RequireNoDocIssues(issues);
 }
 
-TEST_CASE("default settings TOML template matches registry-documented settings") {
+TEST_CASE(
+    "default settings TOML template matches registry-documented settings") {
   const auto tokens = ExtractDocTokens(yac::chat::kDefaultSettingsToml);
   const auto issues = ValidateDocTokens(
       tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
       &yac::chat::SettingsDocExpectation::default_template);
 
   RequireNoDocIssues(issues);
+}
+
+TEST_CASE("settings templates are generated from registry metadata") {
+  const std::string settings_example =
+      ReadFile(YAC_STRINGIFY(SETTINGS_EXAMPLE_TOML_PATH));
+
+  REQUIRE(yac::chat::kDefaultSettingsToml ==
+          GenerateDefaultSettingsTomlTemplate());
+  REQUIRE(settings_example == GenerateSettingsExampleToml());
+
+  const auto* provider_id =
+      FindRecord(SettingsRegistryRecords(), "provider.id");
+  const auto* model = FindRecord(SettingsRegistryRecords(), "provider.model");
+  const auto* temperature =
+      FindRecord(SettingsRegistryRecords(), "temperature");
+  const auto* compact_mode =
+      FindRecord(SettingsRegistryRecords(), "compact.mode");
+  REQUIRE(provider_id != nullptr);
+  REQUIRE(model != nullptr);
+  REQUIRE(temperature != nullptr);
+  REQUIRE(compact_mode != nullptr);
+
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              std::string{"id          = \""} +
+              std::string{provider_id->runtime_default.string_value} + "\"") !=
+          std::string::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              std::string{"model       = \""} +
+              std::string{model->runtime_default.string_value} + "\"") !=
+          std::string::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              std::string{"temperature = "} +
+              std::to_string(temperature->runtime_default.number_value)
+                  .substr(0, 3)) != std::string::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              std::string{"mode         = \""} +
+              std::string{compact_mode->runtime_default.string_value} + "\"") !=
+          std::string::npos);
+}
+
+TEST_CASE("settings template ordering follows registry order") {
+  const auto& generated = yac::chat::kDefaultSettingsToml;
+  const auto temperature_pos = generated.find("temperature = ");
+  const auto provider_pos = generated.find("id          = ");
+  const auto lsp_pos = generated.find("command = ");
+  const auto theme_pos = generated.find("name = ");
+  const auto compact_pos = generated.find("auto_enabled = ");
+  const auto mcp_pos = generated.find("# result_max_bytes = ");
+
+  REQUIRE(temperature_pos != std::string::npos);
+  REQUIRE(provider_pos != std::string::npos);
+  REQUIRE(lsp_pos != std::string::npos);
+  REQUIRE(theme_pos != std::string::npos);
+  REQUIRE(compact_pos != std::string::npos);
+  REQUIRE(mcp_pos != std::string::npos);
+  REQUIRE(temperature_pos < provider_pos);
+  REQUIRE(provider_pos < lsp_pos);
+  REQUIRE(lsp_pos < theme_pos);
+  REQUIRE(theme_pos < compact_pos);
+  REQUIRE(compact_pos < mcp_pos);
 }
 
 TEST_CASE("OpenAI auth settings templates describe device login") {
@@ -427,9 +572,9 @@ TEST_CASE("OpenAI auth settings templates describe device login") {
       ReadFile(YAC_STRINGIFY(SETTINGS_EXAMPLE_TOML_PATH));
 
   REQUIRE(yac::chat::kDefaultSettingsToml.find(kStaleUnsupportedOpenAiAuth) ==
-          std::string_view::npos);
+          std::string::npos);
   REQUIRE(yac::chat::kDefaultSettingsToml.find(
-              "yac auth openai login --device") != std::string_view::npos);
+              "yac auth openai login --device") != std::string::npos);
   REQUIRE(settings_example.find(kStaleUnsupportedOpenAiAuth) ==
           std::string::npos);
   REQUIRE(settings_example.find("yac auth openai login --device") !=
@@ -455,17 +600,16 @@ TEST_CASE("OpenAI auth docs match registry-documented settings") {
   RequireNoDocIssues(issues);
 }
 
-
 TEST_CASE("OpenAI auth and Plan docs describe Task 11 behavior") {
   const std::string readme = ReadFile(YAC_STRINGIFY(README_MD_PATH));
-  const std::string openai_docs = ReadFile(YAC_STRINGIFY(OPENAI_AUTH_DOCS_PATH));
+  const std::string openai_docs =
+      ReadFile(YAC_STRINGIFY(OPENAI_AUTH_DOCS_PATH));
   const std::string combined = readme + openai_docs;
 
   for (const auto* text : {&readme, &openai_docs}) {
     REQUIRE(text->find("http://localhost:1455/auth/callback") !=
             std::string::npos);
-    REQUIRE(text->find("yac auth openai login --device") !=
-            std::string::npos);
+    REQUIRE(text->find("yac auth openai login --device") != std::string::npos);
     REQUIRE(text->find(".opencode/plans/") != std::string::npos);
   }
   REQUIRE(combined.find("Unsupported for OpenAI auth: device-code, headless, "
@@ -491,19 +635,19 @@ TEST_CASE("provider preset prose stays within registered docs tokens") {
   REQUIRE(readme_tokens.env_vars.contains("OPENAI_API_KEY"));
   REQUIRE(readme_tokens.env_vars.contains("ZAI_API_KEY"));
 
-  const auto readme_issues = ValidateDocTokens(
-      readme_tokens, SettingsRegistryRecords(),
-      DynamicSettingsRegistryPatterns(),
-      &yac::chat::SettingsDocExpectation::readme);
+  const auto readme_issues =
+      ValidateDocTokens(readme_tokens, SettingsRegistryRecords(),
+                        DynamicSettingsRegistryPatterns(),
+                        &yac::chat::SettingsDocExpectation::readme);
   RequireNoDocIssues(readme_issues);
 
   const auto openai_tokens =
       ExtractDocTokens(ReadFile(YAC_STRINGIFY(OPENAI_AUTH_DOCS_PATH)));
   REQUIRE(openai_tokens.env_vars.contains("OPENAI_API_KEY"));
-  const auto openai_issues = ValidateDocTokens(
-      openai_tokens, SettingsRegistryRecords(),
-      DynamicSettingsRegistryPatterns(),
-      &yac::chat::SettingsDocExpectation::openai_auth_docs);
+  const auto openai_issues =
+      ValidateDocTokens(openai_tokens, SettingsRegistryRecords(),
+                        DynamicSettingsRegistryPatterns(),
+                        &yac::chat::SettingsDocExpectation::openai_auth_docs);
   RequireNoDocIssues(openai_issues);
 }
 
@@ -515,8 +659,9 @@ TEST_CASE("doc validation rejects fake YAC env vars") {
       tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
       &yac::chat::SettingsDocExpectation::readme);
 
-  REQUIRE(HasDocIssue(issues, "Unregistered env var: "
-                              "YAC_NOT_REGISTERED_FOR_DOCS"));
+  REQUIRE(HasDocIssue(issues,
+                      "Unregistered env var: "
+                      "YAC_NOT_REGISTERED_FOR_DOCS"));
 }
 
 TEST_CASE("doc validation rejects unsupported provider options examples") {
@@ -527,8 +672,9 @@ TEST_CASE("doc validation rejects unsupported provider options examples") {
       tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
       &yac::chat::SettingsDocExpectation::settings_example);
 
-  REQUIRE(HasDocIssue(issues, "Unregistered TOML key: "
-                              "provider.options.not_supported"));
+  REQUIRE(HasDocIssue(issues,
+                      "Unregistered TOML key: "
+                      "provider.options.not_supported"));
 }
 
 TEST_CASE("settings registry represents core scalar TOML env parity") {
