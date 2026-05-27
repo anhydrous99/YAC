@@ -95,6 +95,30 @@ void ConsumeOAuthBody(std::string_view chunk, OAuthWriteState& state) {
          openai_responses_protocol::ResponsesPath();
 }
 
+[[nodiscard]] bool HasNonWhitespace(std::string_view value) {
+  return value.find_first_not_of(" \t\n\r\f\v") != std::string_view::npos;
+}
+
+[[nodiscard]] chat::ChatRequest WithCodexInstructions(
+    const chat::ChatRequest& request) {
+  static constexpr std::string_view kCodexBaseInstructions =
+      "You are YAC, a terminal coding assistant. Help the user with software "
+      "engineering tasks while following the available tools, workspace "
+      "instructions, and safety constraints.";
+
+  chat::ChatRequest normalized = request;
+  if (request.responses_instructions.has_value() &&
+      HasNonWhitespace(*request.responses_instructions)) {
+    normalized.responses_instructions = std::string(kCodexBaseInstructions) +
+                                        "\n\n" +
+                                        *request.responses_instructions;
+    return normalized;
+  }
+
+  normalized.responses_instructions = std::string(kCodexBaseInstructions);
+  return normalized;
+}
+
 [[nodiscard]] std::string PlatformDescription() {
 #ifdef _WIN32
   SYSTEM_INFO info;
@@ -173,8 +197,10 @@ OAuthAttemptResult ExecuteOAuthAttempt(const chat::ChatRequest& request,
                                        const OpenAiOAuthAuth& auth,
                                        ChatEventSink sink,
                                        std::stop_token stop_token) {
-  auto payload =
-      openai_responses_protocol::BuildResponsesPayload(request, config).dump();
+  const auto normalized_request = WithCodexInstructions(request);
+  auto payload = openai_responses_protocol::BuildResponsesPayload(
+                     normalized_request, config)
+                     .dump();
   openai_responses_protocol::StreamState stream_state{.sink = &sink};
   HeaderState header_state;
   OAuthWriteState write_state{.header_state = &header_state,

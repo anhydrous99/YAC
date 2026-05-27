@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +31,11 @@ using yac::tests::openai_auth::HttpResponse;
 using yac::tests::openai_auth::MakeAccountIdJwtLikeToken;
 using yac::tests::openai_auth::StaticAcceptedModelIds;
 using yac::tests::openai_auth::TestHttpServer;
+
+constexpr std::string_view kExpectedCodexBaseInstructions =
+    "You are YAC, a terminal coding assistant. Help the user with software "
+    "engineering tasks while following the available tools, workspace "
+    "instructions, and safety constraints.";
 
 class MemoryAuthBackend : public IOpenAiAuthBackend {
  public:
@@ -178,10 +184,12 @@ class ScopedEnvUnset {
       });
 }
 
-[[nodiscard]] chat::ChatRequest MakeStreamingRequest() {
+[[nodiscard]] chat::ChatRequest MakeStreamingRequest(
+    std::optional<std::string> responses_instructions = std::nullopt) {
   chat::ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
   request.session_id = DeterministicSessionId();
+  request.responses_instructions = std::move(responses_instructions);
   request.stream = true;
   request.messages = {
       chat::ChatMessage{.role = chat::ChatRole::User, .content = "hello"}};
@@ -482,6 +490,12 @@ TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
         AssertHeaderEquals(request, "session_id", DeterministicSessionId()));
     REQUIRE_NOTHROW(
         AssertHeaderEquals(request, "ChatGPT-Account-Id", "acct-123"));
+    const auto body = nlohmann::json::parse(request.body);
+    REQUIRE(body.contains("instructions"));
+    REQUIRE(body.at("instructions").is_string());
+    REQUIRE_THAT(
+        body.at("instructions").get<std::string>(),
+        ContainsSubstring(std::string(kExpectedCodexBaseInstructions)));
     return ResponsesStream();
   });
 
@@ -490,6 +504,48 @@ TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
   REQUIRE(server.Requests().size() == 1);
   REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
   REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "hello");
+}
+
+TEST_CASE("stored_oauth_appends_explicit_responses_instructions",
+          "[openai_chat_provider_auth]") {
+  const auto file_backend = MakeFileBackend();
+  const auto store = MakeStore(file_backend);
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-123"});
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    REQUIRE(request.path == "/backend-api/codex/responses");
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "Authorization", "Bearer access-stored"));
+    REQUIRE_NOTHROW(AssertHeaderEquals(request, "originator", "opencode"));
+    REQUIRE_THAT(request.headers.at("User-Agent"),
+                 ContainsSubstring("opencode/0.1.0 ("));
+    REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "session_id", DeterministicSessionId()));
+    REQUIRE_NOTHROW(
+        AssertHeaderEquals(request, "ChatGPT-Account-Id", "acct-123"));
+
+    const auto body = nlohmann::json::parse(request.body);
+    REQUIRE(body.contains("instructions"));
+    REQUIRE(body.at("instructions").is_string());
+    REQUIRE(body.at("instructions").get<std::string>() ==
+            std::string(kExpectedCodexBaseInstructions) +
+                "\n\nFollow the caller instructions.");
+    return ResponsesStream();
+  });
+
+  auto provider = MakeProvider(server.Url(""), store, server.Url(""));
+  auto request = MakeStreamingRequest("Follow the caller instructions.");
+  std::vector<chat::ChatEvent> events;
+  provider.CompleteStream(
+      request,
+      [&events](chat::ChatEvent event) { events.push_back(std::move(event)); },
+      {});
+  REQUIRE(server.Requests().size() == 1);
 }
 
 TEST_CASE("legacy_inline_api_key_is_used_when_no_env_or_stored_auth",
@@ -603,6 +659,10 @@ TEST_CASE("oauth_401_refreshes_once_and_retries_once",
       REQUIRE(request.headers.at("Authorization") == "Bearer access-old");
       REQUIRE(request.headers.at("originator") == "opencode");
       REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
+      const auto body = nlohmann::json::parse(request.body);
+      REQUIRE(body.contains("instructions"));
+      REQUIRE(body.at("instructions").is_string());
+      REQUIRE_FALSE(body.at("instructions").get<std::string>().empty());
       return HttpResponse{
           .status = 401,
           .headers = {{"Content-Type", "application/json"}},
@@ -622,6 +682,10 @@ TEST_CASE("oauth_401_refreshes_once_and_retries_once",
     REQUIRE(request.headers.at("originator") == "opencode");
     REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-old");
+    const auto body = nlohmann::json::parse(request.body);
+    REQUIRE(body.contains("instructions"));
+    REQUIRE(body.at("instructions").is_string());
+    REQUIRE_FALSE(body.at("instructions").get<std::string>().empty());
     return ResponsesStream("retry-ok");
   });
 
