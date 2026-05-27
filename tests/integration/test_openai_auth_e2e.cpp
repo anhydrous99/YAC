@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -45,8 +46,16 @@ constexpr std::string_view kStoredApiKey = "sk-test-e2e-api-key";
 constexpr std::string_view kStoredRefreshToken = "refresh-test-e2e";
 constexpr std::string_view kStoredAccessToken = "access-test-e2e";
 constexpr std::string_view kRefreshedRefreshToken = "refresh-rotated-e2e";
+constexpr std::string_view kYacCodexBaseInstructions =
+    "You are YAC, a terminal coding assistant. Help the user with software "
+    "engineering tasks while following the available tools, workspace "
+    "instructions, and safety constraints.";
 constexpr auto kCliTimeout = 30s;
 constexpr auto kCliPollInterval = 20ms;
+
+std::string GetInstructions(const HttpRequest& request) {
+  return nlohmann::json::parse(request.body).at("instructions").get<std::string>();
+}
 
 class TempDir {
  public:
@@ -326,26 +335,39 @@ yac::provider::OpenAiChatProvider MakeProvider(
       });
 }
 
-yac::chat::ChatRequest MakeStreamingRequest() {
+yac::chat::ChatRequest MakeStreamingRequest(
+    std::optional<std::string_view> responses_instructions) {
   yac::chat::ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
   request.session_id = DeterministicSessionId();
   request.stream = true;
-  request.responses_instructions = "Follow the mock OAuth instructions.";
+  if (responses_instructions.has_value()) {
+    request.responses_instructions = *responses_instructions;
+  }
   request.messages = {yac::chat::ChatMessage{.role = yac::chat::ChatRole::User,
-                                             .content = "hello"}};
+                                              .content = "hello"}};
   return request;
 }
 
+yac::chat::ChatRequest MakeStreamingRequest() {
+  return MakeStreamingRequest("Follow the mock OAuth instructions.");
+}
+
 std::vector<yac::chat::ChatEvent> RunStream(
-    yac::provider::OpenAiChatProvider& provider) {
+    yac::provider::OpenAiChatProvider& provider,
+    yac::chat::ChatRequest request) {
   std::vector<yac::chat::ChatEvent> events;
-  provider.CompleteStream(MakeStreamingRequest(),
+  provider.CompleteStream(std::move(request),
                           [&events](yac::chat::ChatEvent event) {
                             events.push_back(std::move(event));
                           },
                           {});
   return events;
+}
+
+std::vector<yac::chat::ChatEvent> RunStream(
+    yac::provider::OpenAiChatProvider& provider) {
+  return RunStream(provider, MakeStreamingRequest());
 }
 
 HttpResponse ApiStream(std::string_view text) {
@@ -479,6 +501,7 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
       std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
 
   TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    const std::string instructions = GetInstructions(request);
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request.headers.at("Authorization") ==
             "Bearer " + std::string(kStoredAccessToken));
@@ -489,15 +512,62 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
     REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
     REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-e2e");
-    REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
-    REQUIRE_THAT(request.body,
-                 ContainsSubstring("Follow the mock OAuth instructions."));
+    CHECK(instructions == std::string(kYacCodexBaseInstructions) +
+                            "\n\nFollow the mock OAuth instructions.");
+    CHECK(instructions.find("OpenCode") == std::string::npos);
     REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("oauth-ok");
   });
 
   auto provider = MakeProvider("http://127.0.0.1:1", flow, server.Url(""));
   const auto events = RunStream(provider);
+
+  REQUIRE(server.Requests().size() == 1);
+  REQUIRE_FALSE(events.empty());
+  CHECK(events.front().Type() == yac::chat::ChatEventType::TextDelta);
+  CHECK(VisibleOutput(events) == "oauth-ok");
+  CHECK(VisibleOutput(events).find(kStoredAccessToken) == std::string::npos);
+  CHECK(VisibleOutput(events).find(kStoredRefreshToken) == std::string::npos);
+}
+
+TEST_CASE("stored_oauth_runtime_uses_base_instructions_without_caller_prompt",
+          "[openai_auth_e2e]") {
+  TempDir temp_dir;
+  ScopedEnvVar home("HOME", temp_dir.Path().string());
+  ScopedEnvVar api_key_env("OPENAI_API_KEY", std::nullopt);
+
+  const auto store = MakeStoreForHome(temp_dir.Path());
+  static_cast<void>(store->Save(yac::provider::OpenAiOAuthAuth{
+      .refresh_token = std::string(kStoredRefreshToken),
+      .access_token = std::string(kStoredAccessToken),
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = std::string("acct-e2e"),
+  }));
+  const auto flow = MakeFlow(
+      "http://127.0.0.1:1", store,
+      std::chrono::system_clock::time_point{std::chrono::seconds{1000}});
+
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    const std::string instructions = GetInstructions(request);
+    REQUIRE(request.path == "/backend-api/codex/responses");
+    REQUIRE(request.headers.at("Authorization") ==
+            "Bearer " + std::string(kStoredAccessToken));
+    REQUIRE(request.headers.at("originator") == "opencode");
+    REQUIRE_THAT(request.headers.at("User-Agent"),
+                 ContainsSubstring("opencode/"));
+    REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
+    REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-e2e");
+    CHECK(instructions == std::string(kYacCodexBaseInstructions));
+    CHECK(instructions.find("OpenCode") == std::string::npos);
+    CHECK(request.body.find("Follow the mock OAuth instructions.") ==
+          std::string::npos);
+    REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
+    return OAuthStream("oauth-ok");
+  });
+
+  auto provider = MakeProvider("http://127.0.0.1:1", flow, server.Url(""));
+  const auto events = RunStream(provider, MakeStreamingRequest(std::nullopt));
 
   REQUIRE(server.Requests().size() == 1);
   REQUIRE_FALSE(events.empty());
@@ -539,6 +609,7 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
                   R"(","expires_in":600})",
       };
     }
+    const std::string instructions = GetInstructions(request);
     REQUIRE(request.path == "/backend-api/codex/responses");
     REQUIRE(request_index == 1);
     REQUIRE(request.headers.at("Authorization") ==
@@ -549,9 +620,9 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
     REQUIRE_THAT(request.headers.at("User-Agent"), ContainsSubstring("; "));
     REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-new");
-    REQUIRE_THAT(request.body, ContainsSubstring("\"instructions\""));
-    REQUIRE_THAT(request.body,
-                 ContainsSubstring("Follow the mock OAuth instructions."));
+    CHECK(instructions == std::string(kYacCodexBaseInstructions) +
+                            "\n\nFollow the mock OAuth instructions.");
+    CHECK(instructions.find("OpenCode") == std::string::npos);
     REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("refresh-ok");
   });
