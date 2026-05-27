@@ -388,7 +388,6 @@ class BedrockStreamHandler
   BedrockStreamHandler& operator=(BedrockStreamHandler&&) = delete;
   ~BedrockStreamHandler() override = default;
 
- private:
   void OnMessageStart(
       const Aws::BedrockRuntime::Model::MessageStartEvent& /*evt*/) {}
 
@@ -449,6 +448,8 @@ class BedrockStreamHandler
         .tool_call_id = ::yac::ToolCallId{current_tool_use_id_},
         .tool_name = current_tool_name_,
     }});
+    pending_tool_calls_.push_back(TranslateToolUseToYac(
+        current_tool_use_id_, current_tool_name_, accumulated_tool_input_));
     in_tool_block_ = false;
     current_tool_use_id_.clear();
     current_tool_name_.clear();
@@ -464,6 +465,11 @@ class BedrockStreamHandler
       error.provider_id = provider_id_;
       error.model = model_;
       sink_(chat::ChatEvent{std::move(error)});
+    }
+    if (!pending_tool_calls_.empty()) {
+      sink_(chat::ChatEvent{
+          chat::ToolCallRequestedEvent{.tool_calls = std::move(pending_tool_calls_)}});
+      pending_tool_calls_.clear();
     }
   }
 
@@ -508,6 +514,7 @@ class BedrockStreamHandler
   std::string current_tool_name_;
   std::string accumulated_tool_input_;
   bool in_tool_block_ = false;
+  std::vector<chat::ToolCallRequest> pending_tool_calls_;
 };
 
 }  // namespace
@@ -530,6 +537,67 @@ BedrockStreamHandlerHandle MakeStreamHandler(
 Aws::BedrockRuntime::Model::ConverseStreamHandler& GetSdkHandler(
     BedrockStreamHandlerHandle& handle) {
   return handle->handler;
+}
+
+void SimulateBedrockToolUseStream(
+    BedrockStreamHandlerHandle& handle,
+    const std::string& tool_use_id, const std::string& tool_name,
+    const std::string& input_json,
+    Aws::BedrockRuntime::Model::StopReason stop_reason) {
+  // Build a temporary ConverseStreamHandler with forwarding callbacks that
+  // invoke the real handler's callbacks (which were set in the constructor).
+  // We replicate the SDK's dispatch: construct event objects and call the
+  // Set*Callback-registered functions stored on the base class.
+  //
+  // Since the m_on* members are private in ConverseStreamHandler, we instead
+  // drive the handler by constructing a fresh ConverseStreamHandler, copying
+  // the callbacks from the original (via copy-assignment of the base), and
+  // invoking them. The callbacks capture `this` of the original
+  // BedrockStreamHandler, so they operate on the correct instance.
+
+  // Get a reference to the base class portion of our handler.
+  auto& sdk_handler = handle->handler;
+
+  // The BedrockStreamHandler sets callbacks in its constructor that capture
+  // `this`. Those callbacks are stored in the ConverseStreamHandler base.
+  // We can't call them directly (private), but we CAN use the SDK's own
+  // dispatch mechanism by setting up event headers/payload. Instead, we'll
+  // use a simpler approach: create SDK event objects and pass them through
+  // the handler's Set*Callback mechanism by temporarily replacing callbacks
+  // with ones that forward to the originals.
+  //
+  // Actually, the simplest approach: since we're in the same TU as
+  // BedrockStreamHandler, we can access it through the struct.
+
+  // ContentBlockStart with tool_use
+  Aws::BedrockRuntime::Model::ToolUseBlockStart tool_start;
+  tool_start.SetToolUseId(tool_use_id.c_str());
+  tool_start.SetName(tool_name.c_str());
+  Aws::BedrockRuntime::Model::ContentBlockStart block_start;
+  block_start.SetToolUse(std::move(tool_start));
+  Aws::BedrockRuntime::Model::ContentBlockStartEvent start_evt;
+  start_evt.SetStart(std::move(block_start));
+  sdk_handler.OnContentBlockStart(start_evt);
+
+  // ContentBlockDelta with tool input
+  if (!input_json.empty()) {
+    Aws::BedrockRuntime::Model::ToolUseBlockDelta tool_delta;
+    tool_delta.SetInput(input_json.c_str());
+    Aws::BedrockRuntime::Model::ContentBlockDelta delta;
+    delta.SetToolUse(std::move(tool_delta));
+    Aws::BedrockRuntime::Model::ContentBlockDeltaEvent delta_evt;
+    delta_evt.SetDelta(std::move(delta));
+    sdk_handler.OnContentBlockDelta(delta_evt);
+  }
+
+  // ContentBlockStop
+  Aws::BedrockRuntime::Model::ContentBlockStopEvent stop_evt;
+  sdk_handler.OnContentBlockStop(stop_evt);
+
+  // MessageStop
+  Aws::BedrockRuntime::Model::MessageStopEvent msg_stop;
+  msg_stop.SetStopReason(stop_reason);
+  sdk_handler.OnMessageStop(msg_stop);
 }
 
 }  // namespace yac::provider

@@ -82,4 +82,14 @@ chat::ToolCallRequest TranslateToolUseToYac(const std::string& tooluse_id,
 ToolResultData TranslateYacToolResultToBedrock(
     const chat::ChatMessage& tool_msg);
 
+// Test helper: simulates the SDK callback sequence for a tool_use content block
+// followed by a message stop with the given stop reason. Used by unit tests to
+// verify ToolCallRequestedEvent emission without requiring the full AWS event
+// stream infrastructure.
+void SimulateBedrockToolUseStream(
+    BedrockStreamHandlerHandle& handle,
+    const std::string& tool_use_id, const std::string& tool_name,
+    const std::string& input_json,
+    Aws::BedrockRuntime::Model::StopReason stop_reason);
+
 }  // namespace yac::provider
