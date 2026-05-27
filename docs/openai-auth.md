@@ -24,7 +24,12 @@ When only `id = "openai"` is set, YAC fills in those defaults. Explicit
 not overwritten by the preset, and `YAC_*` env overrides still win over TOML.
 API-key mode uses OpenAI-compatible chat completions. Browser and device OAuth
 use the ChatGPT/Codex Responses endpoint at
-`https://chatgpt.com/backend-api/codex/responses`.
+`https://chatgpt.com/backend-api/codex/responses`. That OAuth path follows
+YAC's Codex-facing backend behavior, not a rule about the public OpenAI
+Responses API schema. Each OAuth Responses request includes a YAC-authored
+built-in top-level `instructions` baseline. Workspace, config, and Plan
+instructions are appended after that baseline. The baseline is YAC-authored
+behavior and does not copy OpenCode prompt text.
 Set `YAC_API_KEY_ENV` if you need `provider.api_key_env` to name a different
 secret env var.
 
