@@ -41,13 +41,18 @@ constexpr std::string_view kFixedBrowserRedirectUri =
 
 class MemoryAuthBackend : public IOpenAiAuthBackend {
  public:
+  explicit MemoryAuthBackend(std::optional<std::string> value = std::nullopt)
+      : value_(std::move(value)) {}
+
   [[nodiscard]] std::optional<std::string> Get() const override {
     std::scoped_lock lock(mutex_);
+    ++get_count_;
     return value_;
   }
 
   void Set(std::string_view auth_json) override {
     std::scoped_lock lock(mutex_);
+    ++set_count_;
     value_ = std::string(auth_json);
     writes_.push_back(*value_);
   }
@@ -67,10 +72,22 @@ class MemoryAuthBackend : public IOpenAiAuthBackend {
     return writes_;
   }
 
+  [[nodiscard]] int GetCount() const {
+    std::scoped_lock lock(mutex_);
+    return get_count_;
+  }
+
+  [[nodiscard]] int SetCount() const {
+    std::scoped_lock lock(mutex_);
+    return set_count_;
+  }
+
  private:
   mutable std::mutex mutex_;
   std::optional<std::string> value_;
   std::vector<std::string> writes_;
+  mutable int get_count_ = 0;
+  int set_count_ = 0;
 };
 
 class ThrowingKeychainBackend : public IOpenAiAuthBackend {
@@ -91,6 +108,11 @@ class ThrowingKeychainBackend : public IOpenAiAuthBackend {
 
 [[nodiscard]] std::shared_ptr<MemoryAuthBackend> MakeFileBackend() {
   return std::make_shared<MemoryAuthBackend>();
+}
+
+[[nodiscard]] std::shared_ptr<MemoryAuthBackend> MakeFileBackend(
+    OpenAiAuth auth) {
+  return std::make_shared<MemoryAuthBackend>(SerializeOpenAiAuth(auth));
 }
 
 [[nodiscard]] std::shared_ptr<OpenAiAuthStore> MakeStore(
@@ -716,6 +738,91 @@ TEST_CASE("refresh_uses_skew_rotates_token_and_persists",
   const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth);
   REQUIRE(stored_oauth != nullptr);
   REQUIRE(stored_oauth->refresh_token == "refresh-rotated");
+}
+
+TEST_CASE("refresh_updates_cache_without_reread", "[openai_auth_flow]") {
+  TestHttpServer server([](const HttpRequest&, std::size_t) {
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body = std::string(R"({"access_token":")") +
+                MakeFlattenedAccountIdJwtLikeToken("acct-refreshed") +
+                R"(","refresh_token":"refresh-rotated","expires_in":600})",
+    };
+  });
+  const OpenAiOAuthAuth initial{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
+      .account_id = "acct-old",
+  };
+  const auto file_backend = MakeFileBackend(initial);
+  const auto store = MakeStore(file_backend);
+
+  auto dependencies = MakeDependencies(server.Url(""), store);
+  dependencies.clock = [] {
+    return std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+
+  const OpenAiOAuthAuth refreshed = flow.RefreshIfNeeded(initial);
+  REQUIRE(refreshed.access_token != "access-old");
+  REQUIRE(refreshed.refresh_token == "refresh-rotated");
+  REQUIRE(refreshed.account_id == std::optional<std::string>{"acct-refreshed"});
+  REQUIRE(file_backend->GetCount() == 1);
+  REQUIRE(file_backend->SetCount() == 1);
+  REQUIRE(file_backend->WriteCount() == 1);
+
+  const auto stored = flow.LoadStoredAuth();
+  REQUIRE(stored.has_value());
+  const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth);
+  REQUIRE(stored_oauth != nullptr);
+  REQUIRE(stored_oauth->access_token == refreshed.access_token);
+  REQUIRE(stored_oauth->refresh_token == "refresh-rotated");
+  REQUIRE(stored_oauth->account_id ==
+          std::optional<std::string>{"acct-refreshed"});
+  REQUIRE(file_backend->GetCount() == 1);
+  REQUIRE(file_backend->SetCount() == 1);
+}
+
+TEST_CASE("fresh_oauth_uses_cache_without_refresh_save", "[openai_auth_flow]") {
+  TestHttpServer server([](const HttpRequest&, std::size_t) {
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            R"({"access_token":"unexpected","refresh_token":"unexpected","expires_in":600})",
+    };
+  });
+  const OpenAiOAuthAuth initial{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{5000}},
+      .account_id = "acct-old",
+  };
+  const auto file_backend = MakeFileBackend(initial);
+  const auto store = MakeStore(file_backend);
+  REQUIRE(store->Load().has_value());
+  REQUIRE(file_backend->GetCount() == 1);
+
+  auto dependencies = MakeDependencies(server.Url(""), store);
+  dependencies.clock = [] {
+    return std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+
+  const OpenAiOAuthAuth unchanged = flow.RefreshIfNeeded(initial);
+  REQUIRE(unchanged.access_token == "access-old");
+  REQUIRE(unchanged.refresh_token == "refresh-old");
+  const auto stored = flow.LoadStoredAuth();
+  REQUIRE(stored.has_value());
+  const auto* stored_oauth = std::get_if<OpenAiOAuthAuth>(&stored->auth);
+  REQUIRE(stored_oauth != nullptr);
+  REQUIRE(stored_oauth->access_token == "access-old");
+  REQUIRE(stored_oauth->refresh_token == "refresh-old");
+  REQUIRE(file_backend->GetCount() == 1);
+  REQUIRE(file_backend->SetCount() == 0);
+  REQUIRE(server.Requests().empty());
 }
 
 TEST_CASE("missing_access_token_triggers_refresh", "[openai_auth_flow]") {
