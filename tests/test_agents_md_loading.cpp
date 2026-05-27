@@ -40,6 +40,19 @@ ChatRequest BuildRequest(
   return builder.BuildRequest({}, {});
 }
 
+ChatRequest BuildRequestForProvider(
+    const std::filesystem::path& workspace,
+    ::yac::ProviderId provider_id,
+    std::optional<std::string> system_prompt = std::nullopt) {
+  ChatConfig config;
+  config.provider_id = provider_id;
+  config.workspace_root = workspace.string();
+  config.system_prompt = std::move(system_prompt);
+
+  ChatServiceRequestBuilder builder(std::move(config));
+  return builder.BuildRequest({}, {});
+}
+
 }  // namespace
 
 TEST_CASE("AGENTS.md content prepended to system prompt",
@@ -95,6 +108,34 @@ TEST_CASE("Concatenated with config.system_prompt",
 
   REQUIRE(request.messages.size() == 1);
   REQUIRE(request.messages.front().role == ChatRole::System);
+  REQUIRE(request.messages.front().content == "Agents rules\n\nSystem prompt");
+}
+
+TEST_CASE("OpenAI provider copies composed prompt into responses instructions",
+          "[agents_md][request_builder]") {
+  const auto workspace = PrepareWorkspace("openai_responses_instructions");
+  WriteFile(workspace / "AGENTS.md", "Agents rules");
+
+  const auto request = BuildRequestForProvider(
+      workspace, ::yac::ProviderId{"openai"}, std::string{"System prompt"});
+
+  REQUIRE(request.responses_instructions.has_value());
+  REQUIRE(*request.responses_instructions == "Agents rules\n\nSystem prompt");
+  REQUIRE(request.messages.size() == 1);
+  REQUIRE(request.messages.front().content == *request.responses_instructions);
+}
+
+TEST_CASE("OpenAI-compatible provider leaves responses instructions absent",
+          "[agents_md][request_builder]") {
+  const auto workspace = PrepareWorkspace("compatible_responses_absent");
+  WriteFile(workspace / "AGENTS.md", "Agents rules");
+
+  const auto request = BuildRequestForProvider(
+      workspace, ::yac::ProviderId{"openai-compatible"},
+      std::string{"System prompt"});
+
+  REQUIRE_FALSE(request.responses_instructions.has_value());
+  REQUIRE(request.messages.size() == 1);
   REQUIRE(request.messages.front().content == "Agents rules\n\nSystem prompt");
 }
 
