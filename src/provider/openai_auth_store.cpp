@@ -23,7 +23,7 @@ namespace {
 
 constexpr std::string_view kKeychainServiceId = "yac-provider-openai";
 constexpr std::string_view kKeychainEntryId = "openai";
-constexpr char kAuthStoreEnv[] = "YAC_OPENAI_AUTH_STORE";
+constexpr const char* kAuthStoreEnv = "YAC_OPENAI_AUTH_STORE";
 
 [[nodiscard]] bool UseFileOnlyAuthStore() {
   const char* value = std::getenv(kAuthStoreEnv);
@@ -84,12 +84,8 @@ bool OpenAiKeychainAuthBackend::IsKeychainAvailable() {
 }
 
 std::optional<std::string> OpenAiKeychainAuthBackend::Get() const {
-  if (!IsKeychainAvailable()) {
-    throw OpenAiAuthKeychainUnavailableError(
-        "OpenAiKeychainAuthBackend::Get: keychain backend unavailable");
-  }
-
   keychain::Error error;
+  // Avoid the availability probe on normal reads because it may prompt.
   const std::string password = keychain::getPassword(
       std::string(kKeychainServiceId), std::string(kKeychainEntryId),
       std::string(kKeychainEntryId), error);
@@ -104,11 +100,6 @@ std::optional<std::string> OpenAiKeychainAuthBackend::Get() const {
 }
 
 void OpenAiKeychainAuthBackend::Set(std::string_view auth_json) {
-  if (!IsKeychainAvailable()) {
-    throw OpenAiAuthKeychainUnavailableError(
-        "OpenAiKeychainAuthBackend::Set: keychain backend unavailable");
-  }
-
   keychain::Error error;
   keychain::setPassword(
       std::string(kKeychainServiceId), std::string(kKeychainEntryId),
@@ -120,11 +111,6 @@ void OpenAiKeychainAuthBackend::Set(std::string_view auth_json) {
 }
 
 void OpenAiKeychainAuthBackend::Erase() {
-  if (!IsKeychainAvailable()) {
-    throw OpenAiAuthKeychainUnavailableError(
-        "OpenAiKeychainAuthBackend::Erase: keychain backend unavailable");
-  }
-
   keychain::Error error;
   keychain::deletePassword(std::string(kKeychainServiceId),
                            std::string(kKeychainEntryId),
@@ -298,6 +284,7 @@ void OpenAiAuthStore::StoreCache(std::optional<StoredOpenAiAuth> auth) const {
 
 std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
   std::scoped_lock lock(cache_mutex_);
+  // Hold the first read under lock and memoize present or absent auth.
   if (cached_auth_.has_value()) {
     return *cached_auth_;
   }

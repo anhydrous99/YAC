@@ -1,13 +1,17 @@
 #include "provider/openai_auth.hpp"
 #include "provider/openai_auth_store.hpp"
 
+#include <array>
+#include <barrier>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include <catch2/catch_test_macros.hpp>
@@ -128,6 +132,7 @@ class CountingAuthBackend : public IOpenAiAuthBackend {
       : value_(std::move(initial)) {}
 
   [[nodiscard]] std::optional<std::string> Get() const override {
+    std::scoped_lock lock(mutex_);
     ++get_count_;
     if (keychain_unavailable_on_get_) {
       throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
@@ -139,34 +144,88 @@ class CountingAuthBackend : public IOpenAiAuthBackend {
   }
 
   void Set(std::string_view auth_json) override {
+    std::scoped_lock lock(mutex_);
     ++set_count_;
     if (keychain_unavailable_on_set_) {
       throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
+    }
+    if (throw_on_set_) {
+      throw std::runtime_error("backend write failed");
     }
     value_ = std::string(auth_json);
   }
 
   void Erase() override {
+    std::scoped_lock lock(mutex_);
     ++erase_count_;
     if (keychain_unavailable_on_erase_) {
       throw OpenAiAuthKeychainUnavailableError("keychain unavailable");
     }
+    if (throw_on_erase_) {
+      throw std::runtime_error("backend erase failed");
+    }
     value_.reset();
   }
 
-  void SetValue(std::optional<std::string> value) { value_ = std::move(value); }
+  void SetValue(std::optional<std::string> value) {
+    std::scoped_lock lock(mutex_);
+    value_ = std::move(value);
+  }
+
   void SetKeychainUnavailable(bool unavailable) {
+    std::scoped_lock lock(mutex_);
     keychain_unavailable_on_get_ = unavailable;
     keychain_unavailable_on_set_ = unavailable;
     keychain_unavailable_on_erase_ = unavailable;
   }
-  void SetThrowOnGet(bool throw_on_get) { throw_on_get_ = throw_on_get; }
 
-  [[nodiscard]] int GetCount() const { return get_count_; }
-  [[nodiscard]] int SetCount() const { return set_count_; }
-  [[nodiscard]] int EraseCount() const { return erase_count_; }
+  void SetKeychainUnavailableOnGet(bool unavailable) {
+    std::scoped_lock lock(mutex_);
+    keychain_unavailable_on_get_ = unavailable;
+  }
+
+  void SetKeychainUnavailableOnSet(bool unavailable) {
+    std::scoped_lock lock(mutex_);
+    keychain_unavailable_on_set_ = unavailable;
+  }
+
+  void SetKeychainUnavailableOnErase(bool unavailable) {
+    std::scoped_lock lock(mutex_);
+    keychain_unavailable_on_erase_ = unavailable;
+  }
+
+  void SetThrowOnGet(bool throw_on_get) {
+    std::scoped_lock lock(mutex_);
+    throw_on_get_ = throw_on_get;
+  }
+
+  void SetThrowOnSet(bool throw_on_set) {
+    std::scoped_lock lock(mutex_);
+    throw_on_set_ = throw_on_set;
+  }
+
+  void SetThrowOnErase(bool throw_on_erase) {
+    std::scoped_lock lock(mutex_);
+    throw_on_erase_ = throw_on_erase;
+  }
+
+  [[nodiscard]] int GetCount() const {
+    std::scoped_lock lock(mutex_);
+    return get_count_;
+  }
+
+  [[nodiscard]] int SetCount() const {
+    std::scoped_lock lock(mutex_);
+    return set_count_;
+  }
+
+  [[nodiscard]] int EraseCount() const {
+    std::scoped_lock lock(mutex_);
+    return erase_count_;
+  }
 
  private:
+  mutable std::mutex mutex_;
   std::optional<std::string> value_;
   mutable int get_count_ = 0;
   int set_count_ = 0;
@@ -175,7 +234,14 @@ class CountingAuthBackend : public IOpenAiAuthBackend {
   bool keychain_unavailable_on_set_ = false;
   bool keychain_unavailable_on_erase_ = false;
   bool throw_on_get_ = false;
+  bool throw_on_set_ = false;
+  bool throw_on_erase_ = false;
 };
+
+[[nodiscard]] std::string SerializedDummyApiKeyAuth(
+    std::string key = "dummy-api-key") {
+  return SerializeOpenAiAuth(OpenAiApiKeyAuth{.key = std::move(key)});
+}
 
 [[nodiscard]] std::shared_ptr<OpenAiAuthStore> MakeCountingStore(
     const std::shared_ptr<CountingAuthBackend>& keychain,
@@ -198,7 +264,7 @@ class CountingAuthBackend : public IOpenAiAuthBackend {
 
 TEST_CASE("api_key_serialization_round_trip", "[openai_auth_store]") {
   const OpenAiAuth auth = OpenAiApiKeyAuth{
-      .key = "sk-test-12345678",
+      .key = "dummy-api-key-12345678",
       .metadata = Json{{"label", "manual"}, {"createdBy", "test"}},
   };
 
@@ -208,7 +274,7 @@ TEST_CASE("api_key_serialization_round_trip", "[openai_auth_store]") {
   REQUIRE(OpenAiAuthTypeLabel(parsed) == std::string_view("OpenAI API key"));
   const auto* api_key = std::get_if<OpenAiApiKeyAuth>(&parsed);
   REQUIRE(api_key != nullptr);
-  REQUIRE(api_key->key == "sk-test-12345678");
+  REQUIRE(api_key->key == "dummy-api-key-12345678");
   REQUIRE(api_key->metadata.has_value());
   REQUIRE((*api_key->metadata)["label"] == "manual");
 }
@@ -217,8 +283,8 @@ TEST_CASE("oauth_serialization_round_trip", "[openai_auth_store]") {
   const auto expiry =
       std::chrono::system_clock::time_point{std::chrono::seconds{1700000000}};
   const OpenAiAuth auth = OpenAiOAuthAuth{
-      .refresh_token = "rt-test-refresh",
-      .access_token = "at-test-access",
+      .refresh_token = "dummy-refresh-value",
+      .access_token = "dummy-access-value",
       .expires_at = expiry,
       .account_id = "acct_test",
       .enterprise_url = "https://example.openai.test",
@@ -230,8 +296,8 @@ TEST_CASE("oauth_serialization_round_trip", "[openai_auth_store]") {
   REQUIRE(OpenAiAuthTypeLabel(parsed) == std::string_view("OpenAI OAuth"));
   const auto* oauth = std::get_if<OpenAiOAuthAuth>(&parsed);
   REQUIRE(oauth != nullptr);
-  REQUIRE(oauth->refresh_token == "rt-test-refresh");
-  REQUIRE(oauth->access_token == "at-test-access");
+  REQUIRE(oauth->refresh_token == "dummy-refresh-value");
+  REQUIRE(oauth->access_token == "dummy-access-value");
   REQUIRE(oauth->expires_at == expiry);
   REQUIRE(oauth->account_id == std::optional<std::string>{"acct_test"});
   REQUIRE(oauth->enterprise_url ==
@@ -251,13 +317,13 @@ TEST_CASE("expiry_helpers", "[openai_auth_store]") {
   const auto now =
       std::chrono::system_clock::time_point{std::chrono::seconds{200}};
   const OpenAiOAuthAuth valid{
-      .refresh_token = "rt-test",
-      .access_token = "at-test",
+      .refresh_token = "dummy-refresh",
+      .access_token = "dummy-access",
       .expires_at =
           std::chrono::system_clock::time_point{std::chrono::seconds{300}}};
   const OpenAiOAuthAuth expired{
-      .refresh_token = "rt-test",
-      .access_token = "at-test",
+      .refresh_token = "dummy-refresh",
+      .access_token = "dummy-access",
       .expires_at =
           std::chrono::system_clock::time_point{std::chrono::seconds{100}}};
 
@@ -267,19 +333,24 @@ TEST_CASE("expiry_helpers", "[openai_auth_store]") {
   REQUIRE_FALSE(HasUsableOpenAiOAuthAccessToken(expired, now));
 }
 
-TEST_CASE("redacted_display_hides_secrets", "[openai_auth_store]") {
-  const OpenAiAuth api_auth = OpenAiApiKeyAuth{.key = "sk-test-secret-value"};
+TEST_CASE("redacted_display_hides_credentials", "[openai_auth_store]") {
+  const OpenAiAuth api_auth =
+      OpenAiApiKeyAuth{.key = "dummy-api-key-private-value"};
   const OpenAiAuth oauth_auth =
-      OpenAiOAuthAuth{.refresh_token = "rt-test-secret-value",
-                      .access_token = "at-test-secret-value"};
+      OpenAiOAuthAuth{.refresh_token = "dummy-refresh-private-value",
+                      .access_token = "dummy-access-private-value"};
 
   const std::string api_description = DescribeOpenAiAuth(api_auth);
   const std::string oauth_description = DescribeOpenAiAuth(oauth_auth);
 
-  REQUIRE(RedactOpenAiSecret("sk-test-secret-value") != "sk-test-secret-value");
-  REQUIRE(api_description.find("sk-test-secret-value") == std::string::npos);
-  REQUIRE(oauth_description.find("rt-test-secret-value") == std::string::npos);
-  REQUIRE(oauth_description.find("at-test-secret-value") == std::string::npos);
+  REQUIRE(RedactOpenAiSecret("dummy-api-key-private-value") !=
+          "dummy-api-key-private-value");
+  REQUIRE(api_description.find("dummy-api-key-private-value") ==
+          std::string::npos);
+  REQUIRE(oauth_description.find("dummy-refresh-private-value") ==
+          std::string::npos);
+  REQUIRE(oauth_description.find("dummy-access-private-value") ==
+          std::string::npos);
 }
 
 TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
@@ -289,7 +360,7 @@ TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
       .keychain_backend = keychain,
       .file_backend = file_backend,
   });
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-fallback"};
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "dummy-fallback-key"};
 
   const auto saved_source = store.Save(auth);
   const auto loaded = store.Load();
@@ -301,13 +372,12 @@ TEST_CASE("keychain_fallback_uses_file_backend", "[openai_auth_store]") {
           std::string_view("provider auth file"));
   const auto* api_key = std::get_if<OpenAiApiKeyAuth>(&loaded->auth);
   REQUIRE(api_key != nullptr);
-  REQUIRE(api_key->key == "sk-test-fallback");
+  REQUIRE(api_key->key == "dummy-fallback-key");
 }
 
-TEST_CASE("load_caches_stored_keychain_auth", "[openai_auth_store]") {
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-keychain-cache"};
-  auto keychain =
-      std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
+TEST_CASE("stored_auth_present_is_memoized", "[openai_auth_store]") {
+  auto keychain = std::make_shared<CountingAuthBackend>(
+      SerializedDummyApiKeyAuth("stored-api-key-cache"));
   auto file_backend = std::make_shared<CountingAuthBackend>();
   const auto store = MakeCountingStore(keychain, file_backend);
 
@@ -316,19 +386,48 @@ TEST_CASE("load_caches_stored_keychain_auth", "[openai_auth_store]") {
 
   REQUIRE(first->source == OpenAiAuthStorageSource::Keychain);
   REQUIRE(second->source == OpenAiAuthStorageSource::Keychain);
-  REQUIRE(RequireApiKeyAuth(first)->key == "sk-test-keychain-cache");
-  REQUIRE(RequireApiKeyAuth(second)->key == "sk-test-keychain-cache");
+  REQUIRE(RequireApiKeyAuth(first)->key == "stored-api-key-cache");
+  REQUIRE(RequireApiKeyAuth(second)->key == "stored-api-key-cache");
   REQUIRE(keychain->GetCount() == 1);
   REQUIRE(file_backend->GetCount() == 0);
 }
 
-TEST_CASE("load_caches_keychain_unavailable_file_fallback",
-          "[openai_auth_store]") {
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-file-cache"};
+TEST_CASE("concurrent_loads_share_one_backend_read", "[openai_auth_store]") {
+  constexpr std::size_t kCallerCount = 8;
+  constexpr std::string_view kStoredKey = "stored-api-key-concurrent-cache";
+  auto keychain = std::make_shared<CountingAuthBackend>(
+      SerializedDummyApiKeyAuth(std::string(kStoredKey)));
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+  std::barrier start_barrier(kCallerCount);
+  std::array<std::optional<StoredOpenAiAuth>, kCallerCount> results;
+  std::array<std::thread, kCallerCount> callers;
+
+  for (std::size_t index = 0; index < kCallerCount; ++index) {
+    callers[index] = std::thread([&, index] {
+      start_barrier.arrive_and_wait();
+      results[index] = store->Load();
+    });
+  }
+
+  for (auto& caller : callers) {
+    caller.join();
+  }
+
+  for (const auto& loaded : results) {
+    REQUIRE(loaded.has_value());
+    REQUIRE(loaded->source == OpenAiAuthStorageSource::Keychain);
+    REQUIRE(RequireApiKeyAuth(loaded)->key == kStoredKey);
+  }
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
+}
+
+TEST_CASE("keychain_unavailable_file_auth_is_memoized", "[openai_auth_store]") {
   auto keychain = std::make_shared<CountingAuthBackend>();
   keychain->SetKeychainUnavailable(true);
-  auto file_backend =
-      std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
+  auto file_backend = std::make_shared<CountingAuthBackend>(
+      SerializedDummyApiKeyAuth("stored-file-api-key-cache"));
   const auto store = MakeCountingStore(keychain, file_backend);
 
   const auto first = store->Load();
@@ -336,14 +435,27 @@ TEST_CASE("load_caches_keychain_unavailable_file_fallback",
 
   REQUIRE(first->source == OpenAiAuthStorageSource::File);
   REQUIRE(second->source == OpenAiAuthStorageSource::File);
-  REQUIRE(RequireApiKeyAuth(first)->key == "sk-test-file-cache");
-  REQUIRE(RequireApiKeyAuth(second)->key == "sk-test-file-cache");
+  REQUIRE(RequireApiKeyAuth(first)->key == "stored-file-api-key-cache");
+  REQUIRE(RequireApiKeyAuth(second)->key == "stored-file-api-key-cache");
   REQUIRE(keychain->GetCount() == 1);
   REQUIRE(file_backend->GetCount() == 1);
 }
 
-TEST_CASE("load_caches_missing_auth", "[openai_auth_store]") {
+TEST_CASE("missing_auth_is_memoized", "[openai_auth_store]") {
   auto keychain = std::make_shared<CountingAuthBackend>();
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 1);
+}
+
+TEST_CASE("keychain_unavailable_missing_auth_is_memoized",
+          "[openai_auth_store]") {
+  auto keychain = std::make_shared<CountingAuthBackend>();
+  keychain->SetKeychainUnavailable(true);
   auto file_backend = std::make_shared<CountingAuthBackend>();
   const auto store = MakeCountingStore(keychain, file_backend);
 
@@ -359,12 +471,12 @@ TEST_CASE("save_updates_load_cache", "[openai_auth_store]") {
     auto file_backend = std::make_shared<CountingAuthBackend>();
     const auto store = MakeCountingStore(keychain, file_backend);
 
-    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "sk-test-save-keychain"}) ==
+    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "dummy-save-keychain"}) ==
             OpenAiAuthStorageSource::Keychain);
     const auto loaded = store->Load();
 
     REQUIRE(loaded->source == OpenAiAuthStorageSource::Keychain);
-    REQUIRE(RequireApiKeyAuth(loaded)->key == "sk-test-save-keychain");
+    REQUIRE(RequireApiKeyAuth(loaded)->key == "dummy-save-keychain");
     REQUIRE(keychain->SetCount() == 1);
     REQUIRE(keychain->GetCount() == 0);
     REQUIRE(file_backend->GetCount() == 0);
@@ -376,12 +488,12 @@ TEST_CASE("save_updates_load_cache", "[openai_auth_store]") {
     auto file_backend = std::make_shared<CountingAuthBackend>();
     const auto store = MakeCountingStore(keychain, file_backend);
 
-    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "sk-test-save-file"}) ==
+    REQUIRE(store->Save(OpenAiApiKeyAuth{.key = "dummy-save-file"}) ==
             OpenAiAuthStorageSource::File);
     const auto loaded = store->Load();
 
     REQUIRE(loaded->source == OpenAiAuthStorageSource::File);
-    REQUIRE(RequireApiKeyAuth(loaded)->key == "sk-test-save-file");
+    REQUIRE(RequireApiKeyAuth(loaded)->key == "dummy-save-file");
     REQUIRE(keychain->SetCount() == 1);
     REQUIRE(file_backend->SetCount() == 1);
     REQUIRE(keychain->GetCount() == 0);
@@ -389,8 +501,32 @@ TEST_CASE("save_updates_load_cache", "[openai_auth_store]") {
   }
 }
 
+TEST_CASE("save_updates_cached_auth_without_reread", "[openai_auth_store]") {
+  auto keychain = std::make_shared<CountingAuthBackend>(
+      SerializedDummyApiKeyAuth("dummy-old-save-cache"));
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  const auto old_auth = store->Load();
+  const int get_count_after_initial_load = keychain->GetCount();
+  const auto saved_source =
+      store->Save(OpenAiApiKeyAuth{.key = "dummy-new-save-cache"});
+  const auto loaded_after_save = store->Load();
+
+  REQUIRE(saved_source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(old_auth->source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(RequireApiKeyAuth(old_auth)->key == "dummy-old-save-cache");
+  REQUIRE(loaded_after_save->source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(RequireApiKeyAuth(loaded_after_save)->key == "dummy-new-save-cache");
+  REQUIRE(keychain->GetCount() == get_count_after_initial_load);
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
+  REQUIRE(keychain->SetCount() == 1);
+  REQUIRE(file_backend->SetCount() == 0);
+}
+
 TEST_CASE("erase_updates_load_cache", "[openai_auth_store]") {
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-erase-cache"};
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "dummy-erase-cache"};
   auto keychain =
       std::make_shared<CountingAuthBackend>(SerializeOpenAiAuth(auth));
   auto file_backend = std::make_shared<CountingAuthBackend>();
@@ -400,6 +536,27 @@ TEST_CASE("erase_updates_load_cache", "[openai_auth_store]") {
   store->Erase();
 
   REQUIRE_FALSE(store->Load().has_value());
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
+  REQUIRE(keychain->EraseCount() == 1);
+  REQUIRE(file_backend->EraseCount() == 1);
+}
+
+TEST_CASE("erase_clears_cached_auth_without_reread", "[openai_auth_store]") {
+  auto keychain = std::make_shared<CountingAuthBackend>(
+      SerializedDummyApiKeyAuth("dummy-old-erase-cache"));
+  auto file_backend = std::make_shared<CountingAuthBackend>();
+  const auto store = MakeCountingStore(keychain, file_backend);
+
+  const auto old_auth = store->Load();
+  const int get_count_after_initial_load = keychain->GetCount();
+  store->Erase();
+  const auto loaded_after_erase = store->Load();
+
+  REQUIRE(old_auth->source == OpenAiAuthStorageSource::Keychain);
+  REQUIRE(RequireApiKeyAuth(old_auth)->key == "dummy-old-erase-cache");
+  REQUIRE_FALSE(loaded_after_erase.has_value());
+  REQUIRE(keychain->GetCount() == get_count_after_initial_load);
   REQUIRE(keychain->GetCount() == 1);
   REQUIRE(file_backend->GetCount() == 0);
   REQUIRE(keychain->EraseCount() == 1);
@@ -438,7 +595,7 @@ TEST_CASE("file_env_skips_keychain_backend", "[openai_auth_store]") {
   ScopedEnvVar home("HOME", temp_dir.Path().string());
   ScopedEnvVar auth_store("YAC_OPENAI_AUTH_STORE", "file");
   OpenAiAuthStore store;
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-file-only"};
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "dummy-file-only"};
 
   const auto saved_source = store.Save(auth);
   const auto loaded = store.Load();
@@ -455,7 +612,7 @@ TEST_CASE("file_backend_writes_mode_0600_and_rejects_broad_perms",
   TempDir temp_dir;
   const auto auth_path = temp_dir.Path() / "openai.json";
   OpenAiFileAuthBackend backend(auth_path);
-  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "sk-test-mode-check"};
+  const OpenAiAuth auth = OpenAiApiKeyAuth{.key = "dummy-mode-check"};
 
   backend.Set(SerializeOpenAiAuth(auth));
 

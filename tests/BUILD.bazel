@@ -93,7 +93,6 @@ yac_test(
     ],
 )
 yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
-yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
 yac_test("yac_test_openai_auth_command", ["test_openai_auth_command.cpp"])
 yac_test("yac_test_openai_responses_protocol", ["test_openai_responses_protocol.cpp"])
 yac_test(
@@ -247,6 +246,8 @@ yac_test("yac_test_mcp_resources_slash", ["test_mcp_resources_slash.cpp"])
 yac_test("yac_test_mcp_admin", ["test_mcp_admin.cpp"])
 yac_test("yac_test_yac_auth_cli", ["test_yac_auth_cli.cpp"])
 yac_test("yac_test_yac_mcp_cli", ["test_yac_mcp_cli.cpp"])
+
+yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
 
 yac_test(
     "yac_test_openai_auth_test_helpers",
