@@ -1,3 +1,4 @@
+#include "app/provider_auth_startup.hpp"
 #include "openai_auth_test_helpers.hpp"
 #include "provider/openai_chat_provider.hpp"
 
@@ -316,6 +317,45 @@ TEST_CASE("effective_auth_source_reports_precedence_without_secrets",
   }
 }
 
+TEST_CASE("env_api_key_bypasses_stored_auth_reads",
+          "[openai_chat_provider_auth]") {
+  const auto keychain = std::make_shared<ThrowingKeychainBackend>();
+  const auto file_backend = MakeFileBackend();
+  const auto store =
+      std::make_shared<OpenAiAuthStore>(OpenAiAuthStore::Dependencies{
+          .keychain_backend = keychain, .file_backend = file_backend});
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-stored"});
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    REQUIRE(request.headers.at("Authorization") == "Bearer env-secret");
+    if (request.path == "/models") {
+      return ModelsResponse();
+    }
+    REQUIRE(request.path == "/chat/completions");
+    return HttpResponse{
+        .headers = {{"Content-Type", "text/event-stream"}},
+        .body = "data: {\"choices\":[{\"delta\":{\"content\":\"env-ok\"}}]}\n"};
+  });
+  ScopedEnvVar env("OPENAI_API_KEY", "env-secret");
+
+  auto provider = MakeProvider(server.Url(""), store);
+  REQUIRE(provider.ResolveEffectiveAuthSource() ==
+          OpenAiChatProvider::EffectiveAuthSource::EnvApiKey);
+  const auto models = provider.ListModels(500ms);
+  const auto events = RunStream(provider);
+
+  REQUIRE(models.size() == 1);
+  REQUIRE(server.Requests().size() == 2);
+  REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
+  REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "env-ok");
+  REQUIRE(keychain->GetCount() == 0);
+  REQUIRE(file_backend->GetCount() == 0);
+}
+
 TEST_CASE("stored_api_key_is_used_for_openai_runtime",
           "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();
@@ -367,6 +407,57 @@ TEST_CASE("stored_api_key_cache_is_reused_for_source_and_models",
   REQUIRE(server.Requests().size() == 1);
   REQUIRE(keychain->GetCount() == 1);
   REQUIRE(file_backend->GetCount() == 1);
+}
+
+TEST_CASE("stored_auth_read_once_across_startup_discovery_and_send",
+          "[openai_chat_provider_auth]") {
+  ScopedEnvUnset env("OPENAI_API_KEY");
+  const auto keychain = std::make_shared<MemoryAuthBackend>();
+  const auto file_backend = MakeFileBackend();
+  keychain->Set(
+      SerializeOpenAiAuth(OpenAiApiKeyAuth{.key = "stored-api-key-flow"}));
+  const auto store =
+      std::make_shared<OpenAiAuthStore>(OpenAiAuthStore::Dependencies{
+          .keychain_backend = keychain, .file_backend = file_backend});
+  TestHttpServer server([](const HttpRequest& request,
+                           std::size_t request_index) {
+    REQUIRE(request.headers.at("Authorization") ==
+            "Bearer stored-api-key-flow");
+    if (request_index == 0) {
+      REQUIRE(request.path == "/models");
+      return ModelsResponse();
+    }
+    REQUIRE(request_index == 1);
+    REQUIRE(request.path == "/chat/completions");
+    return HttpResponse{
+        .headers = {{"Content-Type", "text/event-stream"}},
+        .body =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"flow-ok\"}}]}\n"};
+  });
+  chat::ProviderConfig config;
+  config.id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5.4"};
+  config.base_url = server.Url("");
+  config.api_key_env = "OPENAI_API_KEY";
+  OpenAiChatProvider provider(
+      config, OpenAiChatProvider::Dependencies{
+                  .auth_flow = std::make_shared<OpenAiAuthFlow>(
+                      MakeFlowDependencies(config.base_url, store)),
+                  .oauth_base_url = config.base_url,
+              });
+  std::vector<chat::ConfigIssue> issues;
+
+  yac::app::AppendProviderAuthStartupIssues(config, provider, issues);
+  const auto models = provider.ListModels(500ms);
+  const auto events = RunStream(provider);
+
+  REQUIRE(issues.empty());
+  REQUIRE(models.size() == 1);
+  REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
+  REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "flow-ok");
+  REQUIRE(server.Requests().size() == 2);
+  REQUIRE(keychain->GetCount() == 1);
+  REQUIRE(file_backend->GetCount() == 0);
 }
 
 TEST_CASE("stored_oauth_uses_codex_responses_endpoint_and_headers",
