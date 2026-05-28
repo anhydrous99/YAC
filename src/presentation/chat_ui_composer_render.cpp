@@ -173,7 +173,9 @@ ftxui::Element RenderWrappedComposerInput(ComposerState& composer,
     rows.push_back(RenderComposerVisualLine(lines[i], cursor, i == cursor_line,
                                             focused, mention_spans));
   }
-  return ftxui::vbox(std::move(rows)) | ftxui::frame;
+  // Apply color here so it survives the caller's clear_under wrap.
+  return ftxui::vbox(std::move(rows)) |
+         ftxui::color(theme::CurrentTheme().chrome.body_text) | ftxui::frame;
 }
 
 }  // namespace yac::presentation::detail
