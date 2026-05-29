@@ -81,7 +81,8 @@ Full references:
 In the TUI, `Enter` sends, `Shift+Enter` inserts a newline, `Ctrl+P` opens the
 command palette, and `Shift+Tab` switches between Plan and Build modes. Slash
 commands include `/help`, `/clear`, `/cancel`, `/task`, `/mcp`, `/auth`, `/quit`,
-and prompt files loaded from `~/.yac/prompts/*.toml`.
+OpenAI `/effort` when supported by the active model, and prompt files loaded
+from `~/.yac/prompts/*.toml`.
 
 Plan mode writes the active plan under `.opencode/plans/*.md`. When planning is
 complete, the assistant calls `plan_exit`; approving it writes the plan and

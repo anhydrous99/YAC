@@ -24,8 +24,8 @@ and `Help`; `Switch Model` appears after model discovery has results.
 ## Slash Commands
 
 Typing `/` opens slash command autocomplete. Built-ins include `/help`, `/?`,
-`/clear`, `/cancel`, `/task <description>`, `/mcp`, `/auth`, `/quit`, and
-`/exit`.
+`/clear`, `/cancel`, `/task <description>`, `/mcp`, `/auth`, `/quit`, `/exit`,
+and OpenAI `/effort` when supported by the active model.
 
 YAC also loads predefined prompt commands from `~/.yac/prompts/*.toml`. The file
 stem becomes the command name, so `~/.yac/prompts/review.toml` becomes
