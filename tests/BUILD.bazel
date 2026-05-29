@@ -94,6 +94,14 @@ yac_test(
     ],
 )
 yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
+yac_test(
+    "yac_test_reasoning_effort_capability",
+    ["test_reasoning_effort_capability.cpp"],
+    common_deps = [
+        "//src:provider",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test("yac_test_openai_auth_command", ["test_openai_auth_command.cpp"])
 yac_test("yac_test_openai_responses_protocol", ["test_openai_responses_protocol.cpp"])
 yac_test(
@@ -123,6 +131,7 @@ yac_test(
 )
 yac_test("yac_test_auto_compact", ["test_auto_compact.cpp"])
 yac_test("yac_test_slash_command_registry", ["test_slash_command_registry.cpp"])
+yac_test("yac_test_effort_slash_command", ["test_effort_slash_command.cpp"])
 yac_test("yac_test_slash_command_task", ["test_slash_command_task.cpp"])
 yac_test("yac_test_prompt_slash_commands", ["test_prompt_slash_commands.cpp"])
 yac_test("yac_test_slash_command_menu", ["test_slash_command_menu.cpp"])
@@ -456,6 +465,20 @@ yac_test(
         "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
         "SHUTDOWN_SCRIPT_PATH=\\\"$(rootpath integration/scripts/shutdown.jsonl)\\\"",
         "TWO_STDIO_SERVERS_FIXTURE=\\\"$(rootpath fixtures/two_stdio_servers.toml)\\\"",
+    ],
+    deps = OPENAI_CPP_DEPS,
+)
+
+yac_test(
+    "yac_test_provider_effort_request_log_integration",
+    ["integration/test_provider_effort_request_log.cpp"],
+    data = [
+        ":yac_test_e2e_runner",
+        "integration/scripts/sample.jsonl",
+    ],
+    defines = [
+        "YAC_TEST_E2E_RUNNER_PATH=\\\"$(rootpath :yac_test_e2e_runner)\\\"",
+        "SAMPLE_SCRIPT_PATH=\\\"$(rootpath integration/scripts/sample.jsonl)\\\"",
     ],
     deps = OPENAI_CPP_DEPS,
 )

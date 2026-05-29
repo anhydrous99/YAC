@@ -1,6 +1,8 @@
 #include "mock_response_provider.hpp"
 
+#include "chat/reasoning_effort.hpp"
 #include "chat/types.hpp"
+#include "provider/openai_compatible_chat_protocol.hpp"
 
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -37,8 +39,10 @@ std::string RoleToString(chat::ChatRole role) {
 }  // namespace
 
 MockResponseProvider::MockResponseProvider(std::string script_path,
-                                           std::string request_log_path)
-    : request_log_path_(std::move(request_log_path)) {
+                                           std::string request_log_path,
+                                           std::string provider_id)
+    : request_log_path_(std::move(request_log_path)),
+      provider_id_(std::move(provider_id)) {
   std::ifstream file(script_path);
   if (!file.is_open()) {
     throw std::runtime_error("MockResponseProvider: cannot open script file: " +
@@ -83,6 +87,10 @@ void MockResponseProvider::CompleteStream(const chat::ChatRequest& request,
     j["provider_id"] = request.provider_id.value;
     j["model"] = request.model.value;
     j["temperature"] = request.temperature;
+    if (request.reasoning_effort.has_value()) {
+      j["reasoning_effort"] =
+          chat::ReasoningEffortToString(*request.reasoning_effort);
+    }
     auto messages = nlohmann::json::array();
     for (const auto& msg : request.messages) {
       nlohmann::json m;
@@ -96,6 +104,13 @@ void MockResponseProvider::CompleteStream(const chat::ChatRequest& request,
       tools.push_back(nlohmann::json{{"name", tool.name}});
     }
     j["tools"] = std::move(tools);
+    if (provider_id_ == "openai" || provider_id_ == "openai-compatible") {
+      chat::ProviderConfig config;
+      config.id = request.provider_id;
+      config.model = request.model;
+      j["chat_completions_payload"] =
+          openai_compatible_protocol::BuildChatPayload(request, true, config);
+    }
     std::ofstream log(request_log_path_, std::ios::app);
     log << j.dump() << '\n';
   }

@@ -31,9 +31,10 @@ struct MockScriptEntry {
 class MockResponseProvider : public LanguageModelProvider {
  public:
   explicit MockResponseProvider(std::string script_path,
-                                std::string request_log_path = "");
+                                std::string request_log_path = "",
+                                std::string provider_id = "mock");
 
-  [[nodiscard]] std::string Id() const override { return "mock"; }
+  [[nodiscard]] std::string Id() const override { return provider_id_; }
 
   void CompleteStream(const chat::ChatRequest& request, ChatEventSink sink,
                       std::stop_token stop_token) override;
@@ -41,6 +42,7 @@ class MockResponseProvider : public LanguageModelProvider {
  private:
   std::vector<MockScriptEntry> entries_;
   std::string request_log_path_;
+  std::string provider_id_;
 };
 
 }  // namespace yac::provider

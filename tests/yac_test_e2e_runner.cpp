@@ -22,14 +22,16 @@ namespace {
 
 constexpr std::string_view kMockScriptFlag = "--mock-llm-script=";
 constexpr std::string_view kMockRequestLogFlag = "--mock-request-log=";
+constexpr std::string_view kMockProviderIdFlag = "--mock-provider-id=";
 constexpr auto kMcpReadyTimeout = std::chrono::seconds(30);
 
 void PrintUsage(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " run <prompt> --auto-approve"
-               " --mock-llm-script=<PATH>"
-               " [--mock-request-log=<PATH>]"
-               " [--cancel-after-ms=<N>]\n";
+                " --mock-llm-script=<PATH>"
+                " [--mock-request-log=<PATH>]"
+                " [--mock-provider-id=<ID>]"
+                " [--cancel-after-ms=<N>]\n";
 }
 
 bool WaitForMcpReady(yac::mcp::McpManager& manager) {
@@ -71,6 +73,7 @@ int main(int argc, char* argv[]) {
     int cancel_after_ms = 0;
     std::string mock_script_path;
     std::string mock_request_log;
+    std::string mock_provider_id = "mock";
 
     for (int i = 2; i < argc; ++i) {
       std::string_view arg(argv[i]);
@@ -80,6 +83,8 @@ int main(int argc, char* argv[]) {
         mock_script_path = std::string(arg.substr(kMockScriptFlag.size()));
       } else if (arg.starts_with(kMockRequestLogFlag)) {
         mock_request_log = std::string(arg.substr(kMockRequestLogFlag.size()));
+      } else if (arg.starts_with(kMockProviderIdFlag)) {
+        mock_provider_id = std::string(arg.substr(kMockProviderIdFlag.size()));
       } else if (arg.starts_with("--cancel-after-ms=")) {
         try {
           cancel_after_ms = std::stoi(std::string(
@@ -105,10 +110,10 @@ int main(int argc, char* argv[]) {
 
     auto config_result = yac::chat::LoadChatConfigResult();
     yac::chat::ChatConfig config = config_result.config;
-    config.provider_id = ::yac::ProviderId{"mock"};
+    config.provider_id = ::yac::ProviderId{mock_provider_id};
 
     auto provider = std::make_shared<yac::provider::MockResponseProvider>(
-        mock_script_path, mock_request_log);
+        mock_script_path, mock_request_log, mock_provider_id);
 
     yac::provider::ProviderRegistry registry;
     registry.Register(provider);
