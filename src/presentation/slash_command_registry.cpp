@@ -39,6 +39,16 @@ void SlashCommandRegistry::SetArgumentsHandler(
   }
 }
 
+void SlashCommandRegistry::SetVisibleInMenu(const std::string& id,
+                                            std::function<bool()> predicate) {
+  for (auto& command : commands_) {
+    if (command.id == id) {
+      command.visible_in_menu = std::move(predicate);
+      break;
+    }
+  }
+}
+
 void SlashCommandRegistry::Register(SlashCommand command) {
   if (command.id.empty()) {
     command.id = command.name;

@@ -143,6 +143,24 @@ TEST_CASE("SlashCommandRegistry dispatches via primary name with alias",
   CHECK(called);
 }
 
+TEST_CASE("SlashCommandRegistry dispatches hidden commands manually",
+          "[slash_command]") {
+  SlashCommandRegistry registry;
+  bool called = false;
+  registry.Register(SlashCommand{.id = "hidden",
+                                 .name = "hidden",
+                                 .description = "Hidden command",
+                                 .aliases = {"secret"},
+                                 .handler = [&] { called = true; },
+                                 .visible_in_menu = [] { return false; }});
+
+  CHECK(registry.TryDispatch("/hidden"));
+  CHECK(called);
+  called = false;
+  CHECK(registry.TryDispatch("/secret"));
+  CHECK(called);
+}
+
 TEST_CASE("SlashCommandRegistry Define without SetHandler does not dispatch",
           "[slash_command]") {
   SlashCommandRegistry registry;

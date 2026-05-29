@@ -693,3 +693,26 @@ TEST_CASE("Mention menu Return takes priority over an active slash menu") {
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("@src/foo.cpp"));
   REQUIRE(dispatched == 0);
 }
+
+TEST_CASE("Slash menu omits commands hidden from the menu") {
+  ChatUI ui;
+  SlashCommandRegistry registry;
+  registry.Register(SlashCommand{.id = "help",
+                                 .name = "help",
+                                 .description = "Show shortcuts",
+                                 .handler = [] {},
+                                 .visible_in_menu = [] { return true; }});
+  registry.Register(SlashCommand{.id = "hidden",
+                                 .name = "hidden",
+                                 .description = "Hidden command",
+                                 .handler = [] {},
+                                 .visible_in_menu = [] { return false; }});
+  ui.SetSlashCommands(std::move(registry));
+  auto component = ui.Build();
+
+  TypeText(component, "/h");
+
+  auto output = RenderComponent(component, 100, 30);
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("/help"));
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("/hidden"));
+}

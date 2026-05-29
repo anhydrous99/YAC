@@ -223,16 +223,21 @@ std::vector<int> ComposerState::FilteredSlashIndices(
   auto filter = SlashMenuFilter();
   std::vector<int> indices;
   for (int i = 0; std::cmp_less(i, commands.size()); ++i) {
+    const auto& command = commands[i];
+    if (command.visible_in_menu.has_value() &&
+        !command.visible_in_menu.value()()) {
+      continue;
+    }
     if (filter.empty()) {
       indices.push_back(i);
       continue;
     }
-    if (commands[i].name.starts_with(filter)) {
+    if (command.name.starts_with(filter)) {
       indices.push_back(i);
       continue;
     }
     bool alias_match = false;
-    for (const auto& alias : commands[i].aliases) {
+    for (const auto& alias : command.aliases) {
       if (alias.starts_with(filter)) {
         alias_match = true;
         break;

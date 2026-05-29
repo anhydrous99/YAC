@@ -14,6 +14,7 @@ struct SlashCommand {
   std::vector<std::string> aliases;
   std::optional<std::function<void()>> handler;
   std::optional<std::function<void(std::string)>> arguments_handler;
+  std::optional<std::function<bool()>> visible_in_menu;
 };
 
 class SlashCommandRegistry {
@@ -23,6 +24,7 @@ class SlashCommandRegistry {
   void SetHandler(const std::string& id, std::function<void()> handler);
   void SetArgumentsHandler(const std::string& id,
                            std::function<void(std::string)> handler);
+  void SetVisibleInMenu(const std::string& id, std::function<bool()> predicate);
 
   // Legacy API for backwards compatibility with tests.
   void Register(SlashCommand command);
