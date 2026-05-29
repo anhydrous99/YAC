@@ -153,6 +153,9 @@ void ConsumeOAuthBody(std::string_view chunk, OAuthWriteState& state) {
     if (json.contains("message") && json["message"].is_string()) {
       return json["message"].get<std::string>();
     }
+    if (json.contains("detail") && json["detail"].is_string()) {
+      return json["detail"].get<std::string>();
+    }
     if (json.contains("error")) {
       const auto& error = json["error"];
       if (error.is_string()) {

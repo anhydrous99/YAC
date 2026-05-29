@@ -324,7 +324,6 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
   Json payload{{"model", request.model.value},
                {"input", std::move(input)},
                {"stream", true},
-               {"temperature", request.temperature},
                {"store", false}};
 
   if (request.responses_instructions.has_value()) {

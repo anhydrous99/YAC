@@ -2,7 +2,6 @@
 
 #include <vector>
 
-#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 using namespace yac::chat;
@@ -42,7 +41,7 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
   REQUIRE(payload["model"].get<std::string>() == "gpt-5.4");
   REQUIRE(payload["stream"].get<bool>());
   REQUIRE_FALSE(payload["store"].get<bool>());
-  REQUIRE(payload["temperature"].get<double>() == Catch::Approx(0.2));
+  REQUIRE_FALSE(payload.contains("temperature"));
   REQUIRE(payload["instructions"].get<std::string>() == "system prompt");
   REQUIRE(payload["input"].size() == 4);
   REQUIRE(payload["input"][0]["role"].get<std::string>() == "user");

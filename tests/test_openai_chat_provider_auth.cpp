@@ -695,6 +695,40 @@ TEST_CASE("oauth_401_refreshes_once_and_retries_once",
   REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "retry-ok");
 }
 
+TEST_CASE("oauth_error_detail_is_extracted", "[openai_chat_provider_auth]") {
+  const auto file_backend = MakeFileBackend();
+  const auto store = MakeStore(file_backend);
+  (void)store->Save(OpenAiOAuthAuth{
+      .refresh_token = "refresh-stored",
+      .access_token = "access-stored",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+      .account_id = "acct-123"});
+  TestHttpServer server([](const HttpRequest& request, std::size_t) {
+    REQUIRE(request.path == "/backend-api/codex/responses");
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body = R"({"detail":"Unsupported parameter: temprature"})"};
+  });
+
+  auto provider = MakeProvider(server.Url(""), store, server.Url(""));
+  std::vector<chat::ChatEvent> events;
+  provider.CompleteStream(
+      MakeStreamingRequest(),
+      [&events](chat::ChatEvent event) { events.push_back(std::move(event)); },
+      {});
+
+  REQUIRE(events.size() == 1);
+  REQUIRE(events[0].Type() == chat::ChatEventType::Error);
+  REQUIRE_THAT(events[0].Get<chat::ErrorEvent>().text,
+               ContainsSubstring("OpenAI OAuth request failed with HTTP 400"));
+  REQUIRE_THAT(events[0].Get<chat::ErrorEvent>().text,
+               ContainsSubstring("Unsupported parameter: temprature"));
+  REQUIRE(events[0].Get<chat::ErrorEvent>().text.find("{\"detail\"") ==
+          std::string::npos);
+}
+
 TEST_CASE("revoked_refresh_token_emits_actionable_error",
           "[openai_chat_provider_auth]") {
   const auto file_backend = MakeFileBackend();

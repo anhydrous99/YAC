@@ -29,7 +29,9 @@ YAC's Codex-facing backend behavior, not a rule about the public OpenAI
 Responses API schema. Each OAuth Responses request includes a YAC-authored
 built-in top-level `instructions` baseline. Workspace, config, and Plan
 instructions are appended after that baseline. The baseline is YAC-authored
-behavior and does not copy OpenCode prompt text.
+behavior and does not copy OpenCode prompt text. The OAuth/Codex backend does
+not accept the public API sampling `temperature` field, so YAC omits it on this
+path.
 Set `YAC_API_KEY_ENV` if you need `provider.api_key_env` to name a different
 secret env var.
 
