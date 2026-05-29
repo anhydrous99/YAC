@@ -20,6 +20,8 @@ using yac::chat::ConfigIssue;
 using yac::chat::ConfigIssueSeverity;
 using yac::chat::kDefaultSettingsToml;
 using yac::chat::LoadSettingsFromToml;
+using yac::chat::ReasoningEffort;
+using yac::chat::SaveProviderModelEffortToSettingsToml;
 using yac::chat::SaveThemeNameToSettingsToml;
 using yac::chat::WriteDefaultSettingsToml;
 
@@ -371,6 +373,23 @@ TEST_CASE("SaveThemeNameToSettingsToml leaves invalid theme table untouched") {
     return issue.severity == ConfigIssueSeverity::Error &&
            issue.message.find("theme.name") != std::string::npos;
   }));
+  REQUIRE(ReadFile(file.Path()) == before);
+}
+
+TEST_CASE("SaveProviderModelEffortToSettingsToml rejects inline model settings") {
+  TempFile file("yac_test_settings_model_effort_inline.toml");
+  WriteFile(file.Path(),
+            "[provider]\n"
+            "model_settings = [{ provider = \"openai\", model = \"gpt-5.5\", "
+            "effort = \"low\" }]\n");
+  const auto before = ReadFile(file.Path());
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE_FALSE(SaveProviderModelEffortToSettingsToml(
+      file.Path(), yac::ProviderId{"openai"}, yac::ModelId{"gpt-5.5"},
+      ReasoningEffort::High, issues));
+
+  REQUIRE(HasIssueContaining(issues, "Cannot edit provider.model_settings"));
   REQUIRE(ReadFile(file.Path()) == before);
 }
 

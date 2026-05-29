@@ -28,6 +28,8 @@ using yac::chat::LoadChatConfigResultFrom;
 using yac::chat::LoadConfig;
 using yac::chat::LoadPromptLibrary;
 using yac::chat::LoadSettingsFromToml;
+using yac::chat::ReasoningEffort;
+using yac::chat::SaveProviderModelEffortToSettingsToml;
 using yac::testing::ScopedEnvClear;
 
 namespace {
@@ -215,6 +217,212 @@ TEST_CASE("LoadConfig aggregates settings.toml and prompt library") {
   }
   REQUIRE(std::ranges::find(names, std::string{"init"}) != names.end());
   REQUIRE(std::ranges::find(names, std::string{"review"}) != names.end());
+}
+
+TEST_CASE("provider model effort settings load exact scoped entries") {
+  TempDir dir("yac_test_config_loader_provider_model_effort");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "effort = \"high\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai-compatible\"\n"
+            "model = \"gpt-5.4-mini\"\n"
+            "effort = \"minimal\"\n");
+
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  const auto fields = LoadSettingsFromToml(settings_path, config, issues);
+
+  REQUIRE(issues.empty());
+  REQUIRE(fields.model_settings);
+  REQUIRE(config.provider_id.value == "openai");
+  REQUIRE(config.model.value == "gpt-5.5");
+  REQUIRE(config.model_settings.size() == 2);
+  REQUIRE(config.model_settings[0].provider_id.value == "openai");
+  REQUIRE(config.model_settings[0].model.value == "gpt-5.5");
+  REQUIRE(config.model_settings[0].effort == ReasoningEffort::High);
+  REQUIRE(config.model_settings[1].provider_id.value == "openai-compatible");
+  REQUIRE(config.model_settings[1].model.value == "gpt-5.4-mini");
+  REQUIRE(config.model_settings[1].effort == ReasoningEffort::Minimal);
+}
+
+TEST_CASE("provider model effort settings report invalid effort") {
+  TempDir dir("yac_test_config_loader_provider_model_effort_invalid");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "effort = \"turbo\"\n");
+
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+  const auto fields = LoadSettingsFromToml(settings_path, config, issues);
+
+  REQUIRE(fields.model_settings);
+  REQUIRE(config.model_settings.size() == 1);
+  REQUIRE_FALSE(config.model_settings[0].effort.has_value());
+  REQUIRE(HasErrorIssue(issues, "Invalid provider.model_settings.effort"));
+  REQUIRE(HasIssue(issues, "turbo"));
+}
+
+TEST_CASE("provider model effort persistence updates appends and unsets") {
+  TempDir dir("yac_test_config_loader_provider_model_effort_save");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "# preserve header\n"
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "effort = \"low\"\n"
+            "unknown = \"keep\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"o3\"\n"
+            "effort = \"medium\"\n");
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveProviderModelEffortToSettingsToml(
+      settings_path, yac::ProviderId{"openai"}, yac::ModelId{"gpt-5.5"},
+      ReasoningEffort::High, issues));
+  REQUIRE(issues.empty());
+
+  auto content = ReadFile(settings_path);
+  REQUIRE(content.find("# preserve header\n") != std::string::npos);
+  REQUIRE(content.find("id = \"openai\"\nmodel = \"gpt-5.5\"") !=
+          std::string::npos);
+  REQUIRE(content.find("effort = \"high\"") != std::string::npos);
+  REQUIRE(content.find("unknown = \"keep\"") != std::string::npos);
+  REQUIRE(content.find("model = \"o3\"\neffort = \"medium\"") !=
+          std::string::npos);
+
+  REQUIRE(SaveProviderModelEffortToSettingsToml(
+      settings_path, yac::ProviderId{"openai-compatible"},
+      yac::ModelId{"gpt-5.4-mini"}, ReasoningEffort::Minimal, issues));
+  REQUIRE(issues.empty());
+  content = ReadFile(settings_path);
+  REQUIRE(content.find("provider = \"openai-compatible\"\n") !=
+          std::string::npos);
+  REQUIRE(content.find("model = \"gpt-5.4-mini\"\n") != std::string::npos);
+  REQUIRE(content.find("effort = \"minimal\"\n") != std::string::npos);
+
+  REQUIRE(SaveProviderModelEffortToSettingsToml(
+      settings_path, yac::ProviderId{"openai"}, yac::ModelId{"gpt-5.5"},
+      std::nullopt, issues));
+  REQUIRE(issues.empty());
+
+  ChatConfig config;
+  std::vector<ConfigIssue> load_issues;
+  LoadSettingsFromToml(settings_path, config, load_issues);
+  REQUIRE(load_issues.empty());
+  REQUIRE(config.model_settings.size() == 3);
+  REQUIRE_FALSE(config.model_settings[0].effort.has_value());
+  REQUIRE(config.model_settings[1].effort == ReasoningEffort::Medium);
+  REQUIRE(config.model_settings[2].effort == ReasoningEffort::Minimal);
+}
+
+TEST_CASE("provider model effort unset without matching entry is no-op") {
+  TempDir dir("yac_test_config_loader_provider_model_effort_unset_noop");
+  const auto settings_path = dir.Path() / "settings.toml";
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-5.5\"\n");
+  const auto before = ReadFile(settings_path);
+
+  std::vector<ConfigIssue> issues;
+  REQUIRE(SaveProviderModelEffortToSettingsToml(
+      settings_path, yac::ProviderId{"openai"}, yac::ModelId{"missing"},
+      std::nullopt, issues));
+
+  REQUIRE(issues.empty());
+  REQUIRE(ReadFile(settings_path) == before);
+}
+
+TEST_CASE("provider option reasoning effort conflicts produce errors") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_provider_model_effort_conflicts");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "options.reasoning_effort = \"high\"\n"
+            "options.reasoning = \"{effort='high'}\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"gpt-5.5\"\n"
+            "effort = \"medium\"\n");
+
+  const auto result = LoadChatConfigResultFrom(settings_path, false);
+
+  REQUIRE(HasErrorIssue(result.issues,
+                        "provider.options.reasoning_effort conflicts with "
+                        "model-scoped effort"));
+  REQUIRE(HasErrorIssue(result.issues,
+                        "provider.options.reasoning conflicts with "
+                        "model-scoped effort"));
+  REQUIRE(result.config.options.at("reasoning_effort") == "high");
+  REQUIRE(result.config.options.at("reasoning") == "{effort='high'}");
+}
+
+TEST_CASE("active unsupported provider model effort reports warning") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_active_unsupported_effort");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "model = \"gpt-5-pro\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"openai\"\n"
+            "model = \"gpt-5-pro\"\n"
+            "effort = \"medium\"\n");
+
+  const auto result = LoadChatConfigResultFrom(settings_path, false);
+
+  REQUIRE(HasIssue(result.issues,
+                   "Unsupported provider.model_settings.effort for active "
+                   "provider model"));
+  REQUIRE(result.config.model_settings.size() == 1);
+  REQUIRE(result.config.model_settings[0].effort == ReasoningEffort::Medium);
+}
+
+TEST_CASE("active provider without effort capability reports warning") {
+  ScopedEnvClear env_guard;
+  TempDir dir("yac_test_config_loader_active_no_effort_capability");
+  const auto settings_path = dir.Path() / "settings.toml";
+
+  WriteFile(settings_path,
+            "[provider]\n"
+            "id = \"bedrock\"\n"
+            "model = \"gpt-5.5\"\n"
+            "[[provider.model_settings]]\n"
+            "provider = \"bedrock\"\n"
+            "model = \"gpt-5.5\"\n"
+            "effort = \"high\"\n");
+
+  const auto result = LoadChatConfigResultFrom(settings_path, false);
+
+  REQUIRE(HasIssue(result.issues,
+                   "Unsupported provider.model_settings.effort for active "
+                   "provider model"));
+  REQUIRE(result.config.model_settings.size() == 1);
+  REQUIRE(result.config.model_settings[0].effort == ReasoningEffort::High);
 }
 
 TEST_CASE("LoadConfig matches separate LoadChatConfig + LoadPromptLibrary") {

@@ -1,5 +1,6 @@
 #include "chat/settings_toml.hpp"
 
+#include "chat/reasoning_effort.hpp"
 #include "chat/settings_registry.hpp"
 #include "chat/settings_toml_template.hpp"
 #include "mcp/mcp_server_config.hpp"
@@ -430,6 +431,27 @@ std::optional<std::string> ParseTableHeader(std::string_view line) {
   return std::string(::yac::util::TrimSv(line.substr(1, close - 1)));
 }
 
+std::optional<std::string> ParseArrayTableHeader(std::string_view line) {
+  line = ::yac::util::TrimSv(line);
+  if (!line.starts_with("[[")) {
+    return std::nullopt;
+  }
+  const auto close = line.find("]]");
+  if (close == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const auto rest = ::yac::util::TrimSv(line.substr(close + 2));
+  if (!rest.empty() && rest.front() != '#') {
+    return std::nullopt;
+  }
+  return std::string(::yac::util::TrimSv(line.substr(2, close - 2)));
+}
+
+bool IsAnyTableHeader(std::string_view line) {
+  return ParseTableHeader(line).has_value() ||
+         ParseArrayTableHeader(line).has_value();
+}
+
 bool IsKeyAssignment(std::string_view line, std::string_view key) {
   line = ::yac::util::TrimLeftSv(line);
   if (line.empty() || line.front() == '#' || !line.starts_with(key)) {
@@ -552,6 +574,28 @@ bool ValidateEditableSettingsToml(const std::filesystem::path& path,
       return false;
     }
   }
+  const auto provider_section = table["provider"];
+  if (provider_section && !provider_section.is_table()) {
+    AddError(issues, "Invalid type for [provider] in settings.toml",
+             "Expected a table.");
+    return false;
+  }
+  const auto model_settings = table["provider"]["model_settings"];
+  if (model_settings && !model_settings.is_array()) {
+    AddError(issues,
+             "Invalid type for [[provider.model_settings]] in settings.toml",
+             "Expected an array of tables.");
+    return false;
+  }
+  if (auto* settings_array = model_settings.as_array()) {
+    for (const auto& entry : *settings_array) {
+      if (!entry.is_table()) {
+        AddError(issues, "Invalid element in [[provider.model_settings]]",
+                 "Expected a table.");
+        return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -619,6 +663,126 @@ std::string WithThemeName(std::string_view content,
   return JoinLines(lines);
 }
 
+std::optional<size_t> MatchingModelSettingsIndex(toml::table& table,
+                                                 const ProviderId& provider_id,
+                                                 const ModelId& model) {
+  auto* settings = table["provider"]["model_settings"].as_array();
+  if (settings == nullptr) {
+    return std::nullopt;
+  }
+  size_t entry_index = 0;
+  for (auto& entry : *settings) {
+    auto* entry_table = entry.as_table();
+    if (entry_table != nullptr) {
+      const auto* parsed_provider = (*entry_table)["provider"].as_string();
+      const auto* parsed_model = (*entry_table)["model"].as_string();
+      if (parsed_provider != nullptr && parsed_model != nullptr &&
+          parsed_provider->get() == provider_id.value &&
+          parsed_model->get() == model.value) {
+        return entry_index;
+      }
+    }
+    ++entry_index;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::pair<size_t, size_t>> FindModelSettingsBlock(
+    const std::vector<TextLine>& lines, size_t target_index) {
+  size_t entry_index = 0;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (ParseArrayTableHeader(lines[i].text) != "provider.model_settings") {
+      continue;
+    }
+    if (entry_index != target_index) {
+      ++entry_index;
+      continue;
+    }
+    size_t end = lines.size();
+    for (size_t j = i + 1; j < lines.size(); ++j) {
+      if (IsAnyTableHeader(lines[j].text)) {
+        end = j;
+        break;
+      }
+    }
+    return std::pair{i, end};
+  }
+  return std::nullopt;
+}
+
+std::string WithProviderModelEffort(std::string_view content,
+                                     const ProviderId& provider_id,
+                                     const ModelId& model,
+                                     std::optional<ReasoningEffort> effort,
+                                     std::optional<size_t> matching_index,
+                                     std::vector<ConfigIssue>& issues) {
+  auto lines = SplitPreservingNewlines(content);
+  const auto newline = DetectNewline(lines);
+
+  if (!matching_index.has_value()) {
+    if (!effort.has_value()) {
+      return std::string(content);
+    }
+    if (!lines.empty()) {
+      if (lines.back().newline.empty()) {
+        lines.back().newline = newline;
+      }
+      if (!lines.back().text.empty()) {
+        lines.push_back({"", newline});
+      }
+    }
+    lines.push_back({"[[provider.model_settings]]", newline});
+    lines.push_back(
+        {"provider = " + QuoteTomlString(provider_id.value), newline});
+    lines.push_back({"model = " + QuoteTomlString(model.value), newline});
+    lines.push_back({"effort = " + QuoteTomlString(std::string(
+                                       ReasoningEffortToString(*effort))),
+                     newline});
+    return JoinLines(lines);
+  }
+
+  const auto block = FindModelSettingsBlock(lines, *matching_index);
+  if (!block.has_value()) {
+    AddError(issues, "Cannot edit provider.model_settings entry",
+             "Use [[provider.model_settings]] table blocks for editable "
+             "provider/model effort settings.");
+    return std::string(content);
+  }
+  const auto [block_start, block_end] = *block;
+  const auto assignment =
+      effort.has_value()
+          ? "effort = " +
+                QuoteTomlString(std::string(ReasoningEffortToString(*effort)))
+          : std::string{};
+
+  for (size_t i = block_start + 1; i < block_end; ++i) {
+    if (!IsKeyAssignment(lines[i].text, "effort")) {
+      continue;
+    }
+    if (effort.has_value()) {
+      lines[i].text = assignment;
+    } else {
+      lines.erase(lines.begin() + static_cast<std::ptrdiff_t>(i));
+    }
+    return JoinLines(lines);
+  }
+
+  if (!effort.has_value()) {
+    return JoinLines(lines);
+  }
+
+  size_t insert_at = block_end;
+  for (size_t i = block_start + 1; i < block_end; ++i) {
+    if (IsKeyAssignment(lines[i].text, "model")) {
+      insert_at = i + 1;
+      break;
+    }
+  }
+  lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_at),
+               TextLine{.text = assignment, .newline = newline});
+  return JoinLines(lines);
+}
+
 void LoadProviderSection(toml::table& root, ChatConfig& config,
                          ChatConfigFieldSet& fields,
                          std::vector<ConfigIssue>& issues) {
@@ -644,7 +808,83 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
   fields.context_window =
       ApplyIntegerSetting(provider["context_window"], "provider.context_window",
                           config.context_window, issues);
+  if (auto* options_table = provider["options"].as_table()) {
+    for (const char* const key : {"reasoning_effort", "reasoning"}) {
+      const auto option = (*options_table)[key];
+      if (!option) {
+        continue;
+      }
+      if (auto* value = option.as_string()) {
+        config.options[key] = value->get();
+      } else {
+        AddError(issues,
+                 "Invalid type for provider.options." + std::string(key) +
+                     " in settings.toml",
+                 "Expected a string.");
+      }
+    }
+  } else if (provider["options"]) {
+    AddError(issues, "Invalid type for [provider.options] in settings.toml",
+             "Expected a table.");
+  }
   LoadBedrockProviderOptions(provider, config, issues);
+}
+
+void LoadProviderModelSettings(toml::table& root, ChatConfig& config,
+                               ChatConfigFieldSet& fields,
+                               std::vector<ConfigIssue>& issues) {
+  const auto settings = root["provider"]["model_settings"];
+  if (!settings) {
+    return;
+  }
+  fields.model_settings = true;
+  auto* settings_array = settings.as_array();
+  if (settings_array == nullptr) {
+    AddError(issues,
+             "Invalid type for [[provider.model_settings]] in settings.toml",
+             "Expected an array of tables.");
+    return;
+  }
+
+  for (auto& entry : *settings_array) {
+    auto* entry_table = entry.as_table();
+    if (entry_table == nullptr) {
+      AddError(issues, "Invalid element in [[provider.model_settings]]",
+               "Expected a table.");
+      continue;
+    }
+
+    ProviderModelSettings parsed;
+    const bool has_provider = ApplyStringField(
+        (*entry_table)["provider"], "provider.model_settings.provider",
+        parsed.provider_id.value, issues);
+    const bool has_model = ApplyStringField((*entry_table)["model"],
+                                            "provider.model_settings.model",
+                                            parsed.model.value, issues);
+    if (!has_provider || !has_model) {
+      AddError(issues, "Missing provider.model_settings provider or model",
+               "Each entry requires string provider and model fields.");
+      continue;
+    }
+    if (auto effort_node = (*entry_table)["effort"]) {
+      if (auto* effort_string = effort_node.as_string()) {
+        const std::string raw_effort = effort_string->get();
+        if (auto effort = ParseReasoningEffortValue(raw_effort)) {
+          parsed.effort = effort;
+        } else {
+          AddError(issues,
+                   "Invalid provider.model_settings.effort in settings.toml",
+                   "Unsupported effort '" + raw_effort + "'.");
+        }
+      } else {
+        AddError(issues,
+                 "Invalid type for provider.model_settings.effort in "
+                 "settings.toml",
+                 "Expected a string.");
+      }
+    }
+    config.model_settings.push_back(std::move(parsed));
+  }
 }
 
 void LoadLspSection(toml::table& root, ChatConfig& config,
@@ -978,6 +1218,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
       table["workspace_root"], "workspace_root", config.workspace_root, issues);
 
   LoadProviderSection(table, config, fields, issues);
+  LoadProviderModelSettings(table, config, fields, issues);
   LoadLspSection(table, config, fields, issues);
   LoadThemeSection(table, config, fields, issues);
   LoadCompactSection(table, config, issues);
@@ -1097,6 +1338,67 @@ bool SaveThemeNameToSettingsToml(const std::filesystem::path& path,
   }
 
   const auto updated = WithThemeName(content, theme_name);
+  if (!ValidateGeneratedSettingsToml(updated, path, issues)) {
+    return false;
+  }
+
+  return WriteTextFile(path, updated, issues);
+}
+
+bool SaveProviderModelEffortToSettingsToml(
+    const std::filesystem::path& path, const ProviderId& provider_id,
+    const ModelId& model, std::optional<ReasoningEffort> effort,
+    std::vector<ConfigIssue>& issues) {
+  if (provider_id.value.empty() || model.value.empty()) {
+    AddError(issues, "Cannot save provider model effort",
+             "Provider and model must both be non-empty.");
+    return false;
+  }
+
+  std::error_code ec;
+  const bool exists = std::filesystem::exists(path, ec) && !ec;
+  if (ec) {
+    AddWarning(issues, "Failed to inspect " + path.string(), ec.message());
+    return false;
+  }
+  if (!exists) {
+    WriteDefaultSettingsToml(path, issues);
+    ec.clear();
+    if (!std::filesystem::exists(path, ec) || ec) {
+      if (ec) {
+        AddWarning(issues, "Failed to inspect " + path.string(), ec.message());
+      }
+      return false;
+    }
+  }
+
+  if (!ValidateEditableSettingsToml(path, issues)) {
+    return false;
+  }
+
+  toml::table table;
+  try {
+    table = toml::parse_file(path.string());
+  } catch (const toml::parse_error& error) {
+    AddError(issues, "Failed to parse settings.toml",
+             std::string(error.description()));
+    return false;
+  } catch (const std::exception& error) {
+    AddError(issues, "Failed to read settings.toml", error.what());
+    return false;
+  }
+
+  std::string content;
+  if (!ReadTextFile(path, content, issues)) {
+    return false;
+  }
+
+  const auto updated = WithProviderModelEffort(
+      content, provider_id, model, effort,
+      MatchingModelSettingsIndex(table, provider_id, model), issues);
+  if (updated == content) {
+    return issues.empty();
+  }
   if (!ValidateGeneratedSettingsToml(updated, path, issues)) {
     return false;
   }

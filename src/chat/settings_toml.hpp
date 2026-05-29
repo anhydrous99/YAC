@@ -33,6 +33,7 @@ struct ChatConfigFieldSet {
   bool lsp_clangd_args = false;
   bool theme_name = false;
   bool theme_density = false;
+  bool model_settings = false;
   std::unordered_map<std::string, McpServerFieldSet> mcp_servers;
 };
 
@@ -57,6 +58,11 @@ void WriteDefaultSettingsToml(const std::filesystem::path& path,
 // invalid [theme] shape is left untouched and reported through `issues`.
 [[nodiscard]] bool SaveThemeNameToSettingsToml(
     const std::filesystem::path& path, std::string_view theme_name,
+    std::vector<ConfigIssue>& issues);
+
+[[nodiscard]] bool SaveProviderModelEffortToSettingsToml(
+    const std::filesystem::path& path, const ProviderId& provider_id,
+    const ModelId& model, std::optional<ReasoningEffort> effort,
     std::vector<ConfigIssue>& issues);
 
 }  // namespace yac::chat
