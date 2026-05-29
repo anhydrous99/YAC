@@ -29,11 +29,12 @@ using yac::testing::LambdaMockProvider;
 namespace {
 
 std::shared_ptr<LambdaMockProvider> MakeFakeProvider(
-    ::yac::ModelId expected_model = ::yac::ModelId{"fake-model"}) {
+    ::yac::ModelId expected_model = ::yac::ModelId{"fake-model"},
+    std::string provider_id = "fake") {
   return std::make_shared<LambdaMockProvider>(
-      "fake", [expected_model = std::move(expected_model)](
-                  const ChatRequest& request, ChatEventSink sink,
-                  std::stop_token stop_token) {
+      std::move(provider_id), [expected_model = std::move(expected_model)](
+                   const ChatRequest& request, ChatEventSink sink,
+                   std::stop_token stop_token) {
         REQUIRE(request.model == expected_model);
         REQUIRE(request.stream);
         REQUIRE(!request.messages.empty());
@@ -633,6 +634,152 @@ TEST_CASE("ChatService SetModel updates future requests and emits event") {
   const auto& event = FindEvent(events, ChatEventType::ModelChanged);
   REQUIRE(event.Get<ModelChangedEvent>().provider_id.value == "fake");
   REQUIRE(event.Get<ModelChangedEvent>().model.value == "glm-5.1");
+}
+
+TEST_CASE("ChatService applies supported configured reasoning effort") {
+  auto provider = MakeFakeProvider(::yac::ModelId{"gpt-5.5"}, "openai");
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5.5"};
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"openai"},
+      .model = ::yac::ModelId{"gpt-5.5"},
+      .effort = ReasoningEffort::High});
+  auto service = MakeService(provider, config);
+
+  REQUIRE(service.ConfiguredReasoningEffort() == ReasoningEffort::High);
+  (void)CollectEvents(service, "hello");
+
+  const auto request = provider->LastRequest();
+  REQUIRE(request.reasoning_effort == ReasoningEffort::High);
+}
+
+TEST_CASE("ChatService ignores unsupported reasoning effort settings") {
+  auto provider = MakeFakeProvider(::yac::ModelId{"gpt-4o"}, "openai");
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-4o"};
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"openai"},
+      .model = ::yac::ModelId{"gpt-5.5"},
+      .effort = ReasoningEffort::High});
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"bedrock"},
+      .model = ::yac::ModelId{"gpt-4o"},
+      .effort = ReasoningEffort::High});
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "hello");
+
+  const auto request = provider->LastRequest();
+  REQUIRE_FALSE(request.reasoning_effort.has_value());
+}
+
+TEST_CASE("ChatService ignores unsupported reasoning effort values") {
+  auto provider = MakeFakeProvider(::yac::ModelId{"gpt-5-pro"}, "openai");
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5-pro"};
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"openai"},
+      .model = ::yac::ModelId{"gpt-5-pro"},
+      .effort = ReasoningEffort::Medium});
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "hello");
+
+  const auto request = provider->LastRequest();
+  REQUIRE_FALSE(request.reasoning_effort.has_value());
+}
+
+TEST_CASE(
+    "ChatService ignores supported-looking effort for unsupported provider") {
+  auto provider = MakeFakeProvider(::yac::ModelId{"gpt-5.5"}, "bedrock");
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"bedrock"};
+  config.model = ::yac::ModelId{"gpt-5.5"};
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"bedrock"},
+      .model = ::yac::ModelId{"gpt-5.5"},
+      .effort = ReasoningEffort::High});
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "hello");
+
+  const auto request = provider->LastRequest();
+  REQUIRE_FALSE(request.reasoning_effort.has_value());
+}
+
+TEST_CASE("ChatService runtime reasoning effort affects future requests") {
+  auto provider = MakeFakeProvider(::yac::ModelId{"gpt-5.5"}, "openai");
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5.5"};
+  auto service = MakeService(provider, config);
+
+  REQUIRE_FALSE(service.ConfiguredReasoningEffort().has_value());
+  service.SetReasoningEffort(ReasoningEffort::Medium);
+  REQUIRE(service.ConfiguredReasoningEffort() == ReasoningEffort::Medium);
+  (void)CollectEvents(service, "first");
+  service.SetReasoningEffort(std::nullopt);
+  REQUIRE_FALSE(service.ConfiguredReasoningEffort().has_value());
+  (void)CollectEvents(service, "second");
+
+  const auto requests = provider->Requests();
+  REQUIRE(requests.size() == 2);
+  REQUIRE(requests[0].reasoning_effort == ReasoningEffort::Medium);
+  REQUIRE_FALSE(requests[1].reasoning_effort.has_value());
+}
+
+TEST_CASE("ChatService omits reasoning effort from compaction requests") {
+  auto call_count = std::make_shared<std::atomic<int>>(0);
+  auto provider = std::make_shared<LambdaMockProvider>(
+      "openai", [call_count](const ChatRequest& request, ChatEventSink sink,
+                             std::stop_token) {
+        const int index = call_count->fetch_add(1);
+        if (index == 0) {
+          REQUIRE(request.reasoning_effort == ReasoningEffort::High);
+          sink(ChatEvent{TextDeltaEvent{.text = "first response"}});
+          sink(ChatEvent{UsageReportedEvent{
+              .provider_id = request.provider_id,
+              .model = request.model,
+              .usage = TokenUsage{.prompt_tokens = 400000,
+                                  .completion_tokens = 1,
+                                  .total_tokens = 400001}}});
+          return;
+        }
+        if (!request.stream) {
+          REQUIRE_FALSE(request.reasoning_effort.has_value());
+          sink(ChatEvent{TextDeltaEvent{.text = "first summary"}});
+          return;
+        }
+        REQUIRE(request.reasoning_effort == ReasoningEffort::High);
+        sink(ChatEvent{TextDeltaEvent{.text = "second response"}});
+      });
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5.5"};
+  config.auto_compact_enabled = true;
+  config.auto_compact_threshold = 0.8;
+  config.auto_compact_keep_last = 1;
+  config.auto_compact_mode = "summarize";
+  config.model_settings.push_back(ProviderModelSettings{
+      .provider_id = ::yac::ProviderId{"openai"},
+      .model = ::yac::ModelId{"gpt-5.5"},
+      .effort = ReasoningEffort::High});
+  auto service = MakeService(provider, config);
+
+  (void)CollectEvents(service, "first");
+  (void)CollectEvents(service, "second");
+
+  const auto requests = provider->Requests();
+  REQUIRE(requests.size() == 3);
+  REQUIRE(requests[0].stream);
+  REQUIRE(requests[0].reasoning_effort == ReasoningEffort::High);
+  REQUIRE_FALSE(requests[1].stream);
+  REQUIRE_FALSE(requests[1].reasoning_effort.has_value());
+  REQUIRE(requests[2].stream);
+  REQUIRE(requests[2].reasoning_effort == ReasoningEffort::High);
 }
 
 TEST_CASE("ChatService SetModel does not mutate active request snapshot") {

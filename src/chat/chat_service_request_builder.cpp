@@ -1,5 +1,6 @@
 #include "chat/chat_service_request_builder.hpp"
 
+#include "provider/reasoning_effort_capability.hpp"
 #include "tool_call/lsp_client.hpp"
 #include "tool_call/todo_state.hpp"
 
@@ -85,6 +86,41 @@ void AppendSyntheticReminder(std::string& final_prompt, std::string reminder) {
   final_prompt += std::move(reminder);
 }
 
+ProviderConfig ActiveProviderConfig(const ChatConfig& config) {
+  return ProviderConfig{.id = config.provider_id,
+                        .model = config.model,
+                        .api_key = config.api_key,
+                        .api_key_env = config.api_key_env,
+                        .base_url = config.base_url,
+                        .system_prompt = config.system_prompt,
+                        .options = config.options,
+                        .context_window = config.context_window};
+}
+
+std::optional<ReasoningEffort> ActiveReasoningEffort(
+    const ChatConfig& config) {
+  const auto settings_it =
+      std::ranges::find_if(config.model_settings, [&](const auto& settings) {
+        return settings.provider_id == config.provider_id &&
+               settings.model == config.model;
+      });
+  if (settings_it == config.model_settings.end() ||
+      !settings_it->effort.has_value()) {
+    return std::nullopt;
+  }
+  const auto capability = ::yac::provider::LookupReasoningEffortCapability(
+      ActiveProviderConfig(config), config.model.value);
+  if (!capability.has_value()) {
+    return std::nullopt;
+  }
+  const auto allowed = std::ranges::find(capability->allowed_values,
+                                         *settings_it->effort);
+  if (allowed == capability->allowed_values.end()) {
+    return std::nullopt;
+  }
+  return settings_it->effort;
+}
+
 std::string ComposeSystemPrompt(const ChatConfig& config,
                                 bool include_build_switch_reminder) {
   const auto workspace_prompt = LoadWorkspacePrompt(config);
@@ -150,6 +186,7 @@ ChatRequest ChatServiceRequestBuilder::BuildRequest(
   request.messages = WithSystemPrompt(history, std::move(system_prompt));
   request.tools = tools;
   request.temperature = config_.temperature;
+  request.reasoning_effort = ActiveReasoningEffort(config_);
   request.stream = true;
   return request;
 }
