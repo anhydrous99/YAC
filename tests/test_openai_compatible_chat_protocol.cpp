@@ -58,6 +58,38 @@ TEST_CASE("BuildChatPayload preserves tool call and tool result metadata") {
               .get<std::string>() == "object");
 }
 
+TEST_CASE("BuildChatPayload serializes reasoning effort only from request") {
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-4.1"};
+  request.reasoning_effort = ReasoningEffort::Medium;
+
+  ProviderConfig config;
+  config.options["reasoning_effort"] = "low";
+  config.options["reasoning"] = "{effort='low'}";
+
+  const auto payload =
+      openai_compatible_protocol::BuildChatPayload(request, true, config);
+
+  REQUIRE(payload["reasoning_effort"].get<std::string>() == "medium");
+  REQUIRE_FALSE(payload.contains("reasoning"));
+}
+
+TEST_CASE("BuildChatPayload omits reasoning_effort when unset") {
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-4.1"};
+  request.reasoning_effort = std::nullopt;
+
+  ProviderConfig config;
+  config.options["reasoning_effort"] = "high";
+  config.options["reasoning"] = "{effort='high'}";
+
+  const auto payload =
+      openai_compatible_protocol::BuildChatPayload(request, true, config);
+
+  REQUIRE_FALSE(payload.contains("reasoning_effort"));
+  REQUIRE_FALSE(payload.contains("reasoning"));
+}
+
 TEST_CASE("Buffered response helpers extract content, usage, and tool calls") {
   const auto response = openai_compatible_protocol::Json::parse(
       R"JSON({"choices":[{"message":{"content":"final answer","tool_calls":[{"id":"call-2","function":{"name":"file_read","arguments":"{\"path\":\"README.md\"}"}}]}}],"usage":{"prompt_tokens":4,"completion_tokens":6}})JSON");

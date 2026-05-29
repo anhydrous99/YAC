@@ -1,4 +1,5 @@
 #include "provider/openai_compatible_chat_protocol.hpp"
+#include "provider/reasoning_effort_capability.hpp"
 
 #include <array>
 #include <string>
@@ -241,6 +242,11 @@ Json BuildChatPayload(const chat::ChatRequest& request, bool stream,
   if (stream &&
       ProviderOptionEnabled(config.options, "include_stream_usage", true)) {
     payload["stream_options"] = {{"include_usage", true}};
+  }
+
+  if (request.reasoning_effort.has_value()) {
+    payload["reasoning_effort"] =
+        std::string(ToString(*request.reasoning_effort));
   }
 
   if (!request.tools.empty()) {
