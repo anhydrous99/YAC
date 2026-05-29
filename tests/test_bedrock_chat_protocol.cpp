@@ -301,6 +301,22 @@ TEST_CASE(
   REQUIRE(data.request.GetInferenceConfig().GetMaxTokens() == 8192);
 }
 
+TEST_CASE("BuildConverseStreamRequest ignores reasoning effort fields") {
+  ChatRequest req = MakeRequest("anthropic.claude-3-5-haiku-20241022-v1:0");
+  req.reasoning_effort = ReasoningEffort::High;
+
+  ProviderConfig config;
+  config.options["thinking"] = R"({"type":"enabled"})";
+  config.options["reasoning"] = R"({"effort":"high"})";
+  config.options["reasoning_effort"] = "high";
+
+  const auto data = BuildConverseStreamRequest(req, config);
+
+  REQUIRE_FALSE(data.request.AdditionalModelRequestFieldsHasBeenSet());
+  REQUIRE(data.request.GetModelId() ==
+          "anthropic.claude-3-5-haiku-20241022-v1:0");
+}
+
 TEST_CASE(
     "BuildConverseStreamRequest sets temperature when request temperature is "
     "positive") {

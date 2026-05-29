@@ -1,5 +1,6 @@
 #include "mock_bedrock_provider.hpp"
 
+#include "chat/reasoning_effort.hpp"
 #include "chat/types.hpp"
 
 #include <chrono>
@@ -98,6 +99,10 @@ void MockBedrockProvider::CompleteStream(const chat::ChatRequest& request,
     j["provider_id"] = request.provider_id.value;
     j["model"] = request.model.value;
     j["temperature"] = request.temperature;
+    if (request.reasoning_effort.has_value()) {
+      j["reasoning_effort"] =
+          chat::ReasoningEffortToString(*request.reasoning_effort);
+    }
     auto messages = nlohmann::json::array();
     for (const auto& msg : request.messages) {
       nlohmann::json m;
