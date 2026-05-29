@@ -30,6 +30,7 @@ constexpr Docs kOpenAiAuthDocs{.configuration_docs = true,
                                .openai_auth_docs = true};
 constexpr Docs kMcpDocs{
     .settings_example = true, .default_template = true, .mcp_docs = true};
+constexpr Docs kExampleOnly{.settings_example = true, .default_template = true};
 
 constexpr std::array<SettingClassification, 6> kClassifications = {
     Class::UserFacing, Class::Secret,   Class::Operational,
@@ -41,8 +42,10 @@ constexpr std::array<std::string_view, 2> kMcpTransportValues = {"stdio",
                                                                  "http"};
 constexpr std::array<std::string_view, 2> kMcpAuthTypeValues = {"bearer",
                                                                 "oauth"};
+constexpr std::array<std::string_view, 6> kReasoningEffortValues = {
+    "none", "minimal", "low", "medium", "high", "xhigh"};
 
-constexpr std::array<SettingMetadata, 32> kRecords = {{
+constexpr std::array<SettingMetadata, 35> kRecords = {{
     {.key = "temperature",
      .toml_path = "temperature",
      .env_var = "YAC_TEMPERATURE",
@@ -88,6 +91,28 @@ constexpr std::array<SettingMetadata, 32> kRecords = {{
                          .string_value = "gpt-4o-mini"},
      .classification = Class::UserFacing,
      .docs = kConfigExampleTemplate},
+    {.key = "provider.model_settings.provider",
+     .toml_path = "provider.model_settings.provider",
+     .value_type = Type::String,
+     .default_description =
+         "required exact provider id for scoped model settings",
+     .classification = Class::External,
+     .docs = kExampleOnly},
+    {.key = "provider.model_settings.model",
+     .toml_path = "provider.model_settings.model",
+     .value_type = Type::String,
+     .default_description = "required exact model id for scoped model settings",
+     .classification = Class::External,
+     .docs = kExampleOnly},
+    {.key = "provider.model_settings.effort",
+     .toml_path = "provider.model_settings.effort",
+     .value_type = Type::String,
+     .default_description =
+         "unset; valid values are none, minimal, low, medium, high, or xhigh",
+     .validation = {.type = ValidationType::StringEnum,
+                    .allowed_values = kReasoningEffortValues},
+     .classification = Class::External,
+     .docs = kExampleOnly},
     {.key = "provider.base_url",
      .toml_path = "provider.base_url",
      .env_var = "YAC_BASE_URL",
@@ -684,6 +709,16 @@ std::string GenerateSettingsToml(bool repository_example) {
   output += "# context_window = " + DefaultLiteral("provider.context_window") +
             "                      # override context window size (tokens); " +
             Comment("provider.context_window") + "\n";
+  output +=
+      "\n# Optional exact provider+model scoped reasoning effort. Omit effort "
+      "to "
+      "use\n"
+      "# the provider default; valid values: none, minimal, low, medium, "
+      "high, xhigh.\n"
+      "# [[provider.model_settings]]\n"
+      "# provider = \"openai\"\n"
+      "# model = \"gpt-5.5\"\n"
+      "# effort = \"medium\"\n";
 
   AppendProviderExamples(output);
 

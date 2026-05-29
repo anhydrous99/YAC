@@ -475,12 +475,16 @@ TEST_CASE("README settings summary uses only registered settings tokens") {
 }
 
 TEST_CASE("configuration docs match registry-documented settings") {
-  const auto tokens =
-      ExtractDocTokens(ReadFile(YAC_STRINGIFY(CONFIGURATION_DOCS_PATH)));
+  const auto docs = ReadFile(YAC_STRINGIFY(CONFIGURATION_DOCS_PATH));
+  const auto tokens = ExtractDocTokens(docs);
   const auto issues = ValidateDocTokens(
       tokens, SettingsRegistryRecords(), DynamicSettingsRegistryPatterns(),
       &yac::chat::SettingsDocExpectation::configuration_docs);
 
+  REQUIRE(docs.find("[[provider.model_settings]]") != std::string::npos);
+  REQUIRE(docs.find("OpenAI") != std::string::npos);
+  REQUIRE(docs.find("Bedrock Claude thinking controls are not implemented by "
+                    "/effort.") != std::string::npos);
   RequireNoDocIssues(issues);
 }
 
@@ -523,6 +527,14 @@ TEST_CASE("settings templates are generated from registry metadata") {
   REQUIRE(model != nullptr);
   REQUIRE(temperature != nullptr);
   REQUIRE(compact_mode != nullptr);
+  const auto* model_effort =
+      FindRecord(SettingsRegistryRecords(), "provider.model_settings.effort");
+  REQUIRE(model_effort != nullptr);
+  REQUIRE(model_effort->toml_path == "provider.model_settings.effort");
+  REQUIRE(model_effort->env_var.empty());
+  REQUIRE(model_effort->value_type == yac::chat::SettingValueType::String);
+  REQUIRE(model_effort->validation.type ==
+          yac::chat::SettingValidationType::StringEnum);
 
   REQUIRE(yac::chat::kDefaultSettingsToml.find(
               std::string{"id          = \""} +
@@ -540,6 +552,23 @@ TEST_CASE("settings templates are generated from registry metadata") {
               std::string{"mode         = \""} +
               std::string{compact_mode->runtime_default.string_value} + "\"") !=
           std::string::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find(
+              "# [[provider.model_settings]]") != std::string::npos);
+  REQUIRE(yac::chat::kDefaultSettingsToml.find("# effort = \"medium\"") !=
+          std::string::npos);
+}
+
+TEST_CASE("settings registry represents provider model effort without env") {
+  const auto records = SettingsRegistryRecords();
+  const auto* record = FindRecord(records, "provider.model_settings.effort");
+  REQUIRE(record != nullptr);
+  REQUIRE(record->toml_path == "provider.model_settings.effort");
+  REQUIRE(record->env_var.empty());
+  REQUIRE(record->value_type == yac::chat::SettingValueType::String);
+  REQUIRE(record->classification == SettingClassification::External);
+  REQUIRE(record->docs.settings_example);
+  REQUIRE(record->docs.default_template);
+  REQUIRE(record->validation.allowed_values.size() == 6);
 }
 
 TEST_CASE("settings template ordering follows registry order") {
