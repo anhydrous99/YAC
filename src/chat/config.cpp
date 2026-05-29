@@ -1,8 +1,10 @@
 #include "chat/config.hpp"
 
 #include "chat/config_paths.hpp"
+#include "chat/reasoning_effort.hpp"
 #include "chat/settings_registry.hpp"
 #include "chat/settings_toml.hpp"
+#include "provider/reasoning_effort_capability.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -652,6 +654,60 @@ void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,
   }
 }
 
+void ValidateReasoningEffortOptionConflicts(const ChatConfig& config,
+                                             std::vector<ConfigIssue>& issues) {
+  for (const char* const key : {"reasoning_effort", "reasoning"}) {
+    if (!config.options.contains(key)) {
+      continue;
+    }
+    issues.push_back({.severity = ConfigIssueSeverity::Error,
+                      .message = "provider.options." + std::string(key) +
+                                 " conflicts with model-scoped effort"});
+  }
+}
+
+ProviderConfig ActiveProviderConfig(const ChatConfig& config) {
+  return ProviderConfig{.id = config.provider_id,
+                        .model = config.model,
+                        .api_key = config.api_key,
+                        .api_key_env = config.api_key_env,
+                        .base_url = config.base_url,
+                        .system_prompt = config.system_prompt,
+                        .options = config.options,
+                        .context_window = config.context_window};
+}
+
+void ValidateActiveReasoningEffort(const ChatConfig& config,
+                                   std::vector<ConfigIssue>& issues) {
+  const auto settings_it =
+      std::ranges::find_if(config.model_settings, [&](const auto& settings) {
+        return settings.provider_id == config.provider_id &&
+               settings.model == config.model;
+      });
+  if (settings_it == config.model_settings.end() ||
+      !settings_it->effort.has_value()) {
+    return;
+  }
+
+  const auto effort = *settings_it->effort;
+  const auto capability = provider::LookupReasoningEffortCapability(
+      ActiveProviderConfig(config), config.model.value);
+  if (capability.has_value() &&
+      std::ranges::find(capability->allowed_values, effort) !=
+          capability->allowed_values.end()) {
+    return;
+  }
+
+  issues.push_back({
+      .severity = ConfigIssueSeverity::Warning,
+      .message = "Unsupported provider.model_settings.effort for active "
+                 "provider model",
+      .detail = "Effort '" + std::string(ReasoningEffortToString(effort)) +
+                "' is configured for " + config.provider_id.value + "/" +
+                config.model.value + " but is not supported and will be "
+                "omitted from requests."});
+}
+
 }  // namespace
 
 ChatConfig LoadChatConfig() {
@@ -676,6 +732,8 @@ ChatConfigResult LoadChatConfigResult() {
     if (fields.provider_id) {
       ApplyProviderDefaults(config, fields);
     }
+    ValidateReasoningEffortOptionConflicts(config, result.issues);
+    ValidateActiveReasoningEffort(config, result.issues);
     ResolveApiKey(config, fields, result.issues);
     return result;
   }
@@ -701,6 +759,8 @@ ChatConfigResult LoadChatConfigResultFrom(
   }
 
   ApplyEnvOverrides(config, fields, result.issues);
+  ValidateReasoningEffortOptionConflicts(config, result.issues);
+  ValidateActiveReasoningEffort(config, result.issues);
   ResolveApiKey(config, fields, result.issues);
 
   return result;
