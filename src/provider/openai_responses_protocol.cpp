@@ -1,4 +1,5 @@
 #include "provider/openai_responses_protocol.hpp"
+#include "provider/reasoning_effort_capability.hpp"
 
 #include <exception>
 #include <string>
@@ -328,6 +329,11 @@ Json BuildResponsesPayload(const chat::ChatRequest& request,
 
   if (request.responses_instructions.has_value()) {
     payload["instructions"] = *request.responses_instructions;
+  }
+
+  if (request.reasoning_effort.has_value()) {
+    payload["reasoning"] =
+        Json{{"effort", std::string(ToString(*request.reasoning_effort))}};
   }
 
   if (!request.tools.empty()) {

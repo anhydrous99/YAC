@@ -71,6 +71,39 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
           "object");
 }
 
+TEST_CASE("BuildResponsesPayload serializes reasoning effort only from request") {
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-5.4"};
+  request.reasoning_effort = ReasoningEffort::High;
+
+  ProviderConfig config;
+  config.options["reasoning_effort"] = "low";
+  config.options["reasoning"] = "{effort='low'}";
+
+  const auto payload =
+      openai_responses_protocol::BuildResponsesPayload(request, config);
+
+  REQUIRE(payload["reasoning"]["effort"].get<std::string>() == "high");
+  REQUIRE_FALSE(payload.contains("reasoning_effort"));
+  REQUIRE_FALSE(payload["reasoning"].contains("reasoning_effort"));
+}
+
+TEST_CASE("BuildResponsesPayload omits reasoning when effort is unset") {
+  ChatRequest request;
+  request.model = ::yac::ModelId{"gpt-5.4"};
+  request.reasoning_effort = std::nullopt;
+
+  ProviderConfig config;
+  config.options["reasoning_effort"] = "high";
+  config.options["reasoning"] = "{effort='high'}";
+
+  const auto payload =
+      openai_responses_protocol::BuildResponsesPayload(request, config);
+
+  REQUIRE_FALSE(payload.contains("reasoning"));
+  REQUIRE_FALSE(payload.contains("reasoning_effort"));
+}
+
 TEST_CASE("BuildResponsesPayload preserves system input without instructions") {
   ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
