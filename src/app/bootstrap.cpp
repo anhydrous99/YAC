@@ -12,6 +12,7 @@
 #include "chat/config_loader.hpp"
 #include "chat/config_paths.hpp"
 #include "chat/prompt_library.hpp"
+#include "chat/reasoning_effort.hpp"
 #include "chat/settings_toml.hpp"
 #include "cli/mcp_admin_command.hpp"
 #include "cli/provider_auth_command.hpp"
@@ -25,10 +26,12 @@
 #include "presentation/util/terminal.hpp"
 #include "provider/model_context_windows.hpp"
 #include "provider/provider_registry.hpp"
+#include "provider/reasoning_effort_capability.hpp"
 #include "tool_call/file_index.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 #include "util/log.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -37,6 +40,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -55,6 +59,156 @@ presentation::UiSeverity SeverityFor(chat::ConfigIssueSeverity severity) {
       return presentation::UiSeverity::Error;
   }
   return presentation::UiSeverity::Info;
+}
+
+std::string TrimWhitespace(std::string_view input) {
+  const auto start = input.find_first_not_of(" \t\n\r\f\v");
+  if (start == std::string_view::npos) {
+    return {};
+  }
+  const auto end = input.find_last_not_of(" \t\n\r\f\v");
+  return std::string(input.substr(start, end - start + 1));
+}
+
+chat::ProviderConfig ProviderConfigFromChatConfig(
+    const chat::ChatConfig& config) {
+  return chat::ProviderConfig{.id = config.provider_id,
+                              .model = config.model,
+                              .api_key = config.api_key,
+                              .api_key_env = config.api_key_env,
+                              .base_url = config.base_url,
+                              .system_prompt = config.system_prompt,
+                              .options = config.options,
+                              .context_window = config.context_window};
+}
+
+std::optional<provider::ReasoningEffortCapability> ActiveEffortCapability(
+    const chat::ChatConfig& config) {
+  return provider::LookupReasoningEffortCapability(
+      ProviderConfigFromChatConfig(config), config.model.value);
+}
+
+std::string FormatAllowedEfforts(
+    const std::vector<chat::ReasoningEffort>& efforts) {
+  std::string text;
+  for (size_t i = 0; i < efforts.size(); ++i) {
+    if (i > 0) {
+      text += ", ";
+    }
+    text += chat::ReasoningEffortToString(efforts[i]);
+  }
+  return text;
+}
+
+std::string FormatOptionalEffort(std::optional<chat::ReasoningEffort> effort) {
+  if (!effort.has_value()) {
+    return "unset";
+  }
+  return std::string(chat::ReasoningEffortToString(*effort));
+}
+
+std::optional<chat::ReasoningEffort> ConfiguredEffortInSnapshot(
+    const chat::ChatConfig& config) {
+  const auto matches_active = [&](const chat::ProviderModelSettings& settings) {
+    return settings.provider_id == config.provider_id &&
+           settings.model == config.model;
+  };
+  const auto it = std::ranges::find_if(config.model_settings, matches_active);
+  if (it == config.model_settings.end()) {
+    return std::nullopt;
+  }
+  return it->effort;
+}
+
+bool IsAllowedEffort(const provider::ReasoningEffortCapability& capability,
+                     chat::ReasoningEffort effort) {
+  return std::ranges::find(capability.allowed_values, effort) !=
+         capability.allowed_values.end();
+}
+
+void ReportEffortSaveResult(presentation::ChatUI& chat_ui,
+                            const ::yac::ProviderId& provider_id,
+                            const ::yac::ModelId& model,
+                            std::optional<chat::ReasoningEffort> effort,
+                            const std::filesystem::path& settings_path,
+                            bool saved,
+                            const std::vector<chat::ConfigIssue>& issues) {
+  if (!saved) {
+    presentation::UiNotice notice{
+        .severity = presentation::UiSeverity::Warning,
+        .title = "Effort not saved",
+        .detail = "Could not update " + settings_path.string() + "."};
+    if (!issues.empty()) {
+      notice.severity = SeverityFor(issues.front().severity);
+      notice.detail = issues.front().message;
+      if (!issues.front().detail.empty()) {
+        notice.detail += ": " + issues.front().detail;
+      }
+    }
+    chat_ui.AppendNotice(std::move(notice));
+    return;
+  }
+
+  chat_ui.AppendNotice({.severity = presentation::UiSeverity::Info,
+                        .title = "Effort saved",
+                        .detail = "Effort for " + provider_id.value + "/" +
+                                  model.value + ": " +
+                                  FormatOptionalEffort(effort) + "."});
+}
+
+void HandleEffortCommand(chat::ChatService& chat_service,
+                         presentation::ChatUI& chat_ui, std::string args) {
+  args = TrimWhitespace(args);
+  const auto config = chat_service.ConfigSnapshot();
+  const auto capability = ActiveEffortCapability(config);
+  if (!capability.has_value()) {
+    chat_ui.AppendNotice({.severity = presentation::UiSeverity::Warning,
+                          .title = "Effort is not supported by " +
+                                   config.provider_id.value + "/" +
+                                   config.model.value + "."});
+    return;
+  }
+
+  const auto allowed = FormatAllowedEfforts(capability->allowed_values);
+  if (args.empty()) {
+    chat_ui.AppendNotice(
+        {.severity = presentation::UiSeverity::Info,
+         .title = "Effort for " + config.provider_id.value + "/" +
+                  config.model.value + ": " +
+                  FormatOptionalEffort(ConfiguredEffortInSnapshot(config)) +
+                  ". Allowed: " + allowed +
+                  ". Use /effort <value> or /effort unset."});
+    return;
+  }
+
+  std::optional<chat::ReasoningEffort> requested;
+  if (args != "unset") {
+    requested = provider::ParseReasoningEffort(args);
+    if (!requested.has_value() || !IsAllowedEffort(*capability, *requested)) {
+      chat_ui.AppendNotice(
+          {.severity = presentation::UiSeverity::Warning,
+           .title = "Effort '" + args + "' is not supported by " +
+                    config.model.value + ". Allowed: " + allowed + "."});
+      return;
+    }
+  }
+
+  try {
+    const auto settings_path = chat::GetSettingsPath();
+    std::vector<chat::ConfigIssue> save_issues;
+    const bool saved = chat::SaveProviderModelEffortToSettingsToml(
+        settings_path, config.provider_id, config.model, requested,
+        save_issues);
+    if (saved) {
+      chat_service.SetReasoningEffort(requested);
+    }
+    ReportEffortSaveResult(chat_ui, config.provider_id, config.model, requested,
+                           settings_path, saved, save_issues);
+  } catch (const std::exception& error) {
+    chat_ui.AppendNotice({.severity = presentation::UiSeverity::Warning,
+                          .title = "Effort not saved",
+                          .detail = error.what()});
+  }
 }
 
 bool IsExecutableAvailable(const std::string& command) {
@@ -166,7 +320,16 @@ presentation::StartupStatus BuildStartupStatus(
   return status;
 }
 
-std::string BuildHelpText(const presentation::StartupStatus& startup) {
+std::string BuildHelpTextInternal(const presentation::StartupStatus& startup,
+                                  const chat::ChatConfig& config) {
+  std::string effort_help;
+  if (const auto capability = ActiveEffortCapability(config)) {
+    effort_help =
+        "  /effort       Effort: " +
+        FormatOptionalEffort(ConfiguredEffortInSnapshot(config)) +
+        ". Allowed: " + FormatAllowedEfforts(capability->allowed_values) + "\n";
+  }
+
   return "Navigation\n"
          "  Ctrl+P        Command palette\n"
          "  /             Slash command menu\n"
@@ -188,7 +351,8 @@ std::string BuildHelpText(const presentation::StartupStatus& startup) {
          "  /help         This panel\n"
          "  /clear        Start fresh\n"
          "  /cancel       Stop active response\n"
-         "  /task <desc>  Start background sub-agent\n"
+         "  /task <desc>  Start background sub-agent\n" +
+         effort_help +
          "  /init         Run init prompt\n"
          "  /review       Run review prompt\n"
          "  /quit         Exit\n\n"
@@ -397,7 +561,8 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
     std::function<void()> exit_loop, chat::ChatService& chat_service,
     presentation::ChatUI& chat_ui,
     const std::vector<chat::PromptDefinition>& prompts,
-    std::vector<chat::ConfigIssue>& startup_issues, ftxui::App& screen,
+    std::vector<chat::ConfigIssue>& startup_issues,
+    std::function<std::string()> help_text_provider, ftxui::App& screen,
     std::shared_ptr<cli::McpAdminCommand> mcp_admin,
     std::shared_ptr<cli::ProviderAuthCommand> provider_auth_command) {
   presentation::SlashCommandRegistry slash_registry;
@@ -407,7 +572,10 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
       "clear", [&chat_service] { chat_service.ResetConversation(); });
   slash_registry.SetHandler(
       "cancel", [&chat_service] { chat_service.CancelActiveResponse(); });
-  slash_registry.SetHandler("help", [&chat_ui] { chat_ui.ShowHelp(); });
+  slash_registry.SetHandler("help", [&chat_ui, help_text_provider] {
+    chat_ui.SetHelpText(help_text_provider());
+    chat_ui.ShowHelp();
+  });
   slash_registry.SetHandler("compact", [&chat_service, &chat_ui] {
     if (chat_service.IsBusy()) {
       chat_ui.AppendNotice(presentation::UiNotice{
@@ -467,6 +635,7 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
         static_cast<void>(
             chat_service.GetSubAgentManager().SpawnBackgroundFromUser(args));
       });
+  RegisterEffortSlashCommandHandlers(slash_registry, chat_service, chat_ui);
   RegisterPromptSlashCommands(
       slash_registry, prompts,
       [&chat_service](std::string prompt) {
@@ -483,6 +652,25 @@ presentation::SlashCommandRegistry BuildSlashCommandRegistry(
 }
 
 }  // namespace
+
+std::string BuildHelpText(const presentation::StartupStatus& startup,
+                          const chat::ChatConfig& config) {
+  return BuildHelpTextInternal(startup, config);
+}
+
+void RegisterEffortSlashCommandHandlers(
+    presentation::SlashCommandRegistry& slash_registry,
+    chat::ChatService& chat_service, presentation::ChatUI& chat_ui) {
+  slash_registry.Define("effort", "effort",
+                        "Set reasoning effort for this model");
+  slash_registry.SetVisibleInMenu("effort", [&chat_service] {
+    return ActiveEffortCapability(chat_service.ConfigSnapshot()).has_value();
+  });
+  slash_registry.SetArgumentsHandler(
+      "effort", [&chat_service, &chat_ui](std::string args) {
+        HandleEffortCommand(chat_service, chat_ui, std::move(args));
+      });
+}
 
 int RunApp() {
   auto loaded = chat::LoadConfig();
@@ -572,13 +760,23 @@ int RunApp() {
   ConfigureServiceEventCallback(event_coalescer, chat_service);
   InstallChatUiCommandPalette(chat_ui, /*models=*/{});
 
+  auto startup_status =
+      std::make_shared<std::optional<presentation::StartupStatus>>();
   chat_ui.SetSlashCommands(BuildSlashCommandRegistry(
       screen.ExitLoopClosure(), chat_service, chat_ui, prompt_result.prompts,
-      startup_issues, screen, mcp_admin, provider_auth_command));
+      startup_issues,
+      [&chat_service, startup_status] {
+        if (!startup_status->has_value()) {
+          return std::string{};
+        }
+        return BuildHelpText(**startup_status, chat_service.ConfigSnapshot());
+      },
+      screen, mcp_admin, provider_auth_command));
 
-  auto startup_status = BuildStartupStatus(config_result, startup_issues);
-  chat_ui.SetStartupStatus(startup_status);
-  chat_ui.SetHelpText(BuildHelpText(startup_status));
+  *startup_status = BuildStartupStatus(config_result, startup_issues);
+  chat_ui.SetStartupStatus(**startup_status);
+  chat_ui.SetHelpText(
+      BuildHelpText(**startup_status, chat_service.ConfigSnapshot()));
 
   std::jthread model_discovery_worker(
       [provider, config, &screen, &chat_ui](std::stop_token stop_token) {
