@@ -243,6 +243,42 @@ void ChatService::SetProvider(ProviderId provider_id) {
                                         .model = config_.model}});
 }
 
+void ChatService::SetReasoningEffort(std::optional<ReasoningEffort> effort) {
+  std::scoped_lock lock(mutex_);
+  const auto active_provider = config_.provider_id;
+  const auto active_model = config_.model;
+  const auto matches_active = [&](const ProviderModelSettings& settings) {
+    return settings.provider_id == active_provider &&
+           settings.model == active_model;
+  };
+  const auto it = std::ranges::find_if(config_.model_settings, matches_active);
+  if (it != config_.model_settings.end()) {
+    it->effort = effort;
+    return;
+  }
+  if (effort.has_value()) {
+    config_.model_settings.push_back(ProviderModelSettings{
+        .provider_id = active_provider,
+        .model = active_model,
+        .effort = effort});
+  }
+}
+
+std::optional<ReasoningEffort> ChatService::ConfiguredReasoningEffort() const {
+  std::scoped_lock lock(mutex_);
+  const auto active_provider = config_.provider_id;
+  const auto active_model = config_.model;
+  const auto matches_active = [&](const ProviderModelSettings& settings) {
+    return settings.provider_id == active_provider &&
+           settings.model == active_model;
+  };
+  const auto it = std::ranges::find_if(config_.model_settings, matches_active);
+  if (it == config_.model_settings.end()) {
+    return std::nullopt;
+  }
+  return it->effort;
+}
+
 void ChatService::CancelActiveResponse() {
   std::scoped_lock lock(mutex_);
   if (!active_) {

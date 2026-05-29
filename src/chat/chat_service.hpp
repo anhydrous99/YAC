@@ -50,6 +50,10 @@ class ChatService {
   ChatMessageId SubmitUserMessage(std::string content);
   void SetModel(ModelId model);
   void SetProvider(ProviderId provider_id);
+  void SetReasoningEffort(std::optional<ReasoningEffort> effort);
+  [[nodiscard]] std::optional<ReasoningEffort> ConfiguredReasoningEffort()
+      const;
+  [[nodiscard]] ChatConfig ConfigSnapshot() const;
   void CancelActiveResponse();
   void ResolveToolApproval(ApprovalId approval_id, bool approved);
   void ResolveAskUser(const ApprovalId& approval_id, std::string response);
@@ -91,7 +95,6 @@ class ChatService {
   void EmitEvent(ChatEvent event) const;
   void EmitQueueDepth();
   [[nodiscard]] ChatMessageId NextMessageId();
-  [[nodiscard]] ChatConfig ConfigSnapshot() const;
   void InjectSubAgentContinuation(std::string body);
   [[nodiscard]] ::yac::tool_call::ToolExecutionResult ApplyApprovedPlanExit(
       const ::yac::tool_call::PreparedToolCall& prepared);
