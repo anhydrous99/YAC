@@ -25,6 +25,15 @@ inline constexpr int kMaxContextWindow = 10'000'000;
 inline constexpr double kMinTemperature = 0.0;
 inline constexpr double kMaxTemperature = 2.0;
 
+enum class ReasoningEffort {
+  None,
+  Minimal,
+  Low,
+  Medium,
+  High,
+  XHigh,
+};
+
 inline constexpr double kMinAutoCompactThreshold = 0.05;
 inline constexpr double kMaxAutoCompactThreshold = 1.0;
 inline constexpr int kMinAutoCompactKeepLast = 1;
@@ -48,6 +57,7 @@ struct ChatRequest {
   std::vector<ChatMessage> messages;
   std::vector<ToolDefinition> tools;
   double temperature = 0.7;
+  std::optional<ReasoningEffort> reasoning_effort;
   bool stream = true;
 };
 
@@ -413,6 +423,12 @@ struct ProviderConfig {
   int context_window = 0;
 };
 
+struct ProviderModelSettings {
+  ProviderId provider_id;
+  ModelId model;
+  std::optional<ReasoningEffort> effort;
+};
+
 enum class ConfigIssueSeverity { Info, Warning, Error };
 
 struct ConfigIssue {
@@ -448,6 +464,7 @@ struct ChatConfig {
   std::string auto_compact_mode = "summarize";  // "summarize" | "truncate"
   int context_window = 0;
   std::map<std::string, std::string> options;
+  std::vector<ProviderModelSettings> model_settings;
   mcp::McpConfig mcp;
 };
 
