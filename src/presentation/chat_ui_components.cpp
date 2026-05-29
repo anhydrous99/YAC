@@ -54,23 +54,24 @@ ftxui::Component ChatUI::BuildInput() {
   option.placeholder = "Type a message...";
   option.cursor_position = composer_.CursorPosition();
   option.transform = [this](ftxui::InputState state) {
+    const auto& colors = render_context_.Colors();
     const int wrap_width = ComposerInputWrapWidth(ftxui::Terminal::Size().dimx,
                                                   ChatUI::kMaxInputLines);
-    auto element = state.is_placeholder
-                       ? state.element
-                       : ftxui::dbox({state.element, RenderWrappedComposerInput(
-                                                         composer_, wrap_width,
-                                                         state.focused) |
-                                                         ftxui::clear_under});
-    element |= ftxui::color(render_context_.Colors().chrome.body_text);
     if (state.is_placeholder) {
-      element |=
-          ftxui::dim | ftxui::color(render_context_.Colors().chrome.dim_text);
+      auto cursor = ftxui::text(" ");
       if (state.focused) {
-        element |= ftxui::focusCursorBarBlinking;
+        cursor |= ftxui::bgcolor(colors.semantic.selection_bg);
       }
+      return ftxui::hbox({
+                 std::move(cursor),
+                 ftxui::text("Type a message...") | ftxui::dim |
+                     ftxui::color(colors.chrome.dim_text),
+             }) |
+             ftxui::xflex;
     }
-    return element;
+    return RenderWrappedComposerInput(composer_, wrap_width, state.focused,
+                                      ChatUI::kMaxInputLines) |
+           ftxui::color(colors.chrome.body_text);
   };
 
   auto input = ftxui::Input(&composer_.Content(), option);

@@ -12,6 +12,7 @@ inline constexpr std::string_view kComposerPrompt = " \xe2\x9d\xaf ";
 int ComposerInputWrapWidth(int terminal_width, int max_input_lines);
 
 ftxui::Element RenderWrappedComposerInput(ComposerState& composer,
-                                          int wrap_width, bool focused);
+                                          int wrap_width, bool focused,
+                                          int max_visible_lines = 0);
 
 }  // namespace yac::presentation::detail

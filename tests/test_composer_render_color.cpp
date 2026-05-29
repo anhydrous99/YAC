@@ -46,3 +46,25 @@ TEST_CASE(
   REQUIRE(screen.PixelAt(2, 1).foreground_color == expected_fg);
   REQUIRE(screen.PixelAt(2, 2).foreground_color == expected_fg);
 }
+
+TEST_CASE(
+    "RenderWrappedComposerInput: focused cursor is drawn without native "
+    "terminal cursor") {
+  ComposerState composer;
+  composer.Content() = "line one\nline two\nline three";
+  *composer.CursorPosition() = 14;  // local column 5 on "line two"
+
+  constexpr int kWidth = 30;
+  auto element = detail::RenderWrappedComposerInput(composer, kWidth, true);
+  auto screen = ftxui::Screen::Create(ftxui::Dimension::Fixed(kWidth),
+                                      ftxui::Dimension::Fixed(3));
+  ftxui::Render(screen, element);
+
+  REQUIRE(screen.cursor().shape == ftxui::Screen::Cursor::Hidden);
+  REQUIRE(screen.cursor().x == kWidth - 1);
+  REQUIRE(screen.cursor().y == 2);
+  REQUIRE(screen.PixelAt(5, 1).background_color ==
+          theme::CurrentTheme().semantic.selection_bg);
+  REQUIRE_FALSE(screen.PixelAt(5, 0).background_color ==
+                theme::CurrentTheme().semantic.selection_bg);
+}

@@ -188,6 +188,21 @@ TEST_CASE("Composer and status rail share the canvas background color") {
   REQUIRE(screen.PixelAt(x, composer_row).background_color == expected_bg);
 }
 
+TEST_CASE("Composer renders without exposing the native terminal cursor") {
+  ChatUI ui;
+  auto component = ui.Build();
+
+  auto empty_screen = ftxui::Screen(80, 24);
+  ftxui::Render(empty_screen, component->Render());
+  REQUIRE(empty_screen.cursor().shape == ftxui::Screen::Cursor::Hidden);
+
+  TypeText(component, "hello");
+
+  auto typed_screen = ftxui::Screen(80, 24);
+  ftxui::Render(typed_screen, component->Render());
+  REQUIRE(typed_screen.cursor().shape == ftxui::Screen::Cursor::Hidden);
+}
+
 TEST_CASE("ChatUI renders active provider and model in footer") {
   ChatUI ui;
   ui.SetProviderModel(::yac::ProviderId{"zai"}, ::yac::ModelId{"glm-5.1"});

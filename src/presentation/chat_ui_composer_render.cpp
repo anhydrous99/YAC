@@ -35,9 +35,8 @@ std::size_t CursorVisualLineIndex(const std::vector<ComposerVisualLine>& lines,
 ftxui::Element CursorCell(std::string text, bool focused) {
   auto cell = ftxui::text(std::move(text));
   if (focused) {
-    cell |= ftxui::focusCursorBarBlinking;
-  } else {
-    cell |= ftxui::focus;
+    cell |= ftxui::color(theme::CurrentTheme().semantic.text_strong) |
+            ftxui::bgcolor(theme::CurrentTheme().semantic.selection_bg);
   }
   return cell;
 }
@@ -151,7 +150,8 @@ int ComposerInputWrapWidth(int terminal_width, int max_input_lines) {
 }
 
 ftxui::Element RenderWrappedComposerInput(ComposerState& composer,
-                                          int wrap_width, bool focused) {
+                                          int wrap_width, bool focused,
+                                          int max_visible_lines) {
   auto lines = composer.VisualLines(wrap_width);
   const std::size_t cursor =
       static_cast<std::size_t>(std::max(0, *composer.CursorPosition()));
@@ -168,14 +168,27 @@ ftxui::Element RenderWrappedComposerInput(ComposerState& composer,
   }
 
   ftxui::Elements rows;
-  rows.reserve(lines.size());
-  for (std::size_t i = 0; i < lines.size(); ++i) {
+  std::size_t first_line = 0;
+  std::size_t last_line = lines.size();
+  if (max_visible_lines > 0 &&
+      lines.size() > static_cast<std::size_t>(max_visible_lines)) {
+    const std::size_t visible_lines =
+        static_cast<std::size_t>(max_visible_lines);
+    if (cursor_line + 1 > visible_lines) {
+      first_line = cursor_line + 1 - visible_lines;
+    }
+    last_line = std::min(lines.size(), first_line + visible_lines);
+  }
+
+  rows.reserve(last_line - first_line);
+  for (std::size_t i = first_line; i < last_line; ++i) {
     rows.push_back(RenderComposerVisualLine(lines[i], cursor, i == cursor_line,
                                             focused, mention_spans));
   }
-  // Apply color here so it survives the caller's clear_under wrap.
+  // Keep composer text styling local so parent chrome colors do not leak into
+  // mention spans.
   return ftxui::vbox(std::move(rows)) |
-         ftxui::color(theme::CurrentTheme().chrome.body_text) | ftxui::frame;
+         ftxui::color(theme::CurrentTheme().chrome.body_text);
 }
 
 }  // namespace yac::presentation::detail
