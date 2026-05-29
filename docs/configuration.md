@@ -54,6 +54,37 @@ args    = []
 | `lsp.clangd.command` | `YAC_LSP_CLANGD_COMMAND` | `clangd` | LSP server command. |
 | `lsp.clangd.args` | `YAC_LSP_CLANGD_ARGS` | `[]` | LSP server arguments. |
 
+## Model Settings
+
+Use `[[provider.model_settings]]` entries for exact provider and model scoped
+settings. There is no global fallback, and entries don't apply to other provider
+IDs or model names.
+
+```toml
+[[provider.model_settings]]
+provider = "openai"
+model = "gpt-5.5"
+effort = "high"
+```
+
+`provider` must match the active `provider.id`, and `model` must match the
+active `provider.model`. `effort` is optional. Valid configured values are
+`none`, `minimal`, `low`, `medium`, `high`, and `xhigh`; the active model's
+capability lookup can still reject values outside that model's allowlist.
+
+`/effort <value>` writes the scoped override for the active provider and model.
+`/effort unset` clears that scoped override, so future requests for that exact
+provider and model omit effort fields and use the provider default.
+Persisted effort applies automatically to both TUI requests and headless
+`yac run` requests; changing effort is currently TUI-only through `/effort`.
+
+Effort support is implemented only for OpenAI request paths that pass capability
+lookup. The `openai-compatible` provider only qualifies when its base URL trims
+to `https://api.openai.com/v1`. It serializes as `reasoning.effort` on OpenAI
+Responses and as top-level `reasoning_effort` on OpenAI Chat Completions. It is
+not implemented for non-OpenAI providers, Z.ai, or AWS Bedrock.
+Bedrock Claude thinking controls are not implemented by /effort.
+
 ## Providers
 
 Set `[provider].id = "openai"` or `YAC_PROVIDER=openai` to use the OpenAI

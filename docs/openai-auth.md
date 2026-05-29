@@ -35,6 +35,31 @@ path.
 Set `YAC_API_KEY_ENV` if you need `provider.api_key_env` to name a different
 secret env var.
 
+## Reasoning Effort
+
+OpenAI reasoning effort is scoped through `[[provider.model_settings]]` entries
+in `~/.yac/settings.toml`. The entry must match both the active provider and the
+active model exactly:
+
+```toml
+[[provider.model_settings]]
+provider = "openai"
+model = "gpt-5.5"
+effort = "high"
+```
+
+Supported configured values are `none`, `minimal`, `low`, `medium`, `high`, and
+`xhigh`. YAC then checks the active model's capability allowlist before sending
+the value. `/effort unset` clears the scoped override, so future requests omit
+OpenAI effort fields. The `openai-compatible` provider only qualifies when its
+base URL trims to `https://api.openai.com/v1`.
+Persisted effort applies automatically to both TUI requests and headless
+`yac run` requests; changing effort is currently TUI-only through `/effort`.
+
+The public OpenAI Responses shape uses `reasoning.effort`. OpenAI Chat
+Completions uses the top-level `reasoning_effort` field.
+Bedrock Claude thinking controls are not implemented by /effort.
+
 Auth precedence is `env API key > stored OpenAI auth > inline settings API key`.
 That means `OPENAI_API_KEY` wins over a stored OAuth login or stored API key. A
 stored login wins over `[provider].api_key` in `~/.yac/settings.toml`. Keep
