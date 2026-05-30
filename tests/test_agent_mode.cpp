@@ -91,17 +91,19 @@ TEST_CASE("Agent mode tool filtering", "[agent_mode]") {
     const auto excluded = ExcludedToolsForMode(AgentMode::Plan);
     const std::set<std::string> expected{
         "bash",
+        "file_edit",
+        "file_write",
         "lsp_rename",
     };
 
     REQUIRE(excluded == expected);
   }
 
-  SECTION("Plan mode allows read-only tools and plan-file mutation tools") {
+  SECTION("Plan mode allows read-only tools and plan approval tools") {
     for (const std::string tool :
          {"file_read", "list_dir", "glob", "grep", "lsp_diagnostics",
           "lsp_references", "lsp_goto_definition", "lsp_symbols", "sub_agent",
-          "ask_user", "todo_write", "file_write", "file_edit", "plan_exit"}) {
+          "ask_user", "todo_write", "plan_exit"}) {
       CAPTURE(tool);
       REQUIRE(IsToolAllowedForMode(AgentMode::Plan, tool));
     }
@@ -109,7 +111,8 @@ TEST_CASE("Agent mode tool filtering", "[agent_mode]") {
 
   SECTION("Plan mode denies side-effect and MCP tools") {
     for (const std::string tool :
-         {"bash", "lsp_rename", "mcp_fs__read", "mcp_search__query"}) {
+         {"bash", "file_write", "file_edit", "lsp_rename", "mcp_fs__read",
+          "mcp_search__query"}) {
       CAPTURE(tool);
       REQUIRE_FALSE(IsToolAllowedForMode(AgentMode::Plan, tool));
     }
@@ -128,9 +131,8 @@ TEST_CASE("Agent mode tool filtering", "[agent_mode]") {
     for (const auto& tool : tools) {
       remaining.insert(tool.name);
     }
-    REQUIRE(remaining == std::set<std::string>{"file_read", "file_write",
-                                               "file_edit", "plan_exit",
-                                               "todo_write"});
+    REQUIRE(remaining ==
+            std::set<std::string>{"file_read", "plan_exit", "todo_write"});
   }
 }
 

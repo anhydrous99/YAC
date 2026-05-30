@@ -84,9 +84,9 @@ commands include `/help`, `/clear`, `/cancel`, `/task`, `/mcp`, `/auth`, `/quit`
 OpenAI `/effort` when supported by the active model, and prompt files loaded
 from `~/.yac/prompts/*.toml`.
 
-Plan mode writes the active plan under `.opencode/plans/*.md`. When planning is
-complete, the assistant calls `plan_exit`; approving it writes the plan and
-switches the session to Build.
+Plan mode creates an active plan path under `.opencode/plans/*.md` and keeps
+workspace files read-only. When planning is complete, the assistant calls
+`plan_exit`; approving it writes the plan and switches the session to Build.
 
 See [Usage](docs/usage.md) for shortcuts, slash commands, headless mode, and
 Plan/Build behavior.

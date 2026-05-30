@@ -321,13 +321,12 @@ TEST_CASE("ChatService injects Plan-mode plan-file reminder into requests") {
   REQUIRE(context.find(active_plan->string()) != std::string::npos);
   REQUIRE(context.find(".opencode/plans/") != std::string::npos);
   REQUIRE(context.find("Plan mode is read-only") != std::string::npos);
-  REQUIRE(
-      context.find("only create or edit the active `.opencode/plans/*.md`") !=
-      std::string::npos);
+  REQUIRE(context.find("Do not modify files until the plan is approved") !=
+          std::string::npos);
   REQUIRE(context.find("read and search") != std::string::npos);
   REQUIRE(context.find("delegate research") != std::string::npos);
   REQUIRE(context.find("ask clarifying questions") != std::string::npos);
-  REQUIRE(context.find("write or update the active plan file") !=
+  REQUIRE(context.find("prepare the final implementation plan") !=
           std::string::npos);
   REQUIRE(context.find("plan_exit") != std::string::npos);
   REQUIRE(context.find("plan.txt") == std::string::npos);

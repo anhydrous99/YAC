@@ -145,6 +145,10 @@ TEST_CASE("Headless event handler: --plan entry starts in Plan mode") {
             std::ranges::any_of(request.tools, [](const ToolDefinition& tool) {
               return tool.name == "plan_exit";
             }));
+        REQUIRE(
+            std::ranges::none_of(request.tools, [](const ToolDefinition& tool) {
+              return tool.name == "file_write" || tool.name == "file_edit";
+            }));
         const auto system_message = std::ranges::find_if(
             request.messages, [](const ChatMessage& message) {
               return message.role == ChatRole::System;

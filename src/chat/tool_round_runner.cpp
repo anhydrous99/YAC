@@ -5,10 +5,8 @@
 #include "chat/chat_service_mcp.hpp"
 #include "chat/tool_call_argument_parser.hpp"
 #include "mcp/tool_naming.hpp"
-#include "tool_call/executor_arguments.hpp"
 #include "tool_call/tool_validation_error.hpp"
 
-#include <filesystem>
 #include <stdexcept>
 #include <utility>
 
@@ -24,30 +22,6 @@ std::string PlanModeDeniedMessage(const std::string& tool_name) {
   return "Tool '" + tool_name + "' is not allowed in Plan mode.";
 }
 
-std::filesystem::path NormalizeWorkspacePath(
-    const std::filesystem::path& workspace_root, const std::string& path) {
-  std::filesystem::path candidate(path);
-  if (candidate.is_relative()) {
-    candidate = workspace_root / candidate;
-  }
-  return std::filesystem::absolute(candidate).lexically_normal();
-}
-
-bool IsActivePlanMarkdownPath(const ChatConfig& config,
-                              const std::string& requested_path) {
-  if (!config.active_plan_path.has_value() || config.workspace_root.empty()) {
-    return false;
-  }
-  const std::filesystem::path workspace_root(config.workspace_root);
-  const auto active_path =
-      NormalizeWorkspacePath(workspace_root, *config.active_plan_path);
-  const auto requested = NormalizeWorkspacePath(workspace_root, requested_path);
-  const auto expected_plan_dir =
-      NormalizeWorkspacePath(workspace_root, ".opencode/plans");
-  return requested == active_path && active_path.extension() == ".md" &&
-         active_path.parent_path() == expected_plan_dir;
-}
-
 std::optional<std::string> PlanModePermissionError(
     const ChatConfig& config, const ToolCallRequest& request) {
   if (config.agent_mode != AgentMode::Plan) {
@@ -56,22 +30,7 @@ std::optional<std::string> PlanModePermissionError(
   if (!IsToolAllowedForMode(AgentMode::Plan, request.name)) {
     return PlanModeDeniedMessage(request.name);
   }
-  namespace tc = ::yac::tool_call;
-  if (request.name != tc::kFileWriteToolName &&
-      request.name != tc::kFileEditToolName) {
-    return std::nullopt;
-  }
-  try {
-    const auto args = tc::ParseArguments(request);
-    const auto filepath = tc::RequireString(args, "filepath");
-    if (IsActivePlanMarkdownPath(config, filepath)) {
-      return std::nullopt;
-    }
-  } catch (const std::exception& error) {
-    return error.what();
-  }
-  return "Plan mode can only write or edit the active .opencode/plans/*.md "
-         "plan file.";
+  return std::nullopt;
 }
 
 std::string PartialField(const std::string& arguments_json,
@@ -379,6 +338,11 @@ bool ToolRoundRunner::MaybeAwaitApproval(
   }
   if (!approved) {
     return MakeRejectedToolResult(prepared);
+  }
+  if (auto error =
+          PlanModePermissionError(config_snapshot_(), prepared.request);
+      error.has_value()) {
+    return MakeErrorToolResult(prepared.preview, *error);
   }
   if (prepared.request.name == ::yac::tool_call::kPlanExitToolName &&
       on_plan_exit_approved_) {

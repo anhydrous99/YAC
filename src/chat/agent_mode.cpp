@@ -21,8 +21,6 @@ bool IsPlanModeAllowedTool(std::string_view tool_name) {
          tool_name == tc::kSubAgentToolName ||
          tool_name == tc::kAskUserToolName ||
          tool_name == tc::kTodoWriteToolName ||
-         tool_name == tc::kFileWriteToolName ||
-         tool_name == tc::kFileEditToolName ||
          tool_name == tc::kPlanExitToolName;
 }
 
@@ -34,7 +32,9 @@ std::set<std::string> ExcludedToolsForMode(AgentMode mode) {
       return {};
     case AgentMode::Plan:
       return {std::string(::yac::tool_call::kBashToolName),
-              std::string(::yac::tool_call::kLspRenameToolName)};
+              std::string(::yac::tool_call::kLspRenameToolName),
+              std::string(::yac::tool_call::kFileWriteToolName),
+              std::string(::yac::tool_call::kFileEditToolName)};
   }
   return {};
 }

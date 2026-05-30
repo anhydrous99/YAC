@@ -54,8 +54,8 @@ yac run --plan "prompt"
 ```
 
 The first Plan request creates an active plan file under
-`.opencode/plans/*.md`. Plan-mode file writes and edits are limited to that
-active plan file while source changes wait for Build.
+`.opencode/plans/*.md`. Plan mode does not expose generic file write/edit tools;
+workspace changes wait for Build.
 
 When the plan is ready, the assistant calls `plan_exit` with the final plan. YAC
 asks for approval, writes the approved plan to the active plan file, switches to

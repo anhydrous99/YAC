@@ -110,12 +110,11 @@ yac run --plan "prompt"
 ```
 
 The first Plan request creates the active markdown plan under
-`.opencode/plans/*.md`. Plan-mode writes and edits are limited to that active
-plan file; source changes are reserved for Build. When the plan is ready, the
-assistant calls `plan_exit` with the final plan. Approving that request writes
-the active plan file, switches to Build, and sends one Build-mode reminder that
-references the approved `.opencode/plans/*.md` path. Rejecting the request keeps
-the chat in Plan.
+`.opencode/plans/*.md`. Plan mode keeps workspace files read-only; source changes
+are reserved for Build. When the plan is ready, the assistant calls `plan_exit`
+with the final plan. Approving that request writes the active plan file, switches
+to Build, and sends one Build-mode reminder that references the approved
+`.opencode/plans/*.md` path. Rejecting the request keeps the chat in Plan.
 
 ## Storage
 

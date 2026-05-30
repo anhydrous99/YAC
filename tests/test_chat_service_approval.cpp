@@ -204,6 +204,10 @@ class PlanPermissionProvider : public LanguageModelProvider {
     }
     ++request_count_;
     if (request_count_ == 1) {
+      REQUIRE(
+          std::ranges::none_of(request.tools, [](const ToolDefinition& tool) {
+            return tool.name == "file_write" || tool.name == "file_edit";
+          }));
       sink(ChatEvent{
           ToolCallRequestedEvent{.tool_calls = {ToolCallRequest{
                                      .id = "plan-tool-1",
@@ -397,16 +401,104 @@ TEST_CASE("ChatService sequences approval requests one tool at a time") {
   std::filesystem::remove_all(root);
 }
 
-TEST_CASE("Plan mode permits active plan file writes") {
+TEST_CASE(
+    "Approved write is denied if mode switches to Plan before execution") {
   auto root =
-      std::filesystem::temp_directory_path() / "yac_plan_permission_allow";
+      std::filesystem::temp_directory_path() / "yac_tool_approval_mode_switch";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  auto request_count = std::make_shared<int>(0);
+  auto provider = std::make_shared<LambdaMockProvider>(
+      "stale-approval",
+      [request_count](const ChatRequest& request, ChatEventSink sink,
+                      std::stop_token stop_token) {
+        if (stop_token.stop_requested()) {
+          return;
+        }
+        ++(*request_count);
+        if (*request_count == 1) {
+          sink(ChatEvent{ToolCallRequestedEvent{
+              .tool_calls = {ToolCallRequest{
+                  .id = "tool_1",
+                  .name = "file_write",
+                  .arguments_json =
+                      R"({"filepath":"notes.txt","content":"approved\n"})"}}}});
+          return;
+        }
+
+        const auto tool_message = std::ranges::find_if(
+            request.messages, [](const ChatMessage& message) {
+              return message.role == ChatRole::Tool &&
+                     message.tool_call_id == yac::ToolCallId{"tool_1"};
+            });
+        REQUIRE(tool_message != request.messages.end());
+        const auto result = Json::parse(tool_message->content);
+        REQUIRE(std::string(result["error"]) ==
+                "Tool 'file_write' is not allowed in Plan mode.");
+        sink(ChatEvent{TextDeltaEvent{.text = "write blocked in plan"}});
+      });
+  ChatConfig config;
+  config.provider_id = ::yac::ProviderId{"stale-approval"};
+  config.model = ::yac::ModelId{"fake-model"};
+  config.workspace_root = root.string();
+  auto service = MakeService(provider, config);
+
+  std::vector<ChatEvent> events;
+  std::mutex mutex;
+  std::condition_variable cv;
+  yac::ApprovalId approval_id;
+  bool approval_requested = false;
+  bool finished = false;
+  service.SetEventCallback([&](ChatEvent event) {
+    std::scoped_lock lock(mutex);
+    if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
+      approval_id = approval->approval_id;
+      approval_requested = true;
+      cv.notify_all();
+    }
+    if (event.Type() == ChatEventType::Finished) {
+      finished = true;
+      cv.notify_all();
+    }
+    events.push_back(std::move(event));
+  });
+
+  service.SubmitUserMessage("write file");
+  {
+    std::unique_lock lock(mutex);
+    REQUIRE(cv.wait_for(lock, std::chrono::seconds(5),
+                        [&] { return approval_requested; }));
+  }
+
+  service.SetAgentMode(AgentMode::Plan);
+  service.ResolveToolApproval(approval_id, true);
+  {
+    std::unique_lock lock(mutex);
+    REQUIRE(
+        cv.wait_for(lock, std::chrono::seconds(5), [&] { return finished; }));
+  }
+
+  REQUIRE(service.GetAgentMode() == AgentMode::Plan);
+  REQUIRE_FALSE(std::filesystem::exists(root / "notes.txt"));
+  const auto& tool_done = FindEvent(events, ChatEventType::ToolCallDone);
+  REQUIRE(tool_done.Get<ToolCallDoneEvent>().status ==
+          ChatMessageStatus::Error);
+  REQUIRE(HasEvent(events, ChatEventType::AssistantMessageDone));
+  std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Plan mode denies active plan file writes before approval") {
+  auto root =
+      std::filesystem::temp_directory_path() / "yac_plan_permission_file_write";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
 
   const std::string plan_path = ".opencode/plans/20260522-143045-make-plan.md";
   auto provider = std::make_shared<PlanPermissionProvider>(
       "file_write",
-      Json{{"filepath", plan_path}, {"content", "# Plan\n"}}.dump());
+      Json{{"filepath", plan_path}, {"content", "# Plan\n"}}.dump(),
+      "Tool 'file_write' is not allowed in Plan mode.");
   ChatConfig config;
   config.provider_id = ::yac::ProviderId{"plan-permission"};
   config.model = ::yac::ModelId{"fake-model"};
@@ -418,13 +510,14 @@ TEST_CASE("Plan mode permits active plan file writes") {
 
   std::mutex mutex;
   std::condition_variable cv;
+  bool approval_requested = false;
   bool finished = false;
   service.SetEventCallback([&](ChatEvent event) {
-    if (const auto* approval = event.As<ToolApprovalRequestedEvent>()) {
-      service.ResolveToolApproval(approval->approval_id, true);
+    std::scoped_lock lock(mutex);
+    if (event.Type() == ChatEventType::ToolApprovalRequested) {
+      approval_requested = true;
     }
     if (event.Type() == ChatEventType::Finished) {
-      std::scoped_lock lock(mutex);
       finished = true;
       cv.notify_all();
     }
@@ -438,7 +531,8 @@ TEST_CASE("Plan mode permits active plan file writes") {
   }
 
   REQUIRE(std::filesystem::exists(root / plan_path));
-  REQUIRE(std::filesystem::file_size(root / plan_path) > 0);
+  REQUIRE(std::filesystem::file_size(root / plan_path) == 0);
+  REQUIRE_FALSE(approval_requested);
   std::filesystem::remove_all(root);
 }
 
@@ -458,7 +552,7 @@ TEST_CASE("Plan mode denies source file edits before approval") {
            {"old_string", "return 0"},
            {"new_string", "return 1"}}
           .dump(),
-      "Plan mode can only write or edit");
+      "Tool 'file_edit' is not allowed in Plan mode.");
   ChatConfig config;
   config.provider_id = ::yac::ProviderId{"plan-permission"};
   config.model = ::yac::ModelId{"fake-model"};
