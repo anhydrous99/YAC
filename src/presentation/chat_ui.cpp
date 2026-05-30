@@ -96,6 +96,10 @@ ftxui::Component ChatUI::Build() {
         rail_left.push_back(ftxui::text(mode_label) | ftxui::color(mode_color) |
                             ftxui::bold);
       }
+      if (const auto& effort = overlay_state_.ReasoningEffortDisplay()) {
+        rail_left.push_back(ftxui::text(" " + *effort) |
+                            ftxui::color(colors.semantic.text_muted));
+      }
     }
 
     // Center: live status indicators (only when active)
@@ -366,6 +370,10 @@ void ChatUI::SetFileMentionProvider(
 void ChatUI::SetProviderModel(::yac::ProviderId provider_id,
                               ::yac::ModelId model) {
   overlay_state_.SetProviderModel(std::move(provider_id), std::move(model));
+}
+
+void ChatUI::SetReasoningEffortDisplay(std::optional<std::string> display) {
+  overlay_state_.SetReasoningEffortDisplay(std::move(display));
 }
 
 void ChatUI::SetLastUsage(UsageStats usage) {

@@ -467,8 +467,8 @@ class BedrockStreamHandler
       sink_(chat::ChatEvent{std::move(error)});
     }
     if (!pending_tool_calls_.empty()) {
-      sink_(chat::ChatEvent{
-          chat::ToolCallRequestedEvent{.tool_calls = std::move(pending_tool_calls_)}});
+      sink_(chat::ChatEvent{chat::ToolCallRequestedEvent{
+          .tool_calls = std::move(pending_tool_calls_)}});
       pending_tool_calls_.clear();
     }
   }
@@ -540,9 +540,8 @@ Aws::BedrockRuntime::Model::ConverseStreamHandler& GetSdkHandler(
 }
 
 void SimulateBedrockToolUseStream(
-    BedrockStreamHandlerHandle& handle,
-    const std::string& tool_use_id, const std::string& tool_name,
-    const std::string& input_json,
+    BedrockStreamHandlerHandle& handle, const std::string& tool_use_id,
+    const std::string& tool_name, const std::string& input_json,
     Aws::BedrockRuntime::Model::StopReason stop_reason) {
   // Build a temporary ConverseStreamHandler with forwarding callbacks that
   // invoke the real handler's callbacks (which were set in the constructor).

@@ -71,7 +71,8 @@ TEST_CASE("BuildResponsesPayload lowers messages and tools for Codex OAuth") {
           "object");
 }
 
-TEST_CASE("BuildResponsesPayload serializes reasoning effort only from request") {
+TEST_CASE(
+    "BuildResponsesPayload serializes reasoning effort only from request") {
   ChatRequest request;
   request.model = ::yac::ModelId{"gpt-5.4"};
   request.reasoning_effort = ReasoningEffort::High;

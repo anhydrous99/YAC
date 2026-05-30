@@ -24,6 +24,9 @@
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/screen.hpp>
 
 using yac::chat::ChatConfig;
 using yac::chat::ChatEvent;
@@ -167,6 +170,13 @@ std::string ReadTextFile(const std::filesystem::path& path) {
   return content;
 }
 
+std::string RenderComponent(const ftxui::Component& component, int width = 100,
+                            int height = 30) {
+  auto screen = ftxui::Screen(width, height);
+  ftxui::Render(screen, component->Render());
+  return screen.ToString();
+}
+
 bool HasMatchingEffortSetting(const std::filesystem::path& settings_path,
                               ReasoningEffort effort) {
   ChatConfig loaded;
@@ -295,6 +305,9 @@ TEST_CASE("/effort saves scoped setting and affects future requests") {
   REQUIRE(ui.GetNotices().back().notice.severity == UiSeverity::Info);
   REQUIRE(ui.GetNotices().back().notice.title == "Effort saved");
 
+  auto output = RenderComponent(ui.Build());
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("effort: medium"));
+
   WaitForFinished(service, "hello");
 
   const auto requests = provider->Requests();
@@ -330,4 +343,7 @@ TEST_CASE("/effort unset removes scoped setting and clears runtime effort") {
   REQUIRE(ui.GetNotices().back().notice.title == "Effort saved");
   REQUIRE(ui.GetNotices().back().notice.detail ==
           "Effort for openai/gpt-5.5: unset.");
+
+  auto output = RenderComponent(ui.Build());
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("effort: unset"));
 }

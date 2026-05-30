@@ -655,7 +655,7 @@ void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,
 }
 
 void ValidateReasoningEffortOptionConflicts(const ChatConfig& config,
-                                             std::vector<ConfigIssue>& issues) {
+                                            std::vector<ConfigIssue>& issues) {
   for (const char* const key : {"reasoning_effort", "reasoning"}) {
     if (!config.options.contains(key)) {
       continue;
@@ -698,14 +698,15 @@ void ValidateActiveReasoningEffort(const ChatConfig& config,
     return;
   }
 
-  issues.push_back({
-      .severity = ConfigIssueSeverity::Warning,
-      .message = "Unsupported provider.model_settings.effort for active "
-                 "provider model",
-      .detail = "Effort '" + std::string(ReasoningEffortToString(effort)) +
-                "' is configured for " + config.provider_id.value + "/" +
-                config.model.value + " but is not supported and will be "
-                "omitted from requests."});
+  issues.push_back(
+      {.severity = ConfigIssueSeverity::Warning,
+       .message = "Unsupported provider.model_settings.effort for active "
+                  "provider model",
+       .detail = "Effort '" + std::string(ReasoningEffortToString(effort)) +
+                 "' is configured for " + config.provider_id.value + "/" +
+                 config.model.value +
+                 " but is not supported and will be "
+                 "omitted from requests."});
 }
 
 }  // namespace

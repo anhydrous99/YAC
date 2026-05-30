@@ -41,6 +41,7 @@ class ChatUiOverlayState {
   void SetModelCommands(std::vector<Command> commands);
   void SetThemeCommands(std::vector<Command> commands);
   void SetProviderModel(::yac::ProviderId provider_id, ::yac::ModelId model);
+  void SetReasoningEffortDisplay(std::optional<std::string> display);
   void SetLastUsage(UsageStats usage);
   void SetContextWindowTokens(int tokens);
   void SetStartupStatus(StartupStatus status);
@@ -57,6 +58,8 @@ class ChatUiOverlayState {
   [[nodiscard]] bool HandleGlobalEvent(const ftxui::Event& event);
   [[nodiscard]] const std::string& ProviderId() const;
   [[nodiscard]] const std::string& Model() const;
+  [[nodiscard]] const std::optional<std::string>& ReasoningEffortDisplay()
+      const;
   [[nodiscard]] const std::optional<UsageStats>& LastUsage() const;
   [[nodiscard]] int ContextWindowTokens() const;
   [[nodiscard]] const StartupStatus& Startup() const;
@@ -107,6 +110,7 @@ class ChatUiOverlayState {
   std::vector<Command> theme_commands_;
   ::yac::ProviderId provider_id_;
   ::yac::ModelId model_;
+  std::optional<std::string> reasoning_effort_display_;
   std::optional<UsageStats> last_usage_;
   int context_window_tokens_ = 0;
   StartupStatus startup_;

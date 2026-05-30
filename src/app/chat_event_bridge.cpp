@@ -2,7 +2,6 @@
 
 #include "chat/tool_call_argument_parser.hpp"
 #include "core_types/tool_call_types.hpp"
-#include "presentation/chat_ui.hpp"
 #include "presentation/chat_ui_overlay_state.hpp"
 #include "presentation/util/terminal.hpp"
 #include "provider/model_context_windows.hpp"
@@ -34,10 +33,12 @@ yac::presentation::Sender SenderForRole(yac::chat::ChatRole role) {
 
 ChatEventBridge::ChatEventBridge(presentation::ChatEventSink& chat_ui,
                                  HistoryProvider history_provider,
-                                 ContextWindowResolver context_window_resolver)
+                                 ContextWindowResolver context_window_resolver,
+                                 EffortDisplayResolver effort_display_resolver)
     : chat_ui_(chat_ui),
       history_provider_(std::move(history_provider)),
-      context_window_resolver_(std::move(context_window_resolver)) {}
+      context_window_resolver_(std::move(context_window_resolver)),
+      effort_display_resolver_(std::move(effort_display_resolver)) {}
 
 void ChatEventBridge::HandleEvent(chat::ChatEvent event) {
   std::visit([this](auto& payload) { this->Handle(std::move(payload)); },
@@ -166,6 +167,8 @@ void ChatEventBridge::Handle(chat::ModelChangedEvent event) {
   chat_ui.SetContextWindowTokens(window);
   chat_ui.SetProviderModel(std::move(event.provider_id),
                            std::move(event.model));
+  chat_ui.SetReasoningEffortDisplay(
+      effort_display_resolver_ ? effort_display_resolver_() : std::nullopt);
   chat_ui.AppendNotice(presentation::UiNotice{
       .severity = presentation::UiSeverity::Info, .title = "Model switched"});
 }

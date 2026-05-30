@@ -120,6 +120,14 @@ std::optional<chat::ReasoningEffort> ConfiguredEffortInSnapshot(
   return it->effort;
 }
 
+std::optional<std::string> FormatReasoningEffortToolbarDisplay(
+    const chat::ChatConfig& config) {
+  if (!ActiveEffortCapability(config).has_value()) {
+    return std::nullopt;
+  }
+  return "effort: " + FormatOptionalEffort(ConfiguredEffortInSnapshot(config));
+}
+
 bool IsAllowedEffort(const provider::ReasoningEffortCapability& capability,
                      chat::ReasoningEffort effort) {
   return std::ranges::find(capability.allowed_values, effort) !=
@@ -201,6 +209,8 @@ void HandleEffortCommand(chat::ChatService& chat_service,
         save_issues);
     if (saved) {
       chat_service.SetReasoningEffort(requested);
+      chat_ui.SetReasoningEffortDisplay(
+          FormatReasoningEffortToolbarDisplay(chat_service.ConfigSnapshot()));
     }
     ReportEffortSaveResult(chat_ui, config.provider_id, config.model, requested,
                            settings_path, saved, save_issues);
@@ -745,12 +755,18 @@ int RunApp() {
   chat_ui.SetContextWindowTokens(
       provider::ResolveContextWindow(provider.get(), config.model.value));
   chat_ui.SetProviderModel(config.provider_id, config.model);
+  chat_ui.SetReasoningEffortDisplay(
+      FormatReasoningEffortToolbarDisplay(chat_service.ConfigSnapshot()));
 
-  ChatEventBridge bridge(chat_ui, /*history_provider=*/{},
-                         [provider](const std::string& model_id) {
-                           return provider::ResolveContextWindow(provider.get(),
-                                                                 model_id);
-                         });
+  ChatEventBridge bridge(
+      chat_ui, /*history_provider=*/{},
+      [provider](const std::string& model_id) {
+        return provider::ResolveContextWindow(provider.get(), model_id);
+      },
+      [&chat_service] {
+        return FormatReasoningEffortToolbarDisplay(
+            chat_service.ConfigSnapshot());
+      });
 
   StreamingCoalescer event_coalescer(screen, bridge);
   *mcp_mgr_event_sink = [&event_coalescer](chat::ChatEvent event) {

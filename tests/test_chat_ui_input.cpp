@@ -6,6 +6,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -211,6 +212,27 @@ TEST_CASE("ChatUI renders active provider and model in footer") {
   auto output = RenderComponent(component);
 
   REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("glm-5.1"));
+}
+
+TEST_CASE("ChatUI renders reasoning effort when provided") {
+  ChatUI ui;
+  ui.SetReasoningEffortDisplay("effort: medium");
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component, 100, 30);
+
+  REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("effort: medium"));
+}
+
+TEST_CASE("ChatUI hides reasoning effort when unavailable") {
+  ChatUI ui;
+  ui.SetReasoningEffortDisplay("effort: medium");
+  ui.SetReasoningEffortDisplay(std::nullopt);
+  auto component = ui.Build();
+
+  auto output = RenderComponent(component, 100, 30);
+
+  REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("effort: medium"));
 }
 
 TEST_CASE("GetMessages returns const reference to internal state") {

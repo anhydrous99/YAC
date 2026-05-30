@@ -76,9 +76,9 @@ int RunE2eRunner(const std::filesystem::path& home_dir,
 
   if (pid == 0) {
     ::setenv("HOME", home_str.c_str(), 1);
-    std::vector<std::string> storage = {runner,      "run", prompt,
-                                        "--auto-approve", mock_script,
-                                        mock_log,    mock_provider};
+    std::vector<std::string> storage = {runner,           "run",       prompt,
+                                        "--auto-approve", mock_script, mock_log,
+                                        mock_provider};
     std::vector<char*> argv;
     argv.reserve(storage.size() + 1);
     for (auto& item : storage) {
@@ -109,7 +109,7 @@ int RunE2eRunner(const std::filesystem::path& home_dir,
   return -1;
 }
 
-}
+}  // namespace
 
 TEST_CASE("request log records persisted OpenAI chat completions effort") {
   TempDir tmp;
@@ -125,13 +125,13 @@ TEST_CASE("request log records persisted OpenAI chat completions effort") {
 
   const auto request_log = tmp.path / "requests.jsonl";
   const int exit_code = RunE2eRunner(tmp.path, "hello", SAMPLE_SCRIPT_PATH,
-                                    request_log.string(), "openai");
+                                     request_log.string(), "openai");
 
   REQUIRE(exit_code == 0);
 
   const std::string log_content = ReadFile(request_log);
-  const Json request_body = Json::parse(log_content.substr(0,
-                                                           log_content.find('\n')));
+  const Json request_body =
+      Json::parse(log_content.substr(0, log_content.find('\n')));
   REQUIRE(request_body["provider_id"].get<std::string>() == "openai");
   REQUIRE(request_body["model"].get<std::string>() == "gpt-5.5");
   REQUIRE(request_body["reasoning_effort"].get<std::string>() == "high");
@@ -143,4 +143,4 @@ TEST_CASE("request log records persisted OpenAI chat completions effort") {
   REQUIRE_FALSE(payload.contains("reasoning"));
 }
 
-}
+}  // namespace yac::test

@@ -87,9 +87,8 @@ ToolResultData TranslateYacToolResultToBedrock(
 // verify ToolCallRequestedEvent emission without requiring the full AWS event
 // stream infrastructure.
 void SimulateBedrockToolUseStream(
-    BedrockStreamHandlerHandle& handle,
-    const std::string& tool_use_id, const std::string& tool_name,
-    const std::string& input_json,
+    BedrockStreamHandlerHandle& handle, const std::string& tool_use_id,
+    const std::string& tool_name, const std::string& input_json,
     Aws::BedrockRuntime::Model::StopReason stop_reason);
 
 }  // namespace yac::provider

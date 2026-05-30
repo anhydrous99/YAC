@@ -28,10 +28,10 @@ constexpr auto kMcpReadyTimeout = std::chrono::seconds(30);
 void PrintUsage(const char* argv0) {
   std::cerr << "Usage: " << argv0
             << " run <prompt> --auto-approve"
-                " --mock-llm-script=<PATH>"
-                " [--mock-request-log=<PATH>]"
-                " [--mock-provider-id=<ID>]"
-                " [--cancel-after-ms=<N>]\n";
+               " --mock-llm-script=<PATH>"
+               " [--mock-request-log=<PATH>]"
+               " [--mock-provider-id=<ID>]"
+               " [--cancel-after-ms=<N>]\n";
 }
 
 bool WaitForMcpReady(yac::mcp::McpManager& manager) {

@@ -5,6 +5,8 @@
 #include "presentation/mcp/mcp_status_sink.hpp"
 
 #include <functional>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace yac::app {
@@ -18,10 +20,14 @@ class ChatEventBridge {
   // "ctx 65k / 200k" in the footer. When unset (default), the bridge falls
   // back to the cross-provider table via `LookupContextWindow`.
   using ContextWindowResolver = std::function<int(const std::string&)>;
+  // Returns the preformatted optional reasoning-effort chip for the active
+  // provider/model. Empty optional means the current model cannot set effort.
+  using EffortDisplayResolver = std::function<std::optional<std::string>()>;
 
   explicit ChatEventBridge(presentation::ChatEventSink& chat_ui,
                            HistoryProvider history_provider = {},
-                           ContextWindowResolver context_window_resolver = {});
+                           ContextWindowResolver context_window_resolver = {},
+                           EffortDisplayResolver effort_display_resolver = {});
 
   void HandleEvent(chat::ChatEvent event);
   void SetPostFn(PostFn fn);
@@ -60,6 +66,7 @@ class ChatEventBridge {
   std::reference_wrapper<presentation::ChatEventSink> chat_ui_;
   HistoryProvider history_provider_;
   ContextWindowResolver context_window_resolver_;
+  EffortDisplayResolver effort_display_resolver_;
   presentation::McpStatusSink mcp_sink_;
   PostFn post_fn_;
 };

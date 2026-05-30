@@ -1,4 +1,5 @@
 #include "provider/openai_compatible_chat_protocol.hpp"
+
 #include "provider/reasoning_effort_capability.hpp"
 
 #include <array>

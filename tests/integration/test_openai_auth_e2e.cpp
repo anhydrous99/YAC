@@ -54,7 +54,9 @@ constexpr auto kCliTimeout = 30s;
 constexpr auto kCliPollInterval = 20ms;
 
 std::string GetInstructions(const HttpRequest& request) {
-  return nlohmann::json::parse(request.body).at("instructions").get<std::string>();
+  return nlohmann::json::parse(request.body)
+      .at("instructions")
+      .get<std::string>();
 }
 
 class TempDir {
@@ -345,7 +347,7 @@ yac::chat::ChatRequest MakeStreamingRequest(
     request.responses_instructions = *responses_instructions;
   }
   request.messages = {yac::chat::ChatMessage{.role = yac::chat::ChatRole::User,
-                                              .content = "hello"}};
+                                             .content = "hello"}};
   return request;
 }
 
@@ -513,7 +515,7 @@ TEST_CASE("stored_oauth_runtime_uses_mock_codex_endpoint",
     REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-e2e");
     CHECK(instructions == std::string(kYacCodexBaseInstructions) +
-                            "\n\nFollow the mock OAuth instructions.");
+                              "\n\nFollow the mock OAuth instructions.");
     CHECK(instructions.find("OpenCode") == std::string::npos);
     REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("oauth-ok");
@@ -621,7 +623,7 @@ TEST_CASE("expired_oauth_refreshes_then_streams_without_leaking_tokens",
     REQUIRE(request.headers.at("session_id") == DeterministicSessionId());
     REQUIRE(request.headers.at("ChatGPT-Account-Id") == "acct-new");
     CHECK(instructions == std::string(kYacCodexBaseInstructions) +
-                            "\n\nFollow the mock OAuth instructions.");
+                              "\n\nFollow the mock OAuth instructions.");
     CHECK(instructions.find("OpenCode") == std::string::npos);
     REQUIRE(request.body.find("\"role\":\"system\"") == std::string::npos);
     return OAuthStream("refresh-ok");

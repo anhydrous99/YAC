@@ -97,8 +97,7 @@ ProviderConfig ActiveProviderConfig(const ChatConfig& config) {
                         .context_window = config.context_window};
 }
 
-std::optional<ReasoningEffort> ActiveReasoningEffort(
-    const ChatConfig& config) {
+std::optional<ReasoningEffort> ActiveReasoningEffort(const ChatConfig& config) {
   const auto settings_it =
       std::ranges::find_if(config.model_settings, [&](const auto& settings) {
         return settings.provider_id == config.provider_id &&
@@ -113,8 +112,8 @@ std::optional<ReasoningEffort> ActiveReasoningEffort(
   if (!capability.has_value()) {
     return std::nullopt;
   }
-  const auto allowed = std::ranges::find(capability->allowed_values,
-                                         *settings_it->effort);
+  const auto allowed =
+      std::ranges::find(capability->allowed_values, *settings_it->effort);
   if (allowed == capability->allowed_values.end()) {
     return std::nullopt;
   }

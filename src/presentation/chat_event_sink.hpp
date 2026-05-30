@@ -45,6 +45,8 @@ class ChatEventSink {
                                  std::vector<std::string> options) = 0;
   virtual void SetProviderModel(::yac::ProviderId provider_id,
                                 ::yac::ModelId model) = 0;
+  virtual void SetReasoningEffortDisplay(
+      std::optional<std::string> display) = 0;
   virtual void SetAgentMode(::yac::chat::AgentMode mode) = 0;
   virtual void SetLastUsage(UsageStats usage) = 0;
   virtual void SetContextWindowTokens(int tokens) = 0;

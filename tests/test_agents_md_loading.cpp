@@ -41,8 +41,7 @@ ChatRequest BuildRequest(
 }
 
 ChatRequest BuildRequestForProvider(
-    const std::filesystem::path& workspace,
-    ::yac::ProviderId provider_id,
+    const std::filesystem::path& workspace, ::yac::ProviderId provider_id,
     std::optional<std::string> system_prompt = std::nullopt) {
   ChatConfig config;
   config.provider_id = provider_id;
@@ -130,9 +129,9 @@ TEST_CASE("OpenAI-compatible provider leaves responses instructions absent",
   const auto workspace = PrepareWorkspace("compatible_responses_absent");
   WriteFile(workspace / "AGENTS.md", "Agents rules");
 
-  const auto request = BuildRequestForProvider(
-      workspace, ::yac::ProviderId{"openai-compatible"},
-      std::string{"System prompt"});
+  const auto request =
+      BuildRequestForProvider(workspace, ::yac::ProviderId{"openai-compatible"},
+                              std::string{"System prompt"});
 
   REQUIRE_FALSE(request.responses_instructions.has_value());
   REQUIRE(request.messages.size() == 1);

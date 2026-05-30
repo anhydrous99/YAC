@@ -711,11 +711,11 @@ std::optional<std::pair<size_t, size_t>> FindModelSettingsBlock(
 }
 
 std::string WithProviderModelEffort(std::string_view content,
-                                     const ProviderId& provider_id,
-                                     const ModelId& model,
-                                     std::optional<ReasoningEffort> effort,
-                                     std::optional<size_t> matching_index,
-                                     std::vector<ConfigIssue>& issues) {
+                                    const ProviderId& provider_id,
+                                    const ModelId& model,
+                                    std::optional<ReasoningEffort> effort,
+                                    std::optional<size_t> matching_index,
+                                    std::vector<ConfigIssue>& issues) {
   auto lines = SplitPreservingNewlines(content);
   const auto newline = DetectNewline(lines);
 

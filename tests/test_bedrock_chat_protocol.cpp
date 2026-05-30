@@ -401,7 +401,8 @@ TEST_CASE(
       REQUIRE(req->tool_calls.size() == 1);
       REQUIRE(req->tool_calls[0].id == "tooluse_abc123");
       REQUIRE(req->tool_calls[0].name == "bash");
-      REQUIRE(req->tool_calls[0].arguments_json == R"({"command":"echo hello"})");
+      REQUIRE(req->tool_calls[0].arguments_json ==
+              R"({"command":"echo hello"})");
     }
   }
   REQUIRE(found_requested);

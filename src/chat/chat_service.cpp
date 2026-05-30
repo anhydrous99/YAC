@@ -257,10 +257,10 @@ void ChatService::SetReasoningEffort(std::optional<ReasoningEffort> effort) {
     return;
   }
   if (effort.has_value()) {
-    config_.model_settings.push_back(ProviderModelSettings{
-        .provider_id = active_provider,
-        .model = active_model,
-        .effort = effort});
+    config_.model_settings.push_back(
+        ProviderModelSettings{.provider_id = active_provider,
+                              .model = active_model,
+                              .effort = effort});
   }
 }
 

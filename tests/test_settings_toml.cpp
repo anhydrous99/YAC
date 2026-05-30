@@ -376,7 +376,8 @@ TEST_CASE("SaveThemeNameToSettingsToml leaves invalid theme table untouched") {
   REQUIRE(ReadFile(file.Path()) == before);
 }
 
-TEST_CASE("SaveProviderModelEffortToSettingsToml rejects inline model settings") {
+TEST_CASE(
+    "SaveProviderModelEffortToSettingsToml rejects inline model settings") {
   TempFile file("yac_test_settings_model_effort_inline.toml");
   WriteFile(file.Path(),
             "[provider]\n"

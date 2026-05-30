@@ -204,6 +204,11 @@ void ChatUiOverlayState::SetProviderModel(::yac::ProviderId provider_id,
   startup_.model = model_;
 }
 
+void ChatUiOverlayState::SetReasoningEffortDisplay(
+    std::optional<std::string> display) {
+  reasoning_effort_display_ = std::move(display);
+}
+
 void ChatUiOverlayState::SetLastUsage(UsageStats usage) {
   last_usage_ = usage;
 }
@@ -407,6 +412,11 @@ const std::string& ChatUiOverlayState::ProviderId() const {
 
 const std::string& ChatUiOverlayState::Model() const {
   return model_.value;
+}
+
+const std::optional<std::string>& ChatUiOverlayState::ReasoningEffortDisplay()
+    const {
+  return reasoning_effort_display_;
 }
 
 const std::optional<UsageStats>& ChatUiOverlayState::LastUsage() const {

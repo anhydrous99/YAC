@@ -85,6 +85,7 @@ class ChatUI : public ChatEventSink {
       ChatUiInputController::FileMentionProvider provider);
   void SetProviderModel(::yac::ProviderId provider_id,
                         ::yac::ModelId model) override;
+  void SetReasoningEffortDisplay(std::optional<std::string> display) override;
   void SetLastUsage(UsageStats usage) override;
   void SetContextWindowTokens(int tokens) override;
   void SetStartupStatus(StartupStatus status);

@@ -2,6 +2,9 @@
 #include "presentation/chat_ui.hpp"
 #include "tool_call/types.hpp"
 
+#include <optional>
+#include <string>
+#include <utility>
 #include <variant>
 
 #include <catch2/catch_test_macros.hpp>
@@ -45,6 +48,10 @@ class RecordingChatEventSink : public ChatEventSink {
 
   void SetProviderModel(::yac::ProviderId, ::yac::ModelId) override {}
 
+  void SetReasoningEffortDisplay(std::optional<std::string> display) override {
+    reasoning_effort_display = std::move(display);
+  }
+
   void SetAgentMode(AgentMode mode) override { agent_mode = mode; }
 
   void SetLastUsage(UsageStats) override {}
@@ -66,6 +73,7 @@ class RecordingChatEventSink : public ChatEventSink {
   [[nodiscard]] std::string Model() const override { return "stub"; }
 
   AgentMode agent_mode = AgentMode::Build;
+  std::optional<std::string> reasoning_effort_display;
 };
 
 }  // namespace
@@ -144,6 +152,19 @@ TEST_CASE("ChatEventBridge forwards agent mode changes through ChatEventSink") {
   bridge.HandleEvent(ChatEvent{AgentModeChangedEvent{.mode = AgentMode::Plan}});
 
   REQUIRE(sink.agent_mode == AgentMode::Plan);
+}
+
+TEST_CASE("ChatEventBridge updates reasoning effort display on model changes") {
+  RecordingChatEventSink sink;
+  ChatEventBridge bridge(
+      sink, /*history_provider=*/{}, /*context_window_resolver=*/{},
+      [] { return std::optional<std::string>{"effort: medium"}; });
+
+  bridge.HandleEvent(
+      ChatEvent{ModelChangedEvent{.provider_id = ::yac::ProviderId{"openai"},
+                                  .model = ::yac::ModelId{"gpt-5.5"}}});
+
+  REQUIRE(sink.reasoning_effort_display == "effort: medium");
 }
 
 TEST_CASE(
