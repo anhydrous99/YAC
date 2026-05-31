@@ -118,9 +118,7 @@ OpenAiLoginResult ProviderAuthCommand::LoginOpenAi(
           observer(notice);
         }
       });
-  if (!auth_store_->Load().has_value()) {
-    static_cast<void>(auth_store_->Save(auth));
-  }
+  static_cast<void>(auth_store_->Save(auth));
   return result;
 }
 
@@ -136,9 +134,7 @@ OpenAiLoginResult ProviderAuthCommand::LoginOpenAiDevice(
           observer(notice);
         }
       });
-  if (!auth_store_->Load().has_value()) {
-    static_cast<void>(auth_store_->Save(auth));
-  }
+  static_cast<void>(auth_store_->Save(auth));
   return result;
 }
 
@@ -198,6 +194,8 @@ ProviderAuthStatusSummary ProviderAuthCommand::BuildStatusSummary(
 
   if (stored_auth.has_value()) {
     summary.stored_credential = StoredCredentialLabel(stored_auth->auth);
+    summary.stored_source =
+        std::string(provider::OpenAiAuthStorageSourceLabel(stored_auth->source));
     if (const auto* oauth =
             std::get_if<provider::OpenAiOAuthAuth>(&stored_auth->auth)) {
       if (oauth->expires_at.has_value()) {
@@ -236,6 +234,7 @@ ProviderAuthStatusSummary ProviderAuthCommand::BuildStatusSummary(
 
   if (after_logout) {
     summary.stored_credential.reset();
+    summary.stored_source.reset();
     summary.oauth_expiry.reset();
     summary.account_id.reset();
     std::optional<std::string> remaining_auth_warning;

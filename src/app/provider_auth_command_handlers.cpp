@@ -43,6 +43,9 @@ std::string FormatProviderAuthStatus(
   if (summary.stored_credential.has_value()) {
     out << "stored credential: " << *summary.stored_credential << "\n";
   }
+  if (summary.stored_source.has_value()) {
+    out << "stored source: " << *summary.stored_source << "\n";
+  }
   if (summary.effective_auth.has_value()) {
     out << "effective auth: " << *summary.effective_auth << "\n";
   }
