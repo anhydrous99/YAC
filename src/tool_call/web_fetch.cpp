@@ -539,7 +539,7 @@ struct CurlFetchState {
          (ip >= 0xC0A80000 && ip <= 0xC0A8FFFF) ||
          (ip >= 0xA9FE0000 && ip <= 0xA9FEFFFF) ||
          (ip >= 0x64400000 && ip <= 0x647FFFFF) ||
-         (ip >= 0x00000000 && ip <= 0x00FFFFFF);
+         ip <= 0x00FFFFFF;
 }
 
 [[nodiscard]] bool IsPrivateIpv4(const in_addr& address) {
