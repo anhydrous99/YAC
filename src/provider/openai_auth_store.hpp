@@ -10,6 +10,11 @@
 #include <string>
 #include <string_view>
 
+namespace yac::chat {
+enum class StateCredentialSource;
+class StateStore;
+}
+
 namespace yac::provider {
 
 class OpenAiAuthKeychainUnavailableError : public std::runtime_error {
@@ -60,6 +65,7 @@ class OpenAiAuthStore {
   struct Dependencies {
     std::shared_ptr<IOpenAiAuthBackend> keychain_backend;
     std::shared_ptr<IOpenAiAuthBackend> file_backend;
+    std::shared_ptr<chat::StateStore> state_store;
   };
 
   OpenAiAuthStore();
@@ -71,6 +77,12 @@ class OpenAiAuthStore {
 
  private:
   [[nodiscard]] static Dependencies BuildDefaultDependencies();
+  [[nodiscard]] std::optional<StoredOpenAiAuth> LoadStateStoreAuth() const;
+  [[nodiscard]] std::optional<StoredOpenAiAuth> LoadLegacyAuth() const;
+  [[nodiscard]] StoredOpenAiAuth SaveStateStoreAuth(
+      const OpenAiAuth& auth, chat::StateCredentialSource source) const;
+  [[nodiscard]] bool IsLegacyImportDisabled() const;
+  void DisableLegacyImport() const;
   void StoreCache(std::optional<StoredOpenAiAuth> auth) const;
 
   Dependencies dependencies_;

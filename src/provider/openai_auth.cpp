@@ -121,6 +121,8 @@ std::string_view OpenAiAuthTypeLabel(const OpenAiAuth& auth) {
 
 std::string_view OpenAiAuthStorageSourceLabel(OpenAiAuthStorageSource source) {
   switch (source) {
+    case OpenAiAuthStorageSource::StateStore:
+      return "SQLite state store";
     case OpenAiAuthStorageSource::Keychain:
       return "OS keychain";
     case OpenAiAuthStorageSource::File:
