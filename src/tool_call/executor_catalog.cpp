@@ -17,11 +17,11 @@
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <exception>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -242,8 +242,7 @@ int OptionalWebFetchTimeout(const Json& args) {
   if (!args["timeout"].is_number_integer()) {
     throw ToolValidationError("web_fetch timeout must be an integer.", "", "");
   }
-  return std::clamp(args["timeout"].get<int>(), 1,
-                    kWebFetchMaxTimeoutSeconds);
+  return std::clamp(args["timeout"].get<int>(), 1, kWebFetchMaxTimeoutSeconds);
 }
 
 PreparedToolCall PrepareWebFetchTool(const chat::ToolCallRequest& request,
@@ -251,15 +250,14 @@ PreparedToolCall PrepareWebFetchTool(const chat::ToolCallRequest& request,
   const auto url = RequireString(args, "url");
   const auto format = OptionalWebFetchFormat(args);
   const auto timeout = OptionalWebFetchTimeout(args);
-  return PreparedToolCall{.request = request,
-                          .preview = WebFetchCall{.url = url,
-                                                   .format = format,
-                                                   .timeout = timeout},
-                          .requires_approval = false};
+  return PreparedToolCall{
+      .request = request,
+      .preview = WebFetchCall{.url = url, .format = format, .timeout = timeout},
+      .requires_approval = false};
 }
 
 PreparedToolCall PrepareWebSearchTool(const chat::ToolCallRequest& request,
-                                       const Json& args) {
+                                      const Json& args) {
   const auto query = RequireString(args, "query");
   int num_results = kWebSearchDefaultResultLimit;
   if (args.contains("num_results")) {
@@ -267,8 +265,8 @@ PreparedToolCall PrepareWebSearchTool(const chat::ToolCallRequest& request,
       throw ToolValidationError("web_search num_results must be an integer.",
                                 "", "");
     }
-    num_results = std::clamp(args["num_results"].get<int>(), 1,
-                             kWebSearchMaxResultLimit);
+    num_results =
+        std::clamp(args["num_results"].get<int>(), 1, kWebSearchMaxResultLimit);
   }
   int context_max_characters = kWebSearchDefaultContextLimit;
   if (args.contains("context_max_characters")) {
@@ -276,15 +274,15 @@ PreparedToolCall PrepareWebSearchTool(const chat::ToolCallRequest& request,
       throw ToolValidationError(
           "web_search context_max_characters must be an integer.", "", "");
     }
-    context_max_characters = std::clamp(
-        args["context_max_characters"].get<int>(), 1,
-        kWebSearchMaxContextLimit);
+    context_max_characters =
+        std::clamp(args["context_max_characters"].get<int>(), 1,
+                   kWebSearchMaxContextLimit);
   }
   return PreparedToolCall{.request = request,
-                          .preview = WebSearchCall{
-                              .query = query,
-                              .num_results = num_results,
-                              .context_max_characters = context_max_characters},
+                          .preview = WebSearchCall{.query = query,
+                                                   .num_results = num_results,
+                                                   .context_max_characters =
+                                                       context_max_characters},
                           .requires_approval = false};
 }
 
@@ -451,166 +449,206 @@ ToolExecutionResult ExecuteWebSearchDispatch(const PreparedToolCall& prepared,
   }
   const Json args = Json::parse(prepared.request.arguments_json);
   const auto& config = **ctx.web_search_config;
-  WebSearchRequest request{.query = call->query,
-                           .num_results = args.contains("num_results")
-                                              ? call->num_results
-                                              : config.result_limit,
-                           .context_max_characters =
-                               args.contains("context_max_characters")
-                                   ? call->context_max_characters
-                                   : config.context_limit};
+  WebSearchRequest request{
+      .query = call->query,
+      .num_results = args.contains("num_results") ? call->num_results
+                                                  : config.result_limit,
+      .context_max_characters = args.contains("context_max_characters")
+                                    ? call->context_max_characters
+                                    : config.context_limit};
   return ExecuteWebSearchTool(request, config, *ctx.web_search_transport,
                               ctx.stop);
 }
 
-using HandlerRegistry = std::unordered_map<std::string_view, ToolHandler>;
+struct ToolDescriptor {
+  std::string_view name;
+  ToolHandler handler;
+  std::string_view description;
+  std::string_view parameters_schema_json;
+};
 
-const HandlerRegistry kToolHandlers = {
-    {kFileWriteToolName,
-     {.prepare = &PrepareFileWriteTool, .execute = &ExecuteFileWriteDispatch}},
-    {kFileReadToolName,
-     {.prepare = &PrepareFileReadTool, .execute = &ExecuteFileReadDispatch}},
-    {kListDirToolName,
-     {.prepare = &PrepareListDirTool, .execute = &ExecuteListDirDispatch}},
-    {kLspDiagnosticsToolName,
-     {.prepare = &PrepareLspDiagnosticsTool,
-      .execute = &ExecuteLspDiagnosticsDispatch}},
-    {kLspReferencesToolName,
-     {.prepare = &PrepareLspReferencesTool,
-      .execute = &ExecuteLspReferencesDispatch}},
-    {kLspGotoDefinitionToolName,
-     {.prepare = &PrepareLspGotoDefinitionTool,
-      .execute = &ExecuteLspGotoDefinitionDispatch}},
-    {kLspRenameToolName,
-     {.prepare = &PrepareLspRenameTool, .execute = &ExecuteLspRenameDispatch}},
-    {kLspSymbolsToolName,
-     {.prepare = &PrepareLspSymbolsTool,
-      .execute = &ExecuteLspSymbolsDispatch}},
-    {kSubAgentToolName,
-     {.prepare = &PrepareSubAgentTool, .execute = &ExecuteSubAgentDispatch}},
-    {kTodoWriteToolName,
-     {.prepare = &PrepareTodoWriteTool, .execute = &ExecuteTodoWriteDispatch}},
-    {kAskUserToolName,
-     {.prepare = &PrepareAskUserTool, .execute = &ExecuteAskUserDispatch}},
-    {kPlanExitToolName,
-     {.prepare = &PreparePlanExitTool, .execute = &ExecutePlanExitDispatch}},
-    {kBashToolName,
-     {.prepare = &PrepareBashTool, .execute = &ExecuteBashDispatch}},
-    {kFileEditToolName,
-     {.prepare = &PrepareFileEditTool, .execute = &ExecuteFileEditDispatch}},
-    {kGrepToolName,
-     {.prepare = &PrepareGrepTool, .execute = &ExecuteGrepDispatch}},
-    {kGlobToolName,
-     {.prepare = &PrepareGlobTool, .execute = &ExecuteGlobDispatch}},
-    {kWebFetchToolName,
-     {.prepare = &PrepareWebFetchTool, .execute = &ExecuteWebFetchDispatch}},
-    {kWebSearchToolName,
-     {.prepare = &PrepareWebSearchTool, .execute = &ExecuteWebSearchDispatch}},
+using ToolDescriptors = std::array<ToolDescriptor, 18>;
+
+const ToolDescriptors kToolDescriptors = {
+    ToolDescriptor{
+        .name = kFileReadToolName,
+        .handler = {.prepare = &PrepareFileReadTool,
+                    .execute = &ExecuteFileReadDispatch},
+        .description = "Read the contents of a workspace file.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"}},"required":["filepath"]})"},
+    ToolDescriptor{
+        .name = kFileWriteToolName,
+        .handler = {.prepare = &PrepareFileWriteTool,
+                    .execute = &ExecuteFileWriteDispatch},
+        .description = "Create or fully overwrite a workspace file.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"},"content":{"type":"string"}},"required":["filepath","content"]})"},
+    ToolDescriptor{
+        .name = kListDirToolName,
+        .handler = {.prepare = &PrepareListDirTool,
+                    .execute = &ExecuteListDirDispatch},
+        .description = "List direct entries in a workspace directory.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"}},"required":["path"]})"},
+    ToolDescriptor{
+        .name = kLspDiagnosticsToolName,
+        .handler = {.prepare = &PrepareLspDiagnosticsTool,
+                    .execute = &ExecuteLspDiagnosticsDispatch},
+        .description = "Return language-server diagnostics for a file.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
+    ToolDescriptor{
+        .name = kLspReferencesToolName,
+        .handler = {.prepare = &PrepareLspReferencesTool,
+                    .execute = &ExecuteLspReferencesDispatch},
+        .description = "Find references to the symbol at a file position.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
+    ToolDescriptor{
+        .name = kLspGotoDefinitionToolName,
+        .handler = {.prepare = &PrepareLspGotoDefinitionTool,
+                    .execute = &ExecuteLspGotoDefinitionDispatch},
+        .description = "Find definitions for the symbol at a file position.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
+    ToolDescriptor{
+        .name = kLspRenameToolName,
+        .handler = {.prepare = &PrepareLspRenameTool,
+                    .execute = &ExecuteLspRenameDispatch},
+        .description = "Rename a symbol across the workspace.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"old_name":{"type":"string"},"new_name":{"type":"string"}},"required":["file_path","line","character","new_name"]})"},
+    ToolDescriptor{
+        .name = kLspSymbolsToolName,
+        .handler = {.prepare = &PrepareLspSymbolsTool,
+                    .execute = &ExecuteLspSymbolsDispatch},
+        .description = "Return document symbols for a file.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
+    ToolDescriptor{
+        .name = kSubAgentToolName,
+        .handler = {.prepare = &PrepareSubAgentTool,
+                    .execute = &ExecuteSubAgentDispatch},
+        .description = "Spawn a sub-agent to perform a task in an isolated "
+                       "conversation. Use for tasks that benefit from context "
+                       "isolation "
+                       "(exploration, research, focused work). The sub-agent "
+                       "has access "
+                       "to all tools but cannot spawn further sub-agents.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})"},
+    ToolDescriptor{
+        .name = kTodoWriteToolName,
+        .handler = {.prepare = &PrepareTodoWriteTool,
+                    .execute = &ExecuteTodoWriteDispatch},
+        .description = "Write the current todo list.",
+        .parameters_schema_json =
+            R"({"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string","description":"Task description"},"status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Current status"},"priority":{"type":"string","enum":["high","medium","low"],"description":"Priority level"}},"required":["content","status"]}}},"required":["todos"]})"},
+    ToolDescriptor{
+        .name = kAskUserToolName,
+        .handler = {.prepare = &PrepareAskUserTool,
+                    .execute = &ExecuteAskUserDispatch},
+        .description = "Ask the user a question and wait for their response.",
+        .parameters_schema_json =
+            R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
+    ToolDescriptor{
+        .name = kPlanExitToolName,
+        .handler = {.prepare = &PreparePlanExitTool,
+                    .execute = &ExecutePlanExitDispatch},
+        .description = "Request approval for the final Plan-mode plan and "
+                       "switch to Build mode.",
+        .parameters_schema_json =
+            R"({"type":"object","additionalProperties":false,"properties":{"plan":{"type":"string","description":"Final plan in markdown."}},"required":["plan"]})"},
+    ToolDescriptor{
+        .name = kBashToolName,
+        .handler = {.prepare = &PrepareBashTool,
+                    .execute = &ExecuteBashDispatch},
+        .description = "Execute a shell command in the workspace "
+                       "directory. stdout and "
+                       "stderr are merged. Output is capped at 16 "
+                       "KB. Every call requires "
+                       "user approval before execution.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})json"},
+    ToolDescriptor{
+        .name = kFileEditToolName,
+        .handler = {.prepare = &PrepareFileEditTool,
+                    .execute = &ExecuteFileEditDispatch},
+        .description = "Edit a file by replacing an exact string. "
+                       "old_string must match "
+                       "exactly once (whitespace-tolerant "
+                       "fallbacks applied). Use "
+                       "replace_all to replace all occurrences.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})json"},
+    ToolDescriptor{.name = kGrepToolName,
+                   .handler = {.prepare = &PrepareGrepTool,
+                               .execute = &ExecuteGrepDispatch},
+                   .description = "Search for a regex pattern in workspace "
+                                  "files using ripgrep. "
+                                  "Respects .gitignore by default. Requires "
+                                  "ripgrep (rg) in PATH.",
+                   .parameters_schema_json = R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
+    ToolDescriptor{
+        .name = kGlobToolName,
+        .handler = {.prepare = &PrepareGlobTool,
+                    .execute = &ExecuteGlobDispatch},
+        .description = "Find files matching a glob pattern. "
+                       "Supports **, *, ?. "
+                       "Respects .gitignore by default. Results "
+                       "sorted by mtime "
+                       "descending.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
+    ToolDescriptor{
+        .name = kWebFetchToolName,
+        .handler = {.prepare = &PrepareWebFetchTool,
+                    .execute = &ExecuteWebFetchDispatch},
+        .description = "Fetch an HTTP(S) URL and return "
+                       "transformed page content. Defaults "
+                       "to markdown output with a 30 second "
+                       "timeout; timeout is capped at "
+                       "120 seconds.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"HTTP(S) URL to fetch."},"format":{"type":"string","enum":["markdown","text","html"],"description":"Output format (default markdown)."},"timeout":{"type":"integer","description":"Timeout in seconds (default 30, max 120).","minimum":1,"maximum":120,"default":30}},"required":["url"]})json"},
+    ToolDescriptor{
+        .name = kWebSearchToolName,
+        .handler = {.prepare = &PrepareWebSearchTool,
+                    .execute = &ExecuteWebSearchDispatch},
+        .description = "Search the web through the configured Exa "
+                       "provider. Disabled "
+                       "unless web_search is configured with "
+                       "provider credentials.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query to send to the configured provider."},"num_results":{"type":"integer","description":"Number of results to request (default 5, max 10).","minimum":1,"maximum":10,"default":5},"context_max_characters":{"type":"integer","description":"Maximum provider context characters per request (default 4096, max 12000).","minimum":1,"maximum":12000,"default":4096}},"required":["query"]})json"},
 };
 
 }  // namespace
 
 const ToolHandler* LookupToolHandler(std::string_view name) {
-  const auto it = kToolHandlers.find(name);
-  return it == kToolHandlers.end() ? nullptr : &it->second;
+  for (const auto& descriptor : kToolDescriptors) {
+    if (descriptor.name == name) {
+      return &descriptor.handler;
+    }
+  }
+  return nullptr;
 }
 
 std::size_t ToolHandlerCount() {
-  return kToolHandlers.size();
+  return kToolDescriptors.size();
 }
 
 std::vector<chat::ToolDefinition> ToolDefinitions() {
-  return {
-      {.name = std::string(kFileReadToolName),
-       .description = "Read the contents of a workspace file.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"}},"required":["filepath"]})"},
-      {.name = std::string(kFileWriteToolName),
-       .description = "Create or fully overwrite a workspace file.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"},"content":{"type":"string"}},"required":["filepath","content"]})"},
-      {.name = std::string(kListDirToolName),
-       .description = "List direct entries in a workspace directory.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"}},"required":["path"]})"},
-      {.name = std::string(kLspDiagnosticsToolName),
-       .description = "Return language-server diagnostics for a file.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
-      {.name = std::string(kLspReferencesToolName),
-       .description = "Find references to the symbol at a file position.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
-      {.name = std::string(kLspGotoDefinitionToolName),
-       .description = "Find definitions for the symbol at a file position.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})"},
-      {.name = std::string(kLspRenameToolName),
-       .description = "Rename a symbol across the workspace.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"old_name":{"type":"string"},"new_name":{"type":"string"}},"required":["file_path","line","character","new_name"]})"},
-      {.name = std::string(kLspSymbolsToolName),
-       .description = "Return document symbols for a file.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})"},
-      {.name = std::string(kSubAgentToolName),
-       .description =
-           "Spawn a sub-agent to perform a task in an isolated "
-           "conversation. Use for tasks that benefit from context isolation "
-           "(exploration, research, focused work). The sub-agent has access "
-           "to all tools but cannot spawn further sub-agents.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})"},
-      {.name = std::string(kTodoWriteToolName), .description = "Write the current todo list.", .parameters_schema_json = R"({"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string","description":"Task description"},"status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Current status"},"priority":{"type":"string","enum":["high","medium","low"],"description":"Priority level"}},"required":["content","status"]}}},"required":["todos"]})"},
-      {.name = std::string(kAskUserToolName),
-       .description = "Ask the user a question and wait for their response.",
-       .parameters_schema_json =
-           R"({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})"},
-      {.name = std::string(kPlanExitToolName),
-       .description = "Request approval for the final Plan-mode plan and "
-                      "switch to Build mode.",
-       .parameters_schema_json =
-           R"({"type":"object","additionalProperties":false,"properties":{"plan":{"type":"string","description":"Final plan in markdown."}},"required":["plan"]})"},
-      {.name = std::string(kBashToolName),
-       .description =
-           "Execute a shell command in the workspace directory. stdout and "
-           "stderr are merged. Output is capped at 16 KB. Every call requires "
-           "user approval before execution.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})json"},
-      {.name = std::string(kFileEditToolName),
-       .description =
-           "Edit a file by replacing an exact string. old_string must match "
-           "exactly once (whitespace-tolerant fallbacks applied). Use "
-           "replace_all to replace all occurrences.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})json"},
-      {.name = std::string(kGrepToolName),
-       .description =
-           "Search for a regex pattern in workspace files using ripgrep. "
-           "Respects .gitignore by default. Requires ripgrep (rg) in PATH.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
-      {.name = std::string(kGlobToolName),
-       .description = "Find files matching a glob pattern. Supports **, *, ?. "
-                      "Respects .gitignore by default. Results sorted by mtime "
-                      "descending.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
-       {.name = std::string(kWebFetchToolName),
-        .description =
-            "Fetch an HTTP(S) URL and return transformed page content. Defaults "
-            "to markdown output with a 30 second timeout; timeout is capped at "
-            "120 seconds.",
-        .parameters_schema_json =
-            R"json({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"HTTP(S) URL to fetch."},"format":{"type":"string","enum":["markdown","text","html"],"description":"Output format (default markdown)."},"timeout":{"type":"integer","description":"Timeout in seconds (default 30, max 120).","minimum":1,"maximum":120,"default":30}},"required":["url"]})json"},
-      {.name = std::string(kWebSearchToolName),
-        .description =
-            "Search the web through the configured Exa provider. Disabled "
-            "unless web_search is configured with provider credentials.",
-        .parameters_schema_json =
-            R"json({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query to send to the configured provider."},"num_results":{"type":"integer","description":"Number of results to request (default 5, max 10).","minimum":1,"maximum":10,"default":5},"context_max_characters":{"type":"integer","description":"Maximum provider context characters per request (default 4096, max 12000).","minimum":1,"maximum":12000,"default":4096}},"required":["query"]})json"},
-  };
+  std::vector<chat::ToolDefinition> definitions;
+  definitions.reserve(kToolDescriptors.size());
+  for (const auto& descriptor : kToolDescriptors) {
+    definitions.push_back({.name = std::string(descriptor.name),
+                           .description = std::string(descriptor.description),
+                           .parameters_schema_json =
+                               std::string(descriptor.parameters_schema_json)});
+  }
+  return definitions;
 }
 
 namespace {
