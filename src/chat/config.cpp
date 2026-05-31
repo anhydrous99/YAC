@@ -497,6 +497,33 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
     }
   }
 
+  if (auto val = GetEnv("YAC_WEB_SEARCH_ENABLED")) {
+    config.web_search.enabled = ParseEnvBool(*val);
+  }
+  if (auto val = GetEnv("YAC_WEB_SEARCH_PROVIDER")) {
+    try {
+      config.web_search.provider = ParseEnvStringEnum(
+          *val, "web_search.provider", "YAC_WEB_SEARCH_PROVIDER");
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_WEB_SEARCH_PROVIDER",
+                        .detail = error.what()});
+    }
+  }
+  if (auto val = GetEnv("YAC_EXA_ENDPOINT")) {
+    config.web_search.endpoint = std::move(*val);
+  }
+  if (auto val = GetEnv("YAC_WEB_SEARCH_TIMEOUT_SECONDS")) {
+    try {
+      config.web_search.timeout_seconds = ParseEnvInteger(
+          *val, "web_search.timeout_seconds", "YAC_WEB_SEARCH_TIMEOUT_SECONDS");
+    } catch (const std::exception& error) {
+      issues.push_back({.severity = ConfigIssueSeverity::Error,
+                        .message = "Invalid YAC_WEB_SEARCH_TIMEOUT_SECONDS",
+                        .detail = error.what()});
+    }
+  }
+
   // Bedrock-specific env overrides
   if (config.provider_id.value == "bedrock") {
     if (!config.options.contains("region")) {
@@ -654,6 +681,27 @@ void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,
   }
 }
 
+void ResolveWebSearchConfig(ChatConfig& config,
+                            std::vector<ConfigIssue>& issues) {
+  if (config.web_search.provider != "exa") {
+    issues.push_back({.severity = ConfigIssueSeverity::Error,
+                      .message = "Invalid web_search.provider",
+                      .detail = "Only 'exa' is supported for web_search."});
+    return;
+  }
+
+  if (auto val = GetEnv(config.web_search.api_key_env.c_str())) {
+    config.web_search.api_key = std::move(*val);
+  }
+
+  if (config.web_search.enabled && config.web_search.api_key.empty()) {
+    issues.push_back({.severity = ConfigIssueSeverity::Error,
+                      .message = "web_search provider is not configured",
+                      .detail = "Set YAC_EXA_API_KEY before enabling "
+                                "web_search."});
+  }
+}
+
 void ValidateReasoningEffortOptionConflicts(const ChatConfig& config,
                                             std::vector<ConfigIssue>& issues) {
   for (const char* const key : {"reasoning_effort", "reasoning"}) {
@@ -736,6 +784,7 @@ ChatConfigResult LoadChatConfigResult() {
     ValidateReasoningEffortOptionConflicts(config, result.issues);
     ValidateActiveReasoningEffort(config, result.issues);
     ResolveApiKey(config, fields, result.issues);
+    ResolveWebSearchConfig(config, result.issues);
     return result;
   }
   return LoadChatConfigResultFrom(settings_path, /*create_if_missing=*/true);
@@ -763,6 +812,7 @@ ChatConfigResult LoadChatConfigResultFrom(
   ValidateReasoningEffortOptionConflicts(config, result.issues);
   ValidateActiveReasoningEffort(config, result.issues);
   ResolveApiKey(config, fields, result.issues);
+  ResolveWebSearchConfig(config, result.issues);
 
   return result;
 }
