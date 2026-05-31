@@ -84,14 +84,17 @@ struct CurlFetchState {
 [[nodiscard]] std::string DecodeHtmlEntities(std::string_view input) {
   std::string output;
   output.reserve(input.size());
-  for (std::size_t i = 0; i < input.size(); ++i) {
+  std::size_t i = 0;
+  while (i < input.size()) {
     if (input[i] != '&') {
       output.push_back(input[i]);
+      ++i;
       continue;
     }
     const std::size_t semi = input.find(';', i + 1);
     if (semi == std::string_view::npos) {
       output.push_back(input[i]);
+      ++i;
       continue;
     }
     const std::string_view entity = input.substr(i, semi - i + 1);
@@ -110,7 +113,7 @@ struct CurlFetchState {
     } else {
       output.append(entity);
     }
-    i = semi;
+    i = semi + 1;
   }
   return output;
 }
