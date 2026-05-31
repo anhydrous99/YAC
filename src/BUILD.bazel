@@ -24,11 +24,17 @@ filegroup(
 
 
 yac_cc_library(
+    name = "config_paths",
+    srcs = ["chat/config_paths.cpp"],
+    hdrs = ["chat/config_paths.hpp"],
+    includes = SRC_INCLUDES,
+)
+
+yac_cc_library(
     name = "config",
     srcs = [
         "chat/config.cpp",
         "chat/config_loader.cpp",
-        "chat/config_paths.cpp",
         "chat/prompt_library.cpp",
         "chat/reasoning_effort.cpp",
         "chat/settings_registry.cpp",
@@ -40,7 +46,6 @@ yac_cc_library(
     hdrs = [
         "chat/config.hpp",
         "chat/config_loader.hpp",
-        "chat/config_paths.hpp",
         "chat/prompt_library.hpp",
         "chat/reasoning_effort.hpp",
         "chat/settings_registry.hpp",
@@ -55,8 +60,30 @@ yac_cc_library(
     ],
     includes = SRC_INCLUDES,
     deps = [
+        ":config_paths",
         ":core_types",
+        ":state_store",
         "@tomlplusplus//:toml++-src",
+    ],
+)
+
+yac_cc_library(
+    name = "state_store",
+    srcs = [
+        "chat/sqlite_state_store.cpp",
+        "chat/state_paths.cpp",
+        "chat/state_store.cpp",
+    ],
+    hdrs = [
+        "chat/sqlite_state_store.hpp",
+        "chat/state_paths.hpp",
+        "chat/state_store.hpp",
+    ],
+    includes = SRC_INCLUDES,
+    deps = [
+        ":config_paths",
+        ":core_types",
+        "@sqlite//:sqlite3",
     ],
 )
 
@@ -222,6 +249,7 @@ yac_cc_library(
         ":config",
         ":core_types",
         ":mcp",
+        ":state_store",
         ":tool_call",
         "@curl//:curl",
         "@keychain//:keychain",

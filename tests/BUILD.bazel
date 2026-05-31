@@ -93,6 +93,18 @@ yac_test(
         "@catch2//:catch2_main",
     ],
 )
+yac_test(
+    "yac_test_provider_credentials",
+    [
+        "test_provider_credentials.cpp",
+        "openai_auth_test_helpers.cpp",
+    ],
+    common_deps = [
+        "//src:provider",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test("yac_test_openai_compatible_chat_protocol", ["test_openai_compatible_chat_protocol.cpp"])
 yac_test(
     "yac_test_reasoning_effort_capability",
@@ -159,8 +171,67 @@ yac_test(
     ],
 )
 yac_test("yac_test_config_paths", ["test_config_paths.cpp"])
+yac_test(
+    "yac_test_state_store_contract",
+    ["test_state_store_contract.cpp"],
+    common_deps = [
+        "//src:config",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+)
+yac_test(
+    "yac_test_sqlite_dependency_smoke",
+    ["test_sqlite_dependency_smoke.cpp"],
+    common_deps = ["@catch2//:catch2_main"],
+    deps = ["@sqlite//:sqlite3"],
+)
+yac_test(
+    "yac_test_sqlite_state_store",
+    ["test_sqlite_state_store.cpp"],
+    common_deps = [
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+    deps = ["@sqlite//:sqlite3"],
+)
 yac_test("yac_test_chat_config_bedrock", ["test_chat_config_bedrock.cpp"])
 yac_test("yac_test_chat_config_openai", ["test_chat_config_openai.cpp"])
+yac_test(
+    "yac_test_config_state_precedence",
+    ["test_config_state_precedence.cpp"],
+    common_deps = [
+        "//src:config",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+)
+yac_test(
+    "yac_test_provider_profiles",
+    ["test_provider_profiles.cpp"],
+    common_deps = [
+        "//src:config",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+    deps = ["@sqlite//:sqlite3"],
+)
+yac_test(
+    "yac_test_runtime_state_persistence",
+    ["test_runtime_state_persistence.cpp"],
+    common_deps = [
+        "//src:chat_service",
+        "//src:config",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+    deps = ["@sqlite//:sqlite3"],
+)
+yac_test(
+    "yac_test_state_store_failures",
+    ["test_state_store_failures.cpp"],
+    deps = ["@sqlite//:sqlite3"],
+)
 yac_test("yac_test_prompt_library", ["test_prompt_library.cpp"])
 yac_test(
     "yac_test_config_loader",
@@ -258,6 +329,17 @@ yac_test("yac_test_yac_auth_cli", ["test_yac_auth_cli.cpp"])
 yac_test("yac_test_yac_mcp_cli", ["test_yac_mcp_cli.cpp"])
 
 yac_test("yac_test_openai_auth_store", ["test_openai_auth_store.cpp"])
+
+yac_test(
+    "yac_test_openai_auth_sqlite_migration",
+    ["test_openai_auth_sqlite_migration.cpp"],
+    common_deps = [
+        "//src:provider",
+        "//src:state_store",
+        "@catch2//:catch2_main",
+    ],
+    deps = ["@sqlite//:sqlite3"],
+)
 
 yac_test(
     "yac_test_openai_auth_test_helpers",
