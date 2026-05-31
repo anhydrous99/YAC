@@ -87,13 +87,15 @@ void AppendSyntheticReminder(std::string& final_prompt, std::string reminder) {
 
 ProviderConfig ActiveProviderConfig(const ChatConfig& config) {
   return ProviderConfig{.id = config.provider_id,
+                        .profile_id = config.profile_id,
                         .model = config.model,
                         .api_key = config.api_key,
                         .api_key_env = config.api_key_env,
                         .base_url = config.base_url,
                         .system_prompt = config.system_prompt,
                         .options = config.options,
-                        .context_window = config.context_window};
+                        .context_window = config.context_window,
+                        .state_store = config.state_store};
 }
 
 std::optional<ReasoningEffort> ActiveReasoningEffort(const ChatConfig& config) {

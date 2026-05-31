@@ -73,13 +73,15 @@ std::string TrimWhitespace(std::string_view input) {
 chat::ProviderConfig ProviderConfigFromChatConfig(
     const chat::ChatConfig& config) {
   return chat::ProviderConfig{.id = config.provider_id,
+                              .profile_id = config.profile_id,
                               .model = config.model,
                               .api_key = config.api_key,
                               .api_key_env = config.api_key_env,
                               .base_url = config.base_url,
                               .system_prompt = config.system_prompt,
                               .options = config.options,
-                              .context_window = config.context_window};
+                              .context_window = config.context_window,
+                              .state_store = config.state_store};
 }
 
 std::optional<provider::ReasoningEffortCapability> ActiveEffortCapability(
@@ -689,16 +691,8 @@ int RunApp() {
   auto& prompt_result = loaded.prompt_library;
   auto startup_issues = prompt_result.issues;
 
-  const chat::ProviderConfig provider_config{
-      .id = config.provider_id,
-      .model = config.model,
-      .api_key = config.api_key,
-      .api_key_env = config.api_key_env,
-      .base_url = config.base_url,
-      .system_prompt = config.system_prompt,
-      .options = config.options,
-      .context_window = config.context_window,
-  };
+  const chat::ProviderConfig provider_config =
+      ProviderConfigFromChatConfig(config);
   auto provider = MakeLanguageModelProvider(provider_config);
   AppendProviderAuthStartupIssues(provider_config, *provider,
                                   config_result.issues);

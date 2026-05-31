@@ -33,6 +33,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
 
   auto provider = MakeLanguageModelProvider(chat::ProviderConfig{
       .id = config.provider_id,
+      .profile_id = config.profile_id,
       .model = config.model,
       .api_key = config.api_key,
       .api_key_env = config.api_key_env,
@@ -40,6 +41,7 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
       .system_prompt = config.system_prompt,
       .options = config.options,
       .context_window = config.context_window,
+      .state_store = config.state_store,
   });
 
   provider::ProviderRegistry registry;

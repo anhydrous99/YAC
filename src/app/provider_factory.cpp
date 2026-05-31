@@ -13,13 +13,15 @@ namespace {
 
 chat::ProviderConfig ToProviderConfig(const chat::ProviderConfig& config) {
   return chat::ProviderConfig{.id = config.id,
+                              .profile_id = config.profile_id,
                               .model = config.model,
                               .api_key = config.api_key,
                               .api_key_env = config.api_key_env,
                               .base_url = config.base_url,
                               .system_prompt = config.system_prompt,
                               .options = config.options,
-                              .context_window = config.context_window};
+                              .context_window = config.context_window,
+                              .state_store = config.state_store};
 }
 
 }  // namespace
