@@ -3,6 +3,7 @@
 #include "config_env_test_helpers.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -77,6 +78,19 @@ bool HasIssue(const std::vector<yac::chat::ConfigIssue>& issues,
   return std::ranges::any_of(issues, [&](const yac::chat::ConfigIssue& issue) {
     return issue.severity == severity && issue.message == message;
   });
+}
+
+const yac::chat::ConfigIssue* FindIssueByMessage(
+    const std::vector<yac::chat::ConfigIssue>& issues,
+    std::string_view message) {
+  const auto it =
+      std::ranges::find_if(issues, [&](const yac::chat::ConfigIssue& issue) {
+        return issue.message == message;
+      });
+  if (it == issues.end()) {
+    return nullptr;
+  }
+  return &*it;
 }
 
 }  // namespace
@@ -217,4 +231,48 @@ TEST_CASE("web_search env provider and timeout validation are safe") {
                    "Invalid YAC_WEB_SEARCH_PROVIDER"));
   REQUIRE(HasIssue(result.issues, yac::chat::ConfigIssueSeverity::Error,
                    "Invalid YAC_WEB_SEARCH_TIMEOUT_SECONDS"));
+}
+
+TEST_CASE("env validation wording matches settings semantics") {
+  ScopedEnvClear env_guard;
+  TempFile file("yac_test_env_validation_wording.toml");
+  ScopedEnvVar temperature("YAC_TEMPERATURE", "3.0");
+  ScopedEnvVar context_window("YAC_CONTEXT_WINDOW", "10000001");
+  ScopedEnvVar compact_mode("YAC_COMPACT_MODE", "invalid");
+  ScopedEnvVar result_max_bytes("YAC_MCP_RESULT_MAX_BYTES", "0");
+  ScopedEnvVar web_search_timeout("YAC_WEB_SEARCH_TIMEOUT_SECONDS", "0");
+
+  const auto result = yac::chat::LoadChatConfigResultFrom(file.Path(), false);
+
+  struct ExpectedIssue {
+    std::string_view message;
+    std::string_view detail_fragment;
+  };
+  constexpr std::array expected = {
+      ExpectedIssue{"Invalid YAC_TEMPERATURE",
+                    "YAC_TEMPERATURE must be between 0 and 2"},
+      ExpectedIssue{"Invalid YAC_CONTEXT_WINDOW",
+                    "YAC_CONTEXT_WINDOW must be between 1 and 10000000"},
+      ExpectedIssue{"Invalid YAC_COMPACT_MODE",
+                    "YAC_COMPACT_MODE must be 'summarize' or 'truncate'"},
+      ExpectedIssue{"Invalid YAC_MCP_RESULT_MAX_BYTES",
+                    "YAC_MCP_RESULT_MAX_BYTES must be a positive integer"},
+      ExpectedIssue{"Invalid YAC_WEB_SEARCH_TIMEOUT_SECONDS",
+                    "YAC_WEB_SEARCH_TIMEOUT_SECONDS must be between 1 and 120"},
+  };
+
+  for (const auto& expected_issue : expected) {
+    INFO(expected_issue.message);
+    const auto* issue =
+        FindIssueByMessage(result.issues, expected_issue.message);
+    REQUIRE(issue != nullptr);
+    REQUIRE(issue->severity == yac::chat::ConfigIssueSeverity::Error);
+    REQUIRE(issue->detail.find(expected_issue.detail_fragment) !=
+            std::string::npos);
+  }
+  REQUIRE(result.config.temperature == 0.7);
+  REQUIRE(result.config.context_window == 0);
+  REQUIRE(result.config.auto_compact_mode == "summarize");
+  REQUIRE(result.config.mcp.result_max_bytes == 262144);
+  REQUIRE(result.config.web_search.timeout_seconds == 25);
 }

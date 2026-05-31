@@ -3,6 +3,7 @@
 #include "chat/types.hpp"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -63,6 +64,17 @@ bool HasIssueContaining(const std::vector<ConfigIssue>& issues,
     return issue.message.find(text) != std::string::npos ||
            issue.detail.find(text) != std::string::npos;
   });
+}
+
+const ConfigIssue* FindIssueByMessage(const std::vector<ConfigIssue>& issues,
+                                      std::string_view message) {
+  const auto it = std::ranges::find_if(issues, [&](const ConfigIssue& issue) {
+    return issue.message == message;
+  });
+  if (it == issues.end()) {
+    return nullptr;
+  }
+  return &*it;
 }
 
 }  // namespace
@@ -210,6 +222,49 @@ TEST_CASE("LoadSettingsFromToml reports registry-backed validation details") {
   REQUIRE(config.web_search.timeout_seconds == 25);
   REQUIRE(config.web_search.result_limit == 5);
   REQUIRE(config.web_search.context_limit == 4096);
+  REQUIRE(config.mcp.result_max_bytes == 262144);
+}
+
+TEST_CASE("LoadSettingsFromToml locks registry validation wording") {
+  TempFile file("yac_test_settings_validation_wording.toml");
+  WriteFile(file.Path(),
+            "temperature = 3.0\n"
+            "[provider]\n"
+            "context_window = 10000001\n"
+            "[compact]\n"
+            "mode = \"invalid\"\n"
+            "[mcp]\n"
+            "result_max_bytes = 0\n");
+  ChatConfig config;
+  std::vector<ConfigIssue> issues;
+
+  LoadSettingsFromToml(file.Path(), config, issues);
+
+  struct ExpectedIssue {
+    std::string_view message;
+    std::string_view detail;
+  };
+  constexpr std::array expected = {
+      ExpectedIssue{"Invalid temperature in settings.toml",
+                    "Value must be between 0 and 2."},
+      ExpectedIssue{"Invalid provider.context_window in settings.toml",
+                    "Value must be between 1 and 10000000."},
+      ExpectedIssue{"Invalid compact.mode in settings.toml",
+                    "Value must be 'summarize' or 'truncate'."},
+      ExpectedIssue{"Invalid mcp.result_max_bytes in settings.toml",
+                    "Value must be a positive integer."},
+  };
+
+  for (const auto& expected_issue : expected) {
+    INFO(expected_issue.message);
+    const auto* issue = FindIssueByMessage(issues, expected_issue.message);
+    REQUIRE(issue != nullptr);
+    REQUIRE(issue->severity == ConfigIssueSeverity::Error);
+    REQUIRE(issue->detail == expected_issue.detail);
+  }
+  REQUIRE(config.temperature == 0.7);
+  REQUIRE(config.context_window == 0);
+  REQUIRE(config.auto_compact_mode == "summarize");
   REQUIRE(config.mcp.result_max_bytes == 262144);
 }
 
