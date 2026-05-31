@@ -316,6 +316,12 @@ TEST_CASE("ChatService injects Plan-mode plan-file reminder into requests") {
   REQUIRE(requests.size() == 1);
   const auto active_plan = service.ActivePlanPath();
   REQUIRE(active_plan.has_value());
+  REQUIRE(*active_plan == root / ".opencode" / "plans" /
+                              "20260522-170506-design-oauth-parity.md");
+  REQUIRE(std::filesystem::exists(*active_plan));
+  REQUIRE(std::filesystem::file_size(*active_plan) == 0);
+  REQUIRE(service.GetAgentMode() == AgentMode::Plan);
+  REQUIRE(service.HasEnteredPlanMode());
   const auto context = RequestContextText(requests[0]);
   REQUIRE(context.find("<system-reminder>") != std::string::npos);
   REQUIRE(context.find(active_plan->string()) != std::string::npos);
@@ -373,6 +379,9 @@ TEST_CASE("ChatService injects queued build-switch reminder only once") {
   config.agent_mode = AgentMode::Build;
   auto service = MakeService(provider, config);
   service.QueueBuildSwitchReminderForTest(plan_path);
+  REQUIRE(service.HasQueuedBuildSwitchReminderForTest());
+  REQUIRE_FALSE(service.ActivePlanPath().has_value());
+  REQUIRE(service.GetAgentMode() == AgentMode::Build);
 
   (void)CollectEvents(service, "Start build");
   REQUIRE_FALSE(service.HasQueuedBuildSwitchReminderForTest());

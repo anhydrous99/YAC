@@ -167,6 +167,9 @@ class PlanExitProvider : public LanguageModelProvider {
       sink(ChatEvent{TextDeltaEvent{.text = "ready to build"}});
     } else {
       REQUIRE(std::string(result["error"]) == "User rejected tool execution.");
+      REQUIRE(std::ranges::any_of(
+          request.tools,
+          [](const ToolDefinition& tool) { return tool.name == "plan_exit"; }));
       sink(ChatEvent{TextDeltaEvent{.text = "plan rejected"}});
     }
   }
@@ -647,6 +650,8 @@ TEST_CASE(
 
   const auto active_path = service.ActivePlanPath();
   REQUIRE(active_path.has_value());
+  REQUIRE(*active_path ==
+          root / ".opencode" / "plans" / "20260522-143045-make-plan.md");
   REQUIRE(service.GetAgentMode() == AgentMode::Build);
   REQUIRE_FALSE(service.HasQueuedBuildSwitchReminderForTest());
   REQUIRE(ReadFile(*active_path) == PlanExitProvider::kFinalPlan);
@@ -706,6 +711,8 @@ TEST_CASE("Plan mode plan_exit rejection stays in Plan with tool error") {
 
   const auto active_path = service.ActivePlanPath();
   REQUIRE(active_path.has_value());
+  REQUIRE(*active_path ==
+          root / ".opencode" / "plans" / "20260522-143045-make-plan.md");
   REQUIRE(service.GetAgentMode() == AgentMode::Plan);
   REQUIRE_FALSE(service.HasQueuedBuildSwitchReminderForTest());
   REQUIRE(std::filesystem::exists(*active_path));
@@ -713,6 +720,7 @@ TEST_CASE("Plan mode plan_exit rejection stays in Plan with tool error") {
   const auto& tool_done =
       FindEvent(events, ChatEventType::ToolCallDone).Get<ToolCallDoneEvent>();
   REQUIRE(tool_done.status == ChatMessageStatus::Error);
+  REQUIRE_FALSE(HasEvent(events, ChatEventType::AgentModeChanged));
   REQUIRE(provider->RequestCount() == 2);
   std::filesystem::remove_all(root);
 }
