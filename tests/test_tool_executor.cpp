@@ -2,8 +2,10 @@
 #include "tool_call/executor_arguments.hpp"
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/todo_state.hpp"
+#include "tool_call/web_fetch.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -14,6 +16,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -97,6 +100,55 @@ class OutsideWorkspaceRenameLspClient : public FakeLspClient {
   }
 };
 
+class FakeWebFetchTransport final : public WebFetchTransport {
+ public:
+  WebFetchTransportResponse Fetch(const WebFetchTransportRequest& request,
+                                  std::stop_token stop_token) override {
+    (void)stop_token;
+    called = true;
+    observed_url = request.url;
+    observed_timeout = request.timeout;
+    for (const auto& header : headers) {
+      request.on_header_line(header);
+    }
+    for (const auto& chunk : chunks) {
+      request.on_body_chunk(chunk);
+    }
+    return {.status_code = status_code};
+  }
+
+  bool called = false;
+  std::string observed_url;
+  std::chrono::milliseconds observed_timeout{0};
+  long status_code = 200;
+  std::vector<std::string> headers{"Content-Type: text/plain\r\n"};
+  std::vector<std::string> chunks{"executor body"};
+};
+
+class FakeWebSearchTransport final : public WebSearchTransport {
+ public:
+  WebSearchTransportResponse Search(const WebSearchTransportRequest& request,
+                                    std::stop_token stop_token) override {
+    (void)stop_token;
+    called = true;
+    observed_endpoint = request.endpoint;
+    observed_api_key = request.api_key;
+    observed_body = request.body;
+    observed_timeout = request.timeout;
+    return response;
+  }
+
+  bool called = false;
+  std::string observed_endpoint;
+  std::string observed_api_key;
+  std::string observed_body;
+  std::chrono::milliseconds observed_timeout{0};
+  WebSearchTransportResponse response{.status_code = 200,
+                                      .content_type = "application/json",
+                                      .body = Json{{"results", Json::array()}}
+                                                  .dump()};
+};
+
 class TempRoot {
  public:
   explicit TempRoot(const std::string& name)
@@ -132,6 +184,18 @@ class TestToolExecutor {
   [[nodiscard]] ToolExecutionResult Execute(const PreparedToolCall& prepared,
                                             std::stop_token stop_token) const {
     return executor_.Execute(prepared, stop_token);
+  }
+
+  void SetWebFetchTransport(WebFetchTransport* transport) {
+    executor_.SetWebFetchTransport(transport);
+  }
+
+  void SetWebSearchConfig(const WebSearchConfig& config) {
+    executor_.SetWebSearchConfig(config);
+  }
+
+  void SetWebSearchTransport(WebSearchTransport* transport) {
+    executor_.SetWebSearchTransport(transport);
   }
 
  private:
@@ -181,6 +245,113 @@ TEST_CASE("ToolExecutor handler registry keys match tool definitions") {
     REQUIRE(handler->prepare != nullptr);
     REQUIRE(handler->execute != nullptr);
   }
+}
+
+TEST_CASE("ToolExecutor executes web_fetch through injected transport") {
+  auto root = TempRoot("web_fetch");
+  auto executor = MakeExecutor(root);
+  FakeWebFetchTransport transport;
+  executor.SetWebFetchTransport(&transport);
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "web_fetch",
+      .arguments_json =
+          R"({"url":"https://example.test/page","format":"text"})"};
+
+  auto result = executor.Execute(ToolExecutor::Prepare(request),
+                                 std::stop_token{});
+
+  REQUIRE_FALSE(result.is_error);
+  const auto payload = Json::parse(result.result_json);
+  REQUIRE(payload["body"] == "executor body");
+  REQUIRE(transport.called);
+  REQUIRE(transport.observed_url == "https://example.test/page");
+  REQUIRE(transport.observed_timeout == std::chrono::seconds(30));
+}
+
+TEST_CASE("ToolExecutor returns normalized web_fetch errors without crashing") {
+  auto root = TempRoot("web_fetch_error");
+  auto executor = MakeExecutor(root);
+  FakeWebFetchTransport transport;
+  executor.SetWebFetchTransport(&transport);
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "web_fetch",
+      .arguments_json = R"({"url":"not a url"})"};
+
+  auto result = executor.Execute(ToolExecutor::Prepare(request),
+                                 std::stop_token{});
+
+  REQUIRE(result.is_error);
+  const auto payload = Json::parse(result.result_json);
+  REQUIRE(std::string(payload["error"]).find("Malformed URL") !=
+          std::string::npos);
+  REQUIRE_FALSE(transport.called);
+}
+
+TEST_CASE("ToolExecutor applies configured web_search defaults") {
+  auto root = TempRoot("web_search_defaults");
+  auto executor = MakeExecutor(root);
+  FakeWebSearchTransport transport;
+  executor.SetWebSearchTransport(&transport);
+  executor.SetWebSearchConfig(WebSearchConfig{.enabled = true,
+                                              .provider = "exa",
+                                              .endpoint =
+                                                  "https://exa.test/search",
+                                              .api_key = "fake-exa-key",
+                                              .timeout_seconds = 30,
+                                              .result_limit = 7,
+                                              .context_limit = 9000});
+  ToolCallRequest request{.id = "call_1",
+                          .name = "web_search",
+                          .arguments_json = R"({"query":"yac terminal"})"};
+
+  auto result = executor.Execute(ToolExecutor::Prepare(request),
+                                 std::stop_token{});
+
+  REQUIRE_FALSE(result.is_error);
+  REQUIRE(transport.called);
+  REQUIRE(transport.observed_endpoint == "https://exa.test/search");
+  REQUIRE(transport.observed_api_key == "fake-exa-key");
+  REQUIRE(transport.observed_timeout == std::chrono::seconds(30));
+  const auto observed_body = Json::parse(transport.observed_body);
+  REQUIRE(observed_body["num_results"] == 7);
+  REQUIRE(observed_body["context_max_characters"] == 9000);
+  const auto& call = std::get<WebSearchCall>(result.block);
+  REQUIRE(call.num_results == 7);
+  REQUIRE(call.context_max_characters == 9000);
+}
+
+TEST_CASE("ToolExecutor keeps explicit web_search limits authoritative") {
+  auto root = TempRoot("web_search_explicit");
+  auto executor = MakeExecutor(root);
+  FakeWebSearchTransport transport;
+  executor.SetWebSearchTransport(&transport);
+  executor.SetWebSearchConfig(WebSearchConfig{.enabled = true,
+                                              .provider = "exa",
+                                              .endpoint =
+                                                  "https://exa.test/search",
+                                              .api_key = "fake-exa-key",
+                                              .timeout_seconds = 30,
+                                              .result_limit = 7,
+                                              .context_limit = 9000});
+  ToolCallRequest request{
+      .id = "call_1",
+      .name = "web_search",
+      .arguments_json =
+          R"({"query":"yac terminal","num_results":12,"context_max_characters":13000})"};
+
+  auto result = executor.Execute(ToolExecutor::Prepare(request),
+                                 std::stop_token{});
+
+  REQUIRE_FALSE(result.is_error);
+  REQUIRE(transport.called);
+  const auto observed_body = Json::parse(transport.observed_body);
+  REQUIRE(observed_body["num_results"] == 10);
+  REQUIRE(observed_body["context_max_characters"] == 12000);
+  const auto& call = std::get<WebSearchCall>(result.block);
+  REQUIRE(call.num_results == 10);
+  REQUIRE(call.context_max_characters == 12000);
 }
 
 TEST_CASE("ToolExecutor file_write requires approval") {

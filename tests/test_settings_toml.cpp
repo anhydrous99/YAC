@@ -87,6 +87,12 @@ TEST_CASE("LoadSettingsFromToml applies registry defaults to omitted values") {
   config.auto_compact_threshold = -1.0;
   config.auto_compact_keep_last = -1;
   config.auto_compact_mode = "sentinel";
+  config.web_search.enabled = true;
+  config.web_search.provider = "sentinel";
+  config.web_search.endpoint = "sentinel";
+  config.web_search.timeout_seconds = -1;
+  config.web_search.result_limit = -1;
+  config.web_search.context_limit = -1;
   config.mcp.result_max_bytes = 1;
 
   std::vector<ConfigIssue> issues;
@@ -101,6 +107,12 @@ TEST_CASE("LoadSettingsFromToml applies registry defaults to omitted values") {
   REQUIRE(config.auto_compact_threshold == 0.8);
   REQUIRE(config.auto_compact_keep_last == 20);
   REQUIRE(config.auto_compact_mode == "summarize");
+  REQUIRE_FALSE(config.web_search.enabled);
+  REQUIRE(config.web_search.provider == "exa");
+  REQUIRE(config.web_search.endpoint == "https://api.exa.ai/search");
+  REQUIRE(config.web_search.timeout_seconds == 25);
+  REQUIRE(config.web_search.result_limit == 5);
+  REQUIRE(config.web_search.context_limit == 4096);
   REQUIRE(config.mcp.result_max_bytes == 262144);
 }
 
@@ -117,6 +129,13 @@ TEST_CASE(
             "threshold = 0.55\n"
             "keep_last = 7\n"
             "mode = \"truncate\"\n"
+            "[web_search]\n"
+            "enabled = true\n"
+            "provider = \"exa\"\n"
+            "endpoint = \"https://search.example.test/exa\"\n"
+            "timeout_seconds = 30\n"
+            "result_limit = 6\n"
+            "context_limit = 8192\n"
             "[mcp]\n"
             "result_max_bytes = 12345\n");
   ChatConfig config;
@@ -133,6 +152,12 @@ TEST_CASE(
   REQUIRE(config.auto_compact_threshold == 0.55);
   REQUIRE(config.auto_compact_keep_last == 7);
   REQUIRE(config.auto_compact_mode == "truncate");
+  REQUIRE(config.web_search.enabled);
+  REQUIRE(config.web_search.provider == "exa");
+  REQUIRE(config.web_search.endpoint == "https://search.example.test/exa");
+  REQUIRE(config.web_search.timeout_seconds == 30);
+  REQUIRE(config.web_search.result_limit == 6);
+  REQUIRE(config.web_search.context_limit == 8192);
   REQUIRE(config.mcp.result_max_bytes == 12345);
 }
 
@@ -146,6 +171,11 @@ TEST_CASE("LoadSettingsFromToml reports registry-backed validation details") {
             "threshold = 0.01\n"
             "keep_last = 0\n"
             "mode = \"invalid\"\n"
+            "[web_search]\n"
+            "provider = \"parallel\"\n"
+            "timeout_seconds = 0\n"
+            "result_limit = 11\n"
+            "context_limit = 12001\n"
             "[mcp]\n"
             "result_max_bytes = 0\n");
   ChatConfig config;
@@ -163,6 +193,12 @@ TEST_CASE("LoadSettingsFromToml reports registry-backed validation details") {
   REQUIRE(HasIssueContaining(issues, "compact.keep_last"));
   REQUIRE(HasIssueContaining(issues, "compact.mode"));
   REQUIRE(HasIssueContaining(issues, "summarize"));
+  REQUIRE(HasIssueContaining(issues, "web_search.provider"));
+  REQUIRE(HasIssueContaining(issues, "web_search.timeout_seconds"));
+  REQUIRE(HasIssueContaining(issues, "web_search.result_limit"));
+  REQUIRE(HasIssueContaining(issues, "10"));
+  REQUIRE(HasIssueContaining(issues, "web_search.context_limit"));
+  REQUIRE(HasIssueContaining(issues, "12000"));
   REQUIRE(HasIssueContaining(issues, "mcp.result_max_bytes"));
   REQUIRE(HasIssueContaining(issues, "positive integer"));
   REQUIRE(config.temperature == 0.7);
@@ -170,6 +206,10 @@ TEST_CASE("LoadSettingsFromToml reports registry-backed validation details") {
   REQUIRE(config.auto_compact_threshold == 0.8);
   REQUIRE(config.auto_compact_keep_last == 20);
   REQUIRE(config.auto_compact_mode == "summarize");
+  REQUIRE(config.web_search.provider == "exa");
+  REQUIRE(config.web_search.timeout_seconds == 25);
+  REQUIRE(config.web_search.result_limit == 5);
+  REQUIRE(config.web_search.context_limit == 4096);
   REQUIRE(config.mcp.result_max_bytes == 262144);
 }
 

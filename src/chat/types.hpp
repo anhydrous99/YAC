@@ -42,6 +42,13 @@ inline constexpr double kMaxAutoCompactThreshold = 1.0;
 inline constexpr int kMinAutoCompactKeepLast = 1;
 inline constexpr int kMaxAutoCompactKeepLast = 10000;
 
+inline constexpr int kMinWebSearchTimeoutSeconds = 1;
+inline constexpr int kMaxWebSearchTimeoutSeconds = 120;
+inline constexpr int kMinWebSearchResultLimit = 1;
+inline constexpr int kMaxWebSearchResultLimit = 10;
+inline constexpr int kMinWebSearchContextLimit = 1;
+inline constexpr int kMaxWebSearchContextLimit = 12000;
+
 struct ChatMessage {
   ChatMessageId id = 0;
   ChatRole role = ChatRole::User;
@@ -448,6 +455,17 @@ struct ChatConfigSource {
   std::vector<ConfigValueSource> model_settings;
 };
 
+struct WebSearchConfig {
+  bool enabled = false;
+  std::string provider = "exa";
+  std::string endpoint = "https://api.exa.ai/search";
+  std::string api_key;
+  std::string api_key_env = "YAC_EXA_API_KEY";
+  int timeout_seconds = 25;
+  int result_limit = 5;
+  int context_limit = 4096;
+};
+
 enum class ConfigIssueSeverity { Info, Warning, Error };
 
 struct ConfigIssue {
@@ -486,6 +504,7 @@ struct ChatConfig {
   std::map<std::string, std::string> options;
   std::vector<ProviderModelSettings> model_settings;
   ChatConfigSource source;
+  WebSearchConfig web_search;
   mcp::McpConfig mcp;
   std::shared_ptr<StateStore> state_store;
 };

@@ -39,6 +39,22 @@ yac_test("yac_test_typed_ids", ["test_typed_ids.cpp"])
 yac_test("yac_test_count_summary", ["test_count_summary.cpp"])
 yac_test("yac_test_mcp_json_helpers", ["test_mcp_json_helpers.cpp"])
 yac_test("yac_test_tool_call_types", ["test_tool_call_types.cpp"])
+yac_test(
+    "yac_test_web_fetch",
+    ["test_web_fetch.cpp"],
+    common_deps = [
+        "//src:tool_call",
+        "@catch2//:catch2_main",
+    ],
+)
+yac_test(
+    "yac_test_web_search",
+    ["test_web_search.cpp"],
+    common_deps = [
+        "//src:tool_call",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test("yac_test_tool_executor", ["test_tool_executor.cpp"])
 yac_test("yac_test_chat_session", ["test_chat_session.cpp"])
 yac_test("yac_test_composer_render_color", ["test_composer_render_color.cpp"])
@@ -171,6 +187,14 @@ yac_test(
     ],
 )
 yac_test("yac_test_config_paths", ["test_config_paths.cpp"])
+yac_test(
+    "yac_test_config",
+    ["test_config.cpp"],
+    common_deps = [
+        "//src:config",
+        "@catch2//:catch2_main",
+    ],
+)
 yac_test(
     "yac_test_state_store_contract",
     ["test_state_store_contract.cpp"],

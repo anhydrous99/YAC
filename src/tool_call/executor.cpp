@@ -23,6 +23,36 @@ void ToolExecutor::SetToolApproval(chat::ToolApprovalManager* tool_approval) {
   tool_approval_ = tool_approval;
 }
 
+void ToolExecutor::SetWebFetchTransport(WebFetchTransport* transport) {
+  if (transport == nullptr) {
+    web_fetch_transport_ = &default_web_fetch_transport_;
+    web_fetch_network_policy_ = WebFetchNetworkPolicy::RealNetwork;
+    return;
+  }
+  web_fetch_transport_ = transport;
+  web_fetch_network_policy_ = WebFetchNetworkPolicy::InjectedTransport;
+}
+
+void ToolExecutor::SetWebSearchConfig(const chat::WebSearchConfig& config) {
+  if (!config.enabled || config.provider != "exa" || config.api_key.empty()) {
+    web_search_config_.reset();
+    return;
+  }
+  web_search_config_ = WebSearchProviderConfig{.endpoint = config.endpoint,
+                                                .api_key = config.api_key,
+                                                .timeout_seconds =
+                                                    config.timeout_seconds,
+                                                .result_limit =
+                                                    config.result_limit,
+                                                .context_limit =
+                                                    config.context_limit};
+}
+
+void ToolExecutor::SetWebSearchTransport(WebSearchTransport* transport) {
+  web_search_transport_ =
+      transport == nullptr ? &default_web_search_transport_ : transport;
+}
+
 std::vector<chat::ToolDefinition> ToolExecutor::Definitions() {
   return ToolDefinitions();
 }
@@ -42,6 +72,10 @@ ToolExecutionResult ToolExecutor::Execute(const PreparedToolCall& prepared,
       .todo_state = todo_state_,
       .sub_agent_manager = sub_agent_manager_,
       .tool_approval = tool_approval_,
+      .web_fetch_transport = web_fetch_transport_,
+      .web_fetch_network_policy = web_fetch_network_policy_,
+      .web_search_transport = web_search_transport_,
+      .web_search_config = &web_search_config_,
       .stop = stop_token,
   };
   try {

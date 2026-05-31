@@ -13,6 +13,7 @@
 
 namespace yac::provider {
 
+// NOLINTNEXTLINE(bugprone-exception-escape)
 struct ConverseStreamRequestData {
   Aws::BedrockRuntime::Model::ConverseStreamRequest request;
 };

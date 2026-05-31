@@ -105,6 +105,9 @@ yac_cc_library(
         "tool_call/lsp_tool_executor.cpp",
         "tool_call/subprocess_runner.cpp",
         "tool_call/todo_state.cpp",
+        "tool_call/web_fetch.cpp",
+        "tool_call/web_search.cpp",
+        "tool_call/web_secret_redaction.cpp",
         "tool_call/workspace_filesystem.cpp",
         "tool_call/workspace_walker.cpp",
     ],
@@ -113,6 +116,7 @@ yac_cc_library(
     deps = [
         ":config",
         ":core_types",
+        "@curl//:curl",
         "@openai_cpp//:openai_cpp",
     ],
 )

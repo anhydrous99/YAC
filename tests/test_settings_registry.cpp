@@ -748,6 +748,17 @@ TEST_CASE("settings registry represents core scalar TOML env parity") {
                      yac::chat::SettingValueType::Integer},
       ExpectedRecord{"compact.mode", "compact.mode", "YAC_COMPACT_MODE",
                      yac::chat::SettingValueType::String},
+      ExpectedRecord{"web_search.enabled", "web_search.enabled",
+                     "YAC_WEB_SEARCH_ENABLED",
+                     yac::chat::SettingValueType::Bool},
+      ExpectedRecord{"web_search.provider", "web_search.provider",
+                     "YAC_WEB_SEARCH_PROVIDER",
+                     yac::chat::SettingValueType::String},
+      ExpectedRecord{"web_search.endpoint", "web_search.endpoint",
+                     "YAC_EXA_ENDPOINT", yac::chat::SettingValueType::String},
+      ExpectedRecord{"web_search.timeout_seconds", "web_search.timeout_seconds",
+                     "YAC_WEB_SEARCH_TIMEOUT_SECONDS",
+                     yac::chat::SettingValueType::Integer},
   };
 
   const auto records = SettingsRegistryRecords();
@@ -824,6 +835,9 @@ TEST_CASE(
                      yac::chat::SettingValueType::Secret,
                      SettingClassification::Secret},
       ExpectedRecord{"zai.api_key_env_value", "ZAI_API_KEY",
+                     yac::chat::SettingValueType::Secret,
+                     SettingClassification::Secret},
+      ExpectedRecord{"web_search.exa_api_key_env_value", "YAC_EXA_API_KEY",
                      yac::chat::SettingValueType::Secret,
                      SettingClassification::Secret},
       ExpectedRecord{"openai.auth_store", "YAC_OPENAI_AUTH_STORE",

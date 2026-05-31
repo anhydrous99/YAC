@@ -56,7 +56,9 @@ bazel query 'tests(//tests:*)'
 Tests are registered in `tests/BUILD.bazel` with `yac_test(...)`,
 `yac_aws_test(...)`, helper binaries, or shell tests. Integration tests under
 `tests/integration/` use `yac_test_e2e_runner` and JSONL scripts; see
-[tests/integration/README.md](tests/integration/README.md).
+[tests/integration/README.md](tests/integration/README.md). Web tool tests
+must use fake or local transports. They must not require live internet, real
+Exa credentials, or any API key in the environment.
 
 ## Code Style
 

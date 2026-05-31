@@ -44,8 +44,9 @@ constexpr std::array<std::string_view, 2> kMcpAuthTypeValues = {"bearer",
                                                                 "oauth"};
 constexpr std::array<std::string_view, 6> kReasoningEffortValues = {
     "none", "minimal", "low", "medium", "high", "xhigh"};
+constexpr std::array<std::string_view, 1> kWebSearchProviderValues = {"exa"};
 
-constexpr std::array<SettingMetadata, 35> kRecords = {{
+constexpr std::array<SettingMetadata, 42> kRecords = {{
     {.key = "temperature",
      .toml_path = "temperature",
      .env_var = "YAC_TEMPERATURE",
@@ -255,6 +256,70 @@ constexpr std::array<SettingMetadata, 35> kRecords = {{
      .validation = {.type = ValidationType::PositiveInteger},
      .classification = Class::UserFacing,
      .docs = kMcpDocs},
+    {.key = "web_search.enabled",
+     .toml_path = "web_search.enabled",
+     .env_var = "YAC_WEB_SEARCH_ENABLED",
+     .value_type = Type::Bool,
+     .default_description = "false",
+     .runtime_default = {.type = DefaultType::Bool, .bool_value = false},
+     .classification = Class::UserFacing,
+     .docs = kConfigExampleTemplate},
+    {.key = "web_search.provider",
+     .toml_path = "web_search.provider",
+     .env_var = "YAC_WEB_SEARCH_PROVIDER",
+     .value_type = Type::String,
+     .default_description = "exa; only exa is supported in the MVP",
+     .runtime_default = {.type = DefaultType::String, .string_value = "exa"},
+     .validation = {.type = ValidationType::StringEnum,
+                    .allowed_values = kWebSearchProviderValues},
+     .classification = Class::UserFacing,
+     .docs = kConfigExampleTemplate},
+    {.key = "web_search.endpoint",
+     .toml_path = "web_search.endpoint",
+     .env_var = "YAC_EXA_ENDPOINT",
+     .value_type = Type::String,
+     .default_description = "https://api.exa.ai/search",
+     .runtime_default = {.type = DefaultType::String,
+                         .string_value = "https://api.exa.ai/search"},
+     .classification = Class::UserFacing,
+     .docs = kConfigExampleTemplate},
+    {.key = "web_search.timeout_seconds",
+     .toml_path = "web_search.timeout_seconds",
+     .env_var = "YAC_WEB_SEARCH_TIMEOUT_SECONDS",
+     .value_type = Type::Integer,
+     .default_description = "25; valid range 1 to 120",
+     .runtime_default = {.type = DefaultType::Integer, .integer_value = 25},
+     .validation = {.type = ValidationType::IntegerRange,
+                    .min_integer = kMinWebSearchTimeoutSeconds,
+                    .max_integer = kMaxWebSearchTimeoutSeconds},
+     .classification = Class::UserFacing,
+     .docs = kConfigExampleTemplate},
+    {.key = "web_search.result_limit",
+     .toml_path = "web_search.result_limit",
+     .value_type = Type::Integer,
+     .default_description = "5; valid range 1 to 10",
+     .runtime_default = {.type = DefaultType::Integer, .integer_value = 5},
+     .validation = {.type = ValidationType::IntegerRange,
+                    .min_integer = kMinWebSearchResultLimit,
+                    .max_integer = kMaxWebSearchResultLimit},
+     .classification = Class::External,
+     .docs = kExampleOnly},
+    {.key = "web_search.context_limit",
+     .toml_path = "web_search.context_limit",
+     .value_type = Type::Integer,
+     .default_description = "4096; valid range 1 to 12000",
+     .runtime_default = {.type = DefaultType::Integer, .integer_value = 4096},
+     .validation = {.type = ValidationType::IntegerRange,
+                    .min_integer = kMinWebSearchContextLimit,
+                    .max_integer = kMaxWebSearchContextLimit},
+     .classification = Class::External,
+     .docs = kExampleOnly},
+    {.key = "web_search.exa_api_key_env_value",
+     .env_var = "YAC_EXA_API_KEY",
+     .value_type = Type::Secret,
+     .default_description = "unset; Exa API key for web_search when enabled",
+     .classification = Class::Secret,
+     .docs = kConfigExampleTemplate},
     {.key = "provider.options.region",
      .toml_path = "provider.options.region",
      .env_var = "YAC_BEDROCK_REGION",
@@ -777,6 +842,22 @@ std::string GenerateSettingsToml(bool repository_example) {
             "                        # most-recent messages to keep\n";
   output += "mode         = " + DefaultLiteral("compact.mode") +
             "               # \"summarize\" (default) or \"truncate\"\n\n";
+
+  output += "[web_search]\n";
+  output +=
+      "# Enables the built-in web_search tool. The MVP provider is fixed "
+      "to Exa.\n";
+  output += "enabled = " + DefaultLiteral("web_search.enabled") + "\n";
+  output += "provider = " + DefaultLiteral("web_search.provider") +
+            "                 # only \"exa\" is supported\n";
+  output += "endpoint = " + DefaultLiteral("web_search.endpoint") + "\n";
+  output +=
+      "timeout_seconds = " + DefaultLiteral("web_search.timeout_seconds") +
+      "             # 1 .. 120; set YAC_EXA_API_KEY when enabled\n";
+  output += "# result_limit = " + DefaultLiteral("web_search.result_limit") +
+            "                  # 1 .. 10 results passed to the executor\n";
+  output += "# context_limit = " + DefaultLiteral("web_search.context_limit") +
+            "              # 1 .. 12000 context chars per result\n\n";
 
   output += "[mcp]\n";
   output += "# Maximum bytes for MCP tool result payloads (default: " +

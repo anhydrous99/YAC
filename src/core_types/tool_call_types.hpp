@@ -145,11 +145,15 @@ struct WebFetchCall {
   std::string url;
   std::string title;
   std::string excerpt;
+  std::string format = "markdown";
+  int timeout = 30;
 };
 
 struct WebSearchCall {
   std::string query;
   std::vector<SearchResult> results;
+  int num_results = 5;
+  int context_max_characters = 4096;
 };
 
 struct LspDiagnosticsCall {

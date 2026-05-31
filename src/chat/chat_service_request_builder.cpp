@@ -202,8 +202,10 @@ std::shared_ptr<::yac::tool_call::ToolExecutor> MakeChatToolExecutor(
           .args = config.lsp_clangd_args,
           .workspace_root = root,
       });
-  return std::make_shared<::yac::tool_call::ToolExecutor>(
+  auto executor = std::make_shared<::yac::tool_call::ToolExecutor>(
       std::move(root), std::move(lsp), todo_state);
+  executor->SetWebSearchConfig(config.web_search);
+  return executor;
 }
 
 }  // namespace yac::chat::internal
