@@ -4,6 +4,7 @@
 #include "chat/reasoning_effort.hpp"
 #include "chat/settings_registry.hpp"
 #include "chat/settings_toml.hpp"
+#include "chat/settings_validation.hpp"
 #include "chat/sqlite_state_store.hpp"
 #include "chat/state_store.hpp"
 #include "provider/reasoning_effort_capability.hpp"
@@ -59,51 +60,13 @@ const SettingMetadata& Metadata(std::string_view key) {
   return *FindSettingsRegistryRecord(key);
 }
 
-std::string FormatNumber(double value) {
-  std::ostringstream output;
-  output << value;
-  return output.str();
-}
-
-std::string JoinAllowedValues(std::span<const std::string_view> values) {
-  std::string joined;
-  for (size_t i = 0; i < values.size(); ++i) {
-    if (i > 0) {
-      joined += i + 1 == values.size() ? " or " : ", ";
-    }
-    joined += "'";
-    joined += values[i];
-    joined += "'";
-  }
-  return joined;
-}
-
-std::string ValidationDetail(const SettingValidationMetadata& validation) {
-  switch (validation.type) {
-    case SettingValidationType::NumberRange:
-      return "must be between " + FormatNumber(validation.min_number) +
-             " and " + FormatNumber(validation.max_number);
-    case SettingValidationType::IntegerRange:
-      return "must be between " + std::to_string(validation.min_integer) +
-             " and " + std::to_string(validation.max_integer);
-    case SettingValidationType::PositiveInteger:
-      return "must be a positive integer";
-    case SettingValidationType::StringEnum:
-      return "must be " + JoinAllowedValues(validation.allowed_values);
-    case SettingValidationType::None:
-    case SettingValidationType::Required:
-      return {};
-  }
-  return {};
-}
-
 void ValidateEnvNumber(std::string_view key, std::string_view env_var,
                        double parsed) {
   const auto& validation = Metadata(key).validation;
   if (validation.type == SettingValidationType::NumberRange &&
       (parsed < validation.min_number || parsed > validation.max_number)) {
     throw std::out_of_range(std::string(env_var) + " " +
-                            ValidationDetail(validation));
+                            EnvValidationDetail(validation));
   }
 }
 
@@ -113,12 +76,12 @@ void ValidateEnvInteger(std::string_view key, std::string_view env_var,
   if (validation.type == SettingValidationType::IntegerRange &&
       (parsed < validation.min_integer || parsed > validation.max_integer)) {
     throw std::out_of_range(std::string(env_var) + " " +
-                            ValidationDetail(validation));
+                            EnvValidationDetail(validation));
   }
   if (validation.type == SettingValidationType::PositiveInteger &&
       parsed <= 0) {
     throw std::invalid_argument(std::string(env_var) + " " +
-                                ValidationDetail(validation));
+                                EnvValidationDetail(validation));
   }
 }
 
@@ -153,7 +116,7 @@ std::string ParseEnvStringEnum(const std::string& value, std::string_view key,
     }
   }
   throw std::invalid_argument(std::string(env_var) + " " +
-                              ValidationDetail(validation));
+                              EnvValidationDetail(validation));
 }
 
 uintmax_t ParsePositiveUintmax(const std::string& value, std::string_view key,
@@ -162,20 +125,20 @@ uintmax_t ParsePositiveUintmax(const std::string& value, std::string_view key,
         return std::isdigit(ch) != 0;
       })) {
     throw std::invalid_argument(std::string(env_var) + " " +
-                                ValidationDetail(Metadata(key).validation));
+                                EnvValidationDetail(Metadata(key).validation));
   }
   size_t consumed = 0;
   const auto parsed = std::stoull(value, &consumed);
   if (consumed != value.size()) {
     throw std::invalid_argument(std::string(env_var) + " " +
-                                ValidationDetail(Metadata(key).validation));
+                                EnvValidationDetail(Metadata(key).validation));
   }
   if (parsed > std::numeric_limits<uintmax_t>::max()) {
     throw std::out_of_range(std::string(env_var) + " is too large");
   }
   if (parsed == 0) {
     throw std::invalid_argument(std::string(env_var) + " " +
-                                ValidationDetail(Metadata(key).validation));
+                                EnvValidationDetail(Metadata(key).validation));
   }
   return static_cast<uintmax_t>(parsed);
 }
@@ -461,9 +424,8 @@ std::optional<ProviderProfile> ResolveStateProfile(
     }
     return profile;
   }
-  auto profile =
-      EnabledProfile(LoadStateProfile(state_store, config.provider_id.value,
-                                      issues));
+  auto profile = EnabledProfile(
+      LoadStateProfile(state_store, config.provider_id.value, issues));
   if (profile.has_value() && !IsValidStateProfile(*profile, issues)) {
     return std::nullopt;
   }
