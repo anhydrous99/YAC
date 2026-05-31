@@ -1,11 +1,12 @@
 #pragma once
 
+#include "tool_call/json.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <map>
 #include <mutex>
-#include <openai.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,7 +18,7 @@ namespace yac::tool_call {
 
 class JsonRpcStdioBase {
  public:
-  using Json = openai::_detail::Json;
+  using Json = yac::tool_call::Json;
 
   explicit JsonRpcStdioBase(std::string error_label = "JSON-RPC");
   virtual ~JsonRpcStdioBase();

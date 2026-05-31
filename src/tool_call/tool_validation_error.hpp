@@ -1,16 +1,14 @@
 #pragma once
 
 #include "core_types/chat_ids.hpp"
+#include "tool_call/json.hpp"
 
-#include <openai.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace yac::tool_call {
-
-using ValidationJson = openai::_detail::Json;
 
 class ToolValidationError : public std::runtime_error {
  public:

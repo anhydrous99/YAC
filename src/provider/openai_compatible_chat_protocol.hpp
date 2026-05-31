@@ -2,9 +2,9 @@
 
 #include "chat/types.hpp"
 #include "provider/language_model_provider.hpp"
+#include "provider/provider_json.hpp"
 
 #include <map>
-#include <openai.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -12,7 +12,7 @@
 
 namespace yac::provider::openai_compatible_protocol {
 
-using Json = openai::_detail::Json;
+using Json = ProviderJson;
 
 struct StreamState {
   struct PendingToolCall {
