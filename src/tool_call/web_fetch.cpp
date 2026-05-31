@@ -403,6 +403,47 @@ struct CurlFetchState {
   return html;
 }
 
+[[nodiscard]] std::string ConvertHeadingTagsToMarkdown(std::string html) {
+  for (int level = 1; level <= 6; ++level) {
+    const std::string tag = "h" + std::to_string(level);
+    const std::string prefix(static_cast<std::size_t>(level), '#');
+    std::size_t search = 0;
+    while (search < html.size()) {
+      const std::size_t open = FindOpeningTag(html, tag, search);
+      if (open == std::string::npos) {
+        break;
+      }
+      const std::size_t open_end = html.find('>', open);
+      if (open_end == std::string::npos) {
+        break;
+      }
+      const std::size_t close = FindInsensitive(html, "</" + tag, open_end + 1);
+      if (close == std::string::npos) {
+        search = open_end + 1;
+        continue;
+      }
+      const std::size_t close_end = html.find('>', close);
+      const std::string text =
+          StripTagsToText(html.substr(open_end + 1, close - open_end - 1));
+      std::string replacement;
+      if (!text.empty()) {
+        replacement.reserve(prefix.size() + text.size() + 5);
+        replacement.append("\n");
+        replacement.append(prefix);
+        replacement.append(" ");
+        replacement.append(text);
+        replacement.append("\n\n");
+      }
+      html.replace(open,
+                   close_end == std::string::npos ? std::string::npos
+                                                  : close_end - open + 1,
+                   replacement);
+      search = open + replacement.size();
+    }
+  }
+  return html;
+}
+
 [[nodiscard]] std::string VisibleTextFromHtml(std::string html) {
   html = RemoveHiddenHtml(std::move(html));
   for (const std::string_view tag :
@@ -416,16 +457,7 @@ struct CurlFetchState {
 
 [[nodiscard]] std::string MarkdownFromHtml(std::string html) {
   html = ConvertLinksToMarkdown(RemoveHiddenHtml(std::move(html)));
-  for (int level = 1; level <= 6; ++level) {
-    const std::string tag = "h" + std::to_string(level);
-    const std::string prefix(static_cast<std::size_t>(level), '#');
-    html = ConvertPairedTag(
-        std::move(html), tag, [prefix](std::string_view inner) {
-          const std::string text = StripTagsToText(inner);
-          return text.empty() ? std::string{}
-                              : "\n" + prefix + " " + text + "\n\n";
-        });
-  }
+  html = ConvertHeadingTagsToMarkdown(std::move(html));
   html = ConvertPairedTag(std::move(html), "li", [](std::string_view inner) {
     const std::string text = StripTagsToText(inner);
     return text.empty() ? std::string{} : "\n- " + text + "\n";

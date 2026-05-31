@@ -1,7 +1,6 @@
 #include "app/mcp_command_handlers.hpp"
 
 #include "cli/mcp_admin_command.hpp"
-#include "core_types/mcp_manager_interface.hpp"
 #include "mcp/oauth/flow.hpp"
 #include "presentation/chat_ui.hpp"
 #include "presentation/mcp/mcp_slash_commands.hpp"
@@ -190,6 +189,7 @@ void RegisterMcpSlashCommandHandlers(
             try {
               mcp_admin->Authenticate(server_id.value,
                                       mcp::oauth::OAuthInteractionMode{});
+              // NOLINTNEXTLINE(bugprone-exception-escape)
               screen.Post([&chat_ui,
                            &screen,  // NOLINT(bugprone-exception-escape)
                            server_id]() noexcept {
@@ -210,6 +210,7 @@ void RegisterMcpSlashCommandHandlers(
               });
             } catch (const std::exception& error) {
               std::string err = error.what();
+              // NOLINTNEXTLINE(bugprone-exception-escape)
               screen.Post([&chat_ui,
                            &screen,  // NOLINT(bugprone-exception-escape)
                            server_id, err]() mutable noexcept {
