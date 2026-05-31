@@ -60,10 +60,11 @@ The public OpenAI Responses shape uses `reasoning.effort`. OpenAI Chat
 Completions uses the top-level `reasoning_effort` field.
 Bedrock Claude thinking controls are not implemented by /effort.
 
-Auth precedence is `env API key > stored OpenAI auth > inline settings API key`.
-That means `OPENAI_API_KEY` wins over a stored OAuth login or stored API key. A
-stored login wins over `[provider].api_key` in `~/.yac/settings.toml`. Keep
-`provider.api_key` unset when possible so secrets stay out of plaintext TOML.
+Auth precedence is `env > TOML > SQLite > built-in defaults`. For OpenAI auth,
+that means an env API key wins first, then explicit TOML settings, then stored
+OpenAI auth from SQLite. Keep `provider.api_key` unset when possible so secrets
+stay out of plaintext TOML. Plaintext TOML `provider.api_key` values remain
+supported as overrides, but YAC does not migrate them into SQLite.
 
 ## Commands
 
@@ -118,11 +119,18 @@ to Build, and sends one Build-mode reminder that references the approved
 
 ## Storage
 
-OpenAI provider auth is stored by provider auth storage. YAC tries the OS
-keychain first. If the keychain isn't available, it falls back to
-`~/.yac/provider/auth/openai.json` with owner-only permissions.
-Set `YAC_OPENAI_AUTH_STORE=file` when running in headless or CI environments
-where probing the OS keychain can block or prompt.
+OpenAI provider auth is stored in the SQLite state store at
+`~/.yac/state.sqlite`. The same state store also keeps provider profiles,
+provider credentials, and last-used runtime state. The OpenAI auth CLI reports
+`SQLite state store` as the storage source for SQLite-backed credentials.
+
+Legacy keychain or file auth may be imported best-effort into SQLite and is
+left untouched after import. New stock storage does not require the OS keychain
+or `YAC_OPENAI_AUTH_STORE=file`.
+
+Stock SQLite storage is protected by local file permissions on `~/.yac` and
+`state.sqlite`. It is not encrypted, and YAC does not provide encrypted SQLite,
+SQLCipher, or encrypted at rest storage.
 
 Stored auth may contain either an API-key credential or an OAuth credential.
 `yac auth openai logout` removes the stored credential, but it can't remove an
@@ -135,8 +143,7 @@ API key exported in your shell or an inline settings key.
 **Symptom:** `yac auth openai status` shows stored OAuth, but requests still use
 an API key.
 
-**Cause:** Auth precedence is `env API key > stored OpenAI auth > inline settings
-API key`.
+**Cause:** Auth precedence is `env > TOML > SQLite > built-in defaults`.
 
 **Fix:** Unset `OPENAI_API_KEY` in that shell, or change `provider.api_key_env`,
 then restart YAC and run `yac auth openai status` again.

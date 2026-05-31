@@ -9,9 +9,17 @@ Shell variables named `YAC_*` override TOML at startup. Provider presets fill
 only missing fields: explicit TOML wins over preset defaults, and env overrides
 win over both.
 
+Runtime state lives in `~/.yac/state.sqlite`. The full precedence is
+`env > TOML > SQLite > built-in defaults`. SQLite fills provider profiles,
+provider credentials and OpenAI auth, and last-used runtime state only when an
+env var or explicit TOML value has not already set that field. TOML and env
+remain the right place for explicit configuration overrides.
+
 ## Files
 
 - `~/.yac/settings.toml`: local settings.
+- `~/.yac/state.sqlite`: provider profiles, credentials and OpenAI auth, and
+  last-used runtime state.
 - `settings.example.toml`: checked-in reference copy.
 - `~/.yac/prompts/*.toml`: predefined prompt commands. The file stem becomes
   the slash command name, and `$ARGUMENTS` is replaced at invocation.
@@ -125,8 +133,15 @@ supported.
 ## Auth And Secrets
 
 Prefer `OPENAI_API_KEY`, `ZAI_API_KEY`, or stored OpenAI auth over inline
-`provider.api_key`. For the built-in `openai` provider, auth precedence is
-env API key > stored OpenAI auth > inline settings API key.
+`provider.api_key`. For the built-in `openai` provider, auth precedence follows
+`env > TOML > SQLite > built-in defaults`: env API keys win first, explicit TOML
+`provider.api_key` overrides SQLite stored auth, and SQLite fills only when env
+and TOML do not.
+
+Plaintext `provider.api_key` values in TOML remain supported as explicit
+overrides, but YAC does not migrate them into SQLite. Stock SQLite storage is
+not encrypted and does not use SQLCipher or the SQLite Encryption Extension.
+Protection comes from private `~/.yac` and `state.sqlite` file permissions.
 
 Store an OpenAI API key without putting it in TOML:
 
@@ -143,8 +158,11 @@ yac auth openai status
 yac auth openai logout
 ```
 
-Set `YAC_OPENAI_AUTH_STORE=file` in headless or CI environments that should use
-the file auth store directly instead of probing the OS keychain.
+The OpenAI auth CLI stores new credentials in the SQLite state store. Legacy
+keychain or file auth may be imported best-effort into SQLite and is left
+untouched after import. `YAC_OPENAI_AUTH_STORE=file` applies only to legacy file
+auth access during import paths. `YAC_KEYCHAIN_DISABLED=1` keeps auth tests
+hermetic; no keychain is required for normal SQLite-backed auth.
 
 ## Theme And Compaction
 
