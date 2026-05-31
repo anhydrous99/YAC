@@ -9,6 +9,7 @@
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -103,36 +104,29 @@ yac::chat::ToolDefinition RequireDefinition(std::string_view name) {
   return *it;
 }
 
-ToolExecutionResult ExecuteThroughCatalog(const ToolHandler& handler,
-                                           const ToolCallRequest& request,
-                                           WebFetchTransport* web_fetch =
-                                               nullptr,
-                                           WebSearchTransport* web_search =
-                                               nullptr,
-                                           const std::optional<
-                                               WebSearchProviderConfig>*
-                                               web_search_config = nullptr) {
+ToolExecutionResult ExecuteThroughCatalog(
+    const ToolHandler& handler, const ToolCallRequest& request,
+    WebFetchTransport* web_fetch = nullptr,
+    WebSearchTransport* web_search = nullptr,
+    const std::optional<WebSearchProviderConfig>* web_search_config = nullptr) {
   auto prepared = handler.prepare(request, Json::parse(request.arguments_json));
   yac::tool_call::WorkspaceFilesystem workspace(
       std::filesystem::current_path());
   std::shared_ptr<yac::tool_call::ILspClient> lsp_client;
   yac::tool_call::TodoState todo_state;
-  yac::tool_call::ExecutionContext context{.workspace_filesystem = workspace,
-                                           .lsp_client = lsp_client,
-                                            .todo_state = todo_state,
-                                            .sub_agent_manager = nullptr,
-                                            .tool_approval = nullptr,
-                                            .web_fetch_transport = web_fetch,
-                                             .web_fetch_network_policy =
-                                                 web_fetch == nullptr
-                                                     ? WebFetchNetworkPolicy::
-                                                           RealNetwork
-                                                     : WebFetchNetworkPolicy::
-                                                           InjectedTransport,
-                                             .web_search_transport = web_search,
-                                             .web_search_config =
-                                                 web_search_config,
-                                             .stop = std::stop_token{}};
+  yac::tool_call::ExecutionContext context{
+      .workspace_filesystem = workspace,
+      .lsp_client = lsp_client,
+      .todo_state = todo_state,
+      .sub_agent_manager = nullptr,
+      .tool_approval = nullptr,
+      .web_fetch_transport = web_fetch,
+      .web_fetch_network_policy =
+          web_fetch == nullptr ? WebFetchNetworkPolicy::RealNetwork
+                               : WebFetchNetworkPolicy::InjectedTransport,
+      .web_search_transport = web_search,
+      .web_search_config = web_search_config,
+      .stop = std::stop_token{}};
   return handler.execute(prepared, context);
 }
 
@@ -149,6 +143,91 @@ TEST_CASE("ToolDefinitions: tool names are unique") {
 
 TEST_CASE("ToolDefinitions: handler count matches definition count") {
   REQUIRE(ToolHandlerCount() == ToolDefinitions().size());
+}
+
+TEST_CASE("ToolDefinitions: ordered built-in contract snapshot is stable") {
+  struct ExpectedDefinition {
+    std::string_view name;
+    std::string_view description_fragment;
+    std::string_view schema_json;
+  };
+
+  constexpr std::array expected =
+      {
+          ExpectedDefinition{
+              "file_read", "Read the contents",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"}},"required":["filepath"]})schema"},
+          ExpectedDefinition{
+              "file_write", "fully overwrite",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string"},"content":{"type":"string"}},"required":["filepath","content"]})schema"},
+          ExpectedDefinition{
+              "list_dir", "List direct entries",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"path":{"type":"string"}},"required":["path"]})schema"},
+          ExpectedDefinition{
+              "lsp_diagnostics", "diagnostics",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})schema"},
+          ExpectedDefinition{
+              "lsp_references", "Find references",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})schema"},
+          ExpectedDefinition{
+              "lsp_goto_definition", "Find definitions",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"symbol":{"type":"string"}},"required":["file_path","line","character"]})schema"},
+          ExpectedDefinition{
+              "lsp_rename", "Rename a symbol",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"},"line":{"type":"integer"},"character":{"type":"integer"},"old_name":{"type":"string"},"new_name":{"type":"string"}},"required":["file_path","line","character","new_name"]})schema"},
+          ExpectedDefinition{
+              "lsp_symbols", "document symbols",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"file_path":{"type":"string"}},"required":["file_path"]})schema"},
+          ExpectedDefinition{
+              "sub_agent", "Spawn a sub-agent",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"task":{"type":"string","description":"Detailed description of what the sub-agent should accomplish"},"mode":{"type":"string","enum":["foreground","background"],"description":"foreground blocks until complete and returns result. background runs in parallel and notifies when done."}},"required":["task"]})schema"},
+          ExpectedDefinition{
+              "todo_write", "todo list",
+              R"schema({"type":"object","properties":{"todos":{"type":"array","items":{"type":"object","properties":{"content":{"type":"string","description":"Task description"},"status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Current status"},"priority":{"type":"string","enum":["high","medium","low"],"description":"Priority level"}},"required":["content","status"]}}},"required":["todos"]})schema"},
+          ExpectedDefinition{
+              "ask_user", "Ask the user",
+              R"schema({"type":"object","properties":{"question":{"type":"string","description":"The question to ask the user"},"options":{"type":"array","items":{"type":"string"},"description":"Optional suggested answers"}},"required":["question"]})schema"},
+          ExpectedDefinition{
+              "plan_exit", "switch to Build mode",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"plan":{"type":"string","description":"Final plan in markdown."}},"required":["plan"]})schema"},
+          ExpectedDefinition{
+              "bash", "Execute a shell command",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"command":{"type":"string","description":"Shell command to execute (passed to /bin/sh -c)"},"timeout_ms":{"type":"integer","description":"Timeout in milliseconds (default 30000, max 300000)","minimum":100,"maximum":300000}},"required":["command"]})schema"},
+          ExpectedDefinition{
+              "file_edit", "Edit a file",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"filepath":{"type":"string","description":"Workspace-relative or absolute path to the file"},"old_string":{"type":"string","description":"Exact text to replace (must not be empty)"},"new_string":{"type":"string","description":"Replacement text (can be empty to delete)"},"replace_all":{"type":"boolean","description":"Replace all occurrences (default false)"}},"required":["filepath","old_string","new_string"]})schema"},
+          ExpectedDefinition{
+              "grep",
+              "ripgrep", R"schema({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Regex pattern (Rust regex syntax)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include":{"type":"string","description":"Glob filter for filenames (e.g. '*.cpp')"},"case_sensitive":{"type":"boolean","description":"Case-sensitive search (default false)"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})schema"},
+          ExpectedDefinition{
+              "glob", "glob pattern",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})schema"},
+          ExpectedDefinition{
+              "web_fetch", "Fetch an HTTP(S) URL",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"HTTP(S) URL to fetch."},"format":{"type":"string","enum":["markdown","text","html"],"description":"Output format (default markdown)."},"timeout":{"type":"integer","description":"Timeout in seconds (default 30, max 120).","minimum":1,"maximum":120,"default":30}},"required":["url"]})schema"},
+          ExpectedDefinition{
+              "web_search", "Exa provider",
+              R"schema({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query to send to the configured provider."},"num_results":{"type":"integer","description":"Number of results to request (default 5, max 10).","minimum":1,"maximum":10,"default":5},"context_max_characters":{"type":"integer","description":"Maximum provider context characters per request (default 4096, max 12000).","minimum":1,"maximum":12000,"default":4096}},"required":["query"]})schema"},
+      };
+
+  const auto defs = ToolDefinitions();
+  REQUIRE(defs.size() == expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    INFO(expected[i].name);
+    CHECK(defs[i].name == expected[i].name);
+    CHECK(defs[i].description.find(expected[i].description_fragment) !=
+          std::string::npos);
+    CHECK(Json::parse(defs[i].parameters_schema_json) ==
+          Json::parse(expected[i].schema_json));
+    REQUIRE(LookupToolHandler(expected[i].name) != nullptr);
+  }
+}
+
+TEST_CASE("ToolDefinitions: every handler appears in ordered snapshot") {
+  for (const auto& def : ToolDefinitions()) {
+    INFO(def.name);
+    REQUIRE(LookupToolHandler(def.name) != nullptr);
+  }
 }
 
 TEST_CASE("ToolDefinitions: every definition has a handler with non-null fns") {
@@ -347,8 +426,7 @@ TEST_CASE("ToolDefinitions: web tools declare expected schemas") {
     CHECK(schema["properties"]["num_results"]["type"] == "integer");
     CHECK(schema["properties"]["num_results"]["default"] == 5);
     CHECK(schema["properties"]["num_results"]["maximum"] == 10);
-    CHECK(schema["properties"]["context_max_characters"]["type"] ==
-          "integer");
+    CHECK(schema["properties"]["context_max_characters"]["type"] == "integer");
     CHECK(schema["properties"]["context_max_characters"]["default"] == 4096);
     CHECK(schema["properties"]["context_max_characters"]["maximum"] == 12000);
   }
@@ -364,8 +442,9 @@ TEST_CASE("LookupToolHandler: web tools execute through registered handlers") {
 
     const auto result = ExecuteThroughCatalog(
         *handler,
-        MakeRequest("web_fetch",
-                    R"({"url":"https://example.test/page","format":"text","timeout":45})"),
+        MakeRequest(
+            "web_fetch",
+            R"({"url":"https://example.test/page","format":"text","timeout":45})"),
         &transport);
 
     REQUIRE_FALSE(result.is_error);
@@ -479,8 +558,8 @@ TEST_CASE("LookupToolHandler: web_fetch validation errors keep tool context") {
                   ToolValidationError);
 
   try {
-    (void)PrepareToolCall(
-        MakeRequest("web_fetch", R"({"url":"https://example.test/page","format":"pdf"})"));
+    (void)PrepareToolCall(MakeRequest(
+        "web_fetch", R"({"url":"https://example.test/page","format":"pdf"})"));
     FAIL("Expected web_fetch format validation to throw");
   } catch (const ToolValidationError& error) {
     CHECK(std::string(error.what()).find("web_fetch format") !=
