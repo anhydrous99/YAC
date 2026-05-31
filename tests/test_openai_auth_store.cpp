@@ -600,11 +600,14 @@ TEST_CASE("file_env_skips_keychain_backend", "[openai_auth_store]") {
   const auto saved_source = store.Save(auth);
   const auto loaded = store.Load();
 
-  REQUIRE(saved_source == OpenAiAuthStorageSource::File);
+  REQUIRE(saved_source == OpenAiAuthStorageSource::StateStore);
   REQUIRE(loaded.has_value());
-  REQUIRE(loaded->source == OpenAiAuthStorageSource::File);
-  REQUIRE(std::filesystem::exists(temp_dir.Path() / ".yac" / "provider" /
-                                  "auth" / "openai.json"));
+  REQUIRE(loaded->source == OpenAiAuthStorageSource::StateStore);
+  REQUIRE(OpenAiAuthStorageSourceLabel(loaded->source) ==
+          std::string_view("SQLite state store"));
+  REQUIRE(std::filesystem::exists(temp_dir.Path() / ".yac" / "state.sqlite"));
+  REQUIRE_FALSE(std::filesystem::exists(temp_dir.Path() / ".yac" / "provider" /
+                                        "auth" / "openai.json"));
 }
 
 TEST_CASE("file_backend_writes_mode_0600_and_rejects_broad_perms",

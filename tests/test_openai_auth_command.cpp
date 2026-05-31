@@ -311,6 +311,8 @@ TEST_CASE("status uses inline config before env for compatible provider",
 
   REQUIRE(summary.configured_provider == "openai-compatible");
   REQUIRE(summary.stored_credential == std::optional<std::string>{"oauth"});
+  REQUIRE(summary.stored_source ==
+          std::optional<std::string>{"provider auth file"});
   REQUIRE(summary.effective_auth == std::optional<std::string>{"api (config)"});
   REQUIRE(summary.oauth_expiry == std::optional<std::string>{"4102444800"});
   REQUIRE(summary.account_id == std::optional<std::string>{"acct-xyz"});

@@ -257,7 +257,8 @@ TEST_CASE("auth cli set-api-key stores stdin secret without echoing",
 
   REQUIRE(rc == 0);
   REQUIRE(err.str().empty());
-  REQUIRE(out.str().find("Stored OpenAI API key.") != std::string::npos);
+  REQUIRE(out.str().find("Stored OpenAI API key. source: provider auth file") !=
+          std::string::npos);
   REQUIRE(out.str().find("sk-test") == std::string::npos);
   const auto stored = store->Load();
   REQUIRE(stored.has_value());
@@ -301,6 +302,8 @@ TEST_CASE("auth cli status shows stored oauth inactive for compatible provider",
   REQUIRE(err.str().empty());
   REQUIRE(out.str().find("configured provider:") != std::string::npos);
   REQUIRE(out.str().find("stored credential: oauth") != std::string::npos);
+  REQUIRE(out.str().find("stored source: provider auth file") !=
+          std::string::npos);
   REQUIRE(out.str().find("effective auth: oauth (stored)") ==
           std::string::npos);
   REQUIRE(out.str().find("oauth expiry: 4102444800") != std::string::npos);
