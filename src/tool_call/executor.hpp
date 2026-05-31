@@ -4,9 +4,12 @@
 #include "core_types/tool_call_types.hpp"
 #include "core_types/typed_ids.hpp"
 #include "tool_call/lsp_client.hpp"
+#include "tool_call/web_fetch.hpp"
+#include "tool_call/web_search.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <memory>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -40,6 +43,10 @@ struct ExecutionContext {
   TodoState& todo_state;
   chat::SubAgentManager* sub_agent_manager;
   chat::ToolApprovalManager* tool_approval;
+  WebFetchTransport* web_fetch_transport;
+  WebFetchNetworkPolicy web_fetch_network_policy;
+  WebSearchTransport* web_search_transport;
+  const std::optional<WebSearchProviderConfig>* web_search_config;
   std::stop_token stop;
 };
 
@@ -56,6 +63,9 @@ class ToolExecutor {
                                             std::stop_token stop_token) const;
   void SetSubAgentManager(chat::SubAgentManager* manager);
   void SetToolApproval(chat::ToolApprovalManager* tool_approval);
+  void SetWebFetchTransport(WebFetchTransport* transport);
+  void SetWebSearchConfig(const chat::WebSearchConfig& config);
+  void SetWebSearchTransport(WebSearchTransport* transport);
 
  private:
   WorkspaceFilesystem workspace_filesystem_;
@@ -63,6 +73,13 @@ class ToolExecutor {
   TodoState& todo_state_;
   chat::SubAgentManager* sub_agent_manager_ = nullptr;
   chat::ToolApprovalManager* tool_approval_ = nullptr;
+  CurlWebFetchTransport default_web_fetch_transport_;
+  WebFetchTransport* web_fetch_transport_ = &default_web_fetch_transport_;
+  WebFetchNetworkPolicy web_fetch_network_policy_ =
+      WebFetchNetworkPolicy::RealNetwork;
+  CurlWebSearchTransport default_web_search_transport_;
+  WebSearchTransport* web_search_transport_ = &default_web_search_transport_;
+  std::optional<WebSearchProviderConfig> web_search_config_;
 };
 
 }  // namespace yac::tool_call
