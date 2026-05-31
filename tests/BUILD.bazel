@@ -145,6 +145,12 @@ yac_test(
     data = ROOT_SCAN_DATA,
     defines = ["YAC_PROJECT_ROOT=\\\".\\\""],
 )
+yac_test(
+    "yac_test_dependency_boundary_guardrails",
+    ["test_dependency_boundary_guardrails.cpp"],
+    data = ROOT_SCAN_DATA + ["//src:BUILD.bazel"],
+    defines = ["YAC_PROJECT_ROOT=\\\".\\\""],
+)
 yac_aws_test("yac_test_bedrock_chat_protocol", ["test_bedrock_chat_protocol.cpp"])
 yac_aws_test("yac_test_bedrock_tool_translator", ["test_bedrock_tool_translator.cpp"])
 yac_test("yac_test_model_context_windows", ["test_model_context_windows.cpp"])
