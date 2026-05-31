@@ -4,15 +4,21 @@
 #include "tool_call/executor_catalog.hpp"
 #include "tool_call/todo_state.hpp"
 #include "tool_call/tool_validation_error.hpp"
+#include "tool_call/web_fetch.hpp"
+#include "tool_call/web_search.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -25,6 +31,14 @@ using yac::tool_call::ToolExecutionResult;
 using yac::tool_call::ToolHandler;
 using yac::tool_call::ToolHandlerCount;
 using yac::tool_call::ToolValidationError;
+using yac::tool_call::WebFetchNetworkPolicy;
+using yac::tool_call::WebFetchTransport;
+using yac::tool_call::WebFetchTransportRequest;
+using yac::tool_call::WebFetchTransportResponse;
+using yac::tool_call::WebSearchProviderConfig;
+using yac::tool_call::WebSearchTransport;
+using yac::tool_call::WebSearchTransportRequest;
+using yac::tool_call::WebSearchTransportResponse;
 
 namespace {
 
@@ -33,6 +47,53 @@ ToolCallRequest MakeRequest(std::string name, std::string args_json) {
                          .name = std::move(name),
                          .arguments_json = std::move(args_json)};
 }
+
+class FakeWebFetchTransport final : public WebFetchTransport {
+ public:
+  WebFetchTransportResponse Fetch(const WebFetchTransportRequest& request,
+                                  std::stop_token stop_token) override {
+    (void)stop_token;
+    called = true;
+    observed_url = request.url;
+    observed_timeout = request.timeout;
+    for (const auto& header : headers) {
+      request.on_header_line(header);
+    }
+    for (const auto& chunk : chunks) {
+      request.on_body_chunk(chunk);
+    }
+    return {.status_code = status_code};
+  }
+
+  bool called = false;
+  std::string observed_url;
+  std::chrono::milliseconds observed_timeout{0};
+  long status_code = 200;
+  std::vector<std::string> headers{"Content-Type: text/plain\r\n"};
+  std::vector<std::string> chunks{"example body"};
+};
+
+class FakeWebSearchTransport final : public WebSearchTransport {
+ public:
+  WebSearchTransportResponse Search(const WebSearchTransportRequest& request,
+                                    std::stop_token stop_token) override {
+    (void)stop_token;
+    called = true;
+    observed_endpoint = request.endpoint;
+    observed_api_key = request.api_key;
+    observed_body = request.body;
+    observed_timeout = request.timeout;
+    return response;
+  }
+
+  bool called = false;
+  std::string observed_endpoint;
+  std::string observed_api_key;
+  std::string observed_body;
+  std::chrono::milliseconds observed_timeout{0};
+  WebSearchTransportResponse response{.status_code = 200,
+                                      .content_type = "application/json"};
+};
 
 yac::chat::ToolDefinition RequireDefinition(std::string_view name) {
   const auto defs = ToolDefinitions();
@@ -43,7 +104,14 @@ yac::chat::ToolDefinition RequireDefinition(std::string_view name) {
 }
 
 ToolExecutionResult ExecuteThroughCatalog(const ToolHandler& handler,
-                                          const ToolCallRequest& request) {
+                                           const ToolCallRequest& request,
+                                           WebFetchTransport* web_fetch =
+                                               nullptr,
+                                           WebSearchTransport* web_search =
+                                               nullptr,
+                                           const std::optional<
+                                               WebSearchProviderConfig>*
+                                               web_search_config = nullptr) {
   auto prepared = handler.prepare(request, Json::parse(request.arguments_json));
   yac::tool_call::WorkspaceFilesystem workspace(
       std::filesystem::current_path());
@@ -51,10 +119,20 @@ ToolExecutionResult ExecuteThroughCatalog(const ToolHandler& handler,
   yac::tool_call::TodoState todo_state;
   yac::tool_call::ExecutionContext context{.workspace_filesystem = workspace,
                                            .lsp_client = lsp_client,
-                                           .todo_state = todo_state,
-                                           .sub_agent_manager = nullptr,
-                                           .tool_approval = nullptr,
-                                           .stop = std::stop_token{}};
+                                            .todo_state = todo_state,
+                                            .sub_agent_manager = nullptr,
+                                            .tool_approval = nullptr,
+                                            .web_fetch_transport = web_fetch,
+                                             .web_fetch_network_policy =
+                                                 web_fetch == nullptr
+                                                     ? WebFetchNetworkPolicy::
+                                                           RealNetwork
+                                                     : WebFetchNetworkPolicy::
+                                                           InjectedTransport,
+                                             .web_search_transport = web_search,
+                                             .web_search_config =
+                                                 web_search_config,
+                                             .stop = std::stop_token{}};
   return handler.execute(prepared, context);
 }
 
@@ -239,49 +317,151 @@ TEST_CASE(
   REQUIRE(schema["properties"]["plan"]["type"] == "string");
 }
 
-TEST_CASE("ToolDefinitions: web tools are declared as unsupported built-ins") {
+TEST_CASE("ToolDefinitions: web tools declare expected schemas") {
   SECTION("web_fetch") {
     const auto& def = RequireDefinition("web_fetch");
-    CHECK(def.description.find("unsupported") != std::string::npos);
-    CHECK(def.description.find("not configured") != std::string::npos);
+    CHECK(def.description.find("Fetch") != std::string::npos);
+    CHECK(def.description.find("30 second timeout") != std::string::npos);
 
     const auto schema = Json::parse(def.parameters_schema_json);
     REQUIRE(schema["required"].size() == 1);
     CHECK(schema["required"][0] == "url");
     CHECK(schema["properties"]["url"]["type"] == "string");
+    CHECK(schema["properties"]["format"]["type"] == "string");
+    CHECK(schema["properties"]["format"]["enum"] ==
+          Json::array({"markdown", "text", "html"}));
+    CHECK(schema["properties"]["timeout"]["type"] == "integer");
+    CHECK(schema["properties"]["timeout"]["default"] == 30);
+    CHECK(schema["properties"]["timeout"]["maximum"] == 120);
   }
 
   SECTION("web_search") {
     const auto& def = RequireDefinition("web_search");
-    CHECK(def.description.find("unsupported") != std::string::npos);
-    CHECK(def.description.find("not configured") != std::string::npos);
+    CHECK(def.description.find("Search") != std::string::npos);
+    CHECK(def.description.find("Exa") != std::string::npos);
 
     const auto schema = Json::parse(def.parameters_schema_json);
     REQUIRE(schema["required"].size() == 1);
     CHECK(schema["required"][0] == "query");
     CHECK(schema["properties"]["query"]["type"] == "string");
+    CHECK(schema["properties"]["num_results"]["type"] == "integer");
+    CHECK(schema["properties"]["num_results"]["default"] == 5);
+    CHECK(schema["properties"]["num_results"]["maximum"] == 10);
+    CHECK(schema["properties"]["context_max_characters"]["type"] ==
+          "integer");
+    CHECK(schema["properties"]["context_max_characters"]["default"] == 4096);
+    CHECK(schema["properties"]["context_max_characters"]["maximum"] == 12000);
   }
 }
 
-TEST_CASE("LookupToolHandler: web tools return stable unsupported errors") {
-  constexpr std::string_view kUnsupportedWebToolError =
-      "Built-in web tools are unsupported and not configured in YAC.";
-
+TEST_CASE("LookupToolHandler: web tools execute through registered handlers") {
   SECTION("web_fetch") {
     const auto* handler = LookupToolHandler("web_fetch");
     REQUIRE(handler != nullptr);
+    FakeWebFetchTransport transport;
+    transport.headers = {"Content-Type: text/html\r\n"};
+    transport.chunks = {"<h1>Hello</h1><p>catalog</p>"};
 
     const auto result = ExecuteThroughCatalog(
-        *handler, MakeRequest("web_fetch", R"({"url":"https://example.com"})"));
+        *handler,
+        MakeRequest("web_fetch",
+                    R"({"url":"https://example.test/page","format":"text","timeout":45})"),
+        &transport);
 
-    REQUIRE(result.is_error);
-    CHECK(Json::parse(result.result_json)["error"] == kUnsupportedWebToolError);
+    REQUIRE_FALSE(result.is_error);
+    const auto payload = Json::parse(result.result_json);
+    CHECK(payload["url"] == "https://example.test/page");
+    CHECK(payload["body"].get<std::string>().find("catalog") !=
+          std::string::npos);
+    CHECK(transport.called);
+    CHECK(transport.observed_url == "https://example.test/page");
+    CHECK(transport.observed_timeout == std::chrono::seconds(45));
     REQUIRE(std::holds_alternative<yac::tool_call::WebFetchCall>(result.block));
-    CHECK(std::get<yac::tool_call::WebFetchCall>(result.block).url ==
-          "https://example.com");
+    const auto& call = std::get<yac::tool_call::WebFetchCall>(result.block);
+    CHECK(call.url == "https://example.test/page");
+    CHECK(call.format == "text");
+    CHECK(call.timeout == 45);
   }
 
   SECTION("web_search") {
+    const auto* handler = LookupToolHandler("web_search");
+    REQUIRE(handler != nullptr);
+    FakeWebSearchTransport transport;
+    transport.response.body =
+        Json{{"results", Json::array({{{"title", "First"},
+                                       {"url", "https://example.test/first"},
+                                       {"snippet", "first snippet"}},
+                                      {{"title", "Second"},
+                                       {"url", "https://example.test/second"},
+                                       {"snippet", "second snippet"}}})}}
+            .dump();
+    const std::optional<WebSearchProviderConfig> config{
+        WebSearchProviderConfig{.endpoint = "https://exa.test/search",
+                                .api_key = "fake-exa-key",
+                                .timeout_seconds = 25,
+                                .result_limit = 8,
+                                .context_limit = 9000}};
+
+    const auto result = ExecuteThroughCatalog(
+        *handler,
+        MakeRequest(
+            "web_search",
+            R"({"query":"yac terminal","num_results":2,"context_max_characters":2048})"),
+        nullptr, &transport, &config);
+
+    REQUIRE_FALSE(result.is_error);
+    const auto payload = Json::parse(result.result_json);
+    CHECK(payload["provider"] == "exa");
+    CHECK(payload["metadata"]["provider"] == "exa");
+    const std::string output = payload["output"];
+    CHECK(output.find("First") < output.find("Second"));
+    CHECK(output.find("https://example.test/first") != std::string::npos);
+    CHECK(output.find("https://example.test/second") != std::string::npos);
+    CHECK(transport.called);
+    CHECK(transport.observed_endpoint == "https://exa.test/search");
+    CHECK(transport.observed_timeout == std::chrono::seconds(25));
+    const auto observed_body = Json::parse(transport.observed_body);
+    CHECK(observed_body["num_results"] == 2);
+    CHECK(observed_body["context_max_characters"] == 2048);
+    REQUIRE(
+        std::holds_alternative<yac::tool_call::WebSearchCall>(result.block));
+    const auto& call = std::get<yac::tool_call::WebSearchCall>(result.block);
+    CHECK(call.query == "yac terminal");
+    CHECK(call.num_results == 2);
+    CHECK(call.context_max_characters == 2048);
+    REQUIRE(call.results.size() == 2);
+    CHECK(call.results[0].title == "First");
+  }
+
+  SECTION("web_search uses configured defaults when limits are omitted") {
+    const auto* handler = LookupToolHandler("web_search");
+    REQUIRE(handler != nullptr);
+    FakeWebSearchTransport transport;
+    transport.response.body = Json{{"results", Json::array()}}.dump();
+    const std::optional<WebSearchProviderConfig> config{
+        WebSearchProviderConfig{.endpoint = "https://exa.test/search",
+                                .api_key = "fake-exa-key",
+                                .timeout_seconds = 25,
+                                .result_limit = 7,
+                                .context_limit = 9000}};
+
+    const auto result = ExecuteThroughCatalog(
+        *handler, MakeRequest("web_search", R"({"query":"yac terminal"})"),
+        nullptr, &transport, &config);
+
+    REQUIRE_FALSE(result.is_error);
+    REQUIRE(transport.called);
+    const auto observed_body = Json::parse(transport.observed_body);
+    CHECK(observed_body["num_results"] == 7);
+    CHECK(observed_body["context_max_characters"] == 9000);
+    REQUIRE(
+        std::holds_alternative<yac::tool_call::WebSearchCall>(result.block));
+    const auto& call = std::get<yac::tool_call::WebSearchCall>(result.block);
+    CHECK(call.num_results == 7);
+    CHECK(call.context_max_characters == 9000);
+  }
+
+  SECTION("web_search without config") {
     const auto* handler = LookupToolHandler("web_search");
     REQUIRE(handler != nullptr);
 
@@ -289,10 +469,23 @@ TEST_CASE("LookupToolHandler: web tools return stable unsupported errors") {
         *handler, MakeRequest("web_search", R"({"query":"yac terminal"})"));
 
     REQUIRE(result.is_error);
-    CHECK(Json::parse(result.result_json)["error"] == kUnsupportedWebToolError);
-    REQUIRE(
-        std::holds_alternative<yac::tool_call::WebSearchCall>(result.block));
-    CHECK(std::get<yac::tool_call::WebSearchCall>(result.block).query ==
-          "yac terminal");
+    CHECK(Json::parse(result.result_json)["error"] ==
+          "web_search provider is not configured");
+  }
+}
+
+TEST_CASE("LookupToolHandler: web_fetch validation errors keep tool context") {
+  CHECK_THROWS_AS(PrepareToolCall(MakeRequest("web_fetch", R"({"url":5})")),
+                  ToolValidationError);
+
+  try {
+    (void)PrepareToolCall(
+        MakeRequest("web_fetch", R"({"url":"https://example.test/page","format":"pdf"})"));
+    FAIL("Expected web_fetch format validation to throw");
+  } catch (const ToolValidationError& error) {
+    CHECK(std::string(error.what()).find("web_fetch format") !=
+          std::string::npos);
+    CHECK(error.tool_name() == "web_fetch");
+    CHECK(error.raw_arguments_json().find("example.test") != std::string::npos);
   }
 }

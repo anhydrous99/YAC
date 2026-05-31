@@ -12,8 +12,11 @@
 #include "tool_call/todo_state.hpp"
 #include "tool_call/tool_error_result.hpp"
 #include "tool_call/tool_validation_error.hpp"
+#include "tool_call/web_fetch.hpp"
+#include "tool_call/web_search.hpp"
 #include "tool_call/workspace_filesystem.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <string>
@@ -26,8 +29,8 @@ namespace yac::tool_call {
 
 namespace {
 
-inline constexpr std::string_view kUnsupportedWebToolError =
-    "Built-in web tools are unsupported and not configured in YAC.";
+inline constexpr std::string_view kWebSearchNotConfiguredError =
+    "web_search provider is not configured";
 
 PreparedToolCall PrepareFileWriteTool(const chat::ToolCallRequest& request,
                                       const Json& args) {
@@ -220,19 +223,68 @@ PreparedToolCall PrepareGlobTool(const chat::ToolCallRequest& request,
                           .requires_approval = false};
 }
 
+std::string OptionalWebFetchFormat(const Json& args) {
+  const auto format = OptionalString(args, "format");
+  if (format.empty()) {
+    return "markdown";
+  }
+  if (format != "markdown" && format != "text" && format != "html") {
+    throw ToolValidationError(
+        "web_fetch format must be one of markdown, text, or html.", "", "");
+  }
+  return format;
+}
+
+int OptionalWebFetchTimeout(const Json& args) {
+  if (!args.contains("timeout")) {
+    return kWebFetchDefaultTimeoutSeconds;
+  }
+  if (!args["timeout"].is_number_integer()) {
+    throw ToolValidationError("web_fetch timeout must be an integer.", "", "");
+  }
+  return std::clamp(args["timeout"].get<int>(), 1,
+                    kWebFetchMaxTimeoutSeconds);
+}
+
 PreparedToolCall PrepareWebFetchTool(const chat::ToolCallRequest& request,
                                      const Json& args) {
   const auto url = RequireString(args, "url");
+  const auto format = OptionalWebFetchFormat(args);
+  const auto timeout = OptionalWebFetchTimeout(args);
   return PreparedToolCall{.request = request,
-                          .preview = WebFetchCall{.url = url},
+                          .preview = WebFetchCall{.url = url,
+                                                   .format = format,
+                                                   .timeout = timeout},
                           .requires_approval = false};
 }
 
 PreparedToolCall PrepareWebSearchTool(const chat::ToolCallRequest& request,
-                                      const Json& args) {
+                                       const Json& args) {
   const auto query = RequireString(args, "query");
+  int num_results = kWebSearchDefaultResultLimit;
+  if (args.contains("num_results")) {
+    if (!args["num_results"].is_number_integer()) {
+      throw ToolValidationError("web_search num_results must be an integer.",
+                                "", "");
+    }
+    num_results = std::clamp(args["num_results"].get<int>(), 1,
+                             kWebSearchMaxResultLimit);
+  }
+  int context_max_characters = kWebSearchDefaultContextLimit;
+  if (args.contains("context_max_characters")) {
+    if (!args["context_max_characters"].is_number_integer()) {
+      throw ToolValidationError(
+          "web_search context_max_characters must be an integer.", "", "");
+    }
+    context_max_characters = std::clamp(
+        args["context_max_characters"].get<int>(), 1,
+        kWebSearchMaxContextLimit);
+  }
   return PreparedToolCall{.request = request,
-                          .preview = WebSearchCall{.query = query},
+                          .preview = WebSearchCall{
+                              .query = query,
+                              .num_results = num_results,
+                              .context_max_characters = context_max_characters},
                           .requires_approval = false};
 }
 
@@ -364,10 +416,51 @@ ToolExecutionResult ExecuteGlobDispatch(const PreparedToolCall& prepared,
   return ExecuteGlobTool(prepared.request, ctx.workspace_filesystem);
 }
 
-ToolExecutionResult ExecuteUnsupportedWebDispatch(
-    const PreparedToolCall& prepared, const ExecutionContext& ctx) {
-  (void)ctx;
-  return ErrorResult(prepared.preview, std::string(kUnsupportedWebToolError));
+ToolExecutionResult ExecuteWebFetchDispatch(const PreparedToolCall& prepared,
+                                            const ExecutionContext& ctx) {
+  const auto* call = std::get_if<WebFetchCall>(&prepared.preview);
+  if (call == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: web_fetch preview type mismatch.");
+  }
+  if (ctx.web_fetch_transport == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: web_fetch transport unavailable.");
+  }
+  WebFetchRequest request{.url = call->url,
+                          .format = call->format,
+                          .timeout = call->timeout,
+                          .network_policy = ctx.web_fetch_network_policy};
+  return ExecuteWebFetchTool(request, *ctx.web_fetch_transport, ctx.stop);
+}
+
+ToolExecutionResult ExecuteWebSearchDispatch(const PreparedToolCall& prepared,
+                                             const ExecutionContext& ctx) {
+  const auto* call = std::get_if<WebSearchCall>(&prepared.preview);
+  if (call == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: web_search preview type mismatch.");
+  }
+  if (ctx.web_search_config == nullptr || !ctx.web_search_config->has_value()) {
+    return ErrorResult(prepared.preview,
+                       std::string(kWebSearchNotConfiguredError));
+  }
+  if (ctx.web_search_transport == nullptr) {
+    return ErrorResult(prepared.preview,
+                       "Internal error: web_search transport unavailable.");
+  }
+  const Json args = Json::parse(prepared.request.arguments_json);
+  const auto& config = **ctx.web_search_config;
+  WebSearchRequest request{.query = call->query,
+                           .num_results = args.contains("num_results")
+                                              ? call->num_results
+                                              : config.result_limit,
+                           .context_max_characters =
+                               args.contains("context_max_characters")
+                                   ? call->context_max_characters
+                                   : config.context_limit};
+  return ExecuteWebSearchTool(request, config, *ctx.web_search_transport,
+                              ctx.stop);
 }
 
 using HandlerRegistry = std::unordered_map<std::string_view, ToolHandler>;
@@ -410,11 +503,9 @@ const HandlerRegistry kToolHandlers = {
     {kGlobToolName,
      {.prepare = &PrepareGlobTool, .execute = &ExecuteGlobDispatch}},
     {kWebFetchToolName,
-     {.prepare = &PrepareWebFetchTool,
-      .execute = &ExecuteUnsupportedWebDispatch}},
+     {.prepare = &PrepareWebFetchTool, .execute = &ExecuteWebFetchDispatch}},
     {kWebSearchToolName,
-     {.prepare = &PrepareWebSearchTool,
-      .execute = &ExecuteUnsupportedWebDispatch}},
+     {.prepare = &PrepareWebSearchTool, .execute = &ExecuteWebSearchDispatch}},
 };
 
 }  // namespace
@@ -506,20 +597,19 @@ std::vector<chat::ToolDefinition> ToolDefinitions() {
                       "descending.",
        .parameters_schema_json =
            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
-      {.name = std::string(kWebFetchToolName),
-       .description =
-           "unsupported built-in web fetch placeholder. This tool is not "
-           "configured in YAC and always returns an unsupported error without "
-           "network I/O.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"URL that would be fetched if web tools were configured."}},"required":["url"]})json"},
+       {.name = std::string(kWebFetchToolName),
+        .description =
+            "Fetch an HTTP(S) URL and return transformed page content. Defaults "
+            "to markdown output with a 30 second timeout; timeout is capped at "
+            "120 seconds.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"url":{"type":"string","description":"HTTP(S) URL to fetch."},"format":{"type":"string","enum":["markdown","text","html"],"description":"Output format (default markdown)."},"timeout":{"type":"integer","description":"Timeout in seconds (default 30, max 120).","minimum":1,"maximum":120,"default":30}},"required":["url"]})json"},
       {.name = std::string(kWebSearchToolName),
-       .description =
-           "unsupported built-in web search placeholder. This tool is not "
-           "configured in YAC and always returns an unsupported error without "
-           "network I/O.",
-       .parameters_schema_json =
-           R"json({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query that would be sent if web tools were configured."}},"required":["query"]})json"},
+        .description =
+            "Search the web through the configured Exa provider. Disabled "
+            "unless web_search is configured with provider credentials.",
+        .parameters_schema_json =
+            R"json({"type":"object","additionalProperties":false,"properties":{"query":{"type":"string","description":"Search query to send to the configured provider."},"num_results":{"type":"integer","description":"Number of results to request (default 5, max 10).","minimum":1,"maximum":10,"default":5},"context_max_characters":{"type":"integer","description":"Maximum provider context characters per request (default 4096, max 12000).","minimum":1,"maximum":12000,"default":4096}},"required":["query"]})json"},
   };
 }
 
