@@ -121,6 +121,34 @@ TEST_CASE(
   }
 }
 
+TEST_CASE("web_fetch rejects userinfo URLs before transport") {
+  FakeWebFetchTransport transport;
+
+  REQUIRE_THROWS_WITH(
+      FetchWebUrl(FakeTransportRequest("https://user@example.test/page"),
+                  transport),
+      ContainsSubstring("Malformed URL"));
+  REQUIRE_FALSE(transport.called);
+}
+
+TEST_CASE("web_fetch real-network policy blocks additional private ranges") {
+  const std::vector<std::string> urls = {
+      "http://0.0.0.1/private",
+      "http://100.64.0.1/private",
+      "http://[fc00::1]/private",
+  };
+
+  for (const auto& url : urls) {
+    FakeWebFetchTransport transport;
+    const WebFetchRequest request{.url = url};
+
+    REQUIRE_THROWS_WITH(
+        FetchWebUrl(request, transport),
+        ContainsSubstring("private network addresses are blocked"));
+    REQUIRE_FALSE(transport.called);
+  }
+}
+
 TEST_CASE("web_fetch clamps timeout to 120 seconds") {
   FakeWebFetchTransport transport;
   transport.headers = {"Content-Type: text/plain\r\n"};
@@ -151,6 +179,19 @@ TEST_CASE("web_fetch rejects declared content length above five megabytes") {
   REQUIRE_THROWS_WITH(
       FetchWebUrl(FakeTransportRequest("https://example.test/page"), transport),
       ContainsSubstring("response exceeded 5242880 bytes"));
+}
+
+TEST_CASE("web_fetch allows declared content length at five megabytes") {
+  FakeWebFetchTransport transport;
+  transport.headers = {
+      "Content-Type: text/plain\r\n",
+      "Content-Length: " + std::to_string(kWebFetchMaxBodyBytes) + "\r\n"};
+  transport.chunks = {"within cap"};
+
+  const auto response =
+      FetchWebUrl(FakeTransportRequest("https://example.test/page"), transport);
+
+  REQUIRE(response.body == "within cap");
 }
 
 TEST_CASE("web_fetch rejects streamed body above five megabytes") {
@@ -197,6 +238,22 @@ TEST_CASE("web_fetch markdown transform removes hidden html content") {
   REQUIRE(response.body.find("A | B") != std::string::npos);
   REQUIRE(response.body.find("alert(1)") == std::string::npos);
   REQUIRE(response.body.find("color:red") == std::string::npos);
+}
+
+TEST_CASE("web_fetch markdown transform preserves visible table text") {
+  FakeWebFetchTransport transport;
+  transport.headers = {"Content-Type: text/html\r\n"};
+  transport.chunks = {
+      "<main><h2>Report</h2><table><tr><th>Name</th><th>Status</th></tr>"
+      "<tr><td>Fetch</td><td>Ready</td></tr></table></main>"};
+
+  const auto response = FetchWebUrl(
+      FakeTransportRequest("https://example.test/page", 30, "markdown"),
+      transport);
+
+  REQUIRE(response.body.find("## Report") != std::string::npos);
+  REQUIRE(response.body.find("Name | Status") != std::string::npos);
+  REQUIRE(response.body.find("Fetch | Ready") != std::string::npos);
 }
 
 TEST_CASE("web_fetch text transform returns visible html text only") {
