@@ -2,6 +2,7 @@
 
 #include "chat/chat_history_store.hpp"
 #include "chat/chat_service_mcp.hpp"
+#include "chat/plan_session.hpp"
 #include "chat/sub_agent_manager.hpp"
 #include "chat/tool_approval_manager.hpp"
 #include "chat/types.hpp"
@@ -121,7 +122,7 @@ class ChatService {
   std::deque<PendingPrompt> pending_;
   std::optional<TokenUsage> last_usage_;
   ChatEventCallback callback_;
-  std::function<std::chrono::system_clock::time_point()> plan_clock_;
+  PlanSession plan_session_;
   std::function<std::string()> session_id_generator_;
 
   std::atomic<uint64_t> generation_{0};

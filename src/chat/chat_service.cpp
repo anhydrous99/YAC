@@ -11,10 +11,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <memory>
 #include <random>
@@ -25,50 +23,6 @@
 namespace yac::chat {
 
 namespace {
-
-constexpr std::size_t kMaxPlanSlugLength = 40;
-
-std::string SlugForPlanPrompt(const std::string& prompt) {
-  std::string slug;
-  bool pending_separator = false;
-  for (unsigned char ch : prompt) {
-    if (std::isalnum(ch) != 0) {
-      if (pending_separator && !slug.empty() &&
-          slug.size() < kMaxPlanSlugLength) {
-        slug.push_back('-');
-      }
-      pending_separator = false;
-      if (slug.size() < kMaxPlanSlugLength) {
-        slug.push_back(static_cast<char>(std::tolower(ch)));
-      }
-    } else {
-      pending_separator = true;
-    }
-    if (slug.size() == kMaxPlanSlugLength) {
-      break;
-    }
-  }
-  while (!slug.empty() && slug.back() == '-') {
-    slug.pop_back();
-  }
-  if (slug.empty()) {
-    return "plan";
-  }
-  return slug;
-}
-
-std::string FormatPlanTimestamp(std::chrono::system_clock::time_point time) {
-  const auto raw_time = std::chrono::system_clock::to_time_t(time);
-  std::tm tm{};
-#ifdef _WIN32
-  localtime_s(&tm, &raw_time);
-#else
-  localtime_r(&raw_time, &tm);
-#endif
-  std::ostringstream out;
-  out << std::put_time(&tm, "%Y%m%d-%H%M%S");
-  return out.str();
-}
 
 std::string FormatRuntimeStateTimestamp(
     std::chrono::system_clock::time_point time) {
@@ -130,15 +84,6 @@ void SaveRuntimeSelection(const std::shared_ptr<StateStore>& state_store,
     DeleteRuntimeAppState(state_store, kAppStateLastProfileId);
   }
   SaveRuntimeAppState(state_store, std::string(kAppStateLastModel), model.value);
-}
-
-bool IsInsideWorkspace(const std::filesystem::path& workspace,
-                       const std::filesystem::path& path) {
-  const auto normal_workspace =
-      std::filesystem::absolute(workspace).lexically_normal();
-  const auto normal_path = std::filesystem::absolute(path).lexically_normal();
-  const auto relative = normal_path.lexically_relative(normal_workspace);
-  return !relative.empty() && *relative.begin() != "..";
 }
 
 std::string GenerateUuidV4() {
@@ -214,7 +159,6 @@ ChatService::ChatService(provider::ProviderRegistry registry, ChatConfig config,
                   [this](const ::yac::tool_call::PreparedToolCall& prepared) {
                     return ApplyApprovedPlanExit(prepared);
                   }})) {
-  plan_clock_ = [] { return std::chrono::system_clock::now(); };
   session_id_generator_ = [] { return GenerateUuidV4(); };
   tool_executor_->SetSubAgentManager(sub_agent_manager_.get());
   tool_executor_->SetToolApproval(tool_approval_.get());
@@ -504,7 +448,7 @@ void ChatService::SetResetDrainBudgetForTest(std::chrono::milliseconds budget) {
 void ChatService::SetPlanClockForTest(
     std::function<std::chrono::system_clock::time_point()> clock) {
   std::scoped_lock lock(mutex_);
-  plan_clock_ = std::move(clock);
+  plan_session_.SetClock(std::move(clock));
 }
 
 void ChatService::SetSessionIdGeneratorForTest(
@@ -687,24 +631,20 @@ void ChatService::InjectSubAgentContinuation(std::string body) {
     plan_path = std::filesystem::path(*config_.active_plan_path);
   }
 
-  {
-    std::ofstream plan_file(plan_path, std::ios::trunc);
-    if (!plan_file) {
-      return ::yac::tool_call::ToolExecutionResult{
-          .block =
-              ::yac::tool_call::PlanExitCall{
-                  .plan = std::move(call.plan),
-                  .plan_path = plan_path.string(),
-                  .is_error = true,
-                  .error = "Failed to write active plan file."},
-          .result_json =
-              ::yac::tool_call::Json{
-                  {"error", "Failed to write active plan file."}}
-                  .dump(),
-          .is_error = true,
-      };
-    }
-    plan_file << call.plan;
+  if (!PlanSession::WriteApprovedPlan(plan_path, call.plan)) {
+    return ::yac::tool_call::ToolExecutionResult{
+        .block =
+            ::yac::tool_call::PlanExitCall{
+                .plan = std::move(call.plan),
+                .plan_path = plan_path.string(),
+                .is_error = true,
+                .error = "Failed to write active plan file."},
+        .result_json =
+            ::yac::tool_call::Json{
+                {"error", "Failed to write active plan file."}}
+                .dump(),
+        .is_error = true,
+    };
   }
 
   {
@@ -730,21 +670,11 @@ void ChatService::EnsurePlanSessionLocked(
     return;
   }
 
-  auto workspace_root = config_.workspace_root.empty()
-                            ? std::filesystem::current_path()
-                            : std::filesystem::path(config_.workspace_root);
-  workspace_root = std::filesystem::absolute(workspace_root).lexically_normal();
-  const auto plans_dir = workspace_root / ".opencode" / "plans";
-  const auto filename = FormatPlanTimestamp(plan_clock_()) + "-" +
-                        SlugForPlanPrompt(first_user_prompt) + ".md";
-  const auto plan_path = (plans_dir / filename).lexically_normal();
-  if (!IsInsideWorkspace(workspace_root, plan_path)) {
-    return;
+  const auto plan_path =
+      plan_session_.EnsurePlanPath(config_.workspace_root, first_user_prompt);
+  if (plan_path.has_value()) {
+    config_.active_plan_path = plan_path->string();
   }
-
-  std::filesystem::create_directories(plans_dir);
-  std::ofstream plan_file(plan_path, std::ios::app);
-  config_.active_plan_path = plan_path.string();
 }
 
 void ChatService::EnsureChatSessionIdLocked() {
