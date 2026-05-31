@@ -29,8 +29,8 @@ void AppendProviderAuthStartupIssues(
     issues.push_back({
         .severity = chat::ConfigIssueSeverity::Warning,
         .message = "OpenAI stored auth could not be read",
-        .detail = "Stored OpenAI auth is unreadable. Run `yac auth openai "
-                  "login` or `yac auth openai set-api-key --stdin` to "
+        .detail = "Stored OpenAI auth is unreadable or invalid. Run `yac auth "
+                  "openai login` or `yac auth openai set-api-key --stdin` to "
                   "refresh it.",
     });
     return;

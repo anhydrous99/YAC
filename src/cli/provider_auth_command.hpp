@@ -18,6 +18,7 @@ namespace yac::cli {
 struct ProviderAuthStatusSummary {
   std::string configured_provider;
   std::optional<std::string> stored_credential;
+  std::optional<std::string> stored_source;
   std::optional<std::string> effective_auth;
   std::optional<std::string> oauth_expiry;
   std::optional<std::string> account_id;

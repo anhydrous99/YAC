@@ -382,7 +382,8 @@ constexpr std::array<SettingMetadata, 42> kRecords = {{
     {.key = "openai.auth_store",
      .env_var = "YAC_OPENAI_AUTH_STORE",
      .value_type = Type::String,
-     .default_description = "keychain-first; file disables keychain probing",
+     .default_description =
+         "legacy file auth selector for OpenAI auth import paths",
      .classification = Class::Operational,
      .docs = kOpenAiAuthDocs},
     {.key = "mcp.token_store",
@@ -660,8 +661,11 @@ void AppendTemplateHeader(std::string& output, bool repository_example) {
         "# ~/.yac/settings.toml and start YAC again.\n#\n"
         "# Shell environment variables named YAC_* override anything "
         "set here at\n"
-        "# startup, which is convenient for CI and per-shell "
-        "experiments.\n";
+         "# startup, which is convenient for CI and per-shell "
+        "experiments.\n"
+        "# Runtime state lives in ~/.yac/state.sqlite. Effective settings "
+        "use:\n"
+        "# env > TOML > SQLite > built-in defaults.\n";
   } else {
     output +=
         "# This file was auto-generated on first launch. Edit any value "
@@ -670,7 +674,10 @@ void AppendTemplateHeader(std::string& output, bool repository_example) {
         "named YAC_* override\n"
         "# anything set here at startup, which is convenient for CI "
         "and per-shell\n"
-        "# experiments.\n";
+        "# experiments.\n"
+        "# Runtime state lives in ~/.yac/state.sqlite. Effective settings "
+        "use:\n"
+        "# env > TOML > SQLite > built-in defaults.\n";
   }
   output +=
       "#\n"
@@ -678,7 +685,10 @@ void AppendTemplateHeader(std::string& output, bool repository_example) {
       "OpenAI auth over\n"
       "# placing a key in [provider].api_key below. For OpenAI, "
       "precedence is:\n"
-      "# env API key > stored OpenAI auth > inline settings API key.\n"
+      "# env > TOML > SQLite > built-in defaults.\n"
+      "# Plaintext provider.api_key values remain supported as overrides, "
+      "but are not\n"
+      "# migrated into SQLite.\n"
       "# Store an OpenAI API key without shell history exposure:\n"
       "#   printf 'sk-...' | yac auth openai set-api-key --stdin\n\n";
 }
@@ -698,11 +708,17 @@ void AppendProviderExamples(std::string& output) {
       "headless shells.\n"
       "# - Run `yac auth openai status` to see the effective source.\n"
       "# - Run `yac auth openai logout` to clear stored OpenAI auth.\n"
-      "# Stored OpenAI auth is keychain-first, with file fallback at\n"
-      "# ~/.yac/provider/auth/openai.json.\n"
-      "# Set YAC_OPENAI_AUTH_STORE=file to skip keychain probing in "
-      "headless/CI\n"
-      "# environments.\n\n"
+      "# Stored OpenAI auth uses the SQLite state store at "
+      "~/.yac/state.sqlite.\n"
+      "# SQLite also stores provider profiles, credentials, and last-used "
+      "runtime\n"
+      "# state. Legacy keychain/file auth may be imported best-effort and "
+      "left\n"
+      "# untouched. YAC_OPENAI_AUTH_STORE=file applies only to legacy file "
+      "auth\n"
+      "# access during import paths. Stock SQLite is protected by local "
+      "file\n"
+      "# permissions and is not encrypted.\n\n"
       "# OpenAI provider opt-in example.\n"
       "# [provider]\n"
       "# id          = \"openai\"\n"

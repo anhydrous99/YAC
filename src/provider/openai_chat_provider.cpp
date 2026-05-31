@@ -1,5 +1,6 @@
 #include "provider/openai_chat_provider.hpp"
 
+#include "chat/state_store.hpp"
 #include "provider/http_sse_client.hpp"
 #include "provider/openai_responses_protocol.hpp"
 
@@ -174,7 +175,8 @@ void ConsumeOAuthBody(std::string_view chunk, OAuthWriteState& state) {
 
 [[nodiscard]] std::string BuildHttpError(long status_code,
                                          std::string_view response_body,
-                                         bool retry_exhausted) {
+                                         bool retry_exhausted,
+                                         const OpenAiOAuthAuth& auth) {
   std::ostringstream message;
   if (retry_exhausted) {
     message << "OpenAI OAuth request was unauthorized after refreshing once. "
@@ -186,7 +188,16 @@ void ConsumeOAuthBody(std::string_view chunk, OAuthWriteState& state) {
   if (!detail.empty()) {
     message << " " << detail;
   }
-  return message.str();
+  std::string text = message.str();
+  for (const auto& secret : {auth.access_token, auth.refresh_token}) {
+    std::string::size_type pos = 0;
+    while (!secret.empty() &&
+           (pos = text.find(secret, pos)) != std::string::npos) {
+      text.replace(pos, secret.size(), "[REDACTED]");
+      pos += std::string_view("[REDACTED]").size();
+    }
+  }
+  return text;
 }
 
 struct OAuthAttemptResult {
@@ -341,12 +352,21 @@ std::string OpenAiChatProvider::ResolveApiKey() const {
       return env;
     }
   }
+  if (!config_.api_key.empty()) {
+    return config_.api_key;
+  }
   if (const auto stored = auth_flow_->LoadStoredAuth(); stored.has_value()) {
     if (const auto* api_auth = std::get_if<OpenAiApiKeyAuth>(&stored->auth)) {
       return api_auth->key;
     }
   }
-  return config_.api_key;
+  if (const auto state_auth = LoadStateStoreOpenAiAuth();
+      state_auth.has_value()) {
+    if (const auto* api_auth = std::get_if<OpenAiApiKeyAuth>(&*state_auth)) {
+      return api_auth->key;
+    }
+  }
+  return OpenAiCompatibleChatProvider::ResolveApiKey();
 }
 
 OpenAiChatProvider::EffectiveAuth OpenAiChatProvider::ResolveEffectiveAuth()
@@ -356,6 +376,9 @@ OpenAiChatProvider::EffectiveAuth OpenAiChatProvider::ResolveEffectiveAuth()
       return EffectiveAuth{.api_key = env};
     }
   }
+  if (!config_.api_key.empty()) {
+    return EffectiveAuth{.api_key = config_.api_key};
+  }
   if (const auto stored = auth_flow_->LoadStoredAuth(); stored.has_value()) {
     if (const auto* api_auth = std::get_if<OpenAiApiKeyAuth>(&stored->auth)) {
       return EffectiveAuth{.api_key = api_auth->key};
@@ -364,10 +387,46 @@ OpenAiChatProvider::EffectiveAuth OpenAiChatProvider::ResolveEffectiveAuth()
         .oauth = std::get<OpenAiOAuthAuth>(stored->auth),
     };
   }
-  if (!config_.api_key.empty()) {
-    return EffectiveAuth{.api_key = config_.api_key};
+  if (const auto state_auth = LoadStateStoreOpenAiAuth();
+      state_auth.has_value()) {
+    if (const auto* api_auth = std::get_if<OpenAiApiKeyAuth>(&*state_auth)) {
+      return EffectiveAuth{.api_key = api_auth->key};
+    }
+    return EffectiveAuth{.oauth = std::get<OpenAiOAuthAuth>(*state_auth)};
+  }
+  if (const auto state_api_key = OpenAiCompatibleChatProvider::ResolveApiKey();
+      !state_api_key.empty()) {
+    return EffectiveAuth{.api_key = state_api_key};
   }
   return {};
+}
+
+std::optional<OpenAiAuth> OpenAiChatProvider::LoadStateStoreOpenAiAuth() const {
+  if (config_.state_store == nullptr) {
+    return std::nullopt;
+  }
+  if (config_.profile_id.has_value()) {
+    if (const auto credential = config_.state_store->LoadProviderCredential(
+            config_.id, std::string_view(*config_.profile_id),
+            chat::StateCredentialType::OpenAiAuth)) {
+      try {
+        return ParseOpenAiAuth(credential->secret_json);
+      } catch (const std::exception& error) {
+        (void)error;
+        throw std::runtime_error("Stored OpenAI auth credential is invalid.");
+      }
+    }
+  }
+  if (const auto credential = config_.state_store->LoadProviderCredential(
+          config_.id, std::nullopt, chat::StateCredentialType::OpenAiAuth)) {
+    try {
+      return ParseOpenAiAuth(credential->secret_json);
+    } catch (const std::exception& error) {
+      (void)error;
+      throw std::runtime_error("Stored OpenAI auth credential is invalid.");
+    }
+  }
+  return std::nullopt;
 }
 
 OpenAiChatProvider::EffectiveAuthSource
@@ -377,14 +436,25 @@ OpenAiChatProvider::ResolveEffectiveAuthSource() const {
       return EffectiveAuthSource::EnvApiKey;
     }
   }
+  if (!config_.api_key.empty()) {
+    return EffectiveAuthSource::InlineApiKey;
+  }
   if (const auto stored = auth_flow_->LoadStoredAuth(); stored.has_value()) {
     if (std::holds_alternative<OpenAiApiKeyAuth>(stored->auth)) {
       return EffectiveAuthSource::StoredApiKey;
     }
     return EffectiveAuthSource::StoredOAuth;
   }
-  if (!config_.api_key.empty()) {
-    return EffectiveAuthSource::InlineApiKey;
+  if (const auto state_auth = LoadStateStoreOpenAiAuth();
+      state_auth.has_value()) {
+    if (std::holds_alternative<OpenAiApiKeyAuth>(*state_auth)) {
+      return EffectiveAuthSource::StateStoreApiKey;
+    }
+    return EffectiveAuthSource::StateStoreOAuth;
+  }
+  if (const auto state_api_key = OpenAiCompatibleChatProvider::ResolveApiKey();
+      !state_api_key.empty()) {
+    return EffectiveAuthSource::StateStoreApiKey;
   }
   return EffectiveAuthSource::None;
 }
@@ -421,9 +491,9 @@ void OpenAiChatProvider::CompleteWithOAuth(const chat::ChatRequest& request,
       current_auth = auth_flow_->Refresh(current_auth);
       continue;
     }
-    throw std::runtime_error(
-        BuildHttpError(result.status_code, result.error_body,
-                       result.status_code == 401 && retried_after_401));
+    throw std::runtime_error(BuildHttpError(
+        result.status_code, result.error_body,
+        result.status_code == 401 && retried_after_401, current_auth));
   }
 }
 

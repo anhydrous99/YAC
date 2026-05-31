@@ -1,7 +1,10 @@
 #include "provider/openai_auth_store.hpp"
 
 #include "chat/config_paths.hpp"
+#include "chat/sqlite_state_store.hpp"
+#include "chat/state_store.hpp"
 
+#include <chrono>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -24,8 +27,15 @@ namespace {
 constexpr std::string_view kKeychainServiceId = "yac-provider-openai";
 constexpr std::string_view kKeychainEntryId = "openai";
 constexpr const char* kAuthStoreEnv = "YAC_OPENAI_AUTH_STORE";
+constexpr const char* kKeychainDisabledEnv = "YAC_KEYCHAIN_DISABLED";
+constexpr std::string_view kProviderId = "openai";
+constexpr std::string_view kLegacyImportDisabledKey =
+    "openai_auth_legacy_import_disabled";
 
 [[nodiscard]] bool UseFileOnlyAuthStore() {
+  if (std::getenv(kKeychainDisabledEnv) != nullptr) {
+    return true;
+  }
   const char* value = std::getenv(kAuthStoreEnv);
   if (value == nullptr) {
     return false;
@@ -59,6 +69,12 @@ class DisabledOpenAiKeychainAuthBackend final : public IOpenAiAuthBackend {
     return std::make_shared<DisabledOpenAiKeychainAuthBackend>();
   }
   return std::make_shared<OpenAiKeychainAuthBackend>();
+}
+
+[[nodiscard]] std::string TimestampNow() {
+  const auto now = std::chrono::system_clock::now().time_since_epoch();
+  return std::to_string(
+      std::chrono::duration_cast<std::chrono::seconds>(now).count());
 }
 
 }  // namespace
@@ -275,26 +291,97 @@ OpenAiAuthStore::OpenAiAuthStore(Dependencies dependencies)
 OpenAiAuthStore::Dependencies OpenAiAuthStore::BuildDefaultDependencies() {
   return Dependencies{
       .keychain_backend = MakeDefaultKeychainBackend(),
-      .file_backend = std::make_shared<OpenAiFileAuthBackend>()};
+      .file_backend = std::make_shared<OpenAiFileAuthBackend>(),
+      .state_store = std::make_shared<chat::SQLiteStateStore>()};
 }
 
 void OpenAiAuthStore::StoreCache(std::optional<StoredOpenAiAuth> auth) const {
   cached_auth_ = std::move(auth);
 }
 
-std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
-  std::scoped_lock lock(cache_mutex_);
-  // Hold the first read under lock and memoize present or absent auth.
-  if (cached_auth_.has_value()) {
-    return *cached_auth_;
+std::optional<StoredOpenAiAuth> OpenAiAuthStore::LoadStateStoreAuth() const {
+  if (dependencies_.state_store == nullptr) {
+    return std::nullopt;
   }
+  const auto credential = dependencies_.state_store->LoadProviderCredential(
+      ProviderId{std::string(kProviderId)}, std::nullopt,
+      chat::StateCredentialType::OpenAiAuth);
+  if (!credential.has_value()) {
+    return std::nullopt;
+  }
+  try {
+    return StoredOpenAiAuth{.auth = ParseOpenAiAuth(credential->secret_json),
+                            .source = OpenAiAuthStorageSource::StateStore};
+  } catch (const std::exception& error) {
+    (void)error;
+    throw std::runtime_error(
+        "OpenAiAuthStore: SQLite auth credential is invalid. Run `yac auth "
+        "openai login` or `yac auth openai set-api-key --stdin` to refresh "
+        "it.");
+  }
+}
 
+StoredOpenAiAuth OpenAiAuthStore::SaveStateStoreAuth(
+    const OpenAiAuth& auth, chat::StateCredentialSource source) const {
+  const std::string auth_json = SerializeOpenAiAuth(auth);
+  const std::string timestamp = TimestampNow();
+  try {
+    dependencies_.state_store->SaveProviderCredential(chat::ProviderCredential{
+        .provider_id = ProviderId{std::string(kProviderId)},
+        .credential_type = chat::StateCredentialType::OpenAiAuth,
+        .secret_json = auth_json,
+        .source = source,
+        .created_at = timestamp,
+        .updated_at = timestamp,
+    });
+  } catch (const std::exception& error) {
+    throw std::runtime_error("OpenAiAuthStore: SQLite auth write failed: " +
+                             std::string(error.what()));
+  }
+  const auto readback = dependencies_.state_store->LoadProviderCredential(
+      ProviderId{std::string(kProviderId)}, std::nullopt,
+      chat::StateCredentialType::OpenAiAuth);
+  if (!readback.has_value() || readback->secret_json != auth_json) {
+    throw std::runtime_error(
+        "OpenAiAuthStore: SQLite auth write verification failed");
+  }
+  static_cast<void>(ParseOpenAiAuth(readback->secret_json));
+  dependencies_.state_store->DeleteAppState(kLegacyImportDisabledKey);
+  return StoredOpenAiAuth{.auth = auth,
+                          .source = OpenAiAuthStorageSource::StateStore};
+}
+
+bool OpenAiAuthStore::IsLegacyImportDisabled() const {
+  return dependencies_.state_store != nullptr &&
+         dependencies_.state_store->LoadAppState(kLegacyImportDisabledKey)
+             .has_value();
+}
+
+void OpenAiAuthStore::DisableLegacyImport() const {
+  if (dependencies_.state_store == nullptr) {
+    return;
+  }
+  dependencies_.state_store->SaveAppState(chat::AppStateEntry{
+      .key = std::string(kLegacyImportDisabledKey),
+      .value = "1",
+      .updated_at = TimestampNow(),
+  });
+}
+
+std::optional<StoredOpenAiAuth> OpenAiAuthStore::LoadLegacyAuth() const {
   try {
     if (const auto auth_json = dependencies_.keychain_backend->Get();
         auth_json.has_value()) {
       StoredOpenAiAuth stored{.auth = ParseOpenAiAuth(*auth_json),
                               .source = OpenAiAuthStorageSource::Keychain};
-      StoreCache(stored);
+      if (dependencies_.state_store != nullptr) {
+        try {
+          return SaveStateStoreAuth(
+              stored.auth, chat::StateCredentialSource::MigrationKeychain);
+        } catch (const std::exception&) {
+          return stored;
+        }
+      }
       return stored;
     }
   } catch (const OpenAiAuthKeychainUnavailableError& error) {
@@ -305,16 +392,50 @@ std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
       auth_json.has_value()) {
     StoredOpenAiAuth stored{.auth = ParseOpenAiAuth(*auth_json),
                             .source = OpenAiAuthStorageSource::File};
+    if (dependencies_.state_store != nullptr) {
+      try {
+        return SaveStateStoreAuth(
+            stored.auth, chat::StateCredentialSource::MigrationLegacyFile);
+      } catch (const std::exception&) {
+        return stored;
+      }
+    }
+    return stored;
+  }
+  return std::nullopt;
+}
+
+std::optional<StoredOpenAiAuth> OpenAiAuthStore::Load() const {
+  std::scoped_lock lock(cache_mutex_);
+  // Hold the first read under lock and memoize present or absent auth.
+  if (cached_auth_.has_value()) {
+    return *cached_auth_;
+  }
+
+  if (const auto stored = LoadStateStoreAuth(); stored.has_value()) {
     StoreCache(stored);
     return stored;
+  }
+  if (!IsLegacyImportDisabled()) {
+    if (const auto stored = LoadLegacyAuth(); stored.has_value()) {
+      StoreCache(stored);
+      return stored;
+    }
   }
   StoreCache(std::nullopt);
   return std::nullopt;
 }
 
 OpenAiAuthStorageSource OpenAiAuthStore::Save(const OpenAiAuth& auth) const {
-  const std::string auth_json = SerializeOpenAiAuth(auth);
   std::scoped_lock lock(cache_mutex_);
+  if (dependencies_.state_store != nullptr) {
+    StoredOpenAiAuth stored =
+        SaveStateStoreAuth(auth, chat::StateCredentialSource::AuthCli);
+    StoreCache(stored);
+    return stored.source;
+  }
+
+  const std::string auth_json = SerializeOpenAiAuth(auth);
   try {
     dependencies_.keychain_backend->Set(auth_json);
     StoreCache(StoredOpenAiAuth{.auth = auth,
@@ -330,6 +451,14 @@ OpenAiAuthStorageSource OpenAiAuthStore::Save(const OpenAiAuth& auth) const {
 
 void OpenAiAuthStore::Erase() const {
   std::scoped_lock lock(cache_mutex_);
+  if (dependencies_.state_store != nullptr) {
+    dependencies_.state_store->DeleteProviderCredential(
+        ProviderId{std::string(kProviderId)}, std::nullopt,
+        chat::StateCredentialType::OpenAiAuth);
+    DisableLegacyImport();
+    StoreCache(std::nullopt);
+    return;
+  }
   try {
     dependencies_.keychain_backend->Erase();
   } catch (const OpenAiAuthKeychainUnavailableError& error) {

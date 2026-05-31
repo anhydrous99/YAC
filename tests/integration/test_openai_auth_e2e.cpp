@@ -204,7 +204,8 @@ void DrainAvailableOutput(int fd, std::string& output) {
 
 ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
                              const std::vector<std::string>& args,
-                             std::string_view stdin_content = {}) {
+                             std::string_view stdin_content = {},
+                             bool force_file_auth_store = true) {
   std::array<int, 2> in_pipe{};
   std::array<int, 2> out_pipe{};
   if (::pipe(in_pipe.data()) != 0 || ::pipe(out_pipe.data()) != 0) {
@@ -234,7 +235,13 @@ ChildProcessResult RunYacCli(const std::filesystem::path& home_dir,
     ::unsetenv("YAC_PROVIDER");
     ::unsetenv("YAC_BASE_URL");
     ::unsetenv("YAC_API_KEY_ENV");
-    ::setenv("YAC_OPENAI_AUTH_STORE", "file", 1);
+    if (force_file_auth_store) {
+      ::unsetenv("YAC_KEYCHAIN_DISABLED");
+      ::setenv("YAC_OPENAI_AUTH_STORE", "file", 1);
+    } else {
+      ::setenv("YAC_KEYCHAIN_DISABLED", "1", 1);
+      ::unsetenv("YAC_OPENAI_AUTH_STORE");
+    }
     ::unsetenv("DBUS_SESSION_BUS_ADDRESS");
 
     std::vector<std::string> argv_storage;
@@ -428,7 +435,8 @@ TEST_CASE("cli_api_key_status_logout_use_temp_home_and_redact_output",
   REQUIRE(set_result.exit_code == 0);
   REQUIRE_THAT(set_result.output, ContainsSubstring("Stored OpenAI API key."));
   CHECK(set_result.output.find(kStoredApiKey) == std::string::npos);
-  REQUIRE(std::filesystem::exists(AuthPath(temp_dir.Path())));
+  REQUIRE(std::filesystem::exists(temp_dir.Path() / ".yac" / "state.sqlite"));
+  CHECK_FALSE(std::filesystem::exists(AuthPath(temp_dir.Path())));
 
   const auto status_result =
       RunYacCli(temp_dir.Path(), {"auth", "openai", "status"});
@@ -436,6 +444,7 @@ TEST_CASE("cli_api_key_status_logout_use_temp_home_and_redact_output",
   CHECK_THAT(status_result.output,
              ContainsSubstring("configured provider: openai"));
   CHECK_THAT(status_result.output, ContainsSubstring("stored credential: api"));
+  CHECK_THAT(status_result.output, ContainsSubstring("SQLite state store"));
   CHECK_THAT(status_result.output,
              ContainsSubstring("effective auth: api (stored)"));
   CHECK(status_result.output.find(kStoredApiKey) == std::string::npos);
@@ -446,12 +455,65 @@ TEST_CASE("cli_api_key_status_logout_use_temp_home_and_redact_output",
   CHECK_THAT(logout_result.output, ContainsSubstring("Logged out: openai"));
   CHECK(logout_result.output.find(kStoredApiKey) == std::string::npos);
   CHECK_FALSE(std::filesystem::exists(AuthPath(temp_dir.Path())));
+  CHECK(std::filesystem::exists(temp_dir.Path() / ".yac" / "state.sqlite"));
 
   const std::string combined_output =
       set_result.output + status_result.output + logout_result.output;
   CHECK(combined_output.find(kStoredApiKey) == std::string::npos);
   CHECK(combined_output.find(kStoredRefreshToken) == std::string::npos);
   CHECK(combined_output.find(kStoredAccessToken) == std::string::npos);
+}
+
+TEST_CASE("cli_sqlite_auth_status_logout_use_temp_home_without_keychain",
+          "[openai_auth_e2e]") {
+  TempDir temp_dir;
+  ScopedEnvVar home("HOME", temp_dir.Path().string());
+  ScopedEnvVar api_key_env("OPENAI_API_KEY", std::nullopt);
+  ScopedEnvVar provider_env("YAC_PROVIDER", std::nullopt);
+  ScopedEnvVar base_url_env("YAC_BASE_URL", std::nullopt);
+  ScopedEnvVar api_key_env_name("YAC_API_KEY_ENV", std::nullopt);
+  ScopedEnvVar keychain_disabled("YAC_KEYCHAIN_DISABLED", "1");
+
+  WriteFile(SettingsPath(temp_dir.Path()),
+            "[provider]\n"
+            "id = \"openai\"\n"
+            "api_key_env = \"OPENAI_API_KEY\"\n");
+
+  const auto set_result =
+      RunYacCli(temp_dir.Path(), {"auth", "openai", "set-api-key", "--stdin"},
+                std::string(kStoredApiKey) + "\n", false);
+  REQUIRE(set_result.exit_code == 0);
+  CHECK_THAT(set_result.output, ContainsSubstring("Stored OpenAI API key."));
+  CHECK_THAT(set_result.output, ContainsSubstring("SQLite state store"));
+  CHECK(set_result.output.find(kStoredApiKey) == std::string::npos);
+  CHECK(std::filesystem::exists(temp_dir.Path() / ".yac" / "state.sqlite"));
+  CHECK_FALSE(std::filesystem::exists(AuthPath(temp_dir.Path())));
+
+  const auto status_result =
+      RunYacCli(temp_dir.Path(), {"auth", "openai", "status"}, {}, false);
+  REQUIRE(status_result.exit_code == 0);
+  CHECK_THAT(status_result.output,
+             ContainsSubstring("configured provider: openai"));
+  CHECK_THAT(status_result.output, ContainsSubstring("stored credential: api"));
+  CHECK_THAT(status_result.output, ContainsSubstring("SQLite state store"));
+  CHECK_THAT(status_result.output,
+             ContainsSubstring("effective auth: api (stored)"));
+  CHECK(status_result.output.find(kStoredApiKey) == std::string::npos);
+
+  const auto logout_result =
+      RunYacCli(temp_dir.Path(), {"auth", "openai", "logout"}, {}, false);
+  REQUIRE(logout_result.exit_code == 0);
+  CHECK_THAT(logout_result.output, ContainsSubstring("Logged out: openai"));
+  CHECK(logout_result.output.find(kStoredApiKey) == std::string::npos);
+
+  const auto logged_out_status =
+      RunYacCli(temp_dir.Path(), {"auth", "openai", "status"}, {}, false);
+  REQUIRE(logged_out_status.exit_code == 0);
+  CHECK(logged_out_status.output.find("stored credential: api") ==
+        std::string::npos);
+  CHECK(logged_out_status.output.find("effective auth: api (stored)") ==
+        std::string::npos);
+  CHECK(logged_out_status.output.find(kStoredApiKey) == std::string::npos);
 }
 
 TEST_CASE("stored_api_key_runtime_hits_mock_openai_endpoint",

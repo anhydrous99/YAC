@@ -68,3 +68,13 @@ http_archive(
     strip_prefix = "keychain-1.3.1",
     build_file = "//third_party:keychain.BUILD.bazel",
 )
+
+http_archive(
+    name = "sqlite",
+    urls = [
+        "https://www.sqlite.org/2026/sqlite-amalgamation-3530100.zip",
+    ],
+    sha256 = "36ad6e7f38540a3b21a2ac36340833f0a9e426bc1c752751c3ba669466827eae",
+    strip_prefix = "sqlite-amalgamation-3530100",
+    build_file = "//third_party:sqlite.BUILD.bazel",
+)

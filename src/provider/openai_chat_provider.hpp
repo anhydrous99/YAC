@@ -17,6 +17,8 @@ class OpenAiChatProvider : public OpenAiCompatibleChatProvider {
     StoredApiKey,
     StoredOAuth,
     InlineApiKey,
+    StateStoreApiKey,
+    StateStoreOAuth,
   };
 
   struct Dependencies {
@@ -44,6 +46,7 @@ class OpenAiChatProvider : public OpenAiCompatibleChatProvider {
   };
 
   [[nodiscard]] EffectiveAuth ResolveEffectiveAuth() const;
+  [[nodiscard]] std::optional<OpenAiAuth> LoadStateStoreOpenAiAuth() const;
   [[nodiscard]] static std::vector<chat::ModelInfo> OAuthModelAllowlist();
   void CompleteWithOAuth(const chat::ChatRequest& request, ChatEventSink sink,
                          std::stop_token stop_token,

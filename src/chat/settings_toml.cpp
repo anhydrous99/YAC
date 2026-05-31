@@ -334,17 +334,29 @@ void LoadBedrockProviderOptions(const toml::node_view<toml::node>& provider,
     return;
   }
 
-  ApplyProviderOptionString((*options_table)["region"], "region",
-                            config.options, issues);
-  ApplyProviderOptionIntegerString((*options_table)["max_tokens"], "max_tokens",
-                                   config.options, issues);
-  ApplyProviderOptionString((*options_table)["profile"], "profile",
-                            config.options, issues);
-  ApplyProviderOptionString((*options_table)["endpoint_override"],
-                            "endpoint_override", config.options, issues);
-  ApplyProviderOptionString((*options_table)["credential_refresh_command"],
-                            "credential_refresh_command", config.options,
-                            issues);
+  if (ApplyProviderOptionString((*options_table)["region"], "region",
+                                config.options, issues)) {
+    config.source.provider_options["region"] = ConfigValueSource::Toml;
+  }
+  if (ApplyProviderOptionIntegerString((*options_table)["max_tokens"],
+                                       "max_tokens", config.options, issues)) {
+    config.source.provider_options["max_tokens"] = ConfigValueSource::Toml;
+  }
+  if (ApplyProviderOptionString((*options_table)["profile"], "profile",
+                                config.options, issues)) {
+    config.source.provider_options["profile"] = ConfigValueSource::Toml;
+  }
+  if (ApplyProviderOptionString((*options_table)["endpoint_override"],
+                                "endpoint_override", config.options, issues)) {
+    config.source.provider_options["endpoint_override"] =
+        ConfigValueSource::Toml;
+  }
+  if (ApplyProviderOptionString((*options_table)["credential_refresh_command"],
+                                "credential_refresh_command", config.options,
+                                issues)) {
+    config.source.provider_options["credential_refresh_command"] =
+        ConfigValueSource::Toml;
+  }
 }
 
 bool ApplyTemperature(const toml::node_view<toml::node>& node, double& target,
@@ -823,6 +835,21 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
                        config.api_key_env, issues);
   fields.api_key = ApplyStringField(provider["api_key"], "provider.api_key",
                                     config.api_key, issues);
+  if (fields.provider_id) {
+    config.source.provider_id = ConfigValueSource::Toml;
+  }
+  if (fields.model) {
+    config.source.model = ConfigValueSource::Toml;
+  }
+  if (fields.base_url) {
+    config.source.base_url = ConfigValueSource::Toml;
+  }
+  if (fields.api_key_env) {
+    config.source.api_key_env = ConfigValueSource::Toml;
+  }
+  if (fields.api_key) {
+    config.source.api_key = ConfigValueSource::Toml;
+  }
   fields.context_window =
       ApplyIntegerSetting(provider["context_window"], "provider.context_window",
                           config.context_window, issues);
@@ -834,6 +861,7 @@ void LoadProviderSection(toml::table& root, ChatConfig& config,
       }
       if (auto* value = option.as_string()) {
         config.options[key] = value->get();
+        config.source.provider_options[key] = ConfigValueSource::Toml;
       } else {
         AddError(issues,
                  "Invalid type for provider.options." + std::string(key) +
@@ -901,7 +929,9 @@ void LoadProviderModelSettings(toml::table& root, ChatConfig& config,
                  "Expected a string.");
       }
     }
+    parsed.source = ConfigValueSource::Toml;
     config.model_settings.push_back(std::move(parsed));
+    config.source.model_settings.push_back(ConfigValueSource::Toml);
   }
 }
 

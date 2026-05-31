@@ -25,6 +25,7 @@ struct OpenAiOAuthAuth {
 using OpenAiAuth = std::variant<OpenAiApiKeyAuth, OpenAiOAuthAuth>;
 
 enum class OpenAiAuthStorageSource {
+  StateStore,
   Keychain,
   File,
 };

@@ -55,7 +55,8 @@ bazel build --config=release //src:yac
 YAC reads `~/.yac/settings.toml`, creating it from the built-in template on
 first launch. The repo copy, [settings.example.toml](settings.example.toml),
 shows the supported shape. Shell env vars named `YAC_*` override TOML at
-startup.
+startup. Runtime state lives in `~/.yac/state.sqlite`; effective settings use
+`env > TOML > SQLite > built-in defaults`.
 
 Common provider fields are `provider.id`, `provider.model`,
 `provider.base_url`, and `provider.api_key_env`; matching env overrides include
@@ -71,7 +72,10 @@ requires `YAC_EXA_API_KEY` when enabled. Its config overrides are
 OpenAI browser auth uses the fixed callback
 `http://localhost:1455/auth/callback`. For headless shells, an installed binary
 can run `yac auth openai login --device`; with Bazel, run
-`bazel run //src:yac -- auth openai login --device`.
+`bazel run //src:yac -- auth openai login --device`. Stored provider profiles,
+credentials, OpenAI auth, and last-used runtime state are kept in SQLite. Stock
+SQLite is protected by local `~/.yac` and `state.sqlite` file permissions and is
+not encrypted.
 
 Full references:
 

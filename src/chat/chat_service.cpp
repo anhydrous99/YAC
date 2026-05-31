@@ -4,7 +4,10 @@
 #include "chat/chat_history_store.hpp"
 #include "chat/chat_service_prompt_processor.hpp"
 #include "chat/chat_service_request_builder.hpp"
+#include "chat/reasoning_effort.hpp"
+#include "chat/state_store.hpp"
 #include "tool_call/executor_arguments.hpp"
+#include "util/log.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,6 +19,7 @@
 #include <memory>
 #include <random>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace yac::chat {
@@ -64,6 +68,68 @@ std::string FormatPlanTimestamp(std::chrono::system_clock::time_point time) {
   std::ostringstream out;
   out << std::put_time(&tm, "%Y%m%d-%H%M%S");
   return out.str();
+}
+
+std::string FormatRuntimeStateTimestamp(
+    std::chrono::system_clock::time_point time) {
+  const auto raw_time = std::chrono::system_clock::to_time_t(time);
+  std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &raw_time);
+#else
+  gmtime_r(&raw_time, &tm);
+#endif
+  std::ostringstream out;
+  out << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  return out.str();
+}
+
+std::string RuntimeStateTimestamp() {
+  return FormatRuntimeStateTimestamp(std::chrono::system_clock::now());
+}
+
+void SaveRuntimeAppState(const std::shared_ptr<StateStore>& state_store,
+                         std::string key, std::string value) {
+  if (state_store == nullptr) {
+    return;
+  }
+  try {
+    state_store->SaveAppState(AppStateEntry{.key = std::move(key),
+                                            .value = std::move(value),
+                                            .updated_at =
+                                                RuntimeStateTimestamp()});
+  } catch (const std::exception& error) {
+    yac::log::Warn("chat.runtime_state", "Could not save SQLite app state: {}",
+                   error.what());
+  }
+}
+
+void DeleteRuntimeAppState(const std::shared_ptr<StateStore>& state_store,
+                           std::string_view key) {
+  if (state_store == nullptr) {
+    return;
+  }
+  try {
+    state_store->DeleteAppState(key);
+  } catch (const std::exception& error) {
+    yac::log::Warn("chat.runtime_state",
+                   "Could not delete SQLite app state: {}", error.what());
+  }
+}
+
+void SaveRuntimeSelection(const std::shared_ptr<StateStore>& state_store,
+                          const ProviderId& provider_id,
+                          const std::optional<std::string>& profile_id,
+                          const ModelId& model) {
+  SaveRuntimeAppState(state_store, std::string(kAppStateLastProviderId),
+                      provider_id.value);
+  if (profile_id.has_value()) {
+    SaveRuntimeAppState(state_store, std::string(kAppStateLastProfileId),
+                        *profile_id);
+  } else {
+    DeleteRuntimeAppState(state_store, kAppStateLastProfileId);
+  }
+  SaveRuntimeAppState(state_store, std::string(kAppStateLastModel), model.value);
 }
 
 bool IsInsideWorkspace(const std::filesystem::path& workspace,
@@ -205,7 +271,9 @@ ChatMessageId ChatService::SubmitUserMessage(std::string content) {
 
 void ChatService::SetModel(ModelId model) {
   ProviderId provider_id;
+  std::optional<std::string> profile_id;
   ModelId new_model;
+  std::shared_ptr<StateStore> state_store;
   {
     std::scoped_lock lock(mutex_);
     if (config_.model == model) {
@@ -213,14 +281,21 @@ void ChatService::SetModel(ModelId model) {
     }
     config_.model = model;
     provider_id = config_.provider_id;
+    profile_id = config_.profile_id;
     new_model = config_.model;
+    state_store = config_.state_store;
   }
 
+  SaveRuntimeSelection(state_store, provider_id, profile_id, new_model);
   EmitEvent(ChatEvent{ModelChangedEvent{.provider_id = std::move(provider_id),
                                         .model = std::move(new_model)}});
 }
 
 void ChatService::SetProvider(ProviderId provider_id) {
+  ProviderId active_provider;
+  std::optional<std::string> active_profile;
+  ModelId active_model;
+  std::shared_ptr<StateStore> state_store;
   {
     std::scoped_lock lock(mutex_);
     if (config_.provider_id == provider_id) {
@@ -237,30 +312,50 @@ void ChatService::SetProvider(ProviderId provider_id) {
     }
 
     config_.provider_id = std::move(provider_id);
+    active_provider = config_.provider_id;
+    active_profile = config_.profile_id;
+    active_model = config_.model;
+    state_store = config_.state_store;
   }
 
-  EmitEvent(ChatEvent{ModelChangedEvent{.provider_id = config_.provider_id,
-                                        .model = config_.model}});
+  SaveRuntimeSelection(state_store, active_provider, active_profile,
+                       active_model);
+  EmitEvent(ChatEvent{ModelChangedEvent{.provider_id =
+                                            std::move(active_provider),
+                                        .model = std::move(active_model)}});
 }
 
 void ChatService::SetReasoningEffort(std::optional<ReasoningEffort> effort) {
-  std::scoped_lock lock(mutex_);
-  const auto active_provider = config_.provider_id;
-  const auto active_model = config_.model;
-  const auto matches_active = [&](const ProviderModelSettings& settings) {
-    return settings.provider_id == active_provider &&
-           settings.model == active_model;
-  };
-  const auto it = std::ranges::find_if(config_.model_settings, matches_active);
-  if (it != config_.model_settings.end()) {
-    it->effort = effort;
-    return;
+  ProviderId active_provider;
+  ModelId active_model;
+  std::shared_ptr<StateStore> state_store;
+  {
+    std::scoped_lock lock(mutex_);
+    active_provider = config_.provider_id;
+    active_model = config_.model;
+    state_store = config_.state_store;
+    const auto matches_active = [&](const ProviderModelSettings& settings) {
+      return settings.provider_id == active_provider &&
+             settings.model == active_model;
+    };
+    const auto it =
+        std::ranges::find_if(config_.model_settings, matches_active);
+    if (it != config_.model_settings.end()) {
+      it->effort = effort;
+    } else if (effort.has_value()) {
+      config_.model_settings.push_back(
+          ProviderModelSettings{.provider_id = active_provider,
+                                .model = active_model,
+                                .effort = effort});
+    }
   }
+
+  const auto key = LastModelEffortAppStateKey(active_provider, active_model);
   if (effort.has_value()) {
-    config_.model_settings.push_back(
-        ProviderModelSettings{.provider_id = active_provider,
-                              .model = active_model,
-                              .effort = effort});
+    SaveRuntimeAppState(state_store, key,
+                        std::string(ReasoningEffortToString(*effort)));
+  } else {
+    DeleteRuntimeAppState(state_store, key);
   }
 }
 

@@ -184,6 +184,24 @@ class ScopedEnvUnset {
       });
 }
 
+[[nodiscard]] OpenAiChatProvider MakeProviderWithInlineKey(
+    const std::string& base_url, const std::shared_ptr<OpenAiAuthStore>& store,
+    std::string inline_key, const std::string& oauth_base_url = {}) {
+  chat::ProviderConfig config;
+  config.id = ::yac::ProviderId{"openai"};
+  config.model = ::yac::ModelId{"gpt-5.4"};
+  config.base_url = base_url;
+  config.api_key_env = "OPENAI_API_KEY";
+  config.api_key = std::move(inline_key);
+  return OpenAiChatProvider(
+      config,
+      OpenAiChatProvider::Dependencies{
+          .auth_flow = std::make_shared<OpenAiAuthFlow>(
+              MakeFlowDependencies(base_url, store)),
+          .oauth_base_url = oauth_base_url.empty() ? base_url : oauth_base_url,
+      });
+}
+
 [[nodiscard]] chat::ChatRequest MakeStreamingRequest(
     std::optional<std::string> responses_instructions = std::nullopt) {
   chat::ChatRequest request;
@@ -280,28 +298,28 @@ TEST_CASE("effective_auth_source_reports_precedence_without_secrets",
             OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
   }
 
-  SECTION("stored OAuth beats inline key") {
+  SECTION("inline key shadows stored OAuth") {
     const auto store = MakeStore(MakeFileBackend());
     (void)store->Save(OpenAiOAuthAuth{
         .refresh_token = "refresh-stored",
         .access_token = "access-stored",
         .expires_at =
             std::chrono::system_clock::time_point{std::chrono::seconds{2000}}});
-    chat::ProviderConfig config;
-    config.id = ::yac::ProviderId{"openai"};
-    config.model = ::yac::ModelId{"gpt-5.4"};
-    config.base_url = "http://127.0.0.1:1";
-    config.api_key_env = "OPENAI_API_KEY";
-    config.api_key = "inline-secret";
-    OpenAiChatProvider provider(
-        config, OpenAiChatProvider::Dependencies{
-                    .auth_flow = std::make_shared<OpenAiAuthFlow>(
-                        MakeFlowDependencies(config.base_url, store)),
-                    .oauth_base_url = config.base_url,
-                });
+    auto provider =
+        MakeProviderWithInlineKey("http://127.0.0.1:1", store, "inline-secret");
 
     REQUIRE(provider.ResolveEffectiveAuthSource() ==
-            OpenAiChatProvider::EffectiveAuthSource::StoredOAuth);
+            OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
+  }
+
+  SECTION("inline key shadows stored API key") {
+    const auto store = MakeStore(MakeFileBackend());
+    (void)store->Save(OpenAiApiKeyAuth{.key = "stored-secret"});
+    auto provider =
+        MakeProviderWithInlineKey("http://127.0.0.1:1", store, "inline-secret");
+
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
   }
 
   SECTION("stored API key") {
@@ -362,6 +380,74 @@ TEST_CASE("env_api_key_bypasses_stored_auth_reads",
   REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "env-ok");
   REQUIRE(keychain->GetCount() == 0);
   REQUIRE(file_backend->GetCount() == 0);
+}
+
+TEST_CASE("inline_api_key_shadows_stored_auth_for_openai_runtime",
+          "[openai_chat_provider_auth]") {
+  ScopedEnvUnset env("OPENAI_API_KEY");
+
+  SECTION("stored OAuth") {
+    const auto file_backend = MakeFileBackend();
+    const auto store = MakeStore(file_backend);
+    (void)store->Save(OpenAiOAuthAuth{
+        .refresh_token = "refresh-stored",
+        .access_token = "access-stored",
+        .expires_at =
+            std::chrono::system_clock::time_point{std::chrono::seconds{2000}},
+        .account_id = "acct-stored"});
+    TestHttpServer server([](const HttpRequest& request, std::size_t index) {
+      REQUIRE_NOTHROW(
+          AssertHeaderEquals(request, "Authorization", "Bearer inline-key"));
+      if (index == 0) {
+        REQUIRE(request.path == "/models");
+        return ModelsResponse();
+      }
+      REQUIRE(request.path == "/chat/completions");
+      REQUIRE_NOTHROW(AssertHeaderAbsent(request, "originator"));
+      REQUIRE_NOTHROW(AssertHeaderAbsent(request, "ChatGPT-Account-Id"));
+      return HttpResponse{
+          .headers = {{"Content-Type", "text/event-stream"}},
+          .body =
+              "data: {\"choices\":[{\"delta\":{\"content\":\"inline-ok\"}}]}\n"};
+    });
+
+    auto provider = MakeProviderWithInlineKey(server.Url(""), store,
+                                             "inline-key", server.Url(""));
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
+    const auto models = provider.ListModels(500ms);
+    const auto events = RunStream(provider);
+
+    REQUIRE(models.size() == 1);
+    REQUIRE(server.Requests().size() == 2);
+    REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
+    REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "inline-ok");
+  }
+
+  SECTION("stored API key") {
+    const auto file_backend = MakeFileBackend();
+    const auto store = MakeStore(file_backend);
+    (void)store->Save(OpenAiApiKeyAuth{.key = "stored-api-key"});
+    TestHttpServer server([](const HttpRequest& request, std::size_t) {
+      REQUIRE(request.path == "/chat/completions");
+      REQUIRE_NOTHROW(
+          AssertHeaderEquals(request, "Authorization", "Bearer inline-key"));
+      return HttpResponse{
+          .headers = {{"Content-Type", "text/event-stream"}},
+          .body =
+              "data: {\"choices\":[{\"delta\":{\"content\":\"inline-api-ok\"}}]}\n"};
+    });
+
+    auto provider =
+        MakeProviderWithInlineKey(server.Url(""), store, "inline-key");
+    REQUIRE(provider.ResolveEffectiveAuthSource() ==
+            OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
+    const auto events = RunStream(provider);
+
+    REQUIRE(server.Requests().size() == 1);
+    REQUIRE(events[0].Type() == chat::ChatEventType::TextDelta);
+    REQUIRE(events[0].Get<chat::TextDeltaEvent>().text == "inline-api-ok");
+  }
 }
 
 TEST_CASE("stored_api_key_is_used_for_openai_runtime",

@@ -6,6 +6,8 @@
 
 namespace yac::chat {
 
+class StateStore;
+
 // Loads YAC's chat configuration from ~/.yac/settings.toml, overlays YAC_*
 // shell env var overrides, resolves the API key, and validates values. If the
 // settings file is missing, it is auto-created with a commented default
@@ -21,5 +23,8 @@ namespace yac::chat {
 // config_paths.hpp.
 [[nodiscard]] ChatConfigResult LoadChatConfigResultFrom(
     const std::filesystem::path& settings_path, bool create_if_missing);
+[[nodiscard]] ChatConfigResult LoadChatConfigResultFrom(
+    const std::filesystem::path& settings_path, bool create_if_missing,
+    const StateStore* state_store);
 
 }  // namespace yac::chat

@@ -27,6 +27,9 @@ void PrintSummary(const ProviderAuthStatusSummary& summary, std::ostream& out) {
   if (summary.stored_credential.has_value()) {
     out << "stored credential: " << *summary.stored_credential << "\n";
   }
+  if (summary.stored_source.has_value()) {
+    out << "stored source: " << *summary.stored_source << "\n";
+  }
   if (summary.effective_auth.has_value()) {
     out << "effective auth: " << *summary.effective_auth << "\n";
   }
@@ -107,8 +110,9 @@ int DoOpenAi(int argc, char** argv, ProviderAuthCommand& cmd, std::ostream& out,
       return 1;
     }
     try {
-      static_cast<void>(cmd.SetOpenAiApiKeyFromStdin());
-      out << "Stored OpenAI API key.\n";
+      const auto source = cmd.SetOpenAiApiKeyFromStdin();
+      out << "Stored OpenAI API key. source: "
+          << provider::OpenAiAuthStorageSourceLabel(source) << "\n";
       return 0;
     } catch (const std::exception& e) {
       err << "Error: " << e.what() << "\n";

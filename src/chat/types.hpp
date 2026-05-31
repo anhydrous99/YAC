@@ -8,6 +8,7 @@
 #include "model_info.hpp"
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -16,6 +17,8 @@
 #include <vector>
 
 namespace yac::chat {
+
+class StateStore;
 
 static_assert(sizeof(ModelInfo) > 0);
 
@@ -421,6 +424,7 @@ struct ChatEvent {
 
 struct ProviderConfig {
   ProviderId id{"openai-compatible"};
+  std::optional<std::string> profile_id;
   ModelId model{"gpt-4o-mini"};
   std::string api_key;
   std::string api_key_env = "OPENAI_API_KEY";
@@ -428,12 +432,27 @@ struct ProviderConfig {
   std::optional<std::string> system_prompt;
   std::map<std::string, std::string> options;
   int context_window = 0;
+  std::shared_ptr<StateStore> state_store;
 };
+
+enum class ConfigValueSource { BuiltInDefault, Toml, Environment, StateStore };
 
 struct ProviderModelSettings {
   ProviderId provider_id;
   ModelId model;
   std::optional<ReasoningEffort> effort;
+  ConfigValueSource source = ConfigValueSource::BuiltInDefault;
+};
+
+struct ChatConfigSource {
+  ConfigValueSource provider_id = ConfigValueSource::BuiltInDefault;
+  ConfigValueSource profile_id = ConfigValueSource::BuiltInDefault;
+  ConfigValueSource model = ConfigValueSource::BuiltInDefault;
+  ConfigValueSource base_url = ConfigValueSource::BuiltInDefault;
+  ConfigValueSource api_key = ConfigValueSource::BuiltInDefault;
+  ConfigValueSource api_key_env = ConfigValueSource::BuiltInDefault;
+  std::map<std::string, ConfigValueSource> provider_options;
+  std::vector<ConfigValueSource> model_settings;
 };
 
 struct WebSearchConfig {
@@ -457,6 +476,7 @@ struct ConfigIssue {
 
 struct ChatConfig {
   ProviderId provider_id{"openai-compatible"};
+  std::optional<std::string> profile_id;
   ModelId model{"gpt-4o-mini"};
   std::string base_url = "https://api.openai.com/v1/";
   double temperature = 0.7;
@@ -483,8 +503,10 @@ struct ChatConfig {
   int context_window = 0;
   std::map<std::string, std::string> options;
   std::vector<ProviderModelSettings> model_settings;
+  ChatConfigSource source;
   WebSearchConfig web_search;
   mcp::McpConfig mcp;
+  std::shared_ptr<StateStore> state_store;
 };
 
 struct ChatConfigResult {
