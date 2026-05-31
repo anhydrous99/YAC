@@ -108,6 +108,24 @@ void ApplyRegistryRuntimeDefaults(ChatConfig& config) {
       Metadata("mcp.result_max_bytes").runtime_default;
   config.mcp.result_max_bytes =
       static_cast<uintmax_t>(result_max_bytes.integer_value);
+  const auto& web_search_enabled =
+      Metadata("web_search.enabled").runtime_default;
+  config.web_search.enabled = web_search_enabled.bool_value;
+  const auto& web_search_provider =
+      Metadata("web_search.provider").runtime_default;
+  config.web_search.provider = web_search_provider.string_value;
+  const auto& web_search_endpoint =
+      Metadata("web_search.endpoint").runtime_default;
+  config.web_search.endpoint = web_search_endpoint.string_value;
+  const auto& web_search_timeout =
+      Metadata("web_search.timeout_seconds").runtime_default;
+  config.web_search.timeout_seconds = web_search_timeout.integer_value;
+  const auto& web_search_result_limit =
+      Metadata("web_search.result_limit").runtime_default;
+  config.web_search.result_limit = web_search_result_limit.integer_value;
+  const auto& web_search_context_limit =
+      Metadata("web_search.context_limit").runtime_default;
+  config.web_search.context_limit = web_search_context_limit.integer_value;
 }
 
 bool ValidateNumberSetting(std::string_view key, double parsed,
@@ -961,6 +979,34 @@ void LoadCompactSection(toml::table& root, ChatConfig& config,
                          config.auto_compact_mode, issues);
 }
 
+void LoadWebSearchSection(toml::table& root, ChatConfig& config,
+                          std::vector<ConfigIssue>& issues) {
+  const auto web_search_section = root["web_search"];
+  if (!web_search_section.is_table()) {
+    if (root.contains("web_search")) {
+      AddError(issues, "Invalid type for [web_search] in settings.toml",
+               "Expected a table.");
+    }
+    return;
+  }
+
+  ApplyBoolField(web_search_section["enabled"], "web_search.enabled",
+                 config.web_search.enabled, issues);
+  ApplyStringEnumSetting(web_search_section["provider"], "web_search.provider",
+                         config.web_search.provider, issues);
+  ApplyStringField(web_search_section["endpoint"], "web_search.endpoint",
+                   config.web_search.endpoint, issues);
+  ApplyIntegerSetting(web_search_section["timeout_seconds"],
+                      "web_search.timeout_seconds",
+                      config.web_search.timeout_seconds, issues);
+  ApplyIntegerSetting(web_search_section["result_limit"],
+                      "web_search.result_limit", config.web_search.result_limit,
+                      issues);
+  ApplyIntegerSetting(web_search_section["context_limit"],
+                      "web_search.context_limit",
+                      config.web_search.context_limit, issues);
+}
+
 // Reads the [auth] sub-table for an MCP server and returns the parsed auth
 // variant, or std::nullopt when no valid auth is configured. Errors are
 // recorded in `issues` and the bearer's api_key_env flag is mirrored into
@@ -1222,6 +1268,7 @@ ChatConfigFieldSet LoadSettingsFromToml(const std::filesystem::path& path,
   LoadLspSection(table, config, fields, issues);
   LoadThemeSection(table, config, fields, issues);
   LoadCompactSection(table, config, issues);
+  LoadWebSearchSection(table, config, issues);
   LoadMcpSection(table, config, fields, issues);
 
   return fields;

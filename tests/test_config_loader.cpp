@@ -482,6 +482,11 @@ TEST_CASE("registry defaults apply before env overrides") {
   ScopedEnvVar threshold("YAC_COMPACT_THRESHOLD", "0.6");
   ScopedEnvVar keep_last("YAC_COMPACT_KEEP_LAST", "9");
   ScopedEnvVar mode("YAC_COMPACT_MODE", "truncate");
+  ScopedEnvVar web_search_enabled("YAC_WEB_SEARCH_ENABLED", "1");
+  ScopedEnvVar web_search_timeout("YAC_WEB_SEARCH_TIMEOUT_SECONDS", "40");
+  ScopedEnvVar web_search_endpoint("YAC_EXA_ENDPOINT",
+                                   "https://env.example.test/exa");
+  ScopedEnvVar web_search_key("YAC_EXA_API_KEY", "dummy-exa-key");
   ScopedEnvVar result_max_bytes("YAC_MCP_RESULT_MAX_BYTES", "8192");
 
   auto result = LoadChatConfigResultFrom(settings_path, false);
@@ -493,6 +498,10 @@ TEST_CASE("registry defaults apply before env overrides") {
   REQUIRE(result.config.auto_compact_threshold == 0.6);
   REQUIRE(result.config.auto_compact_keep_last == 9);
   REQUIRE(result.config.auto_compact_mode == "truncate");
+  REQUIRE(result.config.web_search.enabled);
+  REQUIRE(result.config.web_search.timeout_seconds == 40);
+  REQUIRE(result.config.web_search.endpoint == "https://env.example.test/exa");
+  REQUIRE(result.config.web_search.api_key == "dummy-exa-key");
   REQUIRE(result.config.mcp.result_max_bytes == 8192);
 }
 
@@ -515,6 +524,8 @@ TEST_CASE("registry validation rejects invalid env override values") {
   ScopedEnvVar threshold("YAC_COMPACT_THRESHOLD", "0.01");
   ScopedEnvVar keep_last("YAC_COMPACT_KEEP_LAST", "0");
   ScopedEnvVar mode("YAC_COMPACT_MODE", "invalid");
+  ScopedEnvVar web_search_provider("YAC_WEB_SEARCH_PROVIDER", "parallel");
+  ScopedEnvVar web_search_timeout("YAC_WEB_SEARCH_TIMEOUT_SECONDS", "0");
   ScopedEnvVar result_max_bytes("YAC_MCP_RESULT_MAX_BYTES", "0");
 
   auto result = LoadChatConfigResultFrom(settings_path, false);
@@ -523,11 +534,16 @@ TEST_CASE("registry validation rejects invalid env override values") {
   REQUIRE(result.config.auto_compact_threshold == 0.7);
   REQUIRE(result.config.auto_compact_keep_last == 8);
   REQUIRE(result.config.auto_compact_mode == "summarize");
+  REQUIRE(result.config.web_search.provider == "exa");
+  REQUIRE(result.config.web_search.timeout_seconds == 25);
   REQUIRE(result.config.mcp.result_max_bytes == 1024);
   REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_TEMPERATURE"));
   REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_THRESHOLD"));
   REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_KEEP_LAST"));
   REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_COMPACT_MODE"));
+  REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_WEB_SEARCH_PROVIDER"));
+  REQUIRE(
+      HasErrorIssue(result.issues, "Invalid YAC_WEB_SEARCH_TIMEOUT_SECONDS"));
   REQUIRE(HasErrorIssue(result.issues, "Invalid YAC_MCP_RESULT_MAX_BYTES"));
 }
 
