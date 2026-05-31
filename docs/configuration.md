@@ -158,6 +158,54 @@ the file auth store directly instead of probing the OS keychain.
 | `compact.keep_last` | `YAC_COMPACT_KEEP_LAST` | `20` | Recent non-system messages preserved through compaction. |
 | `compact.mode` | `YAC_COMPACT_MODE` | `"summarize"` | `"summarize"` or `"truncate"`. |
 
+## Web Search
+
+`web_search` is disabled by default. The MVP provider is Exa-only; set
+`YAC_EXA_API_KEY` when enabling it. There is no Parallel provider in this MVP.
+Unsupported provider names fail config validation. The API key value is read
+from the environment, is not written to config files, and is not printed or
+logged by the tool path.
+
+```toml
+[web_search]
+enabled = false
+provider = "exa"
+endpoint = "https://api.exa.ai/search"
+timeout_seconds = 25
+# result_limit = 5      # 1 .. 10
+# context_limit = 4096  # 1 .. 12000
+```
+
+```bash
+export YAC_WEB_SEARCH_ENABLED=true
+export YAC_WEB_SEARCH_PROVIDER=exa
+export YAC_EXA_API_KEY=exa_test_key_from_your_account
+```
+
+| Setting | Env override | Default | Purpose |
+| --- | --- | --- | --- |
+| `web_search.enabled` | `YAC_WEB_SEARCH_ENABLED` | `false` | Enable the built-in `web_search` tool. |
+| `web_search.provider` | `YAC_WEB_SEARCH_PROVIDER` | `"exa"` | Search provider. Only `"exa"` is supported for the MVP. |
+| `web_search.endpoint` | `YAC_EXA_ENDPOINT` | `https://api.exa.ai/search` | Exa endpoint, overrideable for fake or local tests. |
+| `web_search.timeout_seconds` | `YAC_WEB_SEARCH_TIMEOUT_SECONDS` | `25` | Search request timeout from 1 to 120 seconds. |
+| `web_search.result_limit` | unset | `5` | Max search results passed to the executor, from 1 to 10. |
+| `web_search.context_limit` | unset | `4096` | Max characters of context per result, from 1 to 12000. |
+| `web_search.exa_api_key_env_value` | `YAC_EXA_API_KEY` | unset | Exa API key used when web search is enabled. |
+
+## Web Fetch
+
+`web_fetch` fetches one HTTP(S) URL and returns transformed content. The
+`format` option accepts `markdown`, `text`, or `html`; the default is
+`markdown`. It does not execute JavaScript, render pages in a browser, use
+browser automation, send cookies, crawl links recursively, extract media, or
+read image/PDF content.
+
+The real-network path supports only HTTP(S), blocks private-network URLs by
+default, caps response bodies at 5MB, and caps timeout at 120 seconds. The
+default fetch timeout is 30 seconds. Tests for `web_fetch` and `web_search`
+must use fake or local transports and must never require live internet or API
+keys.
+
 ## MCP Settings
 
 Global MCP payload size is controlled by `mcp.result_max_bytes` and

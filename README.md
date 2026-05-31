@@ -19,7 +19,7 @@ tool calls, MCP servers, Markdown-heavy responses, and headless automation.
 - Markdown rendering, syntax highlighting, command palette, slash commands, and
   file mentions.
 - Built-in tools for filesystem reads/writes, precise edits, ripgrep search,
-  globbing, LSP navigation, sub-agents, and TODO tracking.
+  globbing, LSP navigation, sub-agents, web fetch/search, and TODO tracking.
 - MCP over stdio or HTTP, with OAuth, bearer auth, approval policy, resources,
   and admin commands.
 - Plan and Build modes for separating planning from code-changing work.
@@ -63,7 +63,10 @@ Common provider fields are `provider.id`, `provider.model`,
 `OPENAI_API_KEY` or `ZAI_API_KEY` for API keys instead of plaintext TOML.
 Bedrock uses provider options such as `provider.options.region` and
 `provider.options.max_tokens`, with `YAC_BEDROCK_REGION` and
-`YAC_BEDROCK_MAX_TOKENS` overrides.
+`YAC_BEDROCK_MAX_TOKENS` overrides. `web_search` is opt-in, Exa-only, and
+requires `YAC_EXA_API_KEY` when enabled. Its config overrides are
+`YAC_WEB_SEARCH_ENABLED`, `YAC_WEB_SEARCH_PROVIDER`, `YAC_EXA_ENDPOINT`, and
+`YAC_WEB_SEARCH_TIMEOUT_SECONDS`.
 
 OpenAI browser auth uses the fixed callback
 `http://localhost:1455/auth/callback`. For headless shells, an installed binary
