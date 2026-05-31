@@ -1,5 +1,6 @@
 #include "provider/openai_compatible_chat_provider.hpp"
 
+#include "chat/state_store.hpp"
 #include "provider/http_sse_client.hpp"
 #include "provider/openai_compatible_chat_protocol.hpp"
 #include "provider/zai_context_windows.hpp"
@@ -7,6 +8,7 @@
 #include <cstdlib>
 #include <curl/curl.h>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <openai.hpp>
 #include <sstream>
 #include <stdexcept>
@@ -17,6 +19,23 @@ namespace yac::provider {
 namespace {
 
 using Json = openai_compatible_protocol::Json;
+
+std::string ParseStoredApiKey(std::string_view secret_json) {
+  try {
+    const auto json = nlohmann::json::parse(secret_json);
+    if (json.is_object()) {
+      if (json.contains("api_key") && json.at("api_key").is_string()) {
+        return json.at("api_key").get<std::string>();
+      }
+      if (json.contains("key") && json.at("key").is_string()) {
+        return json.at("key").get<std::string>();
+      }
+    }
+  } catch (const std::exception& error) {
+    (void)error;
+  }
+  throw std::runtime_error("Stored provider API key credential is invalid.");
+}
 
 size_t WriteString(char* ptr, size_t size, size_t nmemb, void* userdata) {
   const auto bytes = size * nmemb;
@@ -251,11 +270,31 @@ void OpenAiCompatibleChatProvider::CompleteStreaming(
 }
 
 std::string OpenAiCompatibleChatProvider::ResolveApiKey() const {
+  if (const char* env = std::getenv(config_.api_key_env.c_str())) {
+    if (*env != '\0') {
+      return env;
+    }
+  }
   if (!config_.api_key.empty()) {
     return config_.api_key;
   }
-  if (const char* env = std::getenv(config_.api_key_env.c_str())) {
-    return env;
+  return ResolveStateStoreApiKey();
+}
+
+std::string OpenAiCompatibleChatProvider::ResolveStateStoreApiKey() const {
+  if (config_.state_store == nullptr) {
+    return {};
+  }
+  if (config_.profile_id.has_value()) {
+    if (const auto credential = config_.state_store->LoadProviderCredential(
+            config_.id, std::string_view(*config_.profile_id),
+            chat::StateCredentialType::ApiKey)) {
+      return ParseStoredApiKey(credential->secret_json);
+    }
+  }
+  if (const auto credential = config_.state_store->LoadProviderCredential(
+          config_.id, std::nullopt, chat::StateCredentialType::ApiKey)) {
+    return ParseStoredApiKey(credential->secret_json);
   }
   return {};
 }

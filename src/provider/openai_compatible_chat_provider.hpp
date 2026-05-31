@@ -47,6 +47,7 @@ class OpenAiCompatibleChatProvider : public LanguageModelProvider {
   [[nodiscard]] virtual std::string ResolveApiKey() const;
 
  private:
+  [[nodiscard]] std::string ResolveStateStoreApiKey() const;
   void CompleteBuffered(const chat::ChatRequest& request, ChatEventSink sink);
   void CompleteStreaming(const chat::ChatRequest& request, ChatEventSink sink,
                          std::stop_token stop_token);
