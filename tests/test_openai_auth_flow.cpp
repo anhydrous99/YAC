@@ -426,6 +426,71 @@ TEST_CASE("browser_launch_failure_still_reports_url_and_completes",
   REQUIRE(auth.refresh_token == "refresh-2");
 }
 
+TEST_CASE("browser_flow_token_errors_do_not_leak_auth_code_or_verifier",
+          "[openai_auth_flow]") {
+  std::optional<OpenAiAuthorizationNotice> notice;
+  std::mutex notice_mutex;
+  const std::string raw_jwt_like_secret = "header.payload.signature";
+  TestHttpServer server([&raw_jwt_like_secret](const HttpRequest&,
+                                               std::size_t) {
+    return HttpResponse{
+        .status = 400,
+        .headers = {{"Content-Type", "application/json"}},
+        .body =
+            std::string(R"({"error":"invalid_grant","error_description":")") +
+            "code-browser-secret verifier-123 " + raw_jwt_like_secret + R"("})",
+    };
+  });
+  const auto file_backend = MakeFileBackend();
+  OpenAiAuthFlow flow(MakeDependencies(server.Url(""), MakeStore(file_backend),
+                                       [](std::string_view url) {
+                                         (void)url;
+                                         return true;
+                                       }));
+
+  auto worker = std::async(std::launch::async, [&] {
+    return flow.RunBrowserAuthorization(
+        [&notice_mutex, &notice](const OpenAiAuthorizationNotice& current) {
+          std::scoped_lock lock(notice_mutex);
+          notice = current;
+        });
+  });
+
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    {
+      std::scoped_lock lock(notice_mutex);
+      if (notice.has_value()) {
+        break;
+      }
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+
+  REQUIRE(notice.has_value());
+
+  CURL* curl = curl_easy_init();
+  REQUIRE(curl != nullptr);
+  const auto cleanup = [](CURL* handle) { curl_easy_cleanup(handle); };
+  std::unique_ptr<CURL, decltype(cleanup)> handle(curl, cleanup);
+  const std::string callback_url =
+      notice->redirect_uri + "?code=code-browser-secret&state=state-123";
+  curl_easy_setopt(curl, CURLOPT_URL, callback_url.c_str());
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
+  REQUIRE(curl_easy_perform(curl) == CURLE_OK);
+
+  try {
+    static_cast<void>(worker.get());
+    FAIL("browser auth should fail");
+  } catch (const std::exception& error) {
+    const std::string message = error.what();
+    REQUIRE(message.find("OpenAI OAuth token request failed") !=
+            std::string::npos);
+    REQUIRE(message.find("code-browser-secret") == std::string::npos);
+    REQUIRE(message.find("verifier-123") == std::string::npos);
+    REQUIRE(message.find(raw_jwt_like_secret) == std::string::npos);
+  }
+}
+
 TEST_CASE("state_mismatch_is_rejected", "[openai_auth_flow]") {
   std::optional<OpenAiAuthorizationNotice> notice;
   std::mutex notice_mutex;
@@ -686,6 +751,82 @@ TEST_CASE("device_flow_token_errors_do_not_leak_auth_code_or_verifier",
     REQUIRE(message.find("auth-code-secret") == std::string::npos);
     REQUIRE(message.find("verifier-secret") == std::string::npos);
     REQUIRE(message.find("access-token-secret") == std::string::npos);
+  }
+}
+
+TEST_CASE("refresh_ignores_malformed_jwt_and_missing_account_claim",
+          "[openai_auth_flow]") {
+  const std::string malformed_id_token = "header.not-base64.signature";
+  TestHttpServer server([&malformed_id_token](const HttpRequest&, std::size_t) {
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body = std::string(R"({"access_token":")") +
+                MakeUnsignedJwtLikeToken(R"({"email":"user@example.test"})") +
+                R"(","refresh_token":"refresh-no-claim","id_token":")" +
+                malformed_id_token + R"(","expires_in":600})",
+    };
+  });
+  const auto file_backend = MakeFileBackend();
+  const auto store = MakeStore(file_backend);
+  auto dependencies = MakeDependencies(server.Url(""), store);
+  dependencies.clock = [] {
+    return std::chrono::system_clock::time_point{std::chrono::seconds{1000}};
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+  const OpenAiOAuthAuth initial{
+      .refresh_token = "refresh-old",
+      .access_token = "access-old",
+      .expires_at =
+          std::chrono::system_clock::time_point{std::chrono::seconds{1001}},
+  };
+
+  const OpenAiOAuthAuth refreshed = flow.RefreshIfNeeded(initial);
+
+  REQUIRE(refreshed.refresh_token == "refresh-no-claim");
+  REQUIRE_FALSE(refreshed.account_id.has_value());
+}
+
+TEST_CASE("device_flow_missing_access_token_does_not_leak_exchange_secrets",
+          "[openai_auth_flow]") {
+  const std::string raw_jwt_like_secret = "header.payload.signature";
+  TestHttpServer server([&raw_jwt_like_secret](const HttpRequest& request,
+                                               std::size_t) {
+    if (request.path == "/api/accounts/deviceauth/usercode") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"device_auth_id":"device-123","user_code":"ABCD-EFGH","interval":0})",
+      };
+    }
+    if (request.path == "/api/accounts/deviceauth/token") {
+      return HttpResponse{
+          .headers = {{"Content-Type", "application/json"}},
+          .body =
+              R"({"authorization_code":"auth-code-secret","code_verifier":"verifier-secret"})",
+      };
+    }
+    return HttpResponse{
+        .headers = {{"Content-Type", "application/json"}},
+        .body = std::string(R"({"id_token":")") + raw_jwt_like_secret +
+                R"(","refresh_token":"refresh-secret","expires_in":600})",
+    };
+  });
+  auto dependencies =
+      MakeDependencies(server.Url(""), MakeStore(MakeFileBackend()));
+  dependencies.sleep_for = [](std::chrono::milliseconds, std::stop_token) {
+    return true;
+  };
+  OpenAiAuthFlow flow(std::move(dependencies));
+
+  try {
+    static_cast<void>(flow.RunDeviceAuthorization());
+    FAIL("device auth should fail");
+  } catch (const std::exception& error) {
+    const std::string message = error.what();
+    REQUIRE(message.find("missing access_token") != std::string::npos);
+    REQUIRE(message.find("auth-code-secret") == std::string::npos);
+    REQUIRE(message.find("verifier-secret") == std::string::npos);
+    REQUIRE(message.find(raw_jwt_like_secret) == std::string::npos);
   }
 }
 
