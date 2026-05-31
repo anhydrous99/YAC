@@ -106,6 +106,15 @@ threshold    = 0.8                       # 0.05 .. 1.0
 keep_last    = 20                        # most-recent messages to keep
 mode         = "summarize"               # "summarize" (default) or "truncate"
 
+[web_search]
+# Enables the built-in web_search tool. The MVP provider is fixed to Exa.
+enabled = false
+provider = "exa"                 # only "exa" is supported
+endpoint = "https://api.exa.ai/search"
+timeout_seconds = 25             # 1 .. 120; set YAC_EXA_API_KEY when enabled
+# result_limit = 5                  # 1 .. 10 results passed to the executor
+# context_limit = 4096              # 1 .. 12000 context chars per result
+
 [mcp]
 # Maximum bytes for MCP tool result payloads (default: 262144 = 256 KB).
 # result_max_bytes = 262144
