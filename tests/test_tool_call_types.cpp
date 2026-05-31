@@ -1,5 +1,6 @@
 #include "tool_call/executor.hpp"
 #include "tool_call/types.hpp"
+#include "tool_call/web_secret_redaction.hpp"
 
 #include <type_traits>
 #include <variant>
@@ -9,6 +10,14 @@
 using namespace yac::tool_call;
 
 TEST_CASE("Tool call structs preserve field values") {
+  WebFetchCall fetch_defaults;
+  REQUIRE(fetch_defaults.format == "markdown");
+  REQUIRE(fetch_defaults.timeout == 30);
+
+  WebSearchCall search_defaults;
+  REQUIRE(search_defaults.num_results == 5);
+  REQUIRE(search_defaults.context_max_characters == 4096);
+
   BashCall bash{
       .command = "echo hi", .output = "ok", .exit_code = 0, .is_error = false};
   REQUIRE(bash.command == "echo hi");
@@ -212,4 +221,16 @@ TEST_CASE("ToolExecutionResult is available through core types") {
   ToolExecutionResult result{.block = McpToolCall{}, .result_json = "{}"};
   REQUIRE(std::holds_alternative<McpToolCall>(result.block));
   REQUIRE(result.result_json == "{}");
+}
+
+TEST_CASE("Web secret redaction replaces configured secrets") {
+  const WebSecretRedactionConfig config{
+      .api_key_like_substrings = {"exa_test_secret_123", "sk_test_456"}};
+
+  const std::string redacted = RedactWebSecrets(
+      "api_key=exa_test_secret_123 bearer sk_test_456", config);
+
+  REQUIRE(redacted == "api_key=[REDACTED] bearer [REDACTED]");
+  REQUIRE(redacted.find("exa_test_secret_123") == std::string::npos);
+  REQUIRE(redacted.find("sk_test_456") == std::string::npos);
 }
