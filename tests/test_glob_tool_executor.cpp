@@ -187,6 +187,53 @@ TEST_CASE("glob path arg: restricts walk to specified subdirectory") {
   }
 }
 
+TEST_CASE("glob path arg accepts workspace-relative pattern") {
+  TempWorkspace ws;
+  ws.CreateFile("src/foo.hpp");
+  ws.CreateFile("src/tool_call/bar.hpp");
+  ws.CreateFile("include/baz.hpp");
+
+  WorkspaceFilesystem wfs(ws.Path());
+  const auto result = ExecuteGlobTool(
+      MakeRequest({{"pattern", "src/**/*.hpp"}, {"path", "src"}}), wfs);
+
+  const auto& block = std::get<yac::tool_call::GlobCall>(result.block);
+  REQUIRE_FALSE(block.is_error);
+  REQUIRE(block.matched_files.size() == 2);
+  for (const auto& f : block.matched_files) {
+    REQUIRE(f.find("src") != std::string::npos);
+  }
+}
+
+TEST_CASE("glob path arg applies gitignore from workspace root") {
+  TempWorkspace ws;
+  ws.WriteGitignore("src/generated/\n");
+  ws.CreateFile("src/generated/skip.hpp");
+  ws.CreateFile("src/keep.hpp");
+
+  WorkspaceFilesystem wfs(ws.Path());
+  const auto result = ExecuteGlobTool(
+      MakeRequest({{"pattern", "**/*.hpp"}, {"path", "src"}}), wfs);
+
+  const auto& block = std::get<yac::tool_call::GlobCall>(result.block);
+  REQUIRE_FALSE(block.is_error);
+  REQUIRE(block.matched_files.size() == 1);
+  REQUIRE(block.matched_files[0].find("keep.hpp") != std::string::npos);
+}
+
+TEST_CASE("glob normalizes leading dot slash in pattern") {
+  TempWorkspace ws;
+  ws.CreateFile("src/main.cpp");
+
+  WorkspaceFilesystem wfs(ws.Path());
+  const auto result =
+      ExecuteGlobTool(MakeRequest({{"pattern", "./src/**/*.cpp"}}), wfs);
+
+  const auto& block = std::get<yac::tool_call::GlobCall>(result.block);
+  REQUIRE_FALSE(block.is_error);
+  REQUIRE(block.matched_files.size() == 1);
+}
+
 TEST_CASE("glob result json contains correct pattern field") {
   TempWorkspace ws;
   ws.CreateFile("src/main.cpp");

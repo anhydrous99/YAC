@@ -18,7 +18,24 @@ namespace {
 
 constexpr size_t kMaxResults = 200;
 
+std::string NormalizePathText(const std::filesystem::path& path) {
+  return path.generic_string();
 }
+
+std::string RelativePathText(const std::filesystem::path& path,
+                             const std::filesystem::path& base) {
+  return NormalizePathText(std::filesystem::relative(path, base));
+}
+
+std::string NormalizePattern(std::string pattern) {
+  std::ranges::replace(pattern, '\\', '/');
+  while (pattern.starts_with("./")) {
+    pattern.erase(0, 2);
+  }
+  return pattern;
+}
+
+}  // namespace
 
 ToolExecutionResult ExecuteGlobTool(
     const chat::ToolCallRequest& request,
@@ -37,7 +54,7 @@ ToolExecutionResult ExecuteGlobTool(
     filter.emplace(workspace_filesystem.Root());
   }
 
-  const CompiledGlob compiled(pattern);
+  const CompiledGlob compiled(NormalizePattern(pattern));
 
   using FileEntry =
       std::pair<std::filesystem::path, std::filesystem::file_time_type>;
@@ -49,12 +66,16 @@ ToolExecutionResult ExecuteGlobTool(
     if (!entry.is_regular_file()) {
       continue;
     }
-    const std::string relative =
-        std::filesystem::relative(entry.path(), walk_root).string();
-    if (filter && filter->ShouldSkip(relative)) {
+    const std::string workspace_relative =
+        RelativePathText(entry.path(), workspace_filesystem.Root());
+    if (filter && filter->ShouldSkip(workspace_relative)) {
       continue;
     }
-    if (!compiled.Match(relative)) {
+    const std::string search_relative =
+        path_arg.empty() ? workspace_relative
+                         : RelativePathText(entry.path(), walk_root);
+    if (!compiled.Match(search_relative) &&
+        !compiled.Match(workspace_relative)) {
       continue;
     }
     matches.emplace_back(entry.path(), entry.last_write_time());
