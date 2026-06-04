@@ -183,6 +183,7 @@ yac_test(
         "//:README.md",
         "//:guardrail_docs",
         "//:settings.example.toml",
+        "//src:all_source_files",
     ],
     defines = [
         "README_MD_PATH=\"$(rootpath //:README.md)\"",

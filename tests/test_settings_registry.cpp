@@ -619,6 +619,21 @@ TEST_CASE("MCP docs match registry-documented settings") {
   RequireNoDocIssues(issues);
 }
 
+TEST_CASE("MCP docs do not advertise unsupported CLI subcommands") {
+  const std::string docs = ReadFile(YAC_STRINGIFY(MCP_DOCS_PATH));
+  const std::string cli = ReadFile("src/cli/mcp_cli_dispatch.cpp");
+  constexpr std::array unsupported_commands = {"remove", "resources", "read"};
+
+  for (const std::string_view command : unsupported_commands) {
+    INFO(command);
+    const std::string advertised = "yac mcp " + std::string(command);
+    const std::string implemented = "subcmd == \"" + std::string(command) +
+                                    "\"";
+    REQUIRE((docs.find(advertised) == std::string::npos ||
+             cli.find(implemented) != std::string::npos));
+  }
+}
+
 TEST_CASE("OpenAI auth docs match registry-documented settings") {
   const auto tokens =
       ExtractDocTokens(ReadFile(YAC_STRINGIFY(OPENAI_AUTH_DOCS_PATH)));
