@@ -133,12 +133,13 @@ class PartialFailingCredentialStore final : public yac::chat::StateStore {
     if (!partial_secret_json_.has_value()) {
       return std::nullopt;
     }
-    return ProviderCredential{.provider_id = yac::ProviderId{"openai"},
-                              .credential_type = StateCredentialType::OpenAiAuth,
-                              .secret_json = *partial_secret_json_,
-                              .source = StateCredentialSource::Test,
-                              .created_at = "1",
-                              .updated_at = "1"};
+    return ProviderCredential{
+        .provider_id = yac::ProviderId{"openai"},
+        .credential_type = StateCredentialType::OpenAiAuth,
+        .secret_json = *partial_secret_json_,
+        .source = StateCredentialSource::Test,
+        .created_at = "1",
+        .updated_at = "1"};
   }
   [[nodiscard]] std::vector<ProviderCredential> ListProviderCredentials()
       const override {
@@ -312,7 +313,8 @@ TEST_CASE("Invalid app_state and profile rows fall back without crashing") {
   REQUIRE_FALSE(loaded.config.profile_id.has_value());
   REQUIRE(loaded.config.model.value == "gpt-4o-mini");
   REQUIRE(loaded.config.base_url == "https://api.openai.com/v1/");
-  REQUIRE(loaded.config.source.provider_id == ConfigValueSource::BuiltInDefault);
+  REQUIRE(loaded.config.source.provider_id ==
+          ConfigValueSource::BuiltInDefault);
   REQUIRE(loaded.config.source.model == ConfigValueSource::BuiltInDefault);
   REQUIRE(loaded.config.source.base_url == ConfigValueSource::BuiltInDefault);
   REQUIRE_FALSE(loaded.issues.empty());
@@ -323,10 +325,9 @@ TEST_CASE("Credential write failure remains fatal to auth store") {
   auto state_store = std::make_shared<PartialFailingCredentialStore>();
   auto backend = std::make_shared<MemoryAuthBackend>();
   yac::provider::OpenAiAuthStore store(
-      yac::provider::OpenAiAuthStore::Dependencies{
-          .keychain_backend = backend,
-          .file_backend = backend,
-          .state_store = state_store});
+      yac::provider::OpenAiAuthStore::Dependencies{.keychain_backend = backend,
+                                                   .file_backend = backend,
+                                                   .state_store = state_store});
 
   REQUIRE_THROWS_WITH(
       store.Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-fatal-write"}),
@@ -339,23 +340,24 @@ TEST_CASE("Login command fails when replacing an existing credential fails") {
           yac::provider::OpenAiApiKeyAuth{.key = "sk-existing"}));
   auto backend = std::make_shared<MemoryAuthBackend>();
   auto auth_store = std::make_shared<yac::provider::OpenAiAuthStore>(
-      yac::provider::OpenAiAuthStore::Dependencies{
-          .keychain_backend = backend,
-          .file_backend = backend,
-          .state_store = state_store});
+      yac::provider::OpenAiAuthStore::Dependencies{.keychain_backend = backend,
+                                                   .file_backend = backend,
+                                                   .state_store = state_store});
   yac::cli::ProviderAuthCommand command({
       .auth_store = auth_store,
-      .login_fn = [](const yac::provider::OpenAiAuthorizationObserver&) {
-        return yac::provider::OpenAiOAuthAuth{.refresh_token = "refresh-new",
-                                              .access_token = "access-new"};
-      },
+      .login_fn =
+          [](const yac::provider::OpenAiAuthorizationObserver&) {
+            return yac::provider::OpenAiOAuthAuth{
+                .refresh_token = "refresh-new", .access_token = "access-new"};
+          },
   });
 
   REQUIRE_THROWS_WITH(command.LoginOpenAi(),
                       ContainsSubstring("credential write failure"));
 }
 
-TEST_CASE("Runtime app_state write and delete failures do not abort mutations") {
+TEST_CASE(
+    "Runtime app_state write and delete failures do not abort mutations") {
   auto state_store = std::make_shared<FailingAppStateStore>();
   ChatService service({}, RuntimeConfig(state_store));
 

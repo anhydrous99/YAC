@@ -143,10 +143,10 @@ class FakeWebSearchTransport final : public WebSearchTransport {
   std::string observed_api_key;
   std::string observed_body;
   std::chrono::milliseconds observed_timeout{0};
-  WebSearchTransportResponse response{.status_code = 200,
-                                      .content_type = "application/json",
-                                      .body = Json{{"results", Json::array()}}
-                                                  .dump()};
+  WebSearchTransportResponse response{
+      .status_code = 200,
+      .content_type = "application/json",
+      .body = Json{{"results", Json::array()}}.dump()};
 };
 
 class TempRoot {
@@ -258,8 +258,8 @@ TEST_CASE("ToolExecutor executes web_fetch through injected transport") {
       .arguments_json =
           R"({"url":"https://example.test/page","format":"text"})"};
 
-  auto result = executor.Execute(ToolExecutor::Prepare(request),
-                                 std::stop_token{});
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE_FALSE(result.is_error);
   const auto payload = Json::parse(result.result_json);
@@ -274,13 +274,12 @@ TEST_CASE("ToolExecutor returns normalized web_fetch errors without crashing") {
   auto executor = MakeExecutor(root);
   FakeWebFetchTransport transport;
   executor.SetWebFetchTransport(&transport);
-  ToolCallRequest request{
-      .id = "call_1",
-      .name = "web_fetch",
-      .arguments_json = R"({"url":"not a url"})"};
+  ToolCallRequest request{.id = "call_1",
+                          .name = "web_fetch",
+                          .arguments_json = R"({"url":"not a url"})"};
 
-  auto result = executor.Execute(ToolExecutor::Prepare(request),
-                                 std::stop_token{});
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE(result.is_error);
   const auto payload = Json::parse(result.result_json);
@@ -294,20 +293,20 @@ TEST_CASE("ToolExecutor applies configured web_search defaults") {
   auto executor = MakeExecutor(root);
   FakeWebSearchTransport transport;
   executor.SetWebSearchTransport(&transport);
-  executor.SetWebSearchConfig(WebSearchConfig{.enabled = true,
-                                              .provider = "exa",
-                                              .endpoint =
-                                                  "https://exa.test/search",
-                                              .api_key = "fake-exa-key",
-                                              .timeout_seconds = 30,
-                                              .result_limit = 7,
-                                              .context_limit = 9000});
+  executor.SetWebSearchConfig(
+      WebSearchConfig{.enabled = true,
+                      .provider = "exa",
+                      .endpoint = "https://exa.test/search",
+                      .api_key = "fake-exa-key",
+                      .timeout_seconds = 30,
+                      .result_limit = 7,
+                      .context_limit = 9000});
   ToolCallRequest request{.id = "call_1",
                           .name = "web_search",
                           .arguments_json = R"({"query":"yac terminal"})"};
 
-  auto result = executor.Execute(ToolExecutor::Prepare(request),
-                                 std::stop_token{});
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE_FALSE(result.is_error);
   REQUIRE(transport.called);
@@ -327,22 +326,22 @@ TEST_CASE("ToolExecutor keeps explicit web_search limits authoritative") {
   auto executor = MakeExecutor(root);
   FakeWebSearchTransport transport;
   executor.SetWebSearchTransport(&transport);
-  executor.SetWebSearchConfig(WebSearchConfig{.enabled = true,
-                                              .provider = "exa",
-                                              .endpoint =
-                                                  "https://exa.test/search",
-                                              .api_key = "fake-exa-key",
-                                              .timeout_seconds = 30,
-                                              .result_limit = 7,
-                                              .context_limit = 9000});
+  executor.SetWebSearchConfig(
+      WebSearchConfig{.enabled = true,
+                      .provider = "exa",
+                      .endpoint = "https://exa.test/search",
+                      .api_key = "fake-exa-key",
+                      .timeout_seconds = 30,
+                      .result_limit = 7,
+                      .context_limit = 9000});
   ToolCallRequest request{
       .id = "call_1",
       .name = "web_search",
       .arguments_json =
           R"({"query":"yac terminal","num_results":12,"context_max_characters":13000})"};
 
-  auto result = executor.Execute(ToolExecutor::Prepare(request),
-                                 std::stop_token{});
+  auto result =
+      executor.Execute(ToolExecutor::Prepare(request), std::stop_token{});
 
   REQUIRE_FALSE(result.is_error);
   REQUIRE(transport.called);

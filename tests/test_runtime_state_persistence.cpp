@@ -168,15 +168,17 @@ ProviderProfile Profile(std::string profile_id, std::string provider_id,
 
 bool HasSettingFor(const ChatConfig& config, std::string_view provider_id,
                    std::string_view model) {
-  return std::ranges::any_of(
-      config.model_settings, [&](const yac::chat::ProviderModelSettings& item) {
-        return item.provider_id.value == provider_id && item.model.value == model;
-      });
+  return std::ranges::any_of(config.model_settings,
+                             [&](const yac::chat::ProviderModelSettings& item) {
+                               return item.provider_id.value == provider_id &&
+                                      item.model.value == model;
+                             });
 }
 
-}
+}  // namespace
 
-TEST_CASE("LastModelRestart runtime provider model and effort survive restart") {
+TEST_CASE(
+    "LastModelRestart runtime provider model and effort survive restart") {
   ScopedEnvClear env_guard({"OPENAI_API_KEY", "ZAI_API_KEY"});
   TempDir dir("yac_test_runtime_state_restart");
   const auto settings_path = dir.Path() / "settings.toml";
@@ -191,8 +193,9 @@ TEST_CASE("LastModelRestart runtime provider model and effort survive restart") 
     service.SetModel(yac::ModelId{"gpt-5.5"});
     service.SetReasoningEffort(ReasoningEffort::High);
 
-    REQUIRE(state_store->LoadAppState(yac::chat::kAppStateLastProviderId)
-                ->value == "openai");
+    REQUIRE(
+        state_store->LoadAppState(yac::chat::kAppStateLastProviderId)->value ==
+        "openai");
     REQUIRE(state_store->LoadAppState(yac::chat::kAppStateLastModel)->value ==
             "gpt-5.5");
     REQUIRE(state_store
@@ -340,9 +343,8 @@ TEST_CASE("runtime selection without profile clears stale last profile id") {
     service.SetProvider(yac::ProviderId{"openai"});
     service.SetModel(yac::ModelId{"gpt-5.5"});
 
-    REQUIRE_FALSE(
-        state_store->LoadAppState(yac::chat::kAppStateLastProfileId)
-            .has_value());
+    REQUIRE_FALSE(state_store->LoadAppState(yac::chat::kAppStateLastProfileId)
+                      .has_value());
   }
 
   SQLiteStateStore restart_store(database_path);

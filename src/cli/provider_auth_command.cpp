@@ -194,8 +194,8 @@ ProviderAuthStatusSummary ProviderAuthCommand::BuildStatusSummary(
 
   if (stored_auth.has_value()) {
     summary.stored_credential = StoredCredentialLabel(stored_auth->auth);
-    summary.stored_source =
-        std::string(provider::OpenAiAuthStorageSourceLabel(stored_auth->source));
+    summary.stored_source = std::string(
+        provider::OpenAiAuthStorageSourceLabel(stored_auth->source));
     if (const auto* oauth =
             std::get_if<provider::OpenAiOAuthAuth>(&stored_auth->auth)) {
       if (oauth->expires_at.has_value()) {

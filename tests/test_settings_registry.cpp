@@ -627,8 +627,8 @@ TEST_CASE("MCP docs do not advertise unsupported CLI subcommands") {
   for (const std::string_view command : unsupported_commands) {
     INFO(command);
     const std::string advertised = "yac mcp " + std::string(command);
-    const std::string implemented = "subcmd == \"" + std::string(command) +
-                                    "\"";
+    const std::string implemented =
+        "subcmd == \"" + std::string(command) + "\"";
     REQUIRE((docs.find(advertised) == std::string::npos ||
              cli.find(implemented) != std::string::npos));
   }

@@ -162,12 +162,14 @@ void Exec(sqlite3* db, std::string_view sql, std::string_view action) {
     sqlite3_free(error);
     if (message.find("file is not a database") != std::string::npos ||
         message.find("malformed") != std::string::npos) {
-      message = "SQLite state database appears corrupt. move "
-                "~/.yac/state.sqlite aside and restart YAC to recreate it.";
+      message =
+          "SQLite state database appears corrupt. move "
+          "~/.yac/state.sqlite aside and restart YAC to recreate it.";
     } else if (message.find("database is locked") != std::string::npos ||
                message.find("database table is locked") != std::string::npos) {
-      message = "SQLite state database is locked after waiting up to 5000ms. "
-                "Close other YAC processes or inspect ~/.yac/state.sqlite.";
+      message =
+          "SQLite state database is locked after waiting up to 5000ms. "
+          "Close other YAC processes or inspect ~/.yac/state.sqlite.";
     }
     throw SQLiteStateStoreError("SQLiteStateStore: " + std::string(action) +
                                 ": " + message);

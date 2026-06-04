@@ -13,7 +13,7 @@
 namespace yac::chat {
 enum class StateCredentialSource;
 class StateStore;
-}
+}  // namespace yac::chat
 
 namespace yac::provider {
 

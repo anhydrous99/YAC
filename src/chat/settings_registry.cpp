@@ -661,7 +661,7 @@ void AppendTemplateHeader(std::string& output, bool repository_example) {
         "# ~/.yac/settings.toml and start YAC again.\n#\n"
         "# Shell environment variables named YAC_* override anything "
         "set here at\n"
-         "# startup, which is convenient for CI and per-shell "
+        "# startup, which is convenient for CI and per-shell "
         "experiments.\n"
         "# Runtime state lives in ~/.yac/state.sqlite. Effective settings "
         "use:\n"

@@ -408,11 +408,12 @@ TEST_CASE("inline_api_key_shadows_stored_auth_for_openai_runtime",
       return HttpResponse{
           .headers = {{"Content-Type", "text/event-stream"}},
           .body =
-              "data: {\"choices\":[{\"delta\":{\"content\":\"inline-ok\"}}]}\n"};
+              "data: "
+              "{\"choices\":[{\"delta\":{\"content\":\"inline-ok\"}}]}\n"};
     });
 
     auto provider = MakeProviderWithInlineKey(server.Url(""), store,
-                                             "inline-key", server.Url(""));
+                                              "inline-key", server.Url(""));
     REQUIRE(provider.ResolveEffectiveAuthSource() ==
             OpenAiChatProvider::EffectiveAuthSource::InlineApiKey);
     const auto models = provider.ListModels(500ms);
@@ -435,7 +436,8 @@ TEST_CASE("inline_api_key_shadows_stored_auth_for_openai_runtime",
       return HttpResponse{
           .headers = {{"Content-Type", "text/event-stream"}},
           .body =
-              "data: {\"choices\":[{\"delta\":{\"content\":\"inline-api-ok\"}}]}\n"};
+              "data: "
+              "{\"choices\":[{\"delta\":{\"content\":\"inline-api-ok\"}}]}\n"};
     });
 
     auto provider =

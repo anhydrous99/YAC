@@ -48,10 +48,10 @@ void SaveRuntimeAppState(const std::shared_ptr<StateStore>& state_store,
     return;
   }
   try {
-    state_store->SaveAppState(AppStateEntry{.key = std::move(key),
-                                            .value = std::move(value),
-                                            .updated_at =
-                                                RuntimeStateTimestamp()});
+    state_store->SaveAppState(
+        AppStateEntry{.key = std::move(key),
+                      .value = std::move(value),
+                      .updated_at = RuntimeStateTimestamp()});
   } catch (const std::exception& error) {
     yac::log::Warn("chat.runtime_state", "Could not save SQLite app state: {}",
                    error.what());
@@ -83,7 +83,8 @@ void SaveRuntimeSelection(const std::shared_ptr<StateStore>& state_store,
   } else {
     DeleteRuntimeAppState(state_store, kAppStateLastProfileId);
   }
-  SaveRuntimeAppState(state_store, std::string(kAppStateLastModel), model.value);
+  SaveRuntimeAppState(state_store, std::string(kAppStateLastModel),
+                      model.value);
 }
 
 std::string GenerateUuidV4() {
@@ -264,9 +265,9 @@ void ChatService::SetProvider(ProviderId provider_id) {
 
   SaveRuntimeSelection(state_store, active_provider, active_profile,
                        active_model);
-  EmitEvent(ChatEvent{ModelChangedEvent{.provider_id =
-                                            std::move(active_provider),
-                                        .model = std::move(active_model)}});
+  EmitEvent(
+      ChatEvent{ModelChangedEvent{.provider_id = std::move(active_provider),
+                                  .model = std::move(active_model)}});
 }
 
 void ChatService::SetReasoningEffort(std::optional<ReasoningEffort> effort) {

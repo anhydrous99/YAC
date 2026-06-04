@@ -8,14 +8,21 @@ calls built-in tools.
 Quick admin commands:
 
 ```bash
-yac mcp list                    # list configured servers
-yac mcp add <id> ...            # register a server
-yac mcp remove <id>             # remove a server
-yac mcp auth <id>               # run OAuth PKCE flow for a server
+yac mcp list                         # list configured servers
+yac mcp add                          # register a server with the interactive wizard
+yac mcp auth <id>                    # run OAuth PKCE flow for a server
+yac mcp auth <id> --no-browser       # print URL and read callback URL from stdin
+yac mcp logout <id>                  # remove stored OAuth tokens
+yac mcp debug <id>                   # print status, auth, connectivity, and log tail
 ```
 
-From inside the TUI, prefix the same subcommands with `/mcp` (e.g. `/mcp list`,
-`/mcp auth <id>`).
+The CLI currently implements only `list`, `add`, `auth`, `logout`, and `debug`.
+It does not implement server removal or resource list/read commands.
+
+From inside the TUI, use `/mcp list`, `/mcp add`, `/mcp auth <id>`,
+`/mcp logout <id>`, or `/mcp debug <id>`. `/mcp resources <server-id>` is
+currently a placeholder notice for an active server connection; it does not list
+or read resources in the TUI.
 
 ---
 
@@ -305,35 +312,21 @@ prompts.
 MCP servers can expose resources in addition to tools. Resources are identified
 by URI and carry optional metadata (name, description, MIME type).
 
-### Listing resources
+YAC has reusable manager and presentation code for `resources/list` and
+`resources/read`, including a `McpResourcesCommandHandler` that can call an
+active manager and store resource overlay/read state. That code is not wired to
+current user-facing CLI commands, and the TUI slash handler currently shows only
+an informational placeholder for `/mcp resources <server-id>`.
 
-```bash
-# CLI
-yac mcp resources <server-id>
-
-# TUI slash command
-/mcp resources <server-id>
-```
-
-This calls `resources/list` on the server and prints each resource's URI, name,
-and description.
-
-### Reading a resource
-
-```bash
-yac mcp read <server-id> <uri>
-```
-
-This calls `resources/read` on the server and prints the resource content.
-Text resources are printed as-is; binary (blob) resources are noted but not
-decoded to the terminal.
+There is no implemented resource-list or resource-read MCP CLI subcommand yet.
+For now, ask the assistant to call an MCP tool that returns the content you
+need, or use server-specific tooling outside YAC.
 
 ### Using resources in prompts
 
 Resources are not automatically injected into the assistant context. To include
-a resource, read it with `yac mcp read` and paste the content into your prompt,
-or instruct the assistant to call the appropriate MCP tool that returns the
-resource content.
+a resource, instruct the assistant to call the appropriate MCP tool that returns
+the resource content.
 
 ---
 

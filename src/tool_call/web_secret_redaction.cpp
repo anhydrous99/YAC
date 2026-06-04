@@ -39,13 +39,12 @@ std::string RedactWebSecrets(std::string_view input,
       secrets.push_back(secret);
     }
   }
-  std::ranges::sort(secrets,
-            [](std::string_view lhs, std::string_view rhs) {
-              if (lhs.size() != rhs.size()) {
-                return lhs.size() > rhs.size();
-              }
-              return lhs < rhs;
-            });
+  std::ranges::sort(secrets, [](std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+      return lhs.size() > rhs.size();
+    }
+    return lhs < rhs;
+  });
 
   for (const std::string_view secret : secrets) {
     RedactAllOccurrences(redacted, secret);

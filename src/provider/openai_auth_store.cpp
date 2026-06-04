@@ -4,8 +4,8 @@
 #include "chat/sqlite_state_store.hpp"
 #include "chat/state_store.hpp"
 
-#include <chrono>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>

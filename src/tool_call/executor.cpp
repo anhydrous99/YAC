@@ -38,14 +38,12 @@ void ToolExecutor::SetWebSearchConfig(const chat::WebSearchConfig& config) {
     web_search_config_.reset();
     return;
   }
-  web_search_config_ = WebSearchProviderConfig{.endpoint = config.endpoint,
-                                                .api_key = config.api_key,
-                                                .timeout_seconds =
-                                                    config.timeout_seconds,
-                                                .result_limit =
-                                                    config.result_limit,
-                                                .context_limit =
-                                                    config.context_limit};
+  web_search_config_ =
+      WebSearchProviderConfig{.endpoint = config.endpoint,
+                              .api_key = config.api_key,
+                              .timeout_seconds = config.timeout_seconds,
+                              .result_limit = config.result_limit,
+                              .context_limit = config.context_limit};
 }
 
 void ToolExecutor::SetWebSearchTransport(WebSearchTransport* transport) {

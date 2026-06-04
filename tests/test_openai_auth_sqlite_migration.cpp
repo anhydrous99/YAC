@@ -106,7 +106,7 @@ class FailingLegacyBackend final : public yac::provider::IOpenAiAuthBackend {
   return api;
 }
 
-}
+}  // namespace
 
 TEST_CASE("openai auth store saves auth_cli credentials to SQLite first",
           "[openai_auth_sqlite_migration]") {
@@ -118,8 +118,8 @@ TEST_CASE("openai auth store saves auth_cli credentials to SQLite first",
   yac::provider::OpenAiAuthStore store(
       Dependencies(state_store, keychain, file_backend));
 
-  const auto source = store.Save(
-      yac::provider::OpenAiApiKeyAuth{.key = "sk-sqlite-primary"});
+  const auto source =
+      store.Save(yac::provider::OpenAiApiKeyAuth{.key = "sk-sqlite-primary"});
   const auto stored = store.Load();
   const auto credential = state_store->LoadProviderCredential(
       yac::ProviderId{"openai"}, std::nullopt,
@@ -140,8 +140,8 @@ TEST_CASE("openai auth store imports legacy file auth once without deleting it",
   auto state_store =
       std::make_shared<yac::chat::SQLiteStateStore>(temp_dir.DatabasePath());
   auto keychain = std::make_shared<MemoryAuthBackend>();
-  auto file_backend = std::make_shared<MemoryAuthBackend>(
-      yac::provider::SerializeOpenAiAuth(
+  auto file_backend =
+      std::make_shared<MemoryAuthBackend>(yac::provider::SerializeOpenAiAuth(
           yac::provider::OpenAiApiKeyAuth{.key = "sk-legacy-file"}));
   yac::provider::OpenAiAuthStore first_store(
       Dependencies(state_store, keychain, file_backend));
@@ -150,9 +150,9 @@ TEST_CASE("openai auth store imports legacy file auth once without deleting it",
   const auto credential = state_store->LoadProviderCredential(
       yac::ProviderId{"openai"}, std::nullopt,
       yac::chat::StateCredentialType::OpenAiAuth);
-  yac::provider::OpenAiAuthStore second_store(Dependencies(
-      state_store, std::make_shared<FailingLegacyBackend>(),
-      std::make_shared<FailingLegacyBackend>()));
+  yac::provider::OpenAiAuthStore second_store(
+      Dependencies(state_store, std::make_shared<FailingLegacyBackend>(),
+                   std::make_shared<FailingLegacyBackend>()));
   const auto loaded_again = second_store.Load();
 
   REQUIRE(imported->source ==
@@ -166,9 +166,10 @@ TEST_CASE("openai auth store imports legacy file auth once without deleting it",
   REQUIRE(ApiAuth(loaded_again)->key == "sk-legacy-file");
 }
 
-TEST_CASE("openai auth store does not overwrite existing SQLite auth from "
-          "legacy",
-          "[openai_auth_sqlite_migration]") {
+TEST_CASE(
+    "openai auth store does not overwrite existing SQLite auth from "
+    "legacy",
+    "[openai_auth_sqlite_migration]") {
   TempDir temp_dir("yac_test_openai_auth_sqlite_wins");
   auto state_store =
       std::make_shared<yac::chat::SQLiteStateStore>(temp_dir.DatabasePath());
@@ -181,8 +182,8 @@ TEST_CASE("openai auth store does not overwrite existing SQLite auth from "
       .created_at = "1",
       .updated_at = "2",
   });
-  auto keychain = std::make_shared<MemoryAuthBackend>(
-      yac::provider::SerializeOpenAiAuth(
+  auto keychain =
+      std::make_shared<MemoryAuthBackend>(yac::provider::SerializeOpenAiAuth(
           yac::provider::OpenAiApiKeyAuth{.key = "sk-legacy-old"}));
   auto file_backend = std::make_shared<MemoryAuthBackend>();
   yac::provider::OpenAiAuthStore store(
@@ -201,8 +202,8 @@ TEST_CASE("openai logout clears SQLite auth without deleting legacy records",
   TempDir temp_dir("yac_test_openai_auth_sqlite_logout");
   auto state_store =
       std::make_shared<yac::chat::SQLiteStateStore>(temp_dir.DatabasePath());
-  auto file_backend = std::make_shared<MemoryAuthBackend>(
-      yac::provider::SerializeOpenAiAuth(
+  auto file_backend =
+      std::make_shared<MemoryAuthBackend>(yac::provider::SerializeOpenAiAuth(
           yac::provider::OpenAiApiKeyAuth{.key = "sk-legacy-after-logout"}));
   yac::provider::OpenAiAuthStore store(Dependencies(
       state_store, std::make_shared<MemoryAuthBackend>(), file_backend));
@@ -214,11 +215,11 @@ TEST_CASE("openai logout clears SQLite auth without deleting legacy records",
       state_store, std::make_shared<FailingLegacyBackend>(), file_backend));
 
   REQUIRE_FALSE(after_logout.Load().has_value());
-  REQUIRE_FALSE(state_store
-                    ->LoadProviderCredential(
-                        yac::ProviderId{"openai"}, std::nullopt,
-                        yac::chat::StateCredentialType::OpenAiAuth)
-                    .has_value());
+  REQUIRE_FALSE(
+      state_store
+          ->LoadProviderCredential(yac::ProviderId{"openai"}, std::nullopt,
+                                   yac::chat::StateCredentialType::OpenAiAuth)
+          .has_value());
   REQUIRE(file_backend->HasValue());
   REQUIRE(file_backend->EraseCount() == 0);
 }
