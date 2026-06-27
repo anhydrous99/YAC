@@ -199,10 +199,9 @@ void ChatServicePromptProcessor::ProcessPrompt(
                    .model = request_builder.Config().model,
                    .status = ChatMessageStatus::Active}});
 
-  std::string visible_assistant_text;
+  std::string final_assistant_text;
   while (true) {
     auto outcome = RunOneRound(*provider, assistant_id, generation, stop_token);
-    visible_assistant_text += outcome.round_text;
     if (outcome.stop == RoundOutcome::Stop::Aborted) {
       EmitCancellation(assistant_id);
       return;
@@ -212,6 +211,11 @@ void ChatServicePromptProcessor::ProcessPrompt(
       return;
     }
     if (outcome.stop == RoundOutcome::Stop::ModelDone) {
+      // Capture only the terminating round's text. Each tool round's preamble
+      // is already stored once via AppendAssistantToolRound below, so the final
+      // message must not re-accumulate prior rounds (would duplicate in
+      // history).
+      final_assistant_text = std::move(outcome.round_text);
       break;
     }
 
@@ -239,7 +243,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
     }
   }
 
-  if (!visible_assistant_text.empty()) {
+  if (!final_assistant_text.empty()) {
     bool final_message_aborted = false;
     {
       std::scoped_lock lock(*history_mutex_);
@@ -247,7 +251,7 @@ void ChatServicePromptProcessor::ProcessPrompt(
         final_message_aborted = true;
       } else {
         ChatServiceHistory(*history_).AppendFinalAssistantMessage(
-            assistant_id, visible_assistant_text);
+            assistant_id, final_assistant_text);
       }
     }
     // See note above: emit_event_ re-enters history_mutex_, so the

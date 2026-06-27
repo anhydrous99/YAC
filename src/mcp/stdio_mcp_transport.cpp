@@ -61,10 +61,12 @@ class StdioMcpTransport::Client final : public tool_call::JsonRpcStdioBase {
 
   void StopProcess() { Stop(); }
 
-  [[nodiscard]] Json SendRequestMessage(std::string_view method,
-                                        const Json& params,
-                                        std::chrono::milliseconds timeout) {
-    return SendRequest(method, params, timeout);
+  [[nodiscard]] int AllocateId() { return AllocateRequestId(); }
+
+  [[nodiscard]] Json SendRequestWithIdMessage(
+      int id, std::string_view method, const Json& params,
+      std::chrono::milliseconds timeout) {
+    return SendRequestWithId(id, method, params, timeout);
   }
 
   void SendNotificationMessage(std::string_view method, const Json& params) {
@@ -207,7 +209,10 @@ void StdioMcpTransport::Stop(std::stop_token stop) {
 Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
                                     std::chrono::milliseconds timeout,
                                     std::stop_token stop) {
-  const std::int64_t request_id = next_request_id_.fetch_add(1);
+  // Track and cancel by the real JSON-RPC wire id, allocated up front, so the
+  // inflight set and the notifications/cancelled requestId always match the id
+  // actually sent (no dual-counter coupling under concurrent senders).
+  const std::int64_t request_id = client_->AllocateId();
   {
     std::scoped_lock lock(request_mutex_);
     inflight_request_ids_.insert(request_id);
@@ -223,7 +228,8 @@ Json StdioMcpTransport::SendRequest(std::string_view method, const Json& params,
   });
 
   try {
-    auto response = client_->SendRequestMessage(method, params, timeout);
+    auto response = client_->SendRequestWithIdMessage(
+        static_cast<int>(request_id), method, params, timeout);
     {
       std::scoped_lock lock(request_mutex_);
       inflight_request_ids_.erase(request_id);

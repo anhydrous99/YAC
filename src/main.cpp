@@ -49,6 +49,12 @@ int main(int argc, char* argv[]) {
           prompt += argv[i];
         }
       }
+      if (prompt.empty()) {
+        yac::log::Error("main", "run requires a prompt");
+        std::cerr << "Usage: yac run \"prompt\" [--auto-approve] [--plan] "
+                     "[--cancel-after-ms=N]\n";
+        return 1;
+      }
       return yac::app::RunHeadless(prompt, auto_approve, cancel_after_ms,
                                    plan_mode);
     }

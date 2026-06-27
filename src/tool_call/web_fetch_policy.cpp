@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
 
 namespace yac::tool_call {
 namespace {
@@ -79,7 +80,9 @@ namespace {
   addrinfo* raw_results = nullptr;
   const int rc = getaddrinfo(host.c_str(), nullptr, &hints, &raw_results);
   if (rc != 0) {
-    return false;
+    // Fail closed: a host that cannot be resolved is treated as private so a
+    // resolution failure cannot bypass the SSRF blocklist.
+    return true;
   }
   const auto cleanup = [](addrinfo* info) { freeaddrinfo(info); };
   std::unique_ptr<addrinfo, decltype(cleanup)> results(raw_results, cleanup);
@@ -102,6 +105,18 @@ namespace {
 }
 
 }  // namespace
+
+bool IsPrivateSocketAddress(const sockaddr* address) {
+  if (address->sa_family == AF_INET) {
+    return IsPrivateIpv4(
+        reinterpret_cast<const sockaddr_in*>(address)->sin_addr);
+  }
+  if (address->sa_family == AF_INET6) {
+    return IsPrivateIpv6(
+        reinterpret_cast<const sockaddr_in6*>(address)->sin6_addr);
+  }
+  return true;  // Unknown address family: block to fail closed.
+}
 
 ParsedUrl ParseHttpUrl(std::string_view url) {
   constexpr std::string_view kSchemeDelimiter = "://";

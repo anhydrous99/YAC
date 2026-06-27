@@ -27,6 +27,7 @@ struct GrepArgs {
 struct ParsedGrepOutput {
   std::vector<GrepMatch> matches;
   int file_count = 0;
+  bool capped = false;
 };
 
 GrepArgs ParseGrepArgs(const chat::ToolCallRequest& request) {
@@ -84,6 +85,8 @@ ParsedGrepOutput ParseGrepOutput(const std::string& output) {
     seen_files.insert(match->filepath);
     if (parsed.matches.size() < static_cast<size_t>(kMaxMatches)) {
       parsed.matches.push_back(std::move(*match));
+    } else {
+      parsed.capped = true;
     }
   }
   parsed.file_count = static_cast<int>(seen_files.size());
@@ -93,8 +96,7 @@ ParsedGrepOutput ParseGrepOutput(const std::string& output) {
 ToolExecutionResult BuildGrepResult(const std::string& pattern,
                                     const std::string& output, bool truncated) {
   auto parsed = ParseGrepOutput(output);
-  const bool capped = parsed.matches.size() >= static_cast<size_t>(kMaxMatches);
-  const bool is_truncated = truncated || capped;
+  const bool is_truncated = truncated || parsed.capped;
 
   Json matches_json = Json::array();
   for (const auto& m : parsed.matches) {

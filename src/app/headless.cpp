@@ -89,13 +89,18 @@ int RunHeadless(const std::string& prompt, bool auto_approve,
 
   std::jthread cancel_timer;
   if (cancel_after_ms > 0) {
-    cancel_timer = std::jthread([&service,
-                                 cancel_after_ms](std::stop_token st) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(cancel_after_ms));
-      if (!st.stop_requested()) {
-        service.CancelActiveResponse();
-      }
-    });
+    cancel_timer =
+        std::jthread([&service, cancel_after_ms](std::stop_token st) {
+          std::mutex m;
+          std::condition_variable_any cv;
+          std::unique_lock<std::mutex> lock(m);
+          // wait_for returns the predicate result: true => stop requested (skip
+          // cancel), false => timed out without stop (fire the cancel).
+          if (!cv.wait_for(lock, st, std::chrono::milliseconds(cancel_after_ms),
+                           [&st] { return st.stop_requested(); })) {
+            service.CancelActiveResponse();
+          }
+        });
   }
 
   std::unique_lock<std::mutex> lock(done_mutex);

@@ -256,7 +256,13 @@ void McpServerSession::HandleNotification(std::string_view method,
     return;
   }
   if (method == pc::kMethodNotificationsProgress) {
-    (void)ProgressNotification::FromJson(params);
+    try {
+      (void)ProgressNotification::FromJson(params);
+    } catch (const std::exception&) {
+      yac::log::Warn("mcp.server_session",
+                     "dropping malformed progress notification: {}",
+                     yac::log::DescribeCurrentException());
+    }
     return;
   }
   if (method == pc::kMethodNotificationsMessage && debug_log_ != nullptr) {

@@ -1,5 +1,7 @@
 #include "tool_call/json_rpc_stdio_base.hpp"
 
+#include "util/log.hpp"
+
 #include <array>
 #include <cerrno>
 #include <csignal>
@@ -105,11 +107,14 @@ void JsonRpcStdioBase::Stop() {
     reader_.request_stop();
   }
 
-  CloseFd(&read_fd_);
+  // Close stdin first so the child sees EOF; the reader never touches
+  // write_fd_, so closing it now cannot race the reader.
   CloseFd(&write_fd_);
 
   if (child_pid_ > 0) {
     kill(child_pid_, SIGTERM);
+    // Reaping the child closes its stdout write end, so the reader's blocking
+    // read() returns EOF and the loop exits on its own.
     waitpid(child_pid_, nullptr, 0);
     child_pid_ = -1;
   }
@@ -117,11 +122,22 @@ void JsonRpcStdioBase::Stop() {
   if (reader_.joinable()) {
     reader_.join();
   }
+
+  // Only safe after join(): no thread is reading read_fd_ anymore, and the
+  // join() establishes a happens-before so writing read_fd_ = -1 is not a
+  // data race and we never close the fd out from under an active read().
+  CloseFd(&read_fd_);
 }
 
 JsonRpcStdioBase::Json JsonRpcStdioBase::SendRequest(
     std::string_view method, Json params, std::chrono::milliseconds timeout) {
-  const auto id = next_id_.fetch_add(1);
+  return SendRequestWithId(next_id_.fetch_add(1), method, std::move(params),
+                           timeout);
+}
+
+JsonRpcStdioBase::Json JsonRpcStdioBase::SendRequestWithId(
+    int id, std::string_view method, Json params,
+    std::chrono::milliseconds timeout) {
   SendMessage({{"jsonrpc", "2.0"},
                {"id", id},
                {"method", method},
@@ -206,23 +222,42 @@ void JsonRpcStdioBase::ProcessMessage(const std::string& body) {
     return;
   }
 
-  if (message.contains("id")) {
-    const auto id = message["id"].get<int>();
-    {
-      std::scoped_lock lock(mutex_);
-      responses_[id] = std::move(message);
+  // A message carrying a string "method" is a server-initiated request (when it
+  // also has an "id") or a notification (when it does not). Only a message with
+  // an "id" and no "method" is a response to one of our own requests, so we
+  // must classify by "method" first to avoid misrouting server requests into
+  // responses_ (which would corrupt a colliding client id).
+  if (message.contains("method") && message["method"].is_string()) {
+    if (message.contains("id")) {
+      // Server-initiated requests are unsupported; ignore them rather than
+      // storing them as responses.
+      return;
     }
-    response_wake_.notify_all();
+    const Json params =
+        message.contains("params") ? message["params"] : Json::object();
+    try {
+      OnNotification(message["method"].get<std::string>(), params);
+    } catch (const std::exception&) {
+      // A notification handler must never unwind the reader thread (which would
+      // call std::terminate); log and swallow any handler exception.
+      yac::log::Warn("jsonrpc.stdio",
+                     "{}: dropping notification whose handler threw: {}",
+                     error_label_, yac::log::DescribeCurrentException());
+    }
     return;
   }
 
-  if (!message.contains("method") || !message["method"].is_string()) {
+  // JSON-RPC permits string or null ids; guard get<int>() so a non-integer id
+  // can never throw and terminate the reader thread.
+  if (!message.contains("id") || !message["id"].is_number_integer()) {
     return;
   }
-
-  const Json params =
-      message.contains("params") ? message["params"] : Json::object();
-  OnNotification(message["method"].get<std::string>(), params);
+  const auto id = message["id"].get<int>();
+  {
+    std::scoped_lock lock(mutex_);
+    responses_[id] = std::move(message);
+  }
+  response_wake_.notify_all();
 }
 
 }  // namespace yac::tool_call

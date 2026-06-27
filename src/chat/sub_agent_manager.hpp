@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <stop_token>
 #include <string>
@@ -77,6 +78,14 @@ class SubAgentManager {
   [[nodiscard]] std::shared_ptr<SubAgentSession> CreateSession(
       const std::string& task, tool_call::SubAgentMode mode,
       ChatMessageId card_message_id, ToolCallId tool_call_id);
+  // Spawns a background sub-agent, returning its agent id on success or
+  // std::nullopt when sub-agent capacity has been reached (no worker is
+  // launched and no card is left pending). This is the authoritative,
+  // unambiguous result used by the public SpawnBackground wrapper and by
+  // SpawnBackgroundFromUser.
+  [[nodiscard]] std::optional<std::string> SpawnBackgroundSession(
+      const std::string& task, ChatMessageId card_message_id,
+      ToolCallId tool_call_id);
   [[nodiscard]] bool TryStoreSession(
       const std::shared_ptr<SubAgentSession>& session);
   void RemoveSession(const std::string& agent_id);

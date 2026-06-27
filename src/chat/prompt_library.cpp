@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -303,15 +304,72 @@ std::string BuildSeedContent(const DefaultPromptSeed& seed) {
   return content;
 }
 
+// Sidecar manifest mapping seed name -> fingerprint of the bytes YAC last
+// wrote. It has no `.toml` extension so the prompt loader ignores it.
+std::filesystem::path SeedFingerprintPath(
+    const std::filesystem::path& prompts_dir) {
+  return prompts_dir / ".seed-fingerprints";
+}
+
+// FNV-1a 64-bit hash rendered as a decimal string. Stable across runs and
+// platforms so a recorded fingerprint can identify a still-unmodified seed.
+std::string SeedFingerprint(std::string_view bytes) {
+  std::uint64_t hash = 1469598103934665603ULL;
+  for (const unsigned char ch : bytes) {
+    hash ^= static_cast<std::uint64_t>(ch);
+    hash *= 1099511628211ULL;
+  }
+  return std::to_string(hash);
+}
+
+bool MatchesRecordedSeed(const std::filesystem::path& prompts_dir,
+                         const DefaultPromptSeed& seed,
+                         const std::string& existing) {
+  try {
+    const auto manifest =
+        toml::parse_file(SeedFingerprintPath(prompts_dir).string());
+    const auto recorded = manifest[std::string(seed.name)].value<std::string>();
+    return recorded.has_value() && *recorded == SeedFingerprint(existing);
+  } catch (...) {
+    // SAFETY: a missing or malformed fingerprint manifest means the file
+    // cannot be proven unmodified; treat it as user-owned and preserve it.
+    return false;
+  }
+}
+
+void RecordSeedFingerprint(const std::filesystem::path& prompts_dir,
+                           const DefaultPromptSeed& seed,
+                           std::string_view content) {
+  toml::table manifest;
+  try {
+    manifest = toml::parse_file(SeedFingerprintPath(prompts_dir).string());
+  } catch (...) {
+    // SAFETY: start from an empty manifest when none exists yet or it is
+    // unreadable; the entry below is rewritten regardless.
+    manifest = toml::table{};
+  }
+  manifest.insert_or_assign(std::string(seed.name), SeedFingerprint(content));
+  std::ofstream output(SeedFingerprintPath(prompts_dir), std::ios::trunc);
+  if (output) {
+    output << manifest;
+  }
+}
+
 bool IsUnmodifiedSeed(const std::filesystem::path& path,
                       const DefaultPromptSeed& seed) {
   std::ifstream input(path);
   if (!input) {
     return false;
   }
-  std::string existing((std::istreambuf_iterator<char>(input)),
-                       std::istreambuf_iterator<char>());
-  return existing == BuildSeedContent(seed);
+  const std::string existing((std::istreambuf_iterator<char>(input)),
+                             std::istreambuf_iterator<char>());
+  // Equal to the current rendering, or matching the fingerprint of an earlier
+  // revision YAC wrote: in either case the user has not edited the file, so a
+  // revision bump may safely overwrite it.
+  if (existing == BuildSeedContent(seed)) {
+    return true;
+  }
+  return MatchesRecordedSeed(path.parent_path(), seed, existing);
 }
 
 void WriteSeedPrompt(const std::filesystem::path& prompts_dir,
@@ -358,6 +416,10 @@ void WriteSeedPrompt(const std::filesystem::path& prompts_dir,
                "YAC will continue without this default prompt.");
     return;
   }
+
+  // Record what we just wrote so a future revision bump can recognize this
+  // file as an unmodified seed and refresh it in place.
+  RecordSeedFingerprint(prompts_dir, seed, content);
 
 #ifndef _WIN32
   std::filesystem::permissions(

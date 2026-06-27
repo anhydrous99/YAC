@@ -81,7 +81,7 @@ std::string Redact(std::string_view input) {
   static const std::regex token_regex(R"(token=[^\s&,;"]+)",
                                       std::regex::ECMAScript);
   static const std::regex json_secret_string_regex(
-      R"re(("(access|refresh|access_token|refresh_token|id_token|api_key|key)"[ \t]*:[ \t]*")[^"]*("))re",
+      R"re(("(access|refresh|access_token|refresh_token|id_token|api_key|key)"[ \t]*:[ \t]*")(?:\\.|[^"\\])*("))re",
       std::regex::ECMAScript);
   static const std::regex json_secret_value_regex(
       R"re(("(access|refresh|access_token|refresh_token|id_token|api_key|key)"[ \t]*:[ \t]*)([^",\s}\]][^,\s}\]]*))re",

@@ -15,7 +15,7 @@ namespace {
 constexpr std::string_view kSensitiveJsonQuotedPattern =
     R"re(("(Authorization|access_token|refresh_token|id_token|client_secret|Mcp-Session-Id)"[[:space:]]*:[[:space:]]*)"([^"\\]|\\.)*")re";
 constexpr std::string_view kSensitiveJsonFallbackPattern =
-    R"re(("(Authorization|access_token|refresh_token|id_token|client_secret|Mcp-Session-Id)"[[:space:]]*:[[:space:]]*)([^,[:space:]}\]]+))re";
+    R"re(("(Authorization|access_token|refresh_token|id_token|client_secret|Mcp-Session-Id)"[[:space:]]*:[[:space:]]*)([^]",[:space:]}]+))re";
 constexpr std::string_view kAuthorizationHeaderPattern =
     R"re((^|[\r\n])Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._+/=-]+)re";
 constexpr std::string_view kBearerTokenPattern =

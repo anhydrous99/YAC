@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -64,7 +65,8 @@ void ValidateEnvNumber(std::string_view key, std::string_view env_var,
                        double parsed) {
   const auto& validation = Metadata(key).validation;
   if (validation.type == SettingValidationType::NumberRange &&
-      (parsed < validation.min_number || parsed > validation.max_number)) {
+      (!std::isfinite(parsed) || parsed < validation.min_number ||
+       parsed > validation.max_number)) {
     throw std::out_of_range(std::string(env_var) + " " +
                             EnvValidationDetail(validation));
   }
@@ -849,6 +851,34 @@ void ApplyEnvOverrides(ChatConfig& config, ChatConfigFieldSet& fields,
       EnsureOAuthAuth(server).scopes = SplitArgs(*val);
     }
   }
+
+  // Mirror LoadOneMcpServer's validation so env overrides that produce an
+  // unsupported transport or a half-configured server are dropped the same
+  // way the TOML loader would reject them.
+  std::erase_if(config.mcp.servers, [&issues](const auto& server) {
+    if (server.transport != "stdio" && server.transport != "http") {
+      issues.push_back(
+          {.severity = ConfigIssueSeverity::Error,
+           .message = "Invalid transport for mcp server '" + server.id + "'",
+           .detail = "Must be 'stdio' or 'http'."});
+      return true;
+    }
+    if (server.transport == "stdio" && server.command.empty()) {
+      issues.push_back(
+          {.severity = ConfigIssueSeverity::Error,
+           .message = "mcp server '" + server.id + "' requires command",
+           .detail = "transport='stdio' servers must specify command."});
+      return true;
+    }
+    if (server.transport == "http" && server.url.empty()) {
+      issues.push_back(
+          {.severity = ConfigIssueSeverity::Error,
+           .message = "mcp server '" + server.id + "' requires url",
+           .detail = "transport='http' servers must specify url."});
+      return true;
+    }
+    return false;
+  });
 }
 
 void ResolveApiKey(ChatConfig& config, const ChatConfigFieldSet& fields,

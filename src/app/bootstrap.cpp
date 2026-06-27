@@ -736,8 +736,13 @@ int RunApp() {
 
   provider::ProviderRegistry registry;
   registry.Register(provider);
-  chat::ChatService chat_service(std::move(registry), config,
-                                 std::move(mcp_mgr));
+  // Hold ChatService in an optional so its teardown (worker join + McpManager
+  // transport-thread stop) can be sequenced after the loop but before the
+  // StreamingCoalescer/ChatEventBridge consumers are destroyed. The `&`
+  // alias keeps every existing `chat_service` reference unchanged.
+  std::optional<chat::ChatService> chat_service_storage;
+  chat_service_storage.emplace(std::move(registry), config, std::move(mcp_mgr));
+  auto& chat_service = *chat_service_storage;
 
   ChatActionsImpl chat_actions(chat_service, config, terminal_bg_guard, screen,
                                mcp_admin);
@@ -802,6 +807,16 @@ int RunApp() {
 
   auto component = chat_ui.Build();
   screen.Loop(component);
+
+  // Stop the event producers before StreamingCoalescer/ChatEventBridge are
+  // destroyed. Detach the sinks first so no new dispatch can reference the
+  // coalescer, then destroy ChatService: this joins its worker thread and
+  // stops the McpManager transport threads (which may emit a final
+  // cancellation/finished event) while event_coalescer and bridge are still
+  // alive, preventing a use-after-free on shutdown.
+  *mcp_mgr_event_sink = nullptr;
+  chat_service.SetEventCallback({});
+  chat_service_storage.reset();
   return 0;
 }
 

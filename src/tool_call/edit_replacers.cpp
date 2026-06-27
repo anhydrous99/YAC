@@ -254,6 +254,22 @@ std::vector<DiffLine> ComputeDiff(std::string_view old_text,
   const size_t old_size = old_lines.size();
   const size_t new_size = new_lines.size();
 
+  // Bound the dynamic-programming matrix so a pathologically large file cannot
+  // exhaust memory. Above the cap, fall back to a coarse O(n+m) whole-file diff
+  // that still reports accurate addition/deletion counts.
+  constexpr size_t kMaxDiffCells = 4'000'000;  // caps dp at ~16 MB of ints.
+  if (old_size != 0 && new_size != 0 && old_size > kMaxDiffCells / new_size) {
+    std::vector<DiffLine> coarse;
+    coarse.reserve(old_size + new_size);
+    for (const auto& line : old_lines) {
+      coarse.push_back({DiffLine::Remove, line});
+    }
+    for (const auto& line : new_lines) {
+      coarse.push_back({DiffLine::Add, line});
+    }
+    return coarse;
+  }
+
   std::vector<std::vector<int>> dp(old_size + 1,
                                    std::vector<int>(new_size + 1, 0));
   for (size_t i = old_size; i-- > 0;) {

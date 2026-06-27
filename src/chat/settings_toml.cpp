@@ -7,6 +7,7 @@
 #include "chat/settings_validation.hpp"
 #include "mcp/mcp_server_config.hpp"
 
+#include <cmath>
 #include <exception>
 #include <fstream>
 #include <map>
@@ -92,7 +93,8 @@ bool ValidateNumberSetting(std::string_view key, double parsed,
                            std::vector<ConfigIssue>& issues) {
   const auto& validation = Metadata(key).validation;
   if (validation.type == SettingValidationType::NumberRange &&
-      (parsed < validation.min_number || parsed > validation.max_number)) {
+      (!std::isfinite(parsed) || parsed < validation.min_number ||
+       parsed > validation.max_number)) {
     AddError(issues, "Invalid " + std::string(key) + " in settings.toml",
              TomlValidationDetail(validation));
     return false;

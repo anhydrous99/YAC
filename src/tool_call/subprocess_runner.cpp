@@ -7,6 +7,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <poll.h>
+#include <string_view>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -18,12 +19,14 @@ namespace {
 void AppendCapped(std::string& output, const char* data, size_t n,
                   size_t max_output_bytes, bool& truncated) {
   if (output.size() >= max_output_bytes) {
-    truncated = true;
+    if (n > 0) {
+      truncated = true;
+    }
     return;
   }
   const size_t to_add = std::min(n, max_output_bytes - output.size());
   output.append(data, to_add);
-  if (output.size() >= max_output_bytes) {
+  if (to_add < n) {
     truncated = true;
   }
 }
@@ -95,8 +98,11 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
       close(dev_null);
     }
 
-    if (!opts.cwd.empty()) {
-      chdir(opts.cwd.c_str());
+    if (!opts.cwd.empty() && chdir(opts.cwd.c_str()) != 0) {
+      static constexpr std::string_view kMsg =
+          "yac: chdir to workspace failed\n";
+      (void)write(STDERR_FILENO, kMsg.data(), kMsg.size());
+      _exit(127);
     }
 
     // execvp's POSIX signature takes char* const argv[]; the const_cast is
@@ -146,6 +152,9 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
     const int ready = poll(&pfd, 1, poll_ms);
 
     if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
       break;
     }
     if (ready == 0) {
@@ -194,7 +203,28 @@ SubprocessResult RunSubprocessCapture(const SubprocessOptions& opts,
   }
 
   if (!child_reaped) {
-    waitpid(pid, &captured_status, 0);
+    while (true) {
+      const pid_t waited = waitpid(pid, &captured_status, WNOHANG);
+      if (waited == pid || (waited < 0 && errno == ECHILD)) {
+        break;  // child reaped
+      }
+      if (stop_token.stop_requested()) {
+        result.cancelled = true;
+      } else if (opts.timeout_ms.has_value()) {
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start)
+                .count();
+        if (elapsed >= *opts.timeout_ms) {
+          result.timed_out = true;
+        }
+      }
+      if (result.cancelled || result.timed_out) {
+        KillProcessGroupWithGrace(pid, opts.kill_grace_ms);
+        return result;
+      }
+      usleep(10000);
+    }
   }
   result.exit_code =
       WIFEXITED(captured_status) ? WEXITSTATUS(captured_status) : -1;

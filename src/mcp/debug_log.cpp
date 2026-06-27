@@ -128,7 +128,15 @@ McpDebugLog::McpDebugLog(std::string_view server_id) {
   }
 #endif
 
-  SetFilePermissions(path_);
+  try {
+    SetFilePermissions(path_);
+  } catch (...) {
+#ifndef _WIN32
+    ::close(this->fd_);
+#endif
+    this->fd_ = -1;
+    throw;
+  }
 }
 
 McpDebugLog::~McpDebugLog() {

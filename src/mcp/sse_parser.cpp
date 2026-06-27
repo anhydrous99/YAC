@@ -6,6 +6,11 @@
 #include <vector>
 
 namespace yac::mcp {
+namespace {
+// Mirror the stdio transport's frame cap so a server streaming a long run of
+// bytes with no newline cannot grow buffer_ without bound.
+constexpr std::size_t kMaxLineBytes = 64UL * 1024UL * 1024UL;
+}  // namespace
 
 std::vector<SseEvent> SseParser::FeedChunk(std::string_view chunk) {
   buffer_.append(chunk.data(), chunk.size());
@@ -21,6 +26,10 @@ std::vector<SseEvent> SseParser::FeedChunk(std::string_view chunk) {
     ConsumeLine(line, events);
   }
 
+  // Oversized partial line with no delimiter: drop it to bound memory.
+  if (buffer_.size() > kMaxLineBytes) {
+    buffer_.clear();
+  }
   return events;
 }
 

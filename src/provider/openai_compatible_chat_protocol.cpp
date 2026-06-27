@@ -340,7 +340,8 @@ std::string ExtractBufferedText(const Json& response) {
     return {};
   }
   const auto& choice = response["choices"][0];
-  if (!choice.contains("message") || !choice["message"].contains("content")) {
+  if (!choice.contains("message") || !choice["message"].contains("content") ||
+      !choice["message"]["content"].is_string()) {
     return {};
   }
   return choice["message"]["content"].get<std::string>();

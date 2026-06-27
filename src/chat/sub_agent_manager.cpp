@@ -288,6 +288,24 @@ SubAgentManager::SubAgentCompletion SubAgentManager::RunSession(
   std::stop_callback<decltype(request_parent_stop)> parent_stop_callback(
       parent_stop_token, request_parent_stop);
 
+  // Enforce the hard deadline independently of event emission: a sub-agent
+  // stalled inside a single long provider/tool call produces no intermediate
+  // events, so the deadline check in MakeFilteredEmit would never run. This
+  // watchdog polls the deadline and requests stop directly, which every
+  // provider already honors via its stop token. The jthread's destructor
+  // (request_stop + join) runs when RunSession returns, so it exits promptly
+  // on normal completion.
+  std::jthread timeout_watchdog([&session](std::stop_token wd_stop) {
+    while (!wd_stop.stop_requested() && !session.stop_source.stop_requested()) {
+      if (std::chrono::steady_clock::now() >= session.deadline) {
+        session.timed_out = true;
+        SubAgentManager::RequestSessionStop(session, false);
+        return;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  });
+
   SubAgentCompletion completion;
   try {
     session.prompt_processor->ProcessPrompt(
@@ -402,13 +420,13 @@ std::string SubAgentManager::SpawnForeground(
   return completion.result;
 }
 
-std::string SubAgentManager::SpawnBackground(const std::string& task,
-                                             ChatMessageId card_message_id,
-                                             ToolCallId tool_call_id) {
+std::optional<std::string> SubAgentManager::SpawnBackgroundSession(
+    const std::string& task, ChatMessageId card_message_id,
+    ToolCallId tool_call_id) {
   auto session = CreateSession(task, tool_call::SubAgentMode::Background,
                                card_message_id, std::move(tool_call_id));
   if (!TryStoreSession(session)) {
-    return CapacityError();
+    return std::nullopt;
   }
 
   SubAgentSession* session_ptr = session.get();
@@ -420,6 +438,13 @@ std::string SubAgentManager::SpawnBackground(const std::string& task,
   });
 
   return session->agent_id;
+}
+
+std::string SubAgentManager::SpawnBackground(const std::string& task,
+                                             ChatMessageId card_message_id,
+                                             ToolCallId tool_call_id) {
+  return SpawnBackgroundSession(task, card_message_id, std::move(tool_call_id))
+      .value_or(CapacityError());
 }
 
 std::string SubAgentManager::SpawnBackgroundFromUser(std::string task) {
@@ -443,7 +468,21 @@ std::string SubAgentManager::SpawnBackgroundFromUser(std::string task) {
       .tool_call = std::move(preview),
       .status = ChatMessageStatus::Active}});
 
-  return SpawnBackground(task, card_id, std::move(synthetic_tool_call_id));
+  auto agent_id =
+      SpawnBackgroundSession(task, card_id, std::move(synthetic_tool_call_id));
+  if (!agent_id) {
+    // Capacity was reached under the lock-guarded re-check; resolve the
+    // freshly emitted Active card with a terminal error so it does not hang
+    // in the UI, and surface a failed state instead of an error-string-as-id.
+    parent_emit_(MakeSubAgentCompletionEvent(SubAgentCompletionEventData{
+        .type = ChatEventType::SubAgentError,
+        .message_id = card_id,
+        .sub_agent_task = task,
+        .sub_agent_result = CapacityError(),
+    }));
+    return {};
+  }
+  return *agent_id;
 }
 
 void SubAgentManager::Cancel(const std::string& agent_id) {

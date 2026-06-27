@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
 #include <utility>
 
 namespace yac::tool_call {
@@ -171,6 +172,22 @@ int CurlProgressCallback(void* clientp, curl_off_t download_total,
   return state->stop_token.stop_requested() ? 1 : 0;
 }
 
+// Connect-time SSRF guard for CURLOPT_OPENSOCKETFUNCTION. curl invokes this
+// with the exact peer address it is about to connect to, so validating here
+// closes the DNS-rebinding window between the policy pre-check and the real
+// connection. Returning CURL_SOCKET_BAD aborts the connect. Must stay a plain
+// (non-capturing) free function to match curl's callback ABI.
+curl_socket_t CurlOpenSocketGuard(void* clientp, curlsocktype purpose,
+                                  struct curl_sockaddr* address) {
+  (void)clientp;
+  if (purpose != CURLSOCKTYPE_IPCXN ||
+      IsPrivateSocketAddress(
+          reinterpret_cast<const sockaddr*>(&address->addr))) {
+    return CURL_SOCKET_BAD;
+  }
+  return ::socket(address->family, address->socktype, address->protocol);
+}
+
 }  // namespace
 
 WebFetchTransportResponse CurlWebFetchTransport::Fetch(
@@ -206,6 +223,13 @@ WebFetchTransportResponse CurlWebFetchTransport::Fetch(
   curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
   curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, CurlProgressCallback);
   curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &state);
+  if (request.network_policy == WebFetchNetworkPolicy::RealNetwork) {
+    // Validate the peer curl actually dials, eliminating the second-resolution
+    // (DNS-rebinding) window the URL pre-check cannot cover. Redirects remain
+    // disabled (no CURLOPT_FOLLOWLOCATION) so every connection is guarded.
+    curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, CurlOpenSocketGuard);
+    curl_easy_setopt(curl, CURLOPT_OPENSOCKETDATA, &state);
+  }
   const CURLcode result = curl_easy_perform(curl);
   if (stop_token.stop_requested()) {
     throw std::runtime_error("web_fetch cancelled");
@@ -238,7 +262,8 @@ WebFetchResponse FetchWebUrl(const WebFetchRequest& request,
       .on_header_line =
           [&collector](std::string_view line) { collector.OnHeader(line); },
       .on_body_chunk =
-          [&collector](std::string_view chunk) { collector.OnBody(chunk); }};
+          [&collector](std::string_view chunk) { collector.OnBody(chunk); },
+      .network_policy = request.network_policy};
   WebFetchTransportResponse transport_response;
   try {
     transport_response = transport.Fetch(transport_request, stop_token);

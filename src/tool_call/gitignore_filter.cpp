@@ -71,6 +71,10 @@ GitignoreFilter::GitignoreFilter(std::filesystem::path workspace_root)
     while (std::getline(file, line)) {
       ParseLine(line, patterns_, negations_);
     }
+    // Git implicitly ignores its own metadata dir; .gitignore never lists it.
+    // Seed it explicitly so glob/std-fs walks match ripgrep's behavior.
+    PushPattern(patterns_, ".git");
+    PushPattern(patterns_, ".git/**");
   } else {
     using_fallback_denylist_ = true;
     patterns_ = FallbackDenyList();

@@ -236,8 +236,34 @@ size_t OffsetForLineCharacter(const std::string& text, int line,
     }
     offset = newline + 1;
   }
-  return std::min(text.size(),
-                  offset + static_cast<size_t>(target_character - 1));
+  // LSP `character` counts UTF-16 code units (the protocol default, and the
+  // encoding the LSP client negotiates). Walk the line's UTF-8 bytes, advancing
+  // one code unit per 1-3 byte sequence and two per 4-byte (astral) sequence,
+  // so the byte offset stays correct when earlier columns hold multibyte
+  // characters. ASCII advances one byte per code unit, matching the previous
+  // raw-byte behavior. The walk stops at the line's newline or EOF.
+  auto remaining_units = static_cast<size_t>(target_character - 1);
+  size_t cursor = offset;
+  while (remaining_units > 0 && cursor < text.size()) {
+    const auto lead = static_cast<unsigned char>(text[cursor]);
+    if (lead == '\n') {
+      break;
+    }
+    size_t byte_len = 1;
+    size_t code_units = 1;
+    if (lead >= 0xF0) {
+      byte_len = 4;
+      code_units = 2;  // encoded as a surrogate pair in UTF-16
+    } else if (lead >= 0xE0) {
+      byte_len = 3;
+    } else if (lead >= 0xC0) {
+      byte_len = 2;
+    }
+    byte_len = std::min(byte_len, text.size() - cursor);
+    cursor += byte_len;
+    remaining_units -= std::min(code_units, remaining_units);
+  }
+  return std::min(text.size(), cursor);
 }
 
 }  // namespace yac::tool_call

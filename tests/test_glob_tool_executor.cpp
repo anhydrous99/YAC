@@ -97,6 +97,37 @@ TEST_CASE("glob specific pattern: exact filename without wildcards") {
   REQUIRE(block.matched_files.size() == 1);
 }
 
+TEST_CASE("glob basename pattern searches nested files") {
+  TempWorkspace ws;
+  ws.CreateFile("settings.example.toml");
+  ws.CreateFile("tests/fixtures/sample.toml");
+  ws.CreateFile("tests/fixtures/mock_oauth.toml");
+  ws.CreateFile("src/main.cpp");
+
+  WorkspaceFilesystem wfs(ws.Path());
+  const auto result =
+      ExecuteGlobTool(MakeRequest({{"pattern", "*.toml"}}), wfs);
+
+  const auto& block = std::get<yac::tool_call::GlobCall>(result.block);
+  REQUIRE_FALSE(block.is_error);
+  REQUIRE(block.matched_files.size() == 3);
+}
+
+TEST_CASE("glob exact filename searches nested basenames") {
+  TempWorkspace ws;
+  ws.CreateFile("src/tool_call/executor.hpp");
+  ws.CreateFile("include/other.hpp");
+
+  WorkspaceFilesystem wfs(ws.Path());
+  const auto result =
+      ExecuteGlobTool(MakeRequest({{"pattern", "executor.hpp"}}), wfs);
+
+  const auto& block = std::get<yac::tool_call::GlobCall>(result.block);
+  REQUIRE_FALSE(block.is_error);
+  REQUIRE(block.matched_files.size() == 1);
+  REQUIRE(block.matched_files[0].find("src") != std::string::npos);
+}
+
 TEST_CASE("glob no matches: unrecognized extension returns empty result") {
   TempWorkspace ws;
   ws.CreateFile("src/main.cpp");

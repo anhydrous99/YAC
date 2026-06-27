@@ -4,6 +4,7 @@
 #include "tool_call/lsp_error.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -47,17 +48,65 @@ std::string LanguageIdForPath(const std::filesystem::path& path) {
   return "plaintext";
 }
 
+// Percent-encodes a filesystem path for use in a file:// URI, matching
+// clangd/LLVM URI canonicalization: every byte is escaped except the
+// unreserved set (ALPHA / DIGIT / '-' '.' '_' '~') and the path separators
+// '/' and ':', which LLVM leaves unescaped. Keeping this in lockstep with the
+// server's encoding lets our diagnostics key and resolved paths line up with
+// the URIs the server publishes (e.g. for paths containing spaces).
+std::string PercentEncodePath(std::string_view path) {
+  static constexpr std::string_view kHex = "0123456789ABCDEF";
+  std::string out;
+  out.reserve(path.size());
+  for (const unsigned char ch : path) {
+    const bool keep = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                      (ch >= '0' && ch <= '9') || ch == '-' || ch == '.' ||
+                      ch == '_' || ch == '~' || ch == '/' || ch == ':';
+    if (keep) {
+      out.push_back(static_cast<char>(ch));
+    } else {
+      out.push_back('%');
+      out.push_back(kHex[ch >> 4]);
+      out.push_back(kHex[ch & 0x0F]);
+    }
+  }
+  return out;
+}
+
+std::string PercentDecode(std::string_view value) {
+  std::string out;
+  out.reserve(value.size());
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (value[i] == '%' && i + 2 < value.size() &&
+        std::isxdigit(static_cast<unsigned char>(value[i + 1])) != 0 &&
+        std::isxdigit(static_cast<unsigned char>(value[i + 2])) != 0) {
+      const auto hex = [](char c) {
+        return c <= '9'
+                   ? c - '0'
+                   : (std::tolower(static_cast<unsigned char>(c)) - 'a' + 10);
+      };
+      out.push_back(
+          static_cast<char>((hex(value[i + 1]) << 4) | hex(value[i + 2])));
+      i += 2;
+    } else {
+      out.push_back(value[i]);
+    }
+  }
+  return out;
+}
+
 std::string FileUri(const std::filesystem::path& path) {
   return "file://" +
-         std::filesystem::absolute(path).lexically_normal().string();
+         PercentEncodePath(
+             std::filesystem::absolute(path).lexically_normal().string());
 }
 
 std::filesystem::path PathFromFileUri(const std::string& uri) {
   constexpr std::string_view kPrefix = "file://";
   if (uri.starts_with(kPrefix)) {
-    return {uri.substr(kPrefix.size())};
+    return {PercentDecode(uri.substr(kPrefix.size()))};
   }
-  return {uri};
+  return {PercentDecode(uri)};
 }
 
 DiagnosticSeverity SeverityFromLsp(int severity) {
@@ -134,6 +183,19 @@ std::string JsonStringAt(const Json& object, const std::string& key) {
   return object[key].get<std::string>();
 }
 
+// Safe nested-object navigation: returns the child object at `key`, or a shared
+// empty object when `object` lacks `key` or the value is not an object. This
+// lets callers chain nested LSP fields (range.start, location.range, ...)
+// without the bundled nlohmann const operator[] asserting (debug) or invoking
+// UB (release) on malformed server JSON that omits an intermediate key.
+const Json& JsonObjectAt(const Json& object, const std::string& key) {
+  static const Json empty_object = Json::object();
+  if (!object.contains(key) || !object[key].is_object()) {
+    return empty_object;
+  }
+  return object[key];
+}
+
 std::string DisplayWorkspacePath(const std::filesystem::path& path,
                                  const std::filesystem::path& workspace_root) {
   auto normalized = std::filesystem::absolute(path).lexically_normal();
@@ -147,10 +209,13 @@ std::string DisplayWorkspacePath(const std::filesystem::path& path,
 
 int SymbolLine(const Json& item) {
   if (item.contains("selectionRange")) {
-    return JsonIntAt(item["selectionRange"]["start"], "line", 0) + 1;
+    const auto& start =
+        JsonObjectAt(JsonObjectAt(item, "selectionRange"), "start");
+    return JsonIntAt(start, "line", 0) + 1;
   }
   if (item.contains("location")) {
-    return JsonIntAt(item["location"]["range"]["start"], "line", 0) + 1;
+    const auto& range = JsonObjectAt(JsonObjectAt(item, "location"), "range");
+    return JsonIntAt(JsonObjectAt(range, "start"), "line", 0) + 1;
   }
   return 1;
 }
@@ -293,7 +358,8 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
         "initialize",
         {{"processId", static_cast<int>(getpid())},
          {"rootUri", FileUri(workspace_root_)},
-         {"capabilities", Json::object()},
+         {"capabilities",
+          {{"general", {{"positionEncodings", Json::array({"utf-16"})}}}}},
          {"workspaceFolders",
           Json::array({{{"uri", FileUri(workspace_root_)},
                         {"name", workspace_root_.filename().string()}}})}},
@@ -305,6 +371,14 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
   void SyncDocument(const std::filesystem::path& path) {
     const auto uri = FileUri(path);
     const auto text = ReadWholeFile(path);
+    // Invalidate any diagnostics cached for a previous version of this
+    // document. The server republishes (possibly empty) diagnostics after the
+    // didOpen/didChange below, so the next Diagnostics() wait blocks for fresh
+    // data instead of immediately returning a stale entry from an earlier edit.
+    {
+      std::scoped_lock lock(diagnostics_mutex_);
+      diagnostics_.erase(uri);
+    }
     auto& version = document_versions_[uri];
     if (version == 0) {
       version = 1;
@@ -462,7 +536,7 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
     }
     const auto path = DisplayWorkspacePath(
         PathFromFileUri(item["uri"].get<std::string>()), workspace_root);
-    const auto& start = item["range"]["start"];
+    const auto& start = JsonObjectAt(JsonObjectAt(item, "range"), "start");
     locations.push_back(
         LspLocation{.filepath = path,
                     .line = JsonIntAt(start, "line", 0) + 1,
@@ -504,9 +578,9 @@ class JsonRpcLspClient::Impl : public JsonRpcStdioBase {
       if (!edit.contains("range")) {
         continue;
       }
-      const auto& range = edit["range"];
-      const auto& start = range["start"];
-      const auto& end = range["end"];
+      const auto& range = JsonObjectAt(edit, "range");
+      const auto& start = JsonObjectAt(range, "start");
+      const auto& end = JsonObjectAt(range, "end");
       edits.push_back(
           LspTextEdit{.filepath = path,
                       .start_line = JsonIntAt(start, "line", 0) + 1,

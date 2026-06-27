@@ -3,6 +3,7 @@
 #include "mcp/json_helpers.hpp"
 #include "mcp/protocol_constants.hpp"
 #include "mcp/sse_parser.hpp"
+#include "util/log.hpp"
 #include "util/string_util.hpp"
 
 #include <cstdlib>
@@ -127,8 +128,18 @@ std::size_t StreamableHttpMcpTransport::WriteCallback(char* ptr,
         const Json params = message.contains(std::string(pc::kFieldParams))
                                 ? message[std::string(pc::kFieldParams)]
                                 : Json::object();
-        state->owner->DispatchNotification(
-            message[std::string(pc::kFieldMethod)].get<std::string>(), params);
+        // Notification handlers run on libcurl's C write callback; an
+        // exception unwinding through curl_easy_perform's C frames is
+        // undefined behavior, so swallow and log any handler failure.
+        try {
+          state->owner->DispatchNotification(
+              message[std::string(pc::kFieldMethod)].get<std::string>(),
+              params);
+        } catch (const std::exception&) {
+          yac::log::Warn("mcp.http_transport",
+                         "dropping notification that raised: {}",
+                         yac::log::DescribeCurrentException());
+        }
         continue;
       }
 

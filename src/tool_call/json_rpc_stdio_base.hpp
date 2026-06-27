@@ -32,8 +32,19 @@ class JsonRpcStdioBase {
   void Start(const std::string& command, const std::vector<std::string>& args);
   void Stop();
 
+  // Allocates the next JSON-RPC wire id without sending anything. Callers that
+  // must know the real wire id up front (e.g. to track an in-flight request
+  // before it is sent) allocate here and pass the id to SendRequestWithId, so
+  // the id on the wire is the single source of truth.
+  [[nodiscard]] int AllocateRequestId() { return next_id_.fetch_add(1); }
+
   [[nodiscard]] Json SendRequest(std::string_view method, Json params,
                                  std::chrono::milliseconds timeout);
+  // Sends a request using a caller-supplied wire id (from AllocateRequestId)
+  // instead of allocating one internally.
+  [[nodiscard]] Json SendRequestWithId(int id, std::string_view method,
+                                       Json params,
+                                       std::chrono::milliseconds timeout);
   void SendNotification(std::string_view method, Json params);
   void FaultAllPending(std::string_view reason);
 

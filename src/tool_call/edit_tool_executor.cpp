@@ -70,8 +70,8 @@ ToolExecutionResult ExecuteEditTool(
         "(whitespace-tolerant fallbacks also failed).");
   }
 
-  WorkspaceFilesystem::WriteFile(path, new_content);
   auto diff = ComputeDiff(old_content, new_content);
+  WorkspaceFilesystem::WriteFile(path, new_content);
 
   size_t additions = 0;
   size_t deletions = 0;

@@ -205,6 +205,18 @@ void TruncateResult(tool_call::McpToolCall& call, std::uintmax_t max_bytes) {
   call.is_truncated = call.is_truncated || hit_limit;
 }
 
+// JSON-RPC responses arrive as a full envelope
+// {"jsonrpc","id","result":{...}}; the protocol FromJson parsers expect the
+// bare result object. Unwrap when present; MockMcpTransport returns the bare
+// object directly, so fall back to the response itself.
+[[nodiscard]] Json ExtractResultField(const Json& response) {
+  const std::string result_key{protocol::kFieldResult};
+  if (response.is_object() && response.contains(result_key)) {
+    return response[result_key];
+  }
+  return response;
+}
+
 }  // namespace
 
 class McpManager::ObservedTransport : public IMcpTransport {
@@ -454,11 +466,17 @@ void McpManager::HandleNotification(std::string_view server_id,
                                     std::string_view method,
                                     const Json& params) const {
   if (method == protocol::kMethodNotificationsProgress) {
-    const auto progress = ProgressNotification::FromJson(params);
-    std::ostringstream text;
-    text << std::string(server_id) << " progress";
-    emit_event_(chat::MakeMcpProgressUpdateEvent(
-        0, text.str(), progress.progress, progress.total.value_or(0.0)));
+    try {
+      const auto progress = ProgressNotification::FromJson(params);
+      std::ostringstream text;
+      text << std::string(server_id) << " progress";
+      emit_event_(chat::MakeMcpProgressUpdateEvent(
+          0, text.str(), progress.progress, progress.total.value_or(0.0)));
+    } catch (const std::exception&) {
+      yac::log::Warn("mcp.manager",
+                     "dropping malformed progress notification: {}",
+                     yac::log::DescribeCurrentException());
+    }
   }
 }
 
@@ -561,7 +579,8 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
       protocol::kMethodToolsCall, params,
       std::chrono::duration_cast<std::chrono::milliseconds>(kRequestTimeout),
       stop);
-  const auto response = ToolsCallResponse::FromJson(response_json);
+  const Json unwrapped_result = ExtractResultField(response_json);
+  const auto response = ToolsCallResponse::FromJson(unwrapped_result);
 
   tool_call::McpToolCall block{
       .server_id = ::yac::McpServerId{record.config.id},
@@ -569,7 +588,7 @@ core_types::ToolExecutionResult McpManager::InvokeTool(
       .original_tool_name = original_tool_name,
       .arguments_json = std::string(arguments_json),
       .is_error = response.is_error,
-      .result_bytes = response_json.dump().size()};
+      .result_bytes = unwrapped_result.dump().size()};
   block.result_blocks.reserve(response.result_blocks.size());
   for (const auto& result_block : response.result_blocks) {
     block.result_blocks.push_back(ConvertResultBlock(result_block));
@@ -644,7 +663,8 @@ std::vector<core_types::McpResourceDescriptor> McpManager::ListResources(
         protocol::kMethodResourcesList, params,
         std::chrono::duration_cast<std::chrono::milliseconds>(kRequestTimeout),
         stop);
-    auto page = ResourcesListResponse::FromJson(response_json);
+    auto page =
+        ResourcesListResponse::FromJson(ExtractResultField(response_json));
     all_resources.insert(all_resources.end(), page.resources.begin(),
                          page.resources.end());
     cursor = std::move(page.next_cursor);
@@ -670,7 +690,8 @@ core_types::McpResourceContent McpManager::ReadResource(
       ResourcesReadRequest{.uri = std::string(uri)}.ToJson(),
       std::chrono::duration_cast<std::chrono::milliseconds>(kRequestTimeout),
       stop);
-  const auto response = ResourcesReadResponse::FromJson(response_json);
+  const auto response =
+      ResourcesReadResponse::FromJson(ExtractResultField(response_json));
   if (response.contents.empty()) {
     throw std::runtime_error("MCP resource read returned no contents");
   }

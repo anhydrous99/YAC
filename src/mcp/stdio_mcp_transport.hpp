@@ -3,7 +3,6 @@
 #include "mcp/mcp_server_config.hpp"
 #include "mcp/mcp_transport.hpp"
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -44,7 +43,6 @@ class StdioMcpTransport : public IMcpTransport {
   mutable std::mutex mutex_;
   NotificationCallback notification_callback_;
   TransportStatus status_ = TransportStatus::Stopped;
-  std::atomic<std::int64_t> next_request_id_{1};
   mutable std::mutex request_mutex_;
   std::set<std::int64_t> inflight_request_ids_;
   std::set<std::int64_t> cancelled_request_ids_;

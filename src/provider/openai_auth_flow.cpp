@@ -219,9 +219,16 @@ class OpenAiFixedLoopbackCallbackServer {
         return std::nullopt;
       }
 
+      timeval recv_timeout{};
+      recv_timeout.tv_sec = 5;
+      recv_timeout.tv_usec = 0;
+      setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &recv_timeout,
+                 sizeof(recv_timeout));
+
       std::string buffer;
       std::array<char, 4096> chunk{};
-      while (buffer.find("\r\n\r\n") == std::string::npos) {
+      while (buffer.find("\r\n\r\n") == std::string::npos &&
+             !stop_token.stop_requested()) {
         const ssize_t bytes = recv(client_fd, chunk.data(), chunk.size(), 0);
         if (bytes <= 0) {
           break;
@@ -239,6 +246,10 @@ class OpenAiFixedLoopbackCallbackServer {
               : BuildHttpResponse(400, "Bad Request", "Invalid callback.\r\n");
       send(client_fd, response.data(), response.size(), 0);
       close(client_fd);
+
+      if (!result.has_value()) {
+        continue;
+      }
 
       Close();
       return result;

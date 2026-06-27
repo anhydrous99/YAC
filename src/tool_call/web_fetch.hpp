@@ -19,12 +19,21 @@ inline constexpr int kWebFetchMaxTimeoutSeconds = 120;
 using WebFetchHeaderCallback = std::function<void(std::string_view line)>;
 using WebFetchBodyCallback = std::function<void(std::string_view chunk)>;
 
+enum class WebFetchNetworkPolicy {
+  RealNetwork,
+  InjectedTransport,
+};
+
 struct WebFetchTransportRequest {
   std::string url;
   std::chrono::milliseconds timeout{
       std::chrono::seconds(kWebFetchDefaultTimeoutSeconds)};
   WebFetchHeaderCallback on_header_line;
   WebFetchBodyCallback on_body_chunk;
+  // When RealNetwork, the curl transport installs a connect-time guard that
+  // refuses to dial private/loopback/link-local peers (SSRF defense). Test and
+  // injected transports ignore this field.
+  WebFetchNetworkPolicy network_policy = WebFetchNetworkPolicy::RealNetwork;
 };
 
 struct WebFetchTransportResponse {
@@ -49,11 +58,6 @@ class CurlWebFetchTransport final : public WebFetchTransport {
   [[nodiscard]] WebFetchTransportResponse Fetch(
       const WebFetchTransportRequest& request,
       std::stop_token stop_token) override;
-};
-
-enum class WebFetchNetworkPolicy {
-  RealNetwork,
-  InjectedTransport,
 };
 
 struct WebFetchRequest {

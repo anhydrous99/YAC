@@ -41,8 +41,10 @@ ToolExecutionResult ExecuteFileReadTool(
   Json result{{"filepath", block.filepath},
               {"lines_loaded", lines_loaded},
               {"content", content}};
-  return ToolExecutionResult{.block = std::move(block),
-                             .result_json = result.dump()};
+  return ToolExecutionResult{
+      .block = std::move(block),
+      .result_json =
+          result.dump(-1, ' ', false, Json::error_handler_t::replace)};
 }
 
 ToolExecutionResult ExecuteFileWriteTool(

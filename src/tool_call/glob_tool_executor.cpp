@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -35,6 +37,10 @@ std::string NormalizePattern(std::string pattern) {
   return pattern;
 }
 
+bool IsBasenamePattern(std::string_view pattern) {
+  return pattern.find('/') == std::string_view::npos;
+}
+
 }  // namespace
 
 ToolExecutionResult ExecuteGlobTool(
@@ -54,31 +60,47 @@ ToolExecutionResult ExecuteGlobTool(
     filter.emplace(workspace_filesystem.Root());
   }
 
-  const CompiledGlob compiled(NormalizePattern(pattern));
+  const std::string normalized_pattern = NormalizePattern(pattern);
+  const bool match_basename = IsBasenamePattern(normalized_pattern);
+  const CompiledGlob compiled(normalized_pattern);
 
   using FileEntry =
       std::pair<std::filesystem::path, std::filesystem::file_time_type>;
   std::vector<FileEntry> matches;
 
+  std::error_code iter_ec;
   std::filesystem::recursive_directory_iterator it(
-      walk_root, std::filesystem::directory_options::skip_permission_denied);
-  for (const auto& entry : it) {
-    if (!entry.is_regular_file()) {
-      continue;
+      walk_root, std::filesystem::directory_options::skip_permission_denied,
+      iter_ec);
+  const std::filesystem::recursive_directory_iterator end{};
+
+  while (!iter_ec && it != end) {
+    const auto& entry = *it;
+    std::error_code ec;
+
+    if (filter && entry.is_directory(ec) && !ec) {
+      const std::string dir_relative =
+          RelativePathText(entry.path(), workspace_filesystem.Root());
+      if (filter->ShouldSkip(dir_relative + "/")) {
+        it.disable_recursion_pending();
+      }
+    } else if (entry.is_regular_file(ec) && !ec) {
+      const std::string workspace_relative =
+          RelativePathText(entry.path(), workspace_filesystem.Root());
+      if (!filter || !filter->ShouldSkip(workspace_relative)) {
+        const std::string search_relative =
+            path_arg.empty() ? workspace_relative
+                             : RelativePathText(entry.path(), walk_root);
+        const std::string basename =
+            match_basename ? NormalizePathText(entry.path().filename()) : "";
+        if (compiled.Match(search_relative) ||
+            compiled.Match(workspace_relative) ||
+            (match_basename && compiled.Match(basename))) {
+          matches.emplace_back(entry.path(), entry.last_write_time());
+        }
+      }
     }
-    const std::string workspace_relative =
-        RelativePathText(entry.path(), workspace_filesystem.Root());
-    if (filter && filter->ShouldSkip(workspace_relative)) {
-      continue;
-    }
-    const std::string search_relative =
-        path_arg.empty() ? workspace_relative
-                         : RelativePathText(entry.path(), walk_root);
-    if (!compiled.Match(search_relative) &&
-        !compiled.Match(workspace_relative)) {
-      continue;
-    }
-    matches.emplace_back(entry.path(), entry.last_write_time());
+    it.increment(iter_ec);
   }
 
   std::ranges::sort(matches, [](const FileEntry& lhs, const FileEntry& rhs) {

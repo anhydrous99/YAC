@@ -596,11 +596,13 @@ const ToolDescriptors kToolDescriptors = {
                     .execute = &ExecuteGlobDispatch},
         .description = "Find files matching a glob pattern. "
                        "Supports **, *, ?. "
+                       "Patterns without a slash match file names at any "
+                       "depth. "
                        "Respects .gitignore by default. Results "
                        "sorted by mtime "
                        "descending.",
         .parameters_schema_json =
-            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp')"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
+            R"json({"type":"object","additionalProperties":false,"properties":{"pattern":{"type":"string","description":"Glob pattern (e.g. 'src/**/*.hpp' or '*.cpp' for filenames at any depth)"},"path":{"type":"string","description":"Path to search; defaults to workspace root"},"include_ignored":{"type":"boolean","description":"Include .gitignored files (default false)"}},"required":["pattern"]})json"},
     ToolDescriptor{
         .name = kWebFetchToolName,
         .handler = {.prepare = &PrepareWebFetchTool,
